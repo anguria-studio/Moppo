@@ -206,13 +206,9 @@ enum Token {
     static let shell = pageBackground
 
     /// The opaque sidebar stays slightly lighter than the page in dark mode.
-    static let sidebarTop = Token.dynamic(
-        light: NSColor(white: 0.96, alpha: 1),
-        dark: NSColor(white: 28 / 255, alpha: 1)  // #1C1C1C
-    )
-    static let sidebarBottom = Token.dynamic(
-        light: NSColor(white: 0.91, alpha: 1),
-        dark: NSColor(white: 18 / 255, alpha: 1)  // #121212
+    static let sidebar = Token.dynamic(
+        light: NSColor(white: 0.935, alpha: 1),
+        dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
     )
 
     /// The surface for onboarding and popovers.

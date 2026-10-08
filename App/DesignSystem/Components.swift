@@ -526,15 +526,11 @@ extension View {
 
 // MARK: - Window shell
 
-/// Keeps the sidebar gradient opaque so the wallpaper cannot change its color.
+/// Keeps the sidebar opaque so the wallpaper cannot change its color.
 struct SidebarBackground: View {
     var body: some View {
-        LinearGradient(
-            colors: [Token.sidebarTop, Token.sidebarBottom],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .accessibilityHidden(true)
+        Token.sidebar
+            .accessibilityHidden(true)
     }
 }
 
