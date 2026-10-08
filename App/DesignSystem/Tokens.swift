@@ -314,7 +314,7 @@ enum Token {
         static let trashRow: CGFloat = 40
         static let capacityBar: CGFloat = 13
         /// The storage bar stays secondary to the free-space value.
-        static let sidebarCapacityBar: CGFloat = 5
+        static let sidebarCapacityBar: CGFloat = 8
         /// The design's window size. Resizable; the sidebar stays fixed.
         static let windowWidth: CGFloat = 1268
         static let windowHeight: CGFloat = 734
