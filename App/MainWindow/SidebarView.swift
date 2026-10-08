@@ -57,7 +57,7 @@ struct SidebarView: View {
             HStack(spacing: 10) {
                 sidebarIcon(for: view)
                     .frame(width: 22)
-                    .foregroundStyle(Token.color(.accent))
+                    .foregroundStyle(Token.Text.primary)
                     .accessibilityHidden(true)
                 Text(view.title)
                     .font(.system(size: 13, weight: isSelected(view) ? .semibold : .regular))
