@@ -28,6 +28,8 @@ Read field identifiers with `gh project field-list` before you update a field.
 
 ## Branches and pull requests
 
+- Commit changes only after an explicit instruction from the user.
+- Push changes only after an explicit instruction from the user.
 - Create branches with `<type>/<short-description>`, such as `fix/scan-removal-flows`.
 - Use lowercase words and hyphens in the description.
 - Do not use the `codex/` prefix.

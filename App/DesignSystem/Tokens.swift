@@ -205,17 +205,13 @@ enum Token {
     /// page is what the content scrolls on. They are free to part company.
     static let shell = pageBackground
 
-    /// The window's own surface: the sidebar, the toolbar, and the margin around
-    /// the content pane.
-    ///
-    /// The sidebar and the chrome around the page are one continuous surface, and
-    /// the page is a rounded pane inset into it. That is the layout — it only
-    /// reads if the pane and what surrounds it are different colours, which is why
-    /// the page takes the darkest of the three and this sits a step above it.
-    ///
-    /// In light it stays the window material: the sidebar there is a source list,
-    /// and the platform draws those with a material that follows the user's
-    /// settings.
+    /// The opaque sidebar stays slightly lighter than the page in dark mode.
+    static let sidebar = Token.dynamic(
+        light: NSColor(white: 0.935, alpha: 1),
+        dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
+    )
+
+    /// The surface for onboarding and popovers.
     static let chrome = Token.dynamic(
         light: NSColor.windowBackgroundColor,
         dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
@@ -256,32 +252,14 @@ enum Token {
         /// opposite direction, which is what `ink` already does.
         static let controlHover = Token.ink(light: 0.12, dark: 0.14)
         static let rowHover = Token.ink(light: 0.04, dark: 0.03)
-        // Light matches the App Store's pill: about 4% black over the sidebar
-        // material, a hint rather than a block. Dark is a solid rather than an ink:
-        // over the translucent sidebar an ink composited to #3C3B3E and drifted
-        // with whatever sat behind the window. It was Finder's #2F2C2F, whose red
-        // and blue sit three above its green — the same cast the surfaces carried,
-        // and the more visible for being the one thing on the panel with a fill.
-        static let sidebarSelection = Token.dynamic(
-            light: NSColor.black.withAlphaComponent(0.045),
-            dark: NSColor(white: 44 / 255, alpha: 1)  // #2C2C2C
-        )
-        /// The selected row's label and icon. Not a system token: the App Store
-        /// pill this is modelled on paints its selection with a wide-gamut blue —
-        /// measured P3 #1891FF on screen, beyond what sRGB `systemBlue` (P3
-        /// #3F8EF7) can reach — so only a P3 literal matches it. Light keeps
-        /// `systemBlue`: the vivid variant is tuned for the dark material.
-        static let sidebarSelectedTint = Token.dynamic(
-            light: .systemBlue,
-            dark: NSColor(displayP3Red: 0.094, green: 0.569, blue: 1.0, alpha: 1)
-        )
+        /// A neutral selection fill over the sidebar gradient.
+        static let sidebarSelection = Token.ink(light: 0.09, dark: 0.12)
 
         /// The fill under the pointer in the menu bar popover — the same blue a
         /// real `NSMenu` row takes. `selectedContentBackgroundColor` is that
         /// exact colour and it follows the user's accent choice, so a Mac set to
         /// Graphite gets grey here rather than a blue the rest of the system
-        /// stopped using. The sidebar's P3 literal is not reused: that one was
-        /// measured to match the App Store's *tint on a pill*, not a menu's fill.
+        /// stopped using.
         static let menuHighlight = Color(nsColor: .selectedContentBackgroundColor)
     }
 
@@ -311,43 +289,19 @@ enum Token {
 
     enum Size {
         static let toolbar: CGFloat = 52
-        static let sidebarRow: CGFloat = 28
+        static let sidebarRow: CGFloat = 36
         static let control: CGFloat = 24
         /// The side inset every page uses, header and content alike. The headers
         /// had drifted to 18, 16 and 14 while the rows beneath them stayed at 14,
         /// so each title sat out of line with what it described.
         static let pageGutter: CGFloat = 14
 
-        // MARK: Window shell
-        //
-        // The window is a shell with panels laid on it: a sidebar inset from three
-        // edges, a header band across the top, and the content viewport under the
-        // header. Each gap between them shows the shell through.
+        // MARK: Window layout
 
-        /// The gap between a panel and the window edge, and between panels.
-        static let shellGutter: CGFloat = 8
-        /// The band across the top, level with the traffic lights. The sidebar's
-        /// surface runs up behind it; only its rows start below.
+        /// The header leaves space for the window controls.
         static let headerBand: CGFloat = 52
-        /// What the sidebar panel occupies in the layout: the panel plus a gutter
-        /// on each side.
-        static let sidebarColumn: CGFloat = 234
-        /// The panel itself.
-        static let sidebarWidth: CGFloat = 218
-        /// The sidebar panel and the content viewport share it.
-        static let panelRadius: CGFloat = 14
-        /// A navigation row, and how far its pill sits inside the panel.
-        static let sidebarRowInset: CGFloat = 10
-        /// Where the traffic lights end: the last one's centre is at 72 and it is
-        /// 14 across. Anything in the header band has to start clear of this.
-        static let trafficLightsTrailingEdge: CGFloat = 79
-        /// What anything beside the lights leaves between itself and them.
-        static let trafficLightsClearance: CGFloat = 16
-        /// The collapse control, and its glyph.
-        static let sidebarToggle: CGFloat = 32
-        static let sidebarToggleGlyph: CGFloat = 16
-        /// How far the control sits from the expanded panel's trailing edge.
-        static let expandedToggleTrailingInset: CGFloat = 14
+        /// Navigation keeps a fixed width as the window changes size.
+        static let sidebarWidth: CGFloat = 220
         /// Tall enough for the tallest thing a header carries — the Explorer's
         /// 26pt path control — with the 10pt of breathing room above and below.
         static let pageHeader: CGFloat = 46
@@ -355,8 +309,7 @@ enum Token {
         static let largeFileRow: CGFloat = 36
         static let trashRow: CGFloat = 40
         static let capacityBar: CGFloat = 13
-        /// The sidebar footer's bar. It was 4, which at this width read as a rule
-        /// under the figure rather than as a measure of anything.
+        /// The storage bar stays secondary to the free-space value.
         static let sidebarCapacityBar: CGFloat = 8
         /// The design's window size. Resizable; the sidebar stays fixed.
         static let windowWidth: CGFloat = 1268
