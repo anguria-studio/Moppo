@@ -48,6 +48,7 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
                 icon()
                     .frame(width: PageStateMetrics.iconSize, height: PageStateMetrics.iconSize)
             }
+            .labelStyle(PageStateLabelStyle())
         } description: {
             detail()
                 .lineSpacing(PageStateMetrics.detailLineSpacing)
@@ -59,6 +60,19 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(PageStateMetrics.padding)
         .frame(maxWidth: .infinity, alignment: .top)
+    }
+}
+
+private struct PageStateLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: PageStateMetrics.iconTitleSpacing) {
+            configuration.icon
+                .foregroundStyle(.tertiary)
+            configuration.title
+                .font(.system(size: PageStateMetrics.titleSize, weight: .bold))
+                .multilineTextAlignment(.center)
+        }
+        .padding(.bottom, PageStateMetrics.titleBottomPadding)
     }
 }
 
@@ -126,6 +140,9 @@ struct PageCompletionView<Detail: View, Actions: View>: View {
 
 enum PageStateMetrics {
     static let iconSize: CGFloat = 44
+    static let titleSize: CGFloat = 18
+    static let iconTitleSpacing: CGFloat = 20
+    static let titleBottomPadding: CGFloat = 6
     static let detailLineSpacing: CGFloat = 4
     static let actionLabelWidth: CGFloat = 104
     static let padding: CGFloat = 32
