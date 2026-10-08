@@ -526,68 +526,21 @@ extension View {
 
 // MARK: - Window shell
 
-/// Shows and hides the sidebar.
-///
-/// **One control, not two.** It is positioned over the whole layout rather than
-/// placed in the sidebar and again in the header, so it travels with the sidebar's
-/// edge instead of being removed from one view and inserted into another. The
-/// stock `NavigationSplitView` toggle has the same ownership, and it is what makes
-/// the movement read as one thing moving.
-///
-/// **The circle is only for the collapsed state**, where the glyph is alone on the
-/// shell with nothing to belong to. Expanded, it sits on the sidebar panel, which
-/// is already a surface — a circle there would be a button drawn on a button. Hover
-/// fills a circle either way.
-///
-/// `showsCollapsedChrome` is separate from `isCollapsed` because the circle must
-/// not travel: see `MainWindow`, which adds it after the movement has finished and
-/// takes it off before the return journey begins.
-struct SidebarToggleButton: View {
-    let isCollapsed: Bool
-    let showsCollapsedChrome: Bool
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "sidebar.left")
-                .font(.system(size: Token.Size.sidebarToggleGlyph, weight: .medium))
-                .foregroundStyle(Token.Text.secondary)
-                .frame(width: Token.Size.sidebarToggle, height: Token.Size.sidebarToggle)
-                .background {
-                    if showsCollapsedChrome { Circle().fill(Token.chrome) }
-                    if isHovering { Circle().fill(Token.Fill.controlHover) }
-                }
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .keyboardShortcut("s", modifiers: [.command, .control])
-        .help(isCollapsed ? "Show Sidebar" : "Hide Sidebar")
-        .accessibilityLabel(isCollapsed ? "Show Sidebar" : "Hide Sidebar")
+/// Uses the system sidebar material and window activation state.
+struct SidebarBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
     }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
-/// Configures the window's chrome: the traffic lights' geometry, and who may drag.
-///
-/// **The lights.** They are laid out for the 28pt title bar this window does not
-/// draw, which puts them across the sidebar panel's rounded corner. A stock
-/// unified toolbar puts the first light's centre at (26, 26) with a 23pt gap
-/// between centres, so that is what this applies — the same public AppKit frames,
-/// without adding a toolbar surface to get them. (Values and approach taken from
-/// Paguro, the app this window's structure follows.)
-///
-/// AppKit lays the buttons out again after a resize and after entering or leaving
-/// full screen, and it does so *after* those notifications, so each one re-applies
-/// on the next turn of the run loop rather than immediately.
-///
-/// **Dragging.** With a hidden title bar the top strip of the window is a drag
-/// band whatever is drawn there, and the sidebar panel reaches into it. A nested
-/// view answering false to `mouseDownCanMoveWindow` does not help: a SwiftUI
-/// `ScrollView` short-circuits AppKit's hit-testing and the nested view is never
-/// consulted, so a press on the sidebar's list would still slide the window. The
-/// window's own drag is therefore off, and `WindowDragHandle` hands it back to the
-/// one place that should have it — the header band.
+/// Aligns the window controls with the header after size and full-screen changes.
+/// WindowDragHandle limits dragging to empty header space.
 struct WindowChrome: NSViewRepresentable {
     let headerBand: CGFloat
 
@@ -654,10 +607,7 @@ struct WindowChrome: NSViewRepresentable {
     }
 }
 
-/// A transparent strip that moves the window on click-drag, and zooms on a
-/// double-click, the way a title bar does. The window's own drag is off — see
-/// `WindowChrome` — so this is how it is given back, deliberately, to the header
-/// band and to nothing else.
+/// Moves the window on drag and zooms it on a double-click.
 struct WindowDragHandle: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {}

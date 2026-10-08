@@ -129,21 +129,11 @@ final class AppModel {
         case dashboard, scanner, storageExplorer, uninstaller, history, trash, duplicates
         var id: String { rawValue }
 
-        /// A named group of sidebar rows.
-        struct SidebarSection: Identifiable {
-            let title: String
-            let views: [View]
-            var id: String { title }
-        }
-
         /// Cleanup comes first. Tools and storage information follow it.
-        static var sidebarSections: [SidebarSection] {
-            [
-                SidebarSection(title: "", views: [.scanner]),
-                SidebarSection(title: "Tools", views: [.storageExplorer, .uninstaller, .duplicates]),
-                SidebarSection(title: "Overview", views: [.dashboard, .history, .trash])
-            ]
-        }
+        static let sidebarViews: [View] = [
+            .scanner, .storageExplorer, .uninstaller, .duplicates,
+            .dashboard, .history, .trash
+        ]
 
         var title: String {
             switch self {
@@ -168,11 +158,6 @@ final class AppModel {
             case .trash:        "trash"
             case .duplicates:   "square.on.square"
             }
-        }
-
-        /// Sparkles uses the same symbol in both selection states.
-        var selectedSymbol: String {
-            self == .scanner ? symbol : symbol + ".fill"
         }
     }
 

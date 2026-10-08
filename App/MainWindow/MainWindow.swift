@@ -1,64 +1,19 @@
 import SwiftUI
 import MoppoCore
 
-/// The main window: a shell, with panels laid on it.
-///
-/// Three separate layout responsibilities, deliberately not one stock control:
-///
-/// * the **shell**, one continuous surface under the whole window including the
-///   title-bar area, which is what every gutter shows;
-/// * the **sidebar panel**, a rounded surface inset 8pt from the top, leading and
-///   bottom edges, whose background runs up behind the traffic lights while its
-///   rows start below the header band;
-/// * the **header band**, 52pt, on the shell beside the sidebar, holding the title
-///   and this view's actions level with the traffic lights;
-/// * and the **content viewport** below it, clipped to the same radius as the
-///   sidebar, with a gutter on its trailing and bottom edges.
-///
-/// `NavigationSplitView` cannot do this. Its sidebar is a column of the window
-/// rather than a panel inset from its edges, its divider is an edge rather than a
-/// gutter, and its toolbar owns the full width of the window above both. Each of
-/// those is the thing being replaced, so the split view goes with them — which also
-/// means the toolbar goes, and the header band below is where a view's actions live
-/// now.
-///
-/// Scrolling belongs to the sidebar and to the content viewport. The two headers
-/// and the sidebar's footer do not move.
+/// Keeps navigation visible beside the page and its actions.
 struct MainWindow: View {
     @Bindable var model: AppModel
     var settings: SettingsStore?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isSidebarExpanded = true
-    /// Whether the collapse control is wearing its circle. Separate from the
-    /// sidebar's own state so the circle does not travel — see `toggleSidebar`.
-    @State private var showsCollapsedChrome = false
-    @State private var chromeRevealTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 0) {
-            if isSidebarExpanded { sidebarPanel }
+            sidebar
             contentColumn
         }
-        // One control for both states, over the layout rather than inside either
-        // half of it, so it travels with the sidebar's edge instead of being
-        // removed from one view and inserted into another.
-        .overlay(alignment: .topLeading) {
-            SidebarToggleButton(
-                isCollapsed: !isSidebarExpanded,
-                showsCollapsedChrome: showsCollapsedChrome,
-                action: toggleSidebar
-            )
-            .position(x: toggleCentreX, y: Token.Size.headerBand / 2)
-            .animation(
-                reduceMotion ? nil : .smooth(duration: Self.sidebarTransition),
-                value: isSidebarExpanded
-            )
-        }
-        // The whole layout reaches the top of the window, not just the background
-        // behind it. Without this SwiftUI keeps the hidden title bar's height as
-        // safe area, so the sidebar panel began about 36pt down and the traffic
-        // lights sat above it on the shell rather than on the panel.
+        // The sidebar extends behind the window controls.
         .ignoresSafeArea(.container, edges: .top)
         // Under everything, through the title bar: the shell is the window.
         .background(Token.shell.ignoresSafeArea())
@@ -122,126 +77,28 @@ struct MainWindow: View {
         }
     }
 
-    // MARK: - The sidebar's own movement
+    // MARK: - Columns
 
-    private static let sidebarTransition = 0.25
-    /// Long enough that the circle cannot appear while the control is still
-    /// travelling, plus a frame's margin.
-    private static let collapsedChromeDelay = Duration.milliseconds(300)
-
-    /// Where the control sits: inside the expanded panel near its trailing edge,
-    /// and out on the shell clear of the traffic lights once the panel is gone.
-    private var toggleCentreX: CGFloat {
-        if isSidebarExpanded {
-            Token.Size.sidebarColumn
-                - Token.Size.expandedToggleTrailingInset
-                - Token.Size.sidebarToggle / 2
-        } else {
-            collapsedLeadingInset + Token.Size.sidebarToggle / 2
-        }
-    }
-
-    /// What the header leaves clear when there is no sidebar: the traffic lights,
-    /// and the gap the reference keeps after them.
-    private var collapsedLeadingInset: CGFloat {
-        Token.Size.trafficLightsTrailingEdge + Token.Size.trafficLightsClearance
-    }
-
-    private func toggleSidebar() {
-        let willExpand = !isSidebarExpanded
-        if willExpand {
-            // Take the circle off before the control starts moving. Left to the
-            // change below it would be removed *inside* that animation, so it
-            // would draw one frame at the far end of the journey and fade from
-            // there rather than travelling.
-            chromeRevealTask?.cancel()
-            chromeRevealTask = nil
-            showsCollapsedChrome = false
-        }
-        if reduceMotion {
-            isSidebarExpanded = willExpand
-            showsCollapsedChrome = !willExpand
-        } else {
-            withAnimation(.smooth(duration: Self.sidebarTransition)) {
-                isSidebarExpanded = willExpand
-            }
-            guard !willExpand else { return }
-            chromeRevealTask = Task { @MainActor in
-                guard (try? await Task.sleep(for: Self.collapsedChromeDelay)) != nil else {
-                    return
-                }
-                guard !isSidebarExpanded else { return }
-                withAnimation(.easeOut(duration: 0.08)) { showsCollapsedChrome = true }
-            }
-        }
-    }
-
-    // MARK: - Panels
-
-    /// The sidebar, inset from three edges, its surface running up behind the
-    /// traffic lights while its rows begin below the header band.
-    private var sidebarPanel: some View {
+    private var sidebar: some View {
         SidebarView(model: model, headerBand: Token.Size.headerBand)
             .frame(width: Token.Size.sidebarWidth)
-            .background(Token.chrome)
-            .clipShape(RoundedRectangle(cornerRadius: Token.Size.panelRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: Token.Size.panelRadius, style: .continuous)
-                    .strokeBorder(Token.Fill.boxBorder, lineWidth: 1)
-            }
-            // A gutter on every side, which comes to the column's own width:
-            // 8 + 218 + 8. It used to pad the leading edge only and then force
-            // the result into a 234pt frame, which *centres* a 226pt view — so
-            // the gap left of the panel was 12 and the gap right of it 4.
-            .padding(Token.Size.shellGutter)
-            .transition(.move(edge: .leading).combined(with: .opacity))
+            .background(SidebarBackground())
     }
 
     private var contentColumn: some View {
         VStack(spacing: 0) {
             contentHeader
             detail
-                .clipShape(
-                    RoundedRectangle(cornerRadius: Token.Size.panelRadius, style: .continuous)
-                )
         }
-        // The gutters belong to the column, so the header stands in the same ones
-        // the viewport does. Applied to the viewport alone, the header ran out to
-        // the window's edge and its title sat six points left of the cards it
-        // described.
-        //
-        // The sidebar supplies the leading gutter when it is visible.
-        .padding(.leading, isSidebarExpanded ? 0 : Token.Size.shellGutter)
-        .padding(.trailing, Token.Size.shellGutter)
-        .padding(.bottom, Token.Size.shellGutter)
     }
 
-    /// Clear of the traffic lights. With the sidebar expanded they sit on its
-    /// panel and the band starts at its own gutter; collapsed, they are in this
-    /// band and the title would land under them.
-    private var headerLeadingInset: CGFloat {
-        guard isSidebarExpanded else {
-            // Measured from the window, and the column already stands in its own
-            // leading gutter, so that much is taken off.
-            return collapsedLeadingInset - Token.Size.shellGutter
-        }
-        return Token.Size.pageGutter
-    }
-
-    /// Shows the view name and actions with an outer margin above them.
+    /// Aligns the page title and actions with the window controls.
     private var contentHeader: some View {
         CenteredHeaderLayout {
-            HStack(spacing: 10) {
-                if !isSidebarExpanded {
-                    Color.clear
-                        .frame(width: Token.Size.sidebarToggle, height: Token.Size.sidebarToggle)
-                        .accessibilityHidden(true)
-                }
-                Text(model.view.title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Token.Text.primary)
-                    .lineLimit(1)
-            }
+            Text(model.view.title)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Token.Text.primary)
+                .lineLimit(1)
             HStack(spacing: 0) {
                 headerCentre
             }
@@ -257,12 +114,9 @@ struct MainWindow: View {
         }
         // The page's own gutter, so the title and the actions line up with the
         // cards under them rather than with the viewport's edge.
-        .padding(.leading, headerLeadingInset)
-        .padding(.trailing, Token.Size.pageGutter)
+        .padding(.horizontal, Token.Size.pageGutter)
         .frame(height: Token.Size.headerBand)
-        .padding(.top, Token.Size.shellGutter)
-        // The window moves from here and nowhere else. Behind the controls, so a
-        // press on one of them is a press on it rather than the start of a drag.
+        // Empty header space moves the window. Controls keep their own actions.
         .background(WindowDragHandle())
     }
 
@@ -297,13 +151,7 @@ struct MainWindow: View {
             }
         }
         .frame(minWidth: Token.Size.minimumContentWidth)
-        // One surface, edge to edge, with the cards standing off it.
-        //
-        // It was briefly a rounded pane inset by 10pt on a lighter frame, which
-        // was the wrong way round: the page is the darkest of the three colours,
-        // so an inset pane read as a hole cut into the window rather than as a
-        // sheet laid on it. The sidebar is the only thing the window is divided
-        // into, and its hairline is what says so.
+        // The page fills the space beside the sidebar.
         .background(Token.pageBackground)
         // The header contains the actions for the current page.
         // A real sheet, so macOS supplies the titlebar attachment, the entrance
