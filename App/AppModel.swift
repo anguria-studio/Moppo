@@ -582,10 +582,13 @@ final class AppModel {
             activity = nil
             return
         }
-        activity = .removingStorageItems(
+        let removal = Activity.removingStorageItems(
             itemCount: items.count,
             totalBytes: items.reduce(0) { $0 + $1.allocatedBytes }
         )
+        activity = removal
+        var presentation = presentation
+        presentation.extend(toShow: removal.progressIcon)
 
         do {
             let outcome = try await storageExplorer.remove(items, keepReceipt: keepReceipt)
@@ -1790,7 +1793,7 @@ final class AppModel {
         cleanupCompletion = nil
         removalCompletion = nil
         let completionDestination = view
-        let presentation = OperationPresentationDuration()
+        var presentation = OperationPresentationDuration()
 
         if quittingOwners, !plan.runningOwners.isEmpty {
             cleanUpSavingTask?.cancel()
@@ -1813,7 +1816,9 @@ final class AppModel {
         }
 
         // The overlay says what is happening while it happens.
-        activity = .cleaningUp(itemCount: plan.itemCount, totalBytes: plan.totalBytes)
+        let cleanup = Activity.cleaningUp(itemCount: plan.itemCount, totalBytes: plan.totalBytes)
+        activity = cleanup
+        presentation.extend(toShow: cleanup.progressIcon)
         let entries = plan.entries
         pendingCleanUp = nil
         activeSheet = nil
@@ -2043,11 +2048,13 @@ final class AppModel {
         guard !isBusyWithDisk else { return }
         activeSheet = nil
         removalCompletion = nil
-        let presentation = OperationPresentationDuration()
-        activity = .emptyingTrash(
+        var presentation = OperationPresentationDuration()
+        let emptying = Activity.emptyingTrash(
             itemCount: trashSummary?.itemCount ?? 0,
             totalBytes: trashSummary?.totalBytes ?? 0
         )
+        activity = emptying
+        presentation.extend(toShow: emptying.progressIcon)
         do {
             let result = try await trashService.empty(privilegedFallback: true)
             try? await presentation.wait()
@@ -2646,11 +2653,13 @@ final class AppModel {
         let selected = fileDuplicateSelection
         guard !selected.isEmpty, !isBusyWithDisk else { return }
         removalCompletion = nil
-        let presentation = OperationPresentationDuration()
-        activity = .removingDuplicateFiles(
+        var presentation = OperationPresentationDuration()
+        let removal = Activity.removingDuplicateFiles(
             itemCount: selected.count,
             totalBytes: fileDuplicateSelectionBytes
         )
+        activity = removal
+        presentation.extend(toShow: removal.progressIcon)
 
         do {
             let result = try await fileDuplicateRemovalService.remove(

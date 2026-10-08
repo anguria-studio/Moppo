@@ -150,7 +150,8 @@ struct ScannerView: View {
             title: "Scanning for cleanup items",
             detail: "\(model.scanProgress)%",
             progress: Double(model.scanProgress) / 100,
-            isInterrupting: model.isInterruptingScan
+            isInterrupting: model.isInterruptingScan,
+            icon: .mascot(.scanning)
         )
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.scanProgress)
     }

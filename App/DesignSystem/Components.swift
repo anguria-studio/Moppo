@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import MoppoCore
 
@@ -702,7 +703,16 @@ struct PageTabPill: View {
 
 /// Keeps operation progress visible for one second. Cancellation ends the wait immediately.
 struct OperationPresentationDuration: Sendable {
-    private let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    private var deadline = ContinuousClock.now.advanced(by: .seconds(1))
+
+    /// Keeps a deletion on screen until Moppo finishes the first pass of its rays.
+    /// Call it when the progress appears. With Reduce Motion on, nothing changes because Moppo does not move.
+    @MainActor mutating func extend(toShow icon: PageProgressView.Icon) {
+        guard case .mascot(let mode) = icon, let pass = mode.firstPassDuration,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        else { return }
+        deadline = max(deadline, ContinuousClock.now.advanced(by: pass))
+    }
 
     func wait() async throws {
         try Task.checkCancellation()
@@ -729,17 +739,33 @@ struct ScanInterruptionView: View {
 
 /// Shows progress in the content area with an optional stop action.
 struct PageProgressView: View {
+    enum Icon {
+        case hourglass
+        case mascot(MoppoMascotView.Mode)
+
+        /// Moppo destroys only very large deletions, as a rare surprise. Other deletions keep the hourglass.
+        static func deletion(bytes: Int64) -> Icon {
+            bytes > 5 * ByteFormatting.bytesPerGB ? .mascot(.destroying) : .hourglass
+        }
+    }
+
     let title: String
     var detail: String? = nil
     var progress: Double? = nil
     var isInterrupting = false
+    var icon: Icon = .hourglass
     var onStop: (() -> Void)? = nil
 
     private var displayedTitle: String { isInterrupting ? ScanInterruptionView.title : title }
 
     var body: some View {
         PageStateLayout(title: displayedTitle) {
-            PageStateSymbol(name: "hourglass")
+            switch icon {
+            case .hourglass: PageStateSymbol(name: "hourglass")
+            case .mascot(let mode):
+                MoppoMascotView(mode: mode)
+                    .frame(width: PageStateMetrics.mascotSize, height: PageStateMetrics.mascotSize)
+            }
         } detail: {
             VStack(spacing: 18) {
                 if let detail {

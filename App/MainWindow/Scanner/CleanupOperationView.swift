@@ -25,7 +25,11 @@ struct CleanupOperationView: View {
                 }
             }
         } else {
-            PageProgressView(title: "Moving items to Trash", detail: summary)
+            PageProgressView(
+                title: "Moving items to Trash",
+                detail: summary,
+                icon: .deletion(bytes: totalBytes)
+            )
         }
     }
 
