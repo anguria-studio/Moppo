@@ -38,8 +38,7 @@ Read field identifiers with `gh project field-list` before you update a field.
 - Do not push directly to `main`.
 - Require all CI checks to pass before a merge.
 - Use a squash merge with the pull request title as the commit title.
-- Merge only when `tommasoltrz` gives an explicit instruction.
-- Do not give contributors write access without an explicit instruction from `tommasoltrz`.
+- Merge only after an explicit instruction from the user.
 
 ## Writing
 
