@@ -27,7 +27,9 @@
 **Moppo is in development.** A packaged release is not available yet.
 [Build the app from source](#build-the-app) to try the current version.
 
-## Why Moppo?
+<a name="why-moppo"></a>
+
+## 👻 Why Moppo?
 
 Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 
@@ -36,9 +38,13 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 - **Find duplicate files and photos.** Compare file contents or photo appearance, then review the results.
 - **Keep a cleanup record.** Check removal history and restore eligible items with Put Back.
 
-## Features at a glance
+<a name="features-at-a-glance"></a>
 
-### Storage and cleanup
+## ✨ Features at a glance
+
+<a name="storage-and-cleanup"></a>
+
+### 🧹 Storage and cleanup
 
 | Feature | What you can do |
 | --- | --- |
@@ -48,7 +54,9 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | Developer folders | Inspect project files and Git worktrees, with badges for local changes and unpushed commits. |
 | Local AI models | Review Ollama, Hugging Face, and LM Studio models with shared storage information. |
 
-### Duplicates and applications
+<a name="duplicates-and-applications"></a>
+
+### 🗂️ Duplicates and applications
 
 | Feature | What you can do |
 | --- | --- |
@@ -57,7 +65,9 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | App Uninstaller | Review an application and its associated files before removal. |
 | Finder action | Open an uninstall review with **Services > Review Uninstall with Moppo**. |
 
-### Everyday controls
+<a name="everyday-controls"></a>
+
+### ⚙️ Everyday controls
 
 | Feature | What you can do |
 | --- | --- |
@@ -71,7 +81,9 @@ APFS clones can share storage. Reported cleanup sizes are upper bounds, not prom
 Put Back needs a saved receipt and an item still in the Trash.
 The [development notes](docs/README.md#deliberate-limitations) explain the current limits.
 
-## Install on a Mac
+<a name="install-on-a-mac"></a>
+
+## 📦 Install on a Mac
 
 The app targets **macOS 15 or later**.
 Distribution packages, notarization, and updates remain in preparation.
@@ -100,7 +112,9 @@ Use Photos to review recovery and permanent deletion.
 
 </details>
 
-## Your data
+<a name="your-data"></a>
+
+## 🔒 Your data
 
 - **Scans run locally.** Moppo stores scan caches, preferences, and cleanup history on your Mac.
 - **Photo downloads use iCloud.** Turn them off in **Settings > Advanced** to use available local previews and originals.
@@ -109,12 +123,16 @@ Use Photos to review recovery and permanent deletion.
 
 Read the [permissions notes](docs/README.md#permissions) for local storage and development signing details.
 
-## Build the app
+<a name="build-the-app"></a>
+
+## 🛠️ Build the app
 
 <details>
 <summary><strong>Requirements, build commands, and tests</strong></summary>
 
-### Requirements
+<a name="requirements"></a>
+
+### 📋 Requirements
 
 - Xcode with Swift 6 and Icon Composer support
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen)
@@ -124,7 +142,9 @@ Current development checks use Xcode 27.
 The generated app targets macOS 15 and later.
 Vale checks the documentation style.
 
-### Build and test
+<a name="build-and-test"></a>
+
+### 🧪 Build and test
 
 ```sh
 git clone https://github.com/anguria-studio/Moppo.git
@@ -168,7 +188,9 @@ See the [development notes](docs/README.md) for the command-line scanner, source
 
 </details>
 
-## Documentation and contributing
+<a name="documentation-and-contributing"></a>
+
+## 📚 Documentation and contributing
 
 | Start here | What you will find |
 | --- | --- |
@@ -183,7 +205,9 @@ For a bug report, include the expected behavior and steps to reproduce the probl
 Remove private file paths and personal photos from reports.
 Run the relevant tests and writing checks before you submit a pull request.
 
-## Credits
+<a name="credits"></a>
+
+## 🙏 Credits
 
 Moppo uses cache-name and container protection lists from
 [Purge](https://github.com/jithin-sabu/purge-app), by Jithin Sabu, in `IdentityState.swift`.
@@ -192,7 +216,9 @@ The current reader uses different shared-model grouping logic.
 
 See [Third-party notices](THIRD_PARTY_NOTICES.md) for the source details and upstream MIT notice.
 
-## License
+<a name="license"></a>
+
+## 📄 License
 
 Moppo uses the [MIT License](LICENSE).
 Third-party material retains its notices in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
