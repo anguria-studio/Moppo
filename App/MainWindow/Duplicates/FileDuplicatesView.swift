@@ -43,7 +43,9 @@ struct FileDuplicatesView: View {
                 + "one copy in each set. Hidden files, cloud-only files and documents saved "
                 + "as packages, such as Pages and Keynote files, are not compared."
         ) {
-            scanControls(buttonLabel: "Choose Folders")
+            Button("Choose Folders") { model.chooseFileDuplicateFolders() }
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+                .disabled(model.isBusyWithDisk)
         }
     }
 
@@ -128,21 +130,6 @@ struct FileDuplicatesView: View {
             }
             .padding(.horizontal, Token.Size.pageGutter)
             .padding(.vertical, 14)
-        }
-    }
-
-    @ViewBuilder
-    private func scanControls(buttonLabel: String) -> some View {
-        HStack(spacing: 10) {
-            FileDuplicateMinimumPicker(model: model)
-
-            Button { model.chooseFileDuplicateFolders() } label: {
-                Text(buttonLabel)
-            }
-                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
-                .controlSize(.large)
-                .fixedSize(horizontal: true, vertical: false)
-                .disabled(model.isBusyWithDisk)
         }
     }
 
@@ -284,7 +271,7 @@ struct FileDuplicatesView: View {
     }
 }
 
-/// Uses the same file size menu before and after a scan.
+/// Filters completed scan results by file size.
 struct FileDuplicateMinimumPicker: View {
     @Bindable var model: AppModel
 
