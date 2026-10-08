@@ -50,7 +50,7 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
             }
         } description: {
             detail()
-                .frame(minHeight: PageStateMetrics.detailHeight, alignment: .top)
+                .lineSpacing(PageStateMetrics.detailLineSpacing)
         } actions: {
             actions()
                 .buttonStyle(PageStateButtonStyle())
@@ -126,7 +126,7 @@ struct PageCompletionView<Detail: View, Actions: View>: View {
 
 enum PageStateMetrics {
     static let iconSize: CGFloat = 44
-    static let detailHeight: CGFloat = 100
+    static let detailLineSpacing: CGFloat = 4
     static let actionLabelWidth: CGFloat = 104
     static let padding: CGFloat = 32
 }
