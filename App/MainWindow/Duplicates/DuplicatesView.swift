@@ -51,3 +51,51 @@ struct DuplicatesView: View {
         }
     }
 }
+
+/// Keeps duplicate review messages and actions at the same height.
+struct DuplicatePageState<Actions: View>: View {
+    let title: String
+    let symbol: String
+    let detail: String
+    var iconColor: Color? = nil
+    @ViewBuilder var actions: () -> Actions
+
+    var body: some View {
+        ContentUnavailableView {
+            Label {
+                Text(title)
+            } icon: {
+                if let iconColor {
+                    icon.foregroundStyle(iconColor)
+                } else {
+                    icon
+                }
+            }
+        } description: {
+            Text(detail)
+                .frame(minHeight: 100, alignment: .top)
+        } actions: {
+            actions()
+        }
+        .pageStateLayout()
+    }
+
+    private var icon: some View {
+        Image(systemName: symbol)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 44, height: 44)
+    }
+}
+
+/// Gives duplicate review actions the same width.
+struct DuplicatePageActionLabel: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .lineLimit(1)
+            .frame(width: 104)
+            .padding(.horizontal, 8)
+    }
+}

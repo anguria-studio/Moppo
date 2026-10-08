@@ -36,19 +36,15 @@ struct FileDuplicatesView: View {
     }
 
     private var intro: some View {
-        ContentUnavailableView {
-            Label("Find duplicate files", systemImage: "doc.on.doc")
-        } description: {
-            // The skips are said up front. "Package" means nothing to most people,
-            // and Pages, Numbers and Keynote documents are packages — a duplicate
-            // scan that is silent about them reads as having checked them.
-            Text("Select one or more folders. Moppo verifies file contents and keeps "
-                 + "one copy in each set. Hidden files, cloud-only files and documents saved "
-                 + "as packages, such as Pages and Keynote files, are not compared.")
-        } actions: {
+        DuplicatePageState(
+            title: "Find duplicate files",
+            symbol: "doc.on.doc",
+            detail: "Select one or more folders. Moppo verifies file contents and keeps "
+                + "one copy in each set. Hidden files, cloud-only files and documents saved "
+                + "as packages, such as Pages and Keynote files, are not compared."
+        ) {
             scanControls(buttonLabel: "Choose Folders")
         }
-        .pageStateLayout()
     }
 
     private var scanning: some View {
@@ -147,10 +143,7 @@ struct FileDuplicatesView: View {
             FileDuplicateMinimumPicker(model: model)
 
             Button { model.chooseFileDuplicateFolders() } label: {
-                Text(buttonLabel)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.horizontal, 8)
+                DuplicatePageActionLabel(title: buttonLabel)
             }
                 .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
                 .controlSize(.large)
