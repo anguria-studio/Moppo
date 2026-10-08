@@ -25,7 +25,8 @@ struct PhotoDuplicatesView: View {
 
     var body: some View {
         Group {
-            if model.photoLibraryAccess == nil || model.isRequestingPhotoAccess {
+            // Keep known content visible while a repeat access check runs.
+            if model.photoLibraryAccess == nil {
                 PageProgressView(title: "Checking Photos access")
             } else if let reason = model.photoLibraryAccess?.unavailableReason {
                 unavailable(reason, canRetryScan: false)
@@ -42,7 +43,7 @@ struct PhotoDuplicatesView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .disabled(model.isDeletingPhotos)
+        .disabled(model.isDeletingPhotos || model.isRequestingPhotoAccess)
         .operationResultAnimation(isRunning: model.isSweepingPhotos)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
