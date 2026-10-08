@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/moppo-icon.png" width="160" alt="Moppo app icon">
+  <img src="docs/images/moppo-icon-dark.png" width="160" alt="Moppo app icon">
 </p>
 
 <h1 align="center">Moppo</h1>
