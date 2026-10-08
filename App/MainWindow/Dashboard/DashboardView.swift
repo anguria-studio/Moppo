@@ -1,0 +1,158 @@
+import SwiftUI
+import MoppoCore
+
+/// The Dashboard.
+///
+/// A plain `ScrollView` inside the split view's detail column, which means its
+/// content passes under the unified toolbar and blurs against it live. The handoff
+/// is emphatic that this is the point — "do not pin content below the toolbar" — so
+/// there is no manual top inset here; the platform provides it.
+struct DashboardView: View {
+    @Bindable var model: AppModel
+    /// Optional so previews and the Scanner's empty state need not supply one.
+    var settings: SettingsStore?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                if let volume = model.volume, isLowOnSpace(volume) {
+                    lowSpaceBanner(volume)
+                }
+
+                if let volume = model.volume, model.isDashboardLoading {
+                    // The totals are already known — `diskutil` answers before the
+                    // category walk even starts — so only the parts the walk
+                    // produces go to bones. The previous breakdown supplies the
+                    // category names, which are stable; its figures are withheld:
+                    // stale numbers under a pulse read as current.
+                    CapacityCard(volume: volume, breakdown: model.breakdown, isMeasuring: true)
+                } else if model.isDashboardLoading {
+                    // Not even the totals yet: the moment before `diskutil` returns.
+                    CapacityCardSkeleton()
+                } else if let volume = model.volume, let breakdown = model.breakdown {
+                    CapacityCard(volume: volume, breakdown: breakdown)
+                    if model.breakdownIsStale {
+                        staleNote
+                    }
+                } else {
+                    unmeasuredPlaceholder
+                }
+
+                StatTiles(
+                    results: model.scanResults,
+                    lastScanAt: model.lastScanFinishedAt,
+                    iCloudStorage: model.iCloudStorage,
+                    // The tiles are a summary of the scan; the scan's own page is
+                    // where its rows live, so a tile opens the Scanner on the list
+                    // it counted rather than a page of its own.
+                    onSafeTap: { model.showScanner(filtered: .safeToRemove) },
+                    onReviewTap: { model.showScanner(filtered: .needsReview) },
+                    onScan: { model.startScan() }
+                )
+
+                // Below the tiles: the capacity card and the tiles are what the
+                // disk is now, and this is what it did since a date the user picks.
+                // It carries no measuring state — the report is dated history, so it
+                // stays on screen while the next walk runs.
+                if let growth = model.growth {
+                    GrowthCard(
+                        presentation: GrowthCard.Presentation(growth),
+                        baseline: model.growthBaseline,
+                        lastScanAt: model.scanResults?.finishedAt ?? model.lastScanFinishedAt,
+                        canCompareSinceCleanup: model.hasCleanupGrowthBaseline,
+                        onSelectBaseline: { model.growthBaseline = $0 },
+                        onReveal: { model.revealGrowth($0) }
+                    )
+                }
+
+                if !model.removableSnapshots.isEmpty {
+                    SnapshotsDisclosureRow(
+                        snapshots: model.snapshots,
+                        isExpanded: $model.snapshotsExpanded
+                    )
+                }
+            }
+            // Breathing room wins over exact alignment with the toolbar's own inset:
+            // at 5pt the cards aligned with the chevron capsule but sat almost
+            // against the sidebar. The Scan button is inset to match this figure, so
+            // the trailing edges still line up; the leading chevron group cannot be
+            // moved (see MainWindow) and is left slightly proud.
+            .padding(.horizontal, Token.Size.pageGutter)
+            .padding(.top, Token.Size.pageGutter)
+            .padding(.bottom, 22)
+        }
+        .task(id: settings?.iCloudPlan) {
+            model.iCloudPlanBytes = settings?.iCloudPlan.bytes
+            await model.loadICloud()
+        }
+    }
+
+    /// Acts on Preferences › General › "Warn me below".
+    ///
+    /// Shown in the window rather than as a system notification: a notification would
+    /// need its own permission prompt, and this app already asks the user for more
+    /// access than most. The banner appears where the number it refers to lives.
+    private func isLowOnSpace(_ volume: VolumeInfo) -> Bool {
+        guard let settings else { return false }
+        return volume.freeBytes < Int64(settings.warnBelowGB) * ByteFormatting.bytesPerGB
+    }
+
+    private func lowSpaceBanner(_ volume: VolumeInfo) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: "exclamationmark.triangle")
+                // The readable orange, not the fill one: on the light banner the
+                // system colour all but disappears into its own tint.
+                .foregroundStyle(Token.textColor(.orange))
+            Text("\(ByteFormatting.string(volume.freeBytes)) free. This is below your "
+                 + "\(settings?.warnBelowGB ?? 0) GB warning threshold.")
+                .font(.mcSubtitle)
+                .foregroundStyle(Token.Text.primary)
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 10)
+        .background(
+            Token.color(.orange).opacity(0.10),
+            in: RoundedRectangle(cornerRadius: Token.Radius.well)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Token.Radius.well)
+                .strokeBorder(Token.color(.orange).opacity(0.26), lineWidth: Token.hairline)
+        )
+    }
+
+    /// Says plainly that the figures are remembered rather than fresh. Showing a
+    /// stale number as if it were current is the same dishonesty as mislabelling
+    /// unattributed space.
+    private var staleNote: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "clock")
+            Text(model.measuredAt.map { "Measured \($0.formatted(.relative(presentation: .named)))" }
+                 ?? "Figures are from an earlier session")
+        }
+        .font(.mcSubtitle)
+        .foregroundStyle(Token.Text.tertiary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 2)
+    }
+
+    /// Keeps the Dashboard ready for a manual measurement when no saved figures exist.
+    private var unmeasuredPlaceholder: some View {
+        GroupedBox(radius: Token.Radius.card) {
+            VStack(spacing: 10) {
+                Image(systemName: "externaldrive")
+                    .foregroundStyle(Token.Text.secondary)
+                Text("Storage has not been measured")
+                    .font(.mcControlLabel)
+                    .foregroundStyle(Token.Text.secondary)
+                Text("Use Refresh Overview to measure storage.")
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 40)
+        }
+    }
+}

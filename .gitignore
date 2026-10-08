@@ -1,0 +1,17 @@
+# Generated from project.yml — never commit
+*.xcodeproj/
+
+.DS_Store
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+dist/
+build/
+CLAUDE.local.md
+BACKLOG.local.md
+.claude/
+
+# Design sources and concept renders — kept locally, not in the repo
+design/
+output/
