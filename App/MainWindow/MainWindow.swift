@@ -92,7 +92,7 @@ struct MainWindow: View {
         }
     }
 
-    /// Aligns the page title and actions with the window controls.
+    /// Gives the page title and actions equal top and side margins.
     private var contentHeader: some View {
         CenteredHeaderLayout {
             Text(model.view.title)
@@ -112,10 +112,8 @@ struct MainWindow: View {
             }
             .disabled(model.removalCompletion?.destination == model.view)
         }
-        // The page's own gutter, so the title and the actions line up with the
-        // cards under them rather than with the viewport's edge.
-        .padding(.horizontal, Token.Size.pageGutter)
-        .frame(height: Token.Size.headerBand)
+        // Use the same margin above the header and beside the page content.
+        .padding(Token.Size.pageGutter)
         // Empty header space moves the window. Controls keep their own actions.
         .background(WindowDragHandle())
     }
@@ -446,7 +444,7 @@ private struct CenteredHeaderLayout: Layout {
         let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
         return CGSize(
             width: proposal.width ?? sizes.reduce(2 * gap) { $0 + $1.width },
-            height: sizes.map(\.height).max() ?? 38
+            height: max(38, sizes.map(\.height).max() ?? 0)
         )
     }
 
