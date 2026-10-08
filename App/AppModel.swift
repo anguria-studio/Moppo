@@ -168,6 +168,11 @@ final class AppModel {
             case .duplicates:   "square.on.square"
             }
         }
+
+        /// Sparkles uses the same symbol in both selection states.
+        var selectedSymbol: String {
+            self == .scanner ? symbol : symbol + ".fill"
+        }
     }
 
     /// Which part of the scan the Scanner is showing.

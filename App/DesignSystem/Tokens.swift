@@ -208,11 +208,11 @@ enum Token {
     /// The opaque sidebar stays slightly lighter than the page in dark mode.
     static let sidebarTop = Token.dynamic(
         light: NSColor(white: 0.96, alpha: 1),
-        dark: NSColor(white: 34 / 255, alpha: 1)  // #222222
+        dark: NSColor(white: 28 / 255, alpha: 1)  // #1C1C1C
     )
     static let sidebarBottom = Token.dynamic(
         light: NSColor(white: 0.91, alpha: 1),
-        dark: NSColor(white: 22 / 255, alpha: 1)  // #161616
+        dark: NSColor(white: 18 / 255, alpha: 1)  // #121212
     )
 
     /// The surface for onboarding and popovers.

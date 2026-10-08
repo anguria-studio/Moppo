@@ -20,14 +20,11 @@ struct SidebarView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(AppModel.View.sidebarSections) { section in
                         if !section.title.isEmpty {
-                            Divider()
-                                .padding(.horizontal, 10)
-                                .padding(.top, 16)
-                                .padding(.bottom, 10)
                             Text(section.title)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Token.Text.secondary)
                                 .padding(.horizontal, 10)
+                                .padding(.top, 16)
                                 .padding(.bottom, 6)
                                 .accessibilityAddTraits(.isHeader)
                         }
@@ -101,13 +98,13 @@ struct SidebarView: View {
     @ViewBuilder
     private func sidebarIcon(for view: AppModel.View) -> some View {
         if view == .scanner {
-            Image("MoppoOutline")
+            Image(isSelected(view) ? "MoppoFilled" : "MoppoOutline")
                 .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 20, height: 20)
         } else {
-            Image(systemName: view.symbol)
+            Image(systemName: isSelected(view) ? view.selectedSymbol : view.symbol)
                 .font(.system(size: 18, weight: .regular))
                 .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
