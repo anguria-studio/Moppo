@@ -71,6 +71,6 @@ struct PhotoAccessTests {
         #expect(await service.requestAccess() == .authorized)
         #expect(await library.calls() == [1, 0, 0, 0])
         _ = try await service.sweep()
-        #expect(await library.calls() == [2, 1, 0, 0])
+        #expect(await library.calls() == [4, 1, 0, 0])
     }
 }

@@ -246,10 +246,24 @@ struct PhotoPreviewContent: View {
                 .foregroundStyle(Token.Text.secondary)
                 .padding(14)
                 .background(Token.Fill.box, in: RoundedRectangle(cornerRadius: Token.Radius.box))
+            } else if thumbnails.unavailablePreviews.contains(shown.id) {
+                VStack(spacing: 8) {
+                    Text("The full-resolution photo is unavailable.")
+                    Text("Check your connection and photo download settings.")
+                    Button("Try Again") { thumbnails.loadPreview(shown.id) }
+                        .buttonStyle(SecondaryButtonStyle())
+                }
+                .font(.mcSubtitle)
+                .foregroundStyle(Token.Text.secondary)
+                .multilineTextAlignment(.center)
+                .padding(14)
+                .background(Token.Fill.box, in: RoundedRectangle(cornerRadius: Token.Radius.box))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: shown.id) { thumbnails.loadPreview(shown.id) }
+        .onChange(of: shown.id) { previous, _ in thumbnails.cancelPreview(previous) }
+        .onDisappear { thumbnails.cancelPreview(shown.id) }
     }
 
     private var footer: some View {

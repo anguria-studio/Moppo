@@ -19,6 +19,7 @@ final class AppModel {
     /// previews and tests can build a model without a store.
     @ObservationIgnored var settings: SettingsStore?
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
+    @ObservationIgnored private let makePhotoService: (Bool) -> PhotoDuplicateService
     let storageExplorer: StorageExplorerModel
     private(set) var launchAccess: LaunchAccess
     var isShowingWelcome: Bool { launchAccess.requiresOnboarding }
@@ -28,11 +29,19 @@ final class AppModel {
         launchAccess: LaunchAccess = .ready,
         hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
         trashService: TrashService = TrashService(),
-        cleanupHistoryService: CleanupHistoryService = CleanupHistoryService()
+        cleanupHistoryService: CleanupHistoryService = CleanupHistoryService(),
+        makePhotoService: @escaping (Bool) -> PhotoDuplicateService = { allowsNetwork in
+            PhotoDuplicateService(
+                library: PhotoKitLibrary(allowsNetworkFetch: allowsNetwork),
+                visionRevision: UInt32(PhotoKitLibrary.featurePrintRevision)
+            )
+        }
     ) {
         self.settings = settings
         self.launchAccess = launchAccess
         self.hasFullDiskAccess = hasFullDiskAccess
+        self.makePhotoService = makePhotoService
+        self.photoService = makePhotoService(settings?.allowPhotoDownloads ?? true)
         self.trashService = trashService
         self.cleanupHistoryService = cleanupHistoryService
         self.storageExplorer = StorageExplorerModel(settings: settings)
@@ -2687,10 +2696,7 @@ final class AppModel {
 
     // MARK: - Photo duplicates
 
-    private var photoService = PhotoDuplicateService(
-        library: PhotoKitLibrary(),
-        visionRevision: UInt32(PhotoKitLibrary.featurePrintRevision)
-    )
+    private var photoService: PhotoDuplicateService
     private var photoTask: Task<Void, Never>?
     private var photoScanID: UUID?
 
@@ -2721,11 +2727,23 @@ final class AppModel {
         isRequestingPhotoAccess = true
         defer { isRequestingPhotoAccess = false }
         let access = await photoService.requestAccess()
+        applyPhotoAccess(access)
+    }
+
+    private func applyPhotoAccess(_ access: PhotoLibraryAccess) {
         photoLibraryAccess = access
         if !access.canSweep {
             cancelPhotoSweep()
+            photoRegroupTask?.cancel()
+            photoRegroupTask = nil
+            photoRegroupID = nil
+            isRegroupingPhotos = false
+            photoResults = nil
+            photoProgress = nil
+            photoUnavailable = nil
             photoSelection.removeAll()
             photoPreview = nil
+            photoThumbnails.reset()
         }
     }
 
@@ -2804,10 +2822,7 @@ final class AppModel {
         photoRegroupTask = nil
         photoRegroupID = nil
         isRegroupingPhotos = false
-        let service = PhotoDuplicateService(
-            library: PhotoKitLibrary(allowsNetworkFetch: settings?.allowPhotoDownloads ?? true),
-            visionRevision: UInt32(PhotoKitLibrary.featurePrintRevision)
-        )
+        let service = makePhotoService(settings?.allowPhotoDownloads ?? true)
         // Captured here rather than read inside the task: the picker is on the page
         // the sweep is running under, and results labelled with one threshold must
         // have been produced by it.
@@ -2855,7 +2870,7 @@ final class AppModel {
                 guard self.photoScanID == scanID, !Task.isCancelled else { return }
                 // Shown on the page, with what to do about it.
                 if case .access(let access) = unavailable {
-                    self.photoLibraryAccess = access
+                    self.applyPhotoAccess(access)
                 } else {
                     self.photoUnavailable = Self.describe(unavailable)
                 }
@@ -2879,7 +2894,7 @@ final class AppModel {
     /// sweep has run, and the page is showing its intro in that case, so the new
     /// setting simply applies to the sweep the user starts next.
     private func regroupPhotos() {
-        guard photoResults != nil, !isSweepingPhotos, !isDeletingPhotos else { return }
+        guard canAccessPhotos, photoResults != nil, !isSweepingPhotos, !isDeletingPhotos else { return }
         photoRegroupTask?.cancel()
         let regroupID = UUID()
         photoRegroupID = regroupID
@@ -3041,6 +3056,12 @@ final class AppModel {
             )
         } catch is CancellationError {
             // Keep the selection when the user declines the Photos request.
+        } catch PhotoSweepUnavailable.access(let access) {
+            applyPhotoAccess(access)
+        } catch PhotoDeletionUnavailable.missingAssets {
+            photoResults = nil
+            photoSelection.removeAll()
+            photoUnavailable = "Some photos are no longer available. Scan again before you delete photos."
         } catch {
             // Deletion is the one operation the user cannot verify at a glance across
             // devices, so a failure is stated rather than left to inference.

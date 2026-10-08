@@ -208,7 +208,9 @@ final class PhotoKitLibrary: PhotoLibraryProviding, @unchecked Sendable {
     // MARK: - Deletion
 
     func delete(assetIDs: [String]) async throws {
+        try Task.checkCancellation()
         let assets = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
+        guard assets.count == Set(assetIDs).count else { throw PhotoDeletionUnavailable.missingAssets }
         guard assets.count > 0 else { return }
 
         do {
@@ -235,6 +237,13 @@ final class TimedImageRequest: @unchecked Sendable {
     private var requestID: PHImageRequestID?
     private var timeout: DispatchWorkItem?
     private var finished = false
+    private let cancelRequest: @Sendable (PHImageRequestID) -> Void
+
+    init(cancelRequest: @escaping @Sendable (PHImageRequestID) -> Void = {
+        PHImageManager.default().cancelImageRequest($0)
+    }) {
+        self.cancelRequest = cancelRequest
+    }
 
     func image(
         for asset: PHAsset,
@@ -242,6 +251,17 @@ final class TimedImageRequest: @unchecked Sendable {
         contentMode: PHImageContentMode = .aspectFit,
         options: PHImageRequestOptions,
         timeout: TimeInterval
+    ) async -> NSImage? {
+        await image(timeout: timeout) { complete in
+            PHImageManager.default().requestImage(
+                for: asset, targetSize: size, contentMode: contentMode, options: options
+            ) { image, _ in complete(image) }
+        }
+    }
+
+    func image(
+        timeout: TimeInterval,
+        start: (@escaping @Sendable (NSImage?) -> Void) -> PHImageRequestID
     ) async -> NSImage? {
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
@@ -254,11 +274,7 @@ final class TimedImageRequest: @unchecked Sendable {
                 self.continuation = continuation
                 lock.unlock()
 
-                let id = PHImageManager.default().requestImage(
-                    for: asset, targetSize: size, contentMode: contentMode, options: options
-                ) { image, _ in
-                    self.finish(with: image)
-                }
+                let id = start { image in self.finish(with: image) }
 
                 lock.lock()
                 let alreadyFinished = finished
@@ -266,7 +282,7 @@ final class TimedImageRequest: @unchecked Sendable {
                 lock.unlock()
                 if alreadyFinished {
                     // Cancellation can arrive before PhotoKit returns the request identifier.
-                    PHImageManager.default().cancelImageRequest(id)
+                    cancelRequest(id)
                     return
                 }
 
@@ -311,7 +327,7 @@ final class TimedImageRequest: @unchecked Sendable {
         // Tell PhotoKit to stop, so an abandoned request is not left occupying its
         // queue for the rest of the sweep.
         deadline?.cancel()
-        if let id { PHImageManager.default().cancelImageRequest(id) }
+        if let id { cancelRequest(id) }
         waiting?.resume(returning: nil)
     }
 }

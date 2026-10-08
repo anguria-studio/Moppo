@@ -156,6 +156,62 @@ struct FileDuplicateServiceTests {
         #expect(result.staleGroupIDs == [group.id])
     }
 
+    @Test("Missing or unreadable keepers prevent removal", arguments: [false, true])
+    func refusesUnavailableKeeper(denyAccess: Bool) async throws {
+        let box = try Sandbox()
+        let data = Data(repeating: 6, count: 128)
+        _ = try box.write("one.bin", data: data)
+        _ = try box.write("two.bin", data: data)
+        let results = try await FileDuplicateService().scan(
+            roots: [box.root], options: .init(minimumLogicalBytes: 0)
+        )
+        let group = try #require(results.groups.first)
+        let selected = try #require(group.removable.first)
+        if denyAccess {
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: group.keeper.url.path)
+        } else {
+            try FileManager.default.removeItem(at: group.keeper.url)
+        }
+        defer {
+            if denyAccess {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: group.keeper.url.path)
+            }
+        }
+        let result = try await FileDuplicateRemovalService().remove(
+            selectedIDs: [selected.id], from: [group], keepReceipt: false
+        )
+        #expect(FileManager.default.fileExists(atPath: selected.url.path))
+        #expect(result.cleanup.failed == [selected.url.path])
+        #expect(result.cleanup.removedCount == 0)
+        #expect(result.staleGroupIDs == [group.id])
+    }
+
+    @Test("Unavailable roots do not prevent scanning another folder", arguments: [false, true])
+    func unavailableRootRecovery(denyAccess: Bool) async throws {
+        let box = try Sandbox()
+        let data = Data(repeating: 6, count: 128)
+        _ = try box.write("available/one.bin", data: data)
+        _ = try box.write("available/two.bin", data: data)
+        let available = box.root.appendingPathComponent("available")
+        let unavailable = box.root.appendingPathComponent("unavailable")
+        if denyAccess {
+            try FileManager.default.createDirectory(at: unavailable, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: unavailable.path)
+        }
+        defer {
+            if denyAccess {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: unavailable.path)
+            }
+        }
+        let service = FileDuplicateService()
+        let partial = try await service.scan(roots: [unavailable, available], options: .init(minimumLogicalBytes: 0))
+        #expect(partial.groups.count == 1)
+        #expect(partial.skippedCount > 0)
+        let retry = try await service.scan(roots: [available], options: .init(minimumLogicalBytes: 0))
+        #expect(retry.groups.count == 1)
+        #expect(retry.skippedCount == 0)
+    }
+
     @Test("Removal rechecks contents when file metadata matches")
     func refusesChangedContents() async throws {
         let box = try Sandbox()

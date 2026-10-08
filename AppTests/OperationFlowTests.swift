@@ -91,6 +91,104 @@ struct OperationFlowTests {
         #expect(model.scannerSelection.isEmpty)
     }
 
+    @Test("An unavailable cached folder reports an error and permits retry", arguments: [false, true])
+    func unavailableCachedFolder(denyAccess: Bool) async throws {
+        let folder = try FixtureFolder()
+        let other = try FixtureFolder()
+        _ = try folder.write("file.txt")
+        let model = StorageExplorerModel()
+        model.selectLocation(folder.url)
+        try await waitUntil { !model.isLoading }
+        model.navigate(to: other.url)
+        try await waitUntil { !model.isLoading }
+
+        let moved = other.url.appendingPathComponent("disconnected")
+        if denyAccess {
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder.url.path)
+        } else {
+            try FileManager.default.moveItem(at: folder.url, to: moved)
+        }
+        defer {
+            if denyAccess {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.url.path)
+            }
+        }
+        model.goBack()
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot == nil)
+        #expect(model.selection.isEmpty)
+        #expect(model.error == .unavailable(folder.url.path))
+
+        if denyAccess {
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.url.path)
+        } else {
+            try FileManager.default.moveItem(at: moved, to: folder.url)
+        }
+        model.refresh()
+        try await waitUntil { !model.isLoading }
+        #expect(model.error == nil)
+        #expect(model.snapshot?.items.map(\.name) == ["file.txt"])
+    }
+
+    @Test("A replacement folder cannot reuse a previous folder result")
+    func replacedCachedFolder() async throws {
+        let folder = try FixtureFolder()
+        let other = try FixtureFolder()
+        _ = try folder.write("old.txt")
+        let model = StorageExplorerModel()
+        model.selectLocation(folder.url)
+        try await waitUntil { !model.isLoading }
+        model.navigate(to: other.url)
+        try await waitUntil { !model.isLoading }
+        try FileManager.default.moveItem(at: folder.url, to: other.url.appendingPathComponent("old"))
+        try FileManager.default.createDirectory(at: folder.url, withIntermediateDirectories: true)
+        _ = try folder.write("new.txt")
+        model.goBack()
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot?.items.map(\.name) == ["new.txt"])
+    }
+
+    @Test("A disconnected volume discards cached results and permits reconnection")
+    func disconnectedVolume() async throws {
+        let folder = try FixtureFolder()
+        let image = folder.url.appendingPathComponent("volume.dmg")
+        let mount = folder.url.appendingPathComponent("mount")
+        defer { _ = try? Self.runHdiutil(["detach", "-quiet", mount.path]) }
+        try #require(Self.runHdiutil([
+            "create", "-quiet", "-size", "32m", "-fs", "APFS", "-volname", "MoppoRecoveryTest", image.path
+        ]) == 0)
+        let attach = ["attach", "-quiet", "-nobrowse", "-mountpoint", mount.path, image.path]
+        try #require(Self.runHdiutil(attach) == 0)
+        try Data("Fixture".utf8).write(to: mount.appendingPathComponent("file.txt"))
+        let model = StorageExplorerModel()
+        model.selectLocation(mount)
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot?.items.contains { $0.name == "file.txt" } == true)
+        model.navigate(to: folder.url)
+        try await waitUntil { !model.isLoading }
+        try #require(Self.runHdiutil(["detach", "-quiet", mount.path]) == 0)
+        model.goBack()
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot == nil)
+        #expect(model.error == .unavailable(mount.path))
+        try #require(Self.runHdiutil(attach) == 0)
+        model.refresh()
+        try await waitUntil { !model.isLoading }
+        #expect(model.error == nil)
+        #expect(model.snapshot?.items.contains { $0.name == "file.txt" } == true)
+    }
+
+    private static func runHdiutil(_ arguments: [String]) throws -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(10)
         while !condition(), ContinuousClock.now < deadline {
