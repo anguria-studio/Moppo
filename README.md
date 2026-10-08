@@ -172,6 +172,12 @@ vale README.md AGENTS.md WRITING_STYLE.md
 The app state tests use temporary files and a separate test process.
 They do not launch Moppo or delete personal photos.
 
+GitHub Actions runs these tests and writing checks for pull requests and changes to `main`.
+CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
+CI does not build or launch the signed Moppo app.
+Pull request checks also validate branch names and Conventional Commit titles.
+The [repository rules](.github/REPOSITORY_RULES.md) describe merge access and the current branch protection limit.
+
 Use the **Moppo Onboarding** scheme to show the welcome guide on every Debug launch.
 This scheme keeps saved settings and system permissions.
 See the [development notes](docs/README.md) for the command-line scanner, source layout, and measurement rules.

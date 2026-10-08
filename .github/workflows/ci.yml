@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pull-request-rules:
+    name: Pull request rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Check branch name and pull request title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BRANCH: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 .github/scripts/check-conventions.py
+
+  tests-and-writing:
+    name: Tests and writing
+    runs-on: xcode-27
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install build and writing tools
+        run: brew install xcodegen vale
+      - name: Run core tests
+        run: swift test --package-path Core
+      - name: Generate the Xcode project
+        run: xcodegen generate
+      - name: Run app state tests
+        run: >-
+          xcodebuild -quiet
+          -project Moppo.xcodeproj
+          -scheme MoppoAppTests
+          -destination 'platform=macOS'
+          CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
+          test
+      - name: Check writing
+        run: vale README.md AGENTS.md WRITING_STYLE.md .github/REPOSITORY_RULES.md

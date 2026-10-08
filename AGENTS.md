@@ -26,6 +26,27 @@ Check `totalCount` against the number of returned items.
 If some items are missing, increase the limit or use API pagination.
 Read field identifiers with `gh project field-list` before you update a field.
 
+## Branches and pull requests
+
+- Create branches with `<type>/<short-description>`, such as `fix/scan-removal-flows`.
+- Use lowercase words and hyphens in the description.
+- Do not use the `codex/` prefix.
+- Use Conventional Commits for commit messages and pull request titles.
+- Use `<type>[optional scope][!]: <description>`, such as `fix: clear outdated scan results`.
+- Use one of these types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `revert`.
+- Open a pull request for each change to `main`.
+- Do not push directly to `main`.
+- Wait for all CI checks before a merge.
+- Use a squash merge with the pull request title as the commit title.
+- Merge only when `tommasoltrz` gives an explicit instruction.
+- Do not give contributors write access without an explicit instruction from `tommasoltrz`.
+
+Only `tommasoltrz` has write access to this repository.
+GitHub Free does not support branch protection for this private organization repository.
+CI reports failures, but GitHub does not block a merge when a check fails.
+These instructions do not replace server rules.
+The [repository rules](.github/REPOSITORY_RULES.md) describe the settings to use after an upgrade to GitHub Team.
+
 ## Writing
 
 Use ADS-STE100 Simplified Technical English for all new writing.
