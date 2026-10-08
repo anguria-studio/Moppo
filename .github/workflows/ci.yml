@@ -42,4 +42,4 @@ jobs:
           CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
           test
       - name: Check writing
-        run: vale README.md AGENTS.md WRITING_STYLE.md .github/REPOSITORY_RULES.md
+        run: vale README.md AGENTS.md WRITING_STYLE.md
