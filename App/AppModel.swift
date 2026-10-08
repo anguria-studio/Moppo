@@ -129,11 +129,20 @@ final class AppModel {
         case dashboard, scanner, storageExplorer, uninstaller, history, trash, duplicates
         var id: String { rawValue }
 
+        struct SidebarSection: Identifiable {
+            let title: String
+            let views: [View]
+            var id: String { title }
+        }
+
         /// Cleanup comes first. Tools and storage information follow it.
-        static let sidebarViews: [View] = [
-            .scanner, .storageExplorer, .uninstaller, .duplicates,
-            .dashboard, .history, .trash
+        static let sidebarSections: [SidebarSection] = [
+            SidebarSection(title: "", views: [.scanner]),
+            SidebarSection(title: "Tools", views: [.storageExplorer, .uninstaller, .duplicates]),
+            SidebarSection(title: "Overview", views: [.dashboard, .history, .trash])
         ]
+
+        static var sidebarViews: [View] { sidebarSections.flatMap(\.views) }
 
         var title: String {
             switch self {

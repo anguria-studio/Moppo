@@ -205,6 +205,16 @@ enum Token {
     /// page is what the content scrolls on. They are free to part company.
     static let shell = pageBackground
 
+    /// The opaque sidebar stays slightly lighter than the page in dark mode.
+    static let sidebarTop = Token.dynamic(
+        light: NSColor(white: 0.96, alpha: 1),
+        dark: NSColor(white: 34 / 255, alpha: 1)  // #222222
+    )
+    static let sidebarBottom = Token.dynamic(
+        light: NSColor(white: 0.91, alpha: 1),
+        dark: NSColor(white: 22 / 255, alpha: 1)  // #161616
+    )
+
     /// The surface for onboarding and popovers.
     static let chrome = Token.dynamic(
         light: NSColor.windowBackgroundColor,
@@ -246,7 +256,7 @@ enum Token {
         /// opposite direction, which is what `ink` already does.
         static let controlHover = Token.ink(light: 0.12, dark: 0.14)
         static let rowHover = Token.ink(light: 0.04, dark: 0.03)
-        /// A neutral selection fill over the system sidebar material.
+        /// A neutral selection fill over the sidebar gradient.
         static let sidebarSelection = Token.ink(light: 0.09, dark: 0.12)
 
         /// The fill under the pointer in the menu bar popover — the same blue a

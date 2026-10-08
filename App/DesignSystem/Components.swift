@@ -526,17 +526,16 @@ extension View {
 
 // MARK: - Window shell
 
-/// Uses the system sidebar material and window activation state.
-struct SidebarBackground: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .sidebar
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-        return view
+/// Keeps the sidebar gradient opaque so the wallpaper cannot change its color.
+struct SidebarBackground: View {
+    var body: some View {
+        LinearGradient(
+            colors: [Token.sidebarTop, Token.sidebarBottom],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .accessibilityHidden(true)
     }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 /// Aligns the window controls with the header after size and full-screen changes.

@@ -17,9 +17,23 @@ struct SidebarView: View {
                 .background(WindowDragHandle())
                 .accessibilityHidden(true)
             ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(AppModel.View.sidebarViews) { view in
-                        navigationRow(view)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(AppModel.View.sidebarSections) { section in
+                        if !section.title.isEmpty {
+                            Divider()
+                                .padding(.horizontal, 10)
+                                .padding(.top, 16)
+                                .padding(.bottom, 10)
+                            Text(section.title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Token.Text.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, 6)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        ForEach(section.views) { view in
+                            navigationRow(view)
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
