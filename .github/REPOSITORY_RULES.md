@@ -57,8 +57,8 @@ The configuration is inactive until GitHub accepts this command.
 
 The `CI` workflow runs on pull requests and pushes to `main`.
 The workflow can also run manually.
-The workflow checks branch names and pull request titles on pull requests.
 It runs the core tests, app state tests, and Vale writing checks.
+The `Pull request rules` workflow checks branch names and pull request titles, including title edits.
 The workflow has read access to repository contents.
 It does not need signing certificates or other repository secrets.
 

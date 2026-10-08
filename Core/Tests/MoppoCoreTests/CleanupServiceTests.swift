@@ -261,31 +261,28 @@ struct CleanupServiceTests {
     func cancellationPreservesChildReceipts() async throws {
         let sandbox = try Sandbox()
         let first = try sandbox.writeFile("first.bin", bytes: 1024)
-        let large = try sandbox.directory("large")
-        for index in 0..<4_000 {
-            _ = try sandbox.writeFile("large/\(index).bin", bytes: 1)
-        }
+        let second = try sandbox.writeFile("second.bin", bytes: 1024)
         let parent = try sandbox.directory("parent")
         let group = FileEntry(
             url: parent, kind: .folder, allocatedBytes: 0,
-            children: [entry(first), entry(large, kind: .folder)]
+            children: [entry(first), entry(second)]
         )
         let log = RemovalLog(directory: sandbox.root.appendingPathComponent("logs"))
-        let task = Task {
-            try await CleanupService(log: log).remove(entries: [group], trashFirst: false)
+        let service = CleanupService(measureSize: { url in
+            // Cancel the second measurement after the first removal completes.
+            if url == second { throw CancellationError() }
+            return try await AllocatedSizeMeasurer().measure(url)
+        }, log: log)
+        await #expect(throws: CancellationError.self) {
+            try await service.remove(entries: [group], trashFirst: false)
         }
-        let deadline = ContinuousClock.now + .seconds(10)
-        while FileManager.default.fileExists(atPath: first.path), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(1))
-        }
-        task.cancel()
-        await #expect(throws: CancellationError.self) { try await task.value }
 
         #expect(!FileManager.default.fileExists(atPath: first.path))
-        #expect(log.recentEntries().contains {
-            $0.originalPath == first.path && $0.disposition == .deleted
-        })
-        #expect(FileManager.default.fileExists(atPath: large.path))
+        let records = log.recentEntries()
+        #expect(records.map(\.originalPath) == [first.path])
+        #expect(records.first?.disposition == .deleted)
+        #expect(FileManager.default.fileExists(atPath: second.path))
+        #expect(FileManager.default.fileExists(atPath: parent.path))
     }
 }
 

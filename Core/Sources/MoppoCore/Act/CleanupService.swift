@@ -94,7 +94,7 @@ public struct CleanupOutcome: Sendable, Equatable {
 /// app had done to the user's disk.
 public struct CleanupService: Sendable {
 
-    private let measurer: AllocatedSizeMeasurer
+    private let measureSize: @Sendable (URL) async throws -> SizeMeasurement
     /// Read per item in the instant before that item is removed. Kept out of the
     /// scan's measurement entirely — see ``PrivateSizeMeasurer`` for the 62 % that
     /// would have cost on every whole-disk walk.
@@ -105,7 +105,14 @@ public struct CleanupService: Sendable {
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         log: RemovalLog = RemovalLog()
     ) {
-        self.measurer = measurer
+        self.init(measureSize: { try await measurer.measure($0) }, log: log)
+    }
+
+    init(
+        measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
+        log: RemovalLog
+    ) {
+        self.measureSize = measureSize
         self.log = log
     }
 
@@ -187,7 +194,7 @@ public struct CleanupService: Sendable {
                 // hours old. The measurer throws nothing but `CancellationError`, so
                 // letting this propagate does not turn an unreadable file into an
                 // aborted batch.
-                let measured = try await measurer.measure(target.url).allocatedBytes
+                let measured = try await measureSize(target.url).allocatedBytes
 
                 if let expected = expectedIdentities[target.id],
                    FileIdentity.of(target.url) != expected {
@@ -334,7 +341,7 @@ public struct CleanupService: Sendable {
                 continue
             }
 
-            let measured = try await measurer.measure(item.url).allocatedBytes
+            let measured = try await measureSize(item.url).allocatedBytes
             let freed = try? await privateMeasurer.measure([item.url])
             do {
                 let landed = try Self.discard(item.url, disposition: .trashed)
