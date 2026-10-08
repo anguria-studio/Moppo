@@ -234,6 +234,7 @@ struct StorageExplorerView: View {
             detail: "Choose a folder or volume. Moppo will measure each item on disk."
         ) {
             locationMenu
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
         }
     }
 
@@ -285,6 +286,7 @@ struct StorageExplorerView: View {
             Text("Choose another folder or return to the previous folder.")
         } actions: {
             locationMenu
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
         }
     }
 

@@ -43,7 +43,7 @@ struct FileDuplicatesView: View {
                 + "one copy in each set. Hidden files, cloud-only files and documents saved "
                 + "as packages, such as Pages and Keynote files, are not compared."
         ) {
-            Button("Choose Folders") { model.chooseFileDuplicateFolders() }
+            Button("Choose Folders", systemImage: "folder") { model.chooseFileDuplicateFolders() }
                 .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
                 .disabled(model.isBusyWithDisk)
         }
