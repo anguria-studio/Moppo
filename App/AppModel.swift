@@ -18,18 +18,28 @@ final class AppModel {
     /// The preferences the engine must obey. Injected at launch; optional only so
     /// previews and tests can build a model without a store.
     @ObservationIgnored var settings: SettingsStore?
+    @ObservationIgnored private let hasFullDiskAccess: () -> Bool
     let storageExplorer: StorageExplorerModel
     private(set) var launchAccess: LaunchAccess
     var isShowingWelcome: Bool { launchAccess.requiresOnboarding }
 
-    init(settings: SettingsStore? = nil, launchAccess: LaunchAccess = .ready) {
+    init(
+        settings: SettingsStore? = nil,
+        launchAccess: LaunchAccess = .ready,
+        hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
+        trashService: TrashService = TrashService(),
+        cleanupHistoryService: CleanupHistoryService = CleanupHistoryService()
+    ) {
         self.settings = settings
         self.launchAccess = launchAccess
+        self.hasFullDiskAccess = hasFullDiskAccess
+        self.trashService = trashService
+        self.cleanupHistoryService = cleanupHistoryService
         self.storageExplorer = StorageExplorerModel(settings: settings)
         photoThumbnails.allowsNetworkFetch = { [weak settings] in
             settings?.allowPhotoDownloads ?? SettingsStore.Defaults.allowPhotoDownloads
         }
-        startScheduler()
+        if settings != nil { startScheduler() }
     }
 
     func showWelcomeGuide() {
@@ -37,12 +47,12 @@ final class AppModel {
     }
 
     func finishWelcomeGuide() {
-        launchAccess.finishOnboarding(hasFullDiskAccess: FullDiskAccess.isGranted)
+        launchAccess.finishOnboarding(hasFullDiskAccess: hasFullDiskAccess())
     }
 
     /// Keeps automatic scans off when the user continues with limited access.
     func checkDiskAccess(automatic: Bool = false) -> Bool {
-        launchAccess.authorizeScan(hasFullDiskAccess: FullDiskAccess.isGranted, automatic: automatic)
+        launchAccess.authorizeScan(hasFullDiskAccess: hasFullDiskAccess(), automatic: automatic)
     }
 
     // MARK: - Automatic scanning
@@ -407,6 +417,7 @@ final class AppModel {
         case removingDuplicateFiles(itemCount: Int, totalBytes: Int64)
         case removingStorageItems(itemCount: Int, totalBytes: Int64)
         case reviewingStorageItems(itemCount: Int)
+        case restoringTrashItem(name: String)
         case uninstalling(applicationName: String, applicationOnly: Bool, waitingToQuit: Bool)
         case waitingForApplicationsToQuit(names: [String])
 
@@ -426,6 +437,8 @@ final class AppModel {
             case .reviewingStorageItems(let count):
                 let items = count == 1 ? "item" : "items"
                 return "Reviewing \(count) \(items)"
+            case .restoringTrashItem(let name):
+                return "Putting Back \(name)"
             case .uninstalling(let name, _, let waiting):
                 return waiting ? "Waiting for \(name) to quit" : "Uninstalling \(name)"
             case .waitingForApplicationsToQuit(let names):
@@ -450,6 +463,8 @@ final class AppModel {
                 return "Save your work if an app asks. Moppo waits for the apps to close."
             case .reviewingStorageItems:
                 return "Moppo is checking the selected items before moving them to the Trash."
+            case .restoringTrashItem:
+                return "Moving the item to its original location."
             case .uninstalling(_, let applicationOnly, let waiting):
                 if waiting {
                     return "The application and its helpers are asked to quit. "
@@ -481,7 +496,8 @@ final class AppModel {
     var isShowingAppDataAccessAlert = false
 
     var isStorageExplorerMeasurementBlocked: Bool {
-        isScanning || isScanningDuplicateFiles || isSweepingPhotos || isDeletingPhotos || activity != nil
+        isScanning || isScanningDuplicateFiles || isSweepingPhotos || isDeletingPhotos
+            || isPlanningAppUninstall || activity != nil
     }
 
     /// One disk walk at a time. A junk scan, a duplicate scan, a photo sweep, an
@@ -577,7 +593,6 @@ final class AppModel {
         }
 
         activity = nil
-        storageExplorer.refresh(clearAllCachedFolders: true)
         await refreshAfterRemoval()
     }
 
@@ -698,7 +713,9 @@ final class AppModel {
                 var entry = original
                 if entry.removalAction != nil {
                     entry.children.removeAll {
-                        !fileManager.fileExists(atPath: $0.url.path)
+                        let gone = !fileManager.fileExists(atPath: $0.url.path)
+                        if gone { vanished.insert($0.id) }
+                        return gone
                     }
                     guard !entry.children.isEmpty else {
                         vanished.insert(entry.id)
@@ -922,6 +939,13 @@ final class AppModel {
     /// Opens the dedicated review for an installed application. Called by the
     /// Uninstaller's picker/drop target and by “Uninstall App…” on scanner rows.
     func planAppUninstall(_ applicationURL: URL) {
+        guard !isBusyWithDisk else {
+            report(
+                "Wait for the Current Operation",
+                "Finish or stop the current operation before you review another application."
+            )
+            return
+        }
         guard checkDiskAccess() else { return }
         appUninstallTask?.cancel()
         appUninstallPlan = nil
@@ -1873,24 +1897,33 @@ final class AppModel {
         }
         if outcome.removedCount > 0 {
             // File sizes and cache contents can change during removal.
-            scanResults = nil
-            scannerSelection.removeAll()
-            userDataRemovalOverrides.removeAll()
-            cleanupRunningOwners = []
-            scanFilter = .safeToRemove
-            hasStartedInitialCleanupScan = false
+            invalidateCleanupResults()
         }
         activity = nil
-        await refreshAfterRemoval()
+        await refreshAfterRemoval(invalidateCleanup: false)
+    }
+
+    private func invalidateCleanupResults() {
+        scanResults = nil
+        scannerSelection.removeAll()
+        userDataRemovalOverrides.removeAll()
+        cleanupRunningOwners = []
+        scanFilter = .safeToRemove
+        hasStartedInitialCleanupScan = false
     }
 
     /// The disk changed, so the cached breakdown and the Trash summary are both
     /// wrong. They run together: the Trash read is usually quick and feeds the
     /// sidebar count, and it should not queue behind a 20-second walk.
-    private func refreshAfterRemoval() async {
+    private func refreshAfterRemoval(invalidateCleanup: Bool = true) async {
+        if invalidateCleanup { invalidateCleanupResults() }
         // Every cached Explorer level is stale too: a folder measured before a
         // Scanner clean-up came back from the cache with its old figure.
         storageExplorer.invalidateCache()
+        if view == .storageExplorer, !isStorageExplorerMeasurementBlocked {
+            storageExplorer.refreshIfNeeded()
+        }
+        pruneVanishedEntries()
         async let trash: Void = loadTrash()
         // `removal` marks this measurement as the post-clean-up baseline, which is
         // what "since the last clean-up" reads and what the ring never thins away.
@@ -1935,7 +1968,7 @@ final class AppModel {
 
     // MARK: - Cleanup history
 
-    private let cleanupHistoryService = CleanupHistoryService()
+    private let cleanupHistoryService: CleanupHistoryService
     var cleanupHistory: CleanupHistorySummary?
     var isLoadingCleanupHistory = false
 
@@ -1951,7 +1984,8 @@ final class AppModel {
 
     // MARK: - Trash
 
-    private let trashService = TrashService()
+    private let trashService: TrashService
+    @ObservationIgnored private var trashLoadID: UUID?
     var trashSummary: TrashSummary?
     var selectedTrashItemID: TrashItem.ID?
     private var pendingTrashReveal: CleanupHistoryItem?
@@ -1965,10 +1999,14 @@ final class AppModel {
     }
 
     func loadTrash() async {
+        let loadID = UUID()
+        trashLoadID = loadID
         // Everything, largest first. The list is lazy, so row count costs nothing,
         // and a Trash screen that hides items reads as missing files. (The design
         // mock's "showing the 4 largest" was sample data, not a principle.)
-        trashSummary = try? await trashService.summary(limit: Int.max)
+        let summary = try? await trashService.summary(limit: Int.max)
+        guard trashLoadID == loadID, !Task.isCancelled else { return }
+        trashSummary = summary
         if let request = pendingTrashReveal, let url = request.trashedURL {
             pendingTrashReveal = nil
             if let item = trashSummary?.items.first(where: {
@@ -1994,7 +2032,7 @@ final class AppModel {
     }
 
     func emptyTrash() async {
-        guard activity == nil else { return }
+        guard !isBusyWithDisk else { return }
         activeSheet = nil
         removalCompletion = nil
         let presentation = OperationPresentationDuration()
@@ -2032,9 +2070,15 @@ final class AppModel {
     }
 
     func putBack(_ item: TrashItem) async {
+        guard !isBusyWithDisk else { return }
+        activity = .restoringTrashItem(name: item.name)
+        var restored = false
         do {
             // The row leaves the Trash list below, which is the whole report.
             try await trashService.putBack(item)
+            restored = true
+            storageExplorer.invalidateCache()
+            invalidateCleanupResults()
         } catch TrashError.destinationOccupied {
             report(
                 "\(item.name) Was Not Put Back",
@@ -2046,6 +2090,10 @@ final class AppModel {
         }
         await loadTrash()
         await loadCleanupHistory()
+        activity = nil
+        if restored, checkDiskAccess(automatic: true) {
+            await measureStorage()
+        }
     }
 
     // MARK: - Loading
@@ -2074,7 +2122,7 @@ final class AppModel {
     /// whichever category owns its real location — counting it again here put a
     /// 228 GB disk at 274 GB and pushed the bar off the card.
     private let breakdownService = StorageBreakdownService()
-    private let lowDiskNotifications = LowDiskNotificationService()
+    @ObservationIgnored private lazy var lowDiskNotifications = LowDiskNotificationService()
     private let coordinator = ScanCoordinator.standard()
     private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var cleanupScanID: UUID?
@@ -2706,6 +2754,7 @@ final class AppModel {
     /// seconds rather than the length of a sweep.
     private(set) var isRegroupingPhotos = false
     @ObservationIgnored private var photoRegroupTask: Task<Void, Never>?
+    @ObservationIgnored private var photoRegroupID: UUID?
 
     /// Groups in date order, newest first.
     ///
@@ -2751,6 +2800,10 @@ final class AppModel {
 
     func startPhotoSweep() {
         guard canAccessPhotos, !isBusyWithDisk else { return }
+        photoRegroupTask?.cancel()
+        photoRegroupTask = nil
+        photoRegroupID = nil
+        isRegroupingPhotos = false
         let service = PhotoDuplicateService(
             library: PhotoKitLibrary(allowsNetworkFetch: settings?.allowPhotoDownloads ?? true),
             visionRevision: UInt32(PhotoKitLibrary.featurePrintRevision)
@@ -2826,16 +2879,21 @@ final class AppModel {
     /// sweep has run, and the page is showing its intro in that case, so the new
     /// setting simply applies to the sweep the user starts next.
     private func regroupPhotos() {
-        guard photoResults != nil, !isSweepingPhotos else { return }
+        guard photoResults != nil, !isSweepingPhotos, !isDeletingPhotos else { return }
         photoRegroupTask?.cancel()
+        let regroupID = UUID()
+        photoRegroupID = regroupID
         let similarity = photoSimilarity
         isRegroupingPhotos = true
 
         photoRegroupTask = Task { [weak self] in
             guard let self else { return }
             defer {
-                self.isRegroupingPhotos = false
-                self.photoRegroupTask = nil
+                if self.photoRegroupID == regroupID {
+                    self.isRegroupingPhotos = false
+                    self.photoRegroupTask = nil
+                    self.photoRegroupID = nil
+                }
             }
             do {
                 guard let results = try await photoService.regroup(similarity: similarity) else {
@@ -2843,7 +2901,8 @@ final class AppModel {
                 }
                 // A setting changed again while this ran: that later change owns the
                 // page, and this result is for a threshold nobody is asking about.
-                guard similarity == self.photoSimilarity else { return }
+                guard self.photoRegroupID == regroupID, !Task.isCancelled,
+                      similarity == self.photoSimilarity else { return }
                 self.photoResults = results
                 // Re-seeded, never carried over. The selection is ids from the old
                 // grouping, and an id that was removable in one grouping can be a
@@ -2853,6 +2912,7 @@ final class AppModel {
             } catch is CancellationError {
                 // Superseded by a later change, or the user left.
             } catch {
+                guard self.photoRegroupID == regroupID, !Task.isCancelled else { return }
                 self.report(
                     "The Photos Could Not Be Regrouped",
                     "Moppo could not apply that setting to the sweep it has. "

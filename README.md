@@ -161,12 +161,16 @@ xcodebuild \
   build
 ```
 
-Run the core tests and writing checks from the repository root:
+Run the tests and writing checks from the repository root:
 
 ```sh
 swift test --package-path Core
+xcodebuild -project Moppo.xcodeproj -scheme MoppoAppTests -destination 'platform=macOS' test
 vale README.md AGENTS.md WRITING_STYLE.md
 ```
+
+The app state tests use temporary files and a separate test process.
+They do not launch Moppo or delete personal photos.
 
 Use the **Moppo Onboarding** scheme to show the welcome guide on every Debug launch.
 This scheme keeps saved settings and system permissions.

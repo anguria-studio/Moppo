@@ -20,6 +20,7 @@ struct PhotoRegroupTests {
         let prints: [String: PhotoFingerprint]
         private(set) var fetchCount = 0
         private(set) var fingerprintCount = 0
+        var deletionError: CancellationError?
 
         init(assets: [PhotoAsset], prints: [String: PhotoFingerprint]) {
             self.assets = assets
@@ -35,7 +36,9 @@ struct PhotoRegroupTests {
             fingerprintCount += 1
             return prints[assetID]
         }
-        func delete(assetIDs: [String]) async throws {}
+        func delete(assetIDs: [String]) async throws {
+            if let deletionError { throw deletionError }
+        }
     }
 
     private func asset(_ id: String, seconds: TimeInterval, width: Int = 4032) -> PhotoAsset {
@@ -109,6 +112,38 @@ struct PhotoRegroupTests {
 
         #expect(try await service.regroup(similarity: .strict) == nil)
         #expect(library.fetchCount == 0)
+    }
+
+    @Test("Deleted photos stay absent when the similarity setting changes")
+    func deletedPhotosStayAbsent() async throws {
+        let (service, library, directory) = try makeService()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let swept = try await service.sweep(similarity: .standard)
+        let removed = try #require(swept.groups.first?.removable.first)
+
+        try await service.delete(assetIDs: [removed.id])
+        let regrouped = try #require(try await service.regroup(similarity: .veryLoose))
+
+        #expect(regrouped.groups.isEmpty)
+        #expect(regrouped.examinedCount == 1)
+        #expect(library.fetchCount == 1)
+    }
+
+    @Test("A declined deletion keeps photos available for another review")
+    func declinedDeletionKeepsPhotos() async throws {
+        let (service, library, directory) = try makeService()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let swept = try await service.sweep(similarity: .standard)
+        let removed = try #require(swept.groups.first?.removable.first)
+        library.deletionError = CancellationError()
+
+        await #expect(throws: CancellationError.self) {
+            try await service.delete(assetIDs: [removed.id])
+        }
+        let regrouped = try #require(try await service.regroup(similarity: .veryLoose))
+
+        #expect(regrouped.groups.count == 1)
+        #expect(regrouped.examinedCount == 2)
     }
 
     /// A regroup reads no thumbnails, so it can neither add to the skipped count nor

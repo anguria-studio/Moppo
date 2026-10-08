@@ -9,6 +9,7 @@ import MoppoCore
 /// reading rather than showing an empty box while it does.
 struct TrashView: View {
     @Bindable var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Distinguishes "not read yet" from "read, and there was nothing to read".
     /// `AppModel.loadTrash()` swallows its error into `nil`, so without this the
@@ -24,6 +25,7 @@ struct TrashView: View {
                     selectedItemID: $model.selectedTrashItemID,
                     onPutBack: { item in Task { await model.putBack(item) } }
                 )
+                .disabled(model.isBusyWithDisk)
             } else if hasLoaded {
                 unreadableNote
             } else {
@@ -31,9 +33,10 @@ struct TrashView: View {
             }
         }
         .operationResultAnimation(isRunning: !hasLoaded && model.trashSummary == nil)
-        .task {
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
             await model.loadTrash()
-            hasLoaded = true
+            if !Task.isCancelled { hasLoaded = true }
         }
     }
 

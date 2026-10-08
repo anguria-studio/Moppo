@@ -101,6 +101,32 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
 
+  MoppoAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      # Test app state with temporary files without launching Moppo.
+      - path: App
+        excludes:
+          - "Info.plist"
+          - "Resources/AppIcon.icon"
+          - "Resources/AppIcon.icon/**"
+      - path: AppTests
+    dependencies:
+      - package: MoppoCore
+        product: MoppoCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: L2P2KC4C69
+        CODE_SIGN_STYLE: Manual
+        TEST_HOST: ""
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) MOPPO_APP_TESTS"
+        ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
+
 schemes:
   Moppo Onboarding:
     build:
@@ -118,3 +144,10 @@ schemes:
       config: Debug
     archive:
       config: Release
+  MoppoAppTests:
+    build:
+      targets:
+        MoppoAppTests: all
+    test:
+      targets:
+        - MoppoAppTests

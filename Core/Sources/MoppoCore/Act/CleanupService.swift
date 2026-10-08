@@ -166,6 +166,10 @@ public struct CleanupService: Sendable {
                 (trashFirst || Self.alwaysMovesToTrash(entry)) ? .trashed : .deleted
 
             var records: [RemovalRecord] = []
+            // Save completed removals even if a later measurement stops.
+            defer {
+                if keepReceipt { try? log.append(records) }
+            }
             // Children before the bundle. For an app this list is deliberately
             // narrower unless the parent has its exact destructive override:
             // caches go with the app, profiles and settings stay by default.
@@ -249,15 +253,6 @@ public struct CleanupService: Sendable {
                     freedBytes: freed?.privateBytes
                 ))
             }
-
-            // Written per entry rather than once at the end, so a cancelled run leaves
-            // no trashed item without the log line its Put Back depends on.
-            //
-            // A failed write is not promoted to a removal failure: the bytes are
-            // already gone, and reporting a successful removal as failed would be a
-            // lie in the other direction. The cost is that those items lose Put Back,
-            // which is the state every item the app did not trash is in anyway.
-            if keepReceipt { try? log.append(records) }
         }
 
         if !privileged.isEmpty {
