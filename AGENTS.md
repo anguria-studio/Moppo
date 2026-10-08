@@ -1,5 +1,45 @@
 # Project instructions
 
+## Tickets
+
+GitHub is the main ticket record.
+The repository is `anguria-studio/Moppo`.
+The [Moppo project](https://github.com/orgs/anguria-studio/projects/1) holds status and release fields.
+
+- Use GitHub CLI (`gh`) to read issues and project fields.
+- Read the current issue, comments, and linked pull requests before work starts.
+- Select `Next` tickets by phase, then source order, unless the user specifies another order.
+- Set the project status to `Doing` when work starts.
+- Link the pull request to its issue.
+- Set `Done` after the required checks and merge.
+- Keep incomplete checks visible in the pull request and final report.
+- Keep `BACKLOG.local.md` as a historical record.
+- Do not keep a second active ticket list in local files.
+
+Read project items with this command:
+
+```sh
+gh project item-list 1 --owner anguria-studio --limit 200 --format json
+```
+
+Check `totalCount` against the number of returned items.
+If some items are missing, increase the limit or use API pagination.
+Read field identifiers with `gh project field-list` before you update a field.
+
+## Branches and pull requests
+
+- Create branches with `<type>/<short-description>`, such as `fix/scan-removal-flows`.
+- Use lowercase words and hyphens in the description.
+- Do not use the `codex/` prefix.
+- Use Conventional Commits for commit messages and pull request titles.
+- Use `<type>[optional scope][!]: <description>`, such as `fix: clear outdated scan results`.
+- Use one of these types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `revert`.
+- Open a pull request for each change to `main`.
+- Do not push directly to `main`.
+- Require all CI checks to pass before a merge.
+- Use a squash merge with the pull request title as the commit title.
+- Merge only after an explicit instruction from the user.
+
 ## Writing
 
 Use ADS-STE100 Simplified Technical English for all new writing.

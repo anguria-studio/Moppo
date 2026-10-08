@@ -382,5 +382,8 @@ public actor PhotoDuplicateService {
     public func delete(assetIDs: [String]) async throws {
         guard !assetIDs.isEmpty else { return }
         try await library.delete(assetIDs: assetIDs)
+        // Keep later grouping results consistent with the completed deletion.
+        let deleted = Set(assetIDs)
+        lastSweep?.assets.removeAll { deleted.contains($0.id) }
     }
 }

@@ -2,7 +2,9 @@ import SwiftUI
 import MoppoCore
 import UserNotifications
 
+#if !MOPPO_APP_TESTS
 @main
+#endif
 struct MoppoApp: App {
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate

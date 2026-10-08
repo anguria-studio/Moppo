@@ -47,6 +47,7 @@ final class StorageExplorerModel {
     var progress = SizeMeasurement.zero
     var error: StorageExplorerError?
     var wasCancelled = false
+    private(set) var needsRefresh = false
     var locations: [StorageExplorerLocation] = []
 
     private var history: [URL] = []
@@ -121,6 +122,21 @@ final class StorageExplorerModel {
     /// files the cached levels still count.
     func invalidateCache() {
         clearCache()
+        scanGeneration += 1
+        scanTask?.cancel()
+        scanTask = nil
+        snapshot = nil
+        selection.removeAll()
+        isLoading = false
+        isInterrupting = false
+        wasCancelled = false
+        error = nil
+        needsRefresh = currentURL != nil
+    }
+
+    func refreshIfNeeded() {
+        guard needsRefresh, !isLoading else { return }
+        refresh()
     }
 
     func selectHome() {
@@ -209,6 +225,7 @@ final class StorageExplorerModel {
     ) {
         scanGeneration += 1
         let generation = scanGeneration
+        needsRefresh = false
         scanTask?.cancel()
         selection.removeAll()
         // Set on every load, so a navigation that asks for nothing also discards a

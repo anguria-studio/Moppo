@@ -94,7 +94,7 @@ public struct CleanupOutcome: Sendable, Equatable {
 /// app had done to the user's disk.
 public struct CleanupService: Sendable {
 
-    private let measurer: AllocatedSizeMeasurer
+    private let measureSize: @Sendable (URL) async throws -> SizeMeasurement
     /// Read per item in the instant before that item is removed. Kept out of the
     /// scan's measurement entirely — see ``PrivateSizeMeasurer`` for the 62 % that
     /// would have cost on every whole-disk walk.
@@ -105,7 +105,14 @@ public struct CleanupService: Sendable {
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         log: RemovalLog = RemovalLog()
     ) {
-        self.measurer = measurer
+        self.init(measureSize: { try await measurer.measure($0) }, log: log)
+    }
+
+    init(
+        measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
+        log: RemovalLog
+    ) {
+        self.measureSize = measureSize
         self.log = log
     }
 
@@ -166,6 +173,10 @@ public struct CleanupService: Sendable {
                 (trashFirst || Self.alwaysMovesToTrash(entry)) ? .trashed : .deleted
 
             var records: [RemovalRecord] = []
+            // Save completed removals even if a later measurement stops.
+            defer {
+                if keepReceipt { try? log.append(records) }
+            }
             // Children before the bundle. For an app this list is deliberately
             // narrower unless the parent has its exact destructive override:
             // caches go with the app, profiles and settings stay by default.
@@ -183,7 +194,7 @@ public struct CleanupService: Sendable {
                 // hours old. The measurer throws nothing but `CancellationError`, so
                 // letting this propagate does not turn an unreadable file into an
                 // aborted batch.
-                let measured = try await measurer.measure(target.url).allocatedBytes
+                let measured = try await measureSize(target.url).allocatedBytes
 
                 if let expected = expectedIdentities[target.id],
                    FileIdentity.of(target.url) != expected {
@@ -249,15 +260,6 @@ public struct CleanupService: Sendable {
                     freedBytes: freed?.privateBytes
                 ))
             }
-
-            // Written per entry rather than once at the end, so a cancelled run leaves
-            // no trashed item without the log line its Put Back depends on.
-            //
-            // A failed write is not promoted to a removal failure: the bytes are
-            // already gone, and reporting a successful removal as failed would be a
-            // lie in the other direction. The cost is that those items lose Put Back,
-            // which is the state every item the app did not trash is in anyway.
-            if keepReceipt { try? log.append(records) }
         }
 
         if !privileged.isEmpty {
@@ -339,7 +341,7 @@ public struct CleanupService: Sendable {
                 continue
             }
 
-            let measured = try await measurer.measure(item.url).allocatedBytes
+            let measured = try await measureSize(item.url).allocatedBytes
             let freed = try? await privateMeasurer.measure([item.url])
             do {
                 let landed = try Self.discard(item.url, disposition: .trashed)

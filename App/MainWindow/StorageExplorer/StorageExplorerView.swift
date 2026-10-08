@@ -8,6 +8,7 @@ import UniformTypeIdentifiers
 /// Browses measured folders with native macOS table and path controls.
 struct StorageExplorerView: View {
     @Bindable var model: StorageExplorerModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     let isMeasurementBlocked: Bool
@@ -28,7 +29,17 @@ struct StorageExplorerView: View {
             content
                 .operationResultAnimation(isRunning: model.isLoading)
         }
-        .task { model.prepareLocations() }
+        .task {
+            model.prepareLocations()
+            refreshIfNeeded()
+        }
+        .onChange(of: model.needsRefresh) { _, _ in refreshIfNeeded() }
+        .onChange(of: isMeasurementBlocked) { _, _ in refreshIfNeeded() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, !model.isLoading else { return }
+            model.invalidateCache()
+            refreshIfNeeded()
+        }
         .onChange(of: model.isLoading, initial: true) { wasRunning, isRunning in
             if isRunning {
                 resultBeforeScan = model.snapshot?.measuredAt
@@ -88,6 +99,11 @@ struct StorageExplorerView: View {
         showPreview(item)
     }
 
+    private func refreshIfNeeded() {
+        guard !isMeasurementBlocked else { return }
+        model.refreshIfNeeded()
+    }
+
     private func showPreview(_ item: StorageExplorerItem) {
         previewNavigation.start { direction in
             let items = sortedItems
@@ -107,6 +123,12 @@ struct StorageExplorerView: View {
             startView
         } else if model.isLoading {
             loadingView
+        } else if model.needsRefresh {
+            ContentUnavailableView(
+                "Waiting for the Current Operation",
+                systemImage: "hourglass",
+                description: Text("Finish or stop the current operation to measure this folder again.")
+            )
         } else if model.wasCancelled {
             cancelledView
         } else if let error = model.error {

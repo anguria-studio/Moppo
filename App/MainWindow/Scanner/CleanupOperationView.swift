@@ -37,9 +37,7 @@ struct CleanupOperationView: View {
                 .controlSize(.large)
                 .padding(.top, 8)
             } else {
-                ProgressView()
-                    .progressViewStyle(.linear)
-                    .tint(Token.Text.primary)
+                OperationProgressBar()
                     .accessibilityLabel("Moving items to Trash")
             }
         }
