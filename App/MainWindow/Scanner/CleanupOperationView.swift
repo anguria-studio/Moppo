@@ -11,39 +11,26 @@ struct CleanupOperationView: View {
     var onViewDashboard: () -> Void = {}
 
     var body: some View {
-        VStack(spacing: 18) {
-            if isComplete {
-                CompletionMark()
-                    .padding(.bottom, 4)
-            }
-            Text(isComplete ? "Moved to Trash" : "Moving items to Trash")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Token.Text.primary)
-            Text("\(itemCount) \(itemCount == 1 ? "item" : "items") · \(ByteFormatting.string(totalBytes))")
-                .font(.mcRowValue)
-                .foregroundStyle(Token.Text.secondary)
-            if isComplete {
-                HStack(spacing: 12) {
+        if isComplete {
+            PageCompletionView(title: "Moved to Trash") {
+                Text(summary)
+            } actions: {
+                PageStateActions {
                     Button(action: onScanAgain) {
                         Label("Scan Again", systemImage: "magnifyingglass")
                     }
-                    .buttonStyle(PageActionButtonStyle(tint: .white, foreground: .black))
+                    .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
                     .disabled(!canScan)
-                    Button(action: onViewDashboard) {
-                        Text("View Dashboard")
-                    }
+                    Button("View Dashboard", action: onViewDashboard)
                 }
-                .buttonStyle(PageActionButtonStyle())
-                .controlSize(.large)
-                .padding(.top, 8)
-            } else {
-                OperationProgressBar()
-                    .accessibilityLabel("Moving items to Trash")
             }
+        } else {
+            PageProgressView(title: "Moving items to Trash", detail: summary)
         }
-        .frame(maxWidth: 380)
-        .operationPageLayout()
-        .accessibilityElement(children: .contain)
+    }
+
+    private var summary: String {
+        "\(itemCount) \(itemCount == 1 ? "item" : "items") · \(ByteFormatting.string(totalBytes))"
     }
 }
 
@@ -58,29 +45,18 @@ struct RemovalCompletionView: View {
     let onViewDashboard: () -> Void
 
     var body: some View {
-        VStack(spacing: 18) {
-            CompletionMark(isSuccess: isSuccess)
-                .padding(.bottom, 4)
-            Text(title)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Token.Text.primary)
+        PageCompletionView(title: title, isSuccess: isSuccess) {
             Text(detail)
-                .font(.mcSubtitle)
-                .foregroundStyle(Token.Text.secondary)
-                .multilineTextAlignment(.center)
+        } actions: {
             if showsActions {
-                HStack(spacing: 12) {
+                PageStateActions {
                     Button("Continue", action: onContinue)
-                        .buttonStyle(PageActionButtonStyle(tint: .white, foreground: .black))
+                        .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
                         .disabled(!canContinue)
                     Button("View Dashboard", action: onViewDashboard)
-                        .buttonStyle(PageActionButtonStyle())
                 }
-                .padding(.top, 8)
             }
         }
-        .frame(maxWidth: showsActions ? 460 : 420)
-        .operationPageLayout()
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
     }

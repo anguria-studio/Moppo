@@ -62,12 +62,10 @@ struct ScannerView: View {
                 }
                 .transition(.opacity)
             } else {
-                ContentUnavailableView {
-                    Label("Ready to scan", systemImage: "magnifyingglass")
-                } description: {
-                    Text("Use Scan to find cleanup items.")
-                }
-                .pageStateLayout()
+                PageState(
+                    title: "Ready to scan", symbol: "magnifyingglass",
+                    detail: "Use Scan to find cleanup items."
+                )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -148,24 +146,13 @@ struct ScannerView: View {
     }
 
     private var scanProgress: some View {
-        VStack(spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(model.isInterruptingScan ? ScanInterruptionView.title : "Scanning for cleanup items")
-                    .font(.system(size: 18, weight: .medium))
-                Spacer()
-                Text(model.isInterruptingScan ? "" : "\(model.scanProgress)%")
-                    .font(.mcRowValue)
-                    .foregroundStyle(Token.Text.secondary)
-                    .contentTransition(reduceMotion ? .identity : .numericText())
-                    .accessibilityHidden(model.isInterruptingScan)
-            }
-            OperationProgressBar(progress: model.isInterruptingScan ? nil : Double(model.scanProgress) / 100)
-                .accessibilityLabel(model.isInterruptingScan ? ScanInterruptionView.title : "Cleanup scan")
-                .accessibilityValue(model.isInterruptingScan ? "" : "\(model.scanProgress)%")
-        }
+        PageProgressView(
+            title: "Scanning for cleanup items",
+            detail: "\(model.scanProgress)%",
+            progress: Double(model.scanProgress) / 100,
+            isInterrupting: model.isInterruptingScan
+        )
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.scanProgress)
-        .frame(maxWidth: 380)
-        .operationPageLayout()
     }
 
     private func resultEntrance(index: Int) -> ResultEntrance {

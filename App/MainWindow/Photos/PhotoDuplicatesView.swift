@@ -26,7 +26,7 @@ struct PhotoDuplicatesView: View {
     var body: some View {
         Group {
             if model.photoLibraryAccess == nil || model.isRequestingPhotoAccess {
-                ProgressView("Checking Photos access…")
+                PageProgressView(title: "Checking Photos access")
             } else if let reason = model.photoLibraryAccess?.unavailableReason {
                 unavailable(reason, canRetryScan: false)
             } else if model.isSweepingPhotos {
@@ -64,35 +64,29 @@ struct PhotoDuplicatesView: View {
     // MARK: - States
 
     private var intro: some View {
-        DuplicatePageState(
+        PageState(
             title: "Find duplicate photos",
             symbol: "photo.on.rectangle.angled",
             detail: "Compares photos by appearance. Scans can download missing previews when photo downloads are enabled in Settings > Advanced. "
                 + "Opening a photo preview can download its original."
         ) {
             Button { model.startPhotoSweep() } label: {
-                DuplicatePageActionLabel(title: "Find Duplicates")
+                Text("Find Duplicates")
             }
-            .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+            .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
             .controlSize(.large)
-            .scanActionAnchor()
             .disabled(!model.canAccessPhotos || model.isBusyWithDisk)
         }
     }
 
     private var sweeping: some View {
-        ScanProgressPage {
-            intro
-        } progress: { actionBottom in
-            PageProgressView(
-                title: "Scanning for duplicate photos",
-                detail: "\(progressLabel)\nThis may take a few minutes.",
-                progress: Double(model.photoProgress?.percent ?? 0) / 100,
-                isInterrupting: model.isInterruptingPhotoSweep,
-                onStop: { model.cancelPhotoSweep() },
-                actionBottom: actionBottom
-            )
-        }
+        PageProgressView(
+            title: "Scanning for duplicate photos",
+            detail: "\(progressLabel)\nThis may take a few minutes.",
+            progress: Double(model.photoProgress?.percent ?? 0) / 100,
+            isInterrupting: model.isInterruptingPhotoSweep,
+            onStop: { model.cancelPhotoSweep() }
+        )
     }
 
     private var progressLabel: String {
@@ -110,7 +104,7 @@ struct PhotoDuplicatesView: View {
     }
 
     private func unavailable(_ reason: String, canRetryScan: Bool = true) -> some View {
-        DuplicatePageState(
+        PageState(
             title: canRetryScan ? "Photos are unavailable" : "Allow Photos access",
             symbol: "exclamationmark.triangle",
             detail: reason,
@@ -123,9 +117,9 @@ struct PhotoDuplicatesView: View {
                     NSWorkspace.shared.open(url)
                 }
             } label: {
-                DuplicatePageActionLabel(title: canRetryScan ? "Try Again" : "Open Settings")
+                Text(canRetryScan ? "Try Again" : "Open Settings")
             }
-            .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+            .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
             .controlSize(.large)
             .disabled(canRetryScan && (!model.canAccessPhotos || model.isBusyWithDisk))
         }

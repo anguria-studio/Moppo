@@ -37,18 +37,11 @@ struct CleanupHistoryView: View {
             } else if items.isEmpty {
                 emptyState
             } else if visibleItems.isEmpty {
-                Group {
-                    if query.isEmpty {
-                        ContentUnavailableView(
-                            "No matching items",
-                            systemImage: filter.symbol,
-                            description: Text("No history items match this filter.")
-                        )
-                    } else {
-                        ContentUnavailableView.search(text: query)
-                    }
-                }
-                .operationPageLayout()
+                PageState(
+                    title: query.isEmpty ? "No matching items" : "No Results for “\(query)”",
+                    symbol: query.isEmpty ? filter.symbol : "magnifyingglass",
+                    detail: query.isEmpty ? "No history items match this filter." : "No history items match this search."
+                )
             } else {
                 historyTable
             }
@@ -158,12 +151,10 @@ struct CleanupHistoryView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("No cleanup history", systemImage: "clock")
-        } description: {
-            Text("Enable Put Back receipts in Settings to record removed items and failures.")
-        }
-        .operationPageLayout()
+        PageState(
+            title: "No cleanup history", symbol: "clock",
+            detail: "Enable Put Back receipts in Settings to record removed items and failures."
+        )
     }
 
     private var items: [CleanupHistoryItem] {
