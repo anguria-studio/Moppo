@@ -46,7 +46,7 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
                 Text(title)
             } icon: {
                 icon()
-                    .frame(width: PageStateMetrics.iconSize, height: PageStateMetrics.iconSize)
+                    .frame(minWidth: PageStateMetrics.iconSize, minHeight: PageStateMetrics.iconSize)
             }
             .labelStyle(PageStateLabelStyle())
         } description: {
@@ -140,6 +140,7 @@ struct PageCompletionView<Detail: View, Actions: View>: View {
 
 enum PageStateMetrics {
     static let iconSize: CGFloat = 44
+    static let mascotSize: CGFloat = 88
     static let titleSize: CGFloat = 18
     static let iconTitleSpacing: CGFloat = 20
     static let titleBottomPadding: CGFloat = 6

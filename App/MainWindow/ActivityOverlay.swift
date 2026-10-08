@@ -61,7 +61,7 @@ struct ActivityOverlay: View {
     var body: some View {
         ZStack {
             Token.pageBackground
-            PageProgressView(title: activity.title, detail: activity.detail)
+            PageProgressView(title: activity.title, detail: activity.detail, icon: activity.progressIcon)
         }
         // The colour fill is what catches the clicks. Without a content shape the
         // ZStack would let a click on the transparent card margins fall through.
@@ -87,4 +87,22 @@ struct ActivityOverlay: View {
         ActivityOverlay(activity: .emptyingTrash(itemCount: 214, totalBytes: 9_040_000_000))
     }
     .frame(width: 760, height: 480)
+}
+
+extension AppModel.Activity {
+    /// Moppo appears for deletions and for waits that can take a while.
+    /// Restoring an item and uninstalling one app are usually short, so they keep the hourglass.
+    var progressIcon: PageProgressView.Icon {
+        switch self {
+        case .cleaningUp(_, let bytes),
+             .emptyingTrash(_, let bytes),
+             .removingDuplicateFiles(_, let bytes),
+             .removingStorageItems(_, let bytes):
+            return .deletion(bytes: bytes)
+        case .reviewingStorageItems, .waitingForApplicationsToQuit:
+            return .mascot(.search)
+        case .restoringTrashItem, .uninstalling:
+            return .hourglass
+        }
+    }
 }
