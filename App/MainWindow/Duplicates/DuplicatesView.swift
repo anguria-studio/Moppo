@@ -12,9 +12,13 @@ struct DuplicatesView: View {
                         title: kind.title,
                         symbol: kind == .files ? "doc.on.doc" : "photo.on.rectangle",
                         isSelected: model.duplicateKind == kind
-                    ) { model.duplicateKind = kind }
+                    ) {
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) { model.duplicateKind = kind }
+                    }
                 }
-                if (model.duplicateKind == .photos && model.canAccessPhotos && model.photoUnavailable == nil)
+                if (model.duplicateKind == .photos && model.photoLibraryAccess?.canSweep == true && model.photoUnavailable == nil)
                     || (model.duplicateKind == .files && model.fileDuplicateResults != nil) {
                     Rectangle()
                         .fill(Token.Fill.controlBorder)
@@ -22,6 +26,7 @@ struct DuplicatesView: View {
                         .padding(.horizontal, 8)
                     if model.duplicateKind == .photos {
                         PhotoSimilarityPicker(model: model)
+                            .disabled(model.isRequestingPhotoAccess)
                     } else {
                         FileDuplicateMinimumPicker(model: model)
                     }
@@ -43,6 +48,9 @@ struct DuplicatesView: View {
                 case .photos: PhotoDuplicatesView(model: model)
                 }
             }
+            // Replace the whole tab so shared page states cannot retain text from the previous tab.
+            .id(model.duplicateKind)
+            .transition(.identity)
             .allowsHitTesting(model.removalCompletion?.destination != .duplicates)
             .accessibilityHidden(model.removalCompletion?.destination == .duplicates)
             .overlay {

@@ -86,17 +86,13 @@ struct AppUninstallerView: View {
                         } else if let applications = model.installedApplications {
                             let shown = visibleApplications(applications)
                             if shown.isEmpty {
-                                ContentUnavailableView {
-                                    Label(
-                                        applications.isEmpty ? "No Applications" : "No Results",
-                                        systemImage: "xmark.app"
-                                    )
-                                } description: {
-                                    Text(applications.isEmpty
+                                PageState(
+                                    title: applications.isEmpty ? "No Applications" : "No Results",
+                                    symbol: "xmark.app",
+                                    detail: applications.isEmpty
                                         ? "Nothing removable was found in /Applications or ~/Applications."
-                                        : "No application matches “\(searchText)”.")
-                                }
-                                .operationPageLayout()
+                                        : "No application matches “\(searchText)”."
+                                )
                             } else {
                                 LazyVGrid(
                                     columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 10)],
@@ -188,12 +184,10 @@ struct AppUninstallerView: View {
     private var leftoversList: some View {
         if let leftovers = model.applicationLeftovers {
             if leftovers.groups.isEmpty {
-                ContentUnavailableView {
-                    Label("No Leftovers", systemImage: "checkmark.circle")
-                } description: {
-                    Text("Nothing was found that a removed application left behind.")
-                }
-                .operationPageLayout()
+                PageState(
+                    title: "No Leftovers", symbol: "checkmark.circle",
+                    detail: "Nothing was found that a removed application left behind."
+                )
             } else {
                 // Never ticked for the user: whether a removed application's
                 // settings matter depends on whether it is coming back.
@@ -794,32 +788,23 @@ struct AppUninstallerView: View {
         let failed = outcome.failed
         let applicationFailed = model.appUninstallError != nil && outcome.removedCount == 0
 
-        return VStack(spacing: 18) {
-            CompletionMark(isSuccess: failed.isEmpty && !applicationFailed)
-                .padding(.bottom, 4)
-            Text(applicationFailed ? "Could not uninstall \(applicationName)" : "\(applicationName) uninstalled")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Token.Text.primary)
-            Text("Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
-                .font(.mcBody)
-                .foregroundStyle(Token.Text.secondary)
-
-            if let error = model.appUninstallError {
-                Text(error)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.textColor(.orange))
-                    .multilineTextAlignment(.center)
-                    .frame(width: 420)
-            } else if !failed.isEmpty {
-                Text("\(failed.count) related \(failed.count == 1 ? "item remains" : "items remain") on disk.")
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.textColor(.orange))
+        return PageCompletionView(
+            title: applicationFailed ? "Could not uninstall \(applicationName)" : "\(applicationName) uninstalled",
+            isSuccess: failed.isEmpty && !applicationFailed
+        ) {
+            VStack(spacing: 12) {
+                Text("Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                if let error = model.appUninstallError {
+                    Text(error)
+                        .foregroundStyle(Token.textColor(.orange))
+                } else if !failed.isEmpty {
+                    Text("\(failed.count) related \(failed.count == 1 ? "item remains" : "items remain") on disk.")
+                        .foregroundStyle(Token.textColor(.orange))
+                }
             }
-
+        } actions: {
             completionActions
-                .padding(.top, 8)
         }
-        .operationPageLayout()
     }
 
     // MARK: Several applications
@@ -943,53 +928,44 @@ struct AppUninstallerView: View {
     private func batchDoneState(_ outcome: AppModel.BatchUninstallOutcome) -> some View {
         let clean = outcome.setAside.isEmpty && outcome.survivorCount == 0
         let count = outcome.uninstalled.count
-        return ScrollView {
-            VStack(spacing: 18) {
-                CompletionMark(isSuccess: clean && count > 0)
-                    .padding(.bottom, 4)
-                Text(count == 0
-                    ? "No applications were uninstalled"
-                    : "\(count) \(count == 1 ? "application" : "applications") uninstalled")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Token.Text.primary)
+        return PageCompletionView(
+            title: count == 0
+                ? "No applications were uninstalled"
+                : "\(count) \(count == 1 ? "application" : "applications") uninstalled",
+            isSuccess: clean && count > 0
+        ) {
+            VStack(spacing: 12) {
                 if count > 0 {
                     Text("\(ListFormatter.localizedString(byJoining: outcome.uninstalled)). "
                         + "Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
-                        .font(.mcBody)
-                        .foregroundStyle(Token.Text.secondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 460)
                 }
                 if outcome.survivorCount > 0 {
                     Text("\(outcome.survivorCount) related "
                         + (outcome.survivorCount == 1 ? "item remains" : "items remain")
                         + " on disk.")
-                        .font(.mcSubtitle)
                         .foregroundStyle(Token.textColor(.orange))
                 }
                 if !outcome.setAside.isEmpty {
                     setAsideBox(outcome.setAside, title: "Still installed")
-                        .frame(maxWidth: 460)
                 }
-                completionActions
-                    .padding(.top, 8)
             }
-            .operationPageLayout()
+        } actions: {
+            completionActions
         }
     }
 
     private var completionActions: some View {
-        HStack(spacing: 12) {
+        PageStateActions {
             Button("Continue") {
                 model.resetAppUninstall()
                 model.loadInstalledApplications()
             }
-            .buttonStyle(PageActionButtonStyle(tint: .white, foreground: .black))
+            .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
             Button("View Dashboard") {
                 model.resetAppUninstall()
                 model.view = .dashboard
             }
-            .buttonStyle(PageActionButtonStyle())
+            .buttonStyle(PageStateButtonStyle())
         }
     }
 

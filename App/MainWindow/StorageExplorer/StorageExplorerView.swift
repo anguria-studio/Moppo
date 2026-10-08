@@ -124,10 +124,9 @@ struct StorageExplorerView: View {
         } else if model.isLoading {
             loadingView
         } else if model.needsRefresh {
-            ContentUnavailableView(
-                "Waiting for the Current Operation",
-                systemImage: "hourglass",
-                description: Text("Finish or stop the current operation to measure this folder again.")
+            PageState(
+                title: "Waiting for the Current Operation", symbol: "hourglass",
+                detail: "Finish or stop the current operation to measure this folder again."
             )
         } else if model.wasCancelled {
             cancelledView
@@ -173,6 +172,7 @@ struct StorageExplorerView: View {
             .disabled(isMeasurementBlocked || model.isLoading)
 
             locationMenu
+                .buttonStyle(PageActionButtonStyle())
                 .fixedSize()
         }
     }
@@ -229,15 +229,13 @@ struct StorageExplorerView: View {
     }
 
     private var startView: some View {
-        ContentUnavailableView {
-            Label("Explore storage", systemImage: "internaldrive")
-        } description: {
-            Text("Choose a folder or volume. Moppo will measure each item on disk.")
-        } actions: {
+        PageState(
+            title: "Explore storage", symbol: "internaldrive",
+            detail: "Choose a folder or volume. Moppo will measure each item on disk."
+        ) {
             locationMenu
-                .controlSize(.large)
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
         }
-        .pageStateLayout()
     }
 
     private var loadingView: some View {
@@ -256,49 +254,40 @@ struct StorageExplorerView: View {
     }
 
     private func errorView(_ error: StorageExplorerError) -> some View {
-        ContentUnavailableView {
-            Label("The folder could not be read", systemImage: "folder.badge.questionmark")
-        } description: {
-            Text(errorDescription(error))
-        } actions: {
-            HStack(spacing: 10) {
+        PageState(
+            title: "The folder could not be read", symbol: "folder.badge.questionmark",
+            detail: errorDescription(error)
+        ) {
+            PageStateActions {
                 Button("Try Again") { model.refresh() }
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+                    .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
                 Button("Choose Another Folder") { model.chooseFolder() }
-                    .buttonStyle(PageActionButtonStyle())
+                    .buttonStyle(PageStateButtonStyle())
             }
         }
-        .operationPageLayout()
     }
 
     private var cancelledView: some View {
-        ContentUnavailableView {
-            Label("Measurement stopped", systemImage: "stop.circle")
-        } description: {
-            Text("Measure this folder again or choose another location.")
-        } actions: {
-            HStack(spacing: 10) {
+        PageState(
+            title: "Measurement stopped", symbol: "stop.circle",
+            detail: "Measure this folder again or choose another location."
+        ) {
+            PageStateActions {
                 Button("Measure Again") { model.refresh() }
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+                    .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
                 Button("Choose Another Folder") { model.chooseFolder() }
-                    .buttonStyle(PageActionButtonStyle())
+                    .buttonStyle(PageStateButtonStyle())
             }
         }
-        .operationPageLayout()
     }
 
     private var emptyView: some View {
-        VStack(spacing: 18) {
-            ScanCompletionView(
-                title: "No files found",
-                detail: "Choose another folder or return to the previous folder.",
-                animate: animateEmptyResult
-            )
-            .fixedSize(horizontal: false, vertical: true)
+        PageCompletionView(title: "No files found", animate: animateEmptyResult) {
+            Text("Choose another folder or return to the previous folder.")
+        } actions: {
             locationMenu
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
         }
-        .padding(.bottom, 32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var table: some View {
@@ -474,7 +463,6 @@ struct StorageExplorerView: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(PageActionButtonStyle())
         .menuIndicator(.hidden)
         .disabled(isMeasurementBlocked || model.isLoading)
     }
@@ -664,12 +652,10 @@ private struct StorageTreemapView: View {
                 }
             }
         } else {
-            ContentUnavailableView {
-                Label("No allocated space to map", systemImage: "square.grid.3x3")
-            } description: {
-                Text("Switch to List to see items that use 0 B.")
-            }
-            .operationPageLayout()
+            PageState(
+                title: "No allocated space to map", symbol: "square.grid.3x3",
+                detail: "Switch to List to see items that use 0 B."
+            )
         }
     }
 

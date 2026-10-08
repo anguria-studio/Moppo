@@ -25,8 +25,9 @@ struct PhotoDuplicatesView: View {
 
     var body: some View {
         Group {
-            if model.photoLibraryAccess == nil || model.isRequestingPhotoAccess {
-                ProgressView("Checking Photos access…")
+            // Keep known content visible while a repeat access check runs.
+            if model.photoLibraryAccess == nil {
+                PageProgressView(title: "Checking Photos access")
             } else if let reason = model.photoLibraryAccess?.unavailableReason {
                 unavailable(reason, canRetryScan: false)
             } else if model.isSweepingPhotos {
@@ -42,7 +43,7 @@ struct PhotoDuplicatesView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .disabled(model.isDeletingPhotos)
+        .disabled(model.isDeletingPhotos || model.isRequestingPhotoAccess)
         .operationResultAnimation(isRunning: model.isSweepingPhotos)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
@@ -64,38 +65,29 @@ struct PhotoDuplicatesView: View {
     // MARK: - States
 
     private var intro: some View {
-        // The same system empty state the Scanner uses, so the app has one idle
-        // screen rather than separate hand-drawn variations.
-        ContentUnavailableView {
-            Label("Find duplicate photos", systemImage: "photo.on.rectangle.angled")
-        } description: {
-            Text("Compares photos by appearance. Scans can download missing previews when photo downloads are enabled in Settings > Advanced. "
-                 + "Opening a photo preview can download its original.")
-        } actions: {
-            Button("Find Duplicates") { model.startPhotoSweep() }
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
-                .controlSize(.large)
-                .scanActionAnchor()
-                // The sweep refuses to start over another disk walk; say so here
-                // rather than swallowing the click.
-                .disabled(!model.canAccessPhotos || model.isBusyWithDisk)
+        PageState(
+            title: "Find duplicate photos",
+            symbol: "photo.on.rectangle.angled",
+            detail: "Compares photos by appearance. Scans can download missing previews when photo downloads are enabled in Settings > Advanced. "
+                + "Opening a photo preview can download its original."
+        ) {
+            Button { model.startPhotoSweep() } label: {
+                Text("Find Duplicates")
+            }
+            .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+            .controlSize(.large)
+            .disabled(!model.canAccessPhotos || model.isBusyWithDisk)
         }
-        .pageStateLayout()
     }
 
     private var sweeping: some View {
-        ScanProgressPage {
-            intro
-        } progress: { actionBottom in
-            PageProgressView(
-                title: "Scanning for duplicate photos",
-                detail: "\(progressLabel)\nThis may take a few minutes.",
-                progress: Double(model.photoProgress?.percent ?? 0) / 100,
-                isInterrupting: model.isInterruptingPhotoSweep,
-                onStop: { model.cancelPhotoSweep() },
-                actionBottom: actionBottom
-            )
-        }
+        PageProgressView(
+            title: "Scanning for duplicate photos",
+            detail: "\(progressLabel)\nThis may take a few minutes.",
+            progress: Double(model.photoProgress?.percent ?? 0) / 100,
+            isInterrupting: model.isInterruptingPhotoSweep,
+            onStop: { model.cancelPhotoSweep() }
+        )
     }
 
     private var progressLabel: String {
@@ -113,27 +105,24 @@ struct PhotoDuplicatesView: View {
     }
 
     private func unavailable(_ reason: String, canRetryScan: Bool = true) -> some View {
-        centred {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 30))
-                .foregroundStyle(Token.textColor(.orange))
-            Text(reason)
-                .font(.mcBody)
-                .foregroundStyle(Token.Text.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-            if canRetryScan {
-                Button("Try Again") { model.startPhotoSweep() }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(!model.canAccessPhotos || model.isBusyWithDisk)
-            } else {
-                Button("Open Photos Privacy Settings") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos") {
-                        NSWorkspace.shared.open(url)
-                    }
+        PageState(
+            title: canRetryScan ? "Photos are unavailable" : "Allow Photos access",
+            symbol: "exclamationmark.triangle",
+            detail: reason,
+            iconColor: Token.textColor(.orange)
+        ) {
+            Button {
+                if canRetryScan {
+                    model.startPhotoSweep()
+                } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos") {
+                    NSWorkspace.shared.open(url)
                 }
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+            } label: {
+                Text(canRetryScan ? "Try Again" : "Open Settings")
             }
+            .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+            .controlSize(.large)
+            .disabled(canRetryScan && (!model.canAccessPhotos || model.isBusyWithDisk))
         }
     }
 
@@ -392,11 +381,6 @@ struct PhotoDuplicatesView: View {
         } else {
             model.photoSelection.formUnion(ids)
         }
-    }
-
-    private func centred<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        VStack(spacing: 18) { content() }
-            .operationPageLayout()
     }
 }
 

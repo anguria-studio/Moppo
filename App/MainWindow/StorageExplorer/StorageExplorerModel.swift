@@ -22,6 +22,7 @@ final class StorageExplorerModel {
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanGeneration = 0
     @ObservationIgnored private var cachedSnapshots: [String: StorageExplorerSnapshot] = [:]
+    @ObservationIgnored private var cachedDirectoryIdentities: [String: String] = [:]
     @ObservationIgnored private var cacheOrder: [String] = []
     /// A row to select as soon as the folder holding it has been measured.
     ///
@@ -316,6 +317,12 @@ final class StorageExplorerModel {
     private func cachedSnapshot(for url: URL) -> StorageExplorerSnapshot? {
         let key = Self.cacheKey(for: url)
         guard let snapshot = cachedSnapshots[key] else { return nil }
+        guard let identity = FileIdentity.of(url), identity == cachedDirectoryIdentities[key],
+              FileManager.default.isReadableFile(atPath: url.path),
+              FileManager.default.isExecutableFile(atPath: url.path) else {
+            removeCachedSnapshot(for: url)
+            return nil
+        }
         cacheOrder.removeAll { $0 == key }
         cacheOrder.append(key)
         return snapshot
@@ -324,22 +331,27 @@ final class StorageExplorerModel {
     private func store(_ snapshot: StorageExplorerSnapshot) {
         let key = Self.cacheKey(for: snapshot.directory)
         cachedSnapshots[key] = snapshot
+        cachedDirectoryIdentities[key] = FileIdentity.of(snapshot.directory)
         cacheOrder.removeAll { $0 == key }
         cacheOrder.append(key)
 
         while cacheOrder.count > Self.cacheLimit {
-            cachedSnapshots.removeValue(forKey: cacheOrder.removeFirst())
+            let oldest = cacheOrder.removeFirst()
+            cachedSnapshots.removeValue(forKey: oldest)
+            cachedDirectoryIdentities.removeValue(forKey: oldest)
         }
     }
 
     private func clearCache() {
         cachedSnapshots.removeAll()
+        cachedDirectoryIdentities.removeAll()
         cacheOrder.removeAll()
     }
 
     private func removeCachedSnapshot(for url: URL) {
         let key = Self.cacheKey(for: url)
         cachedSnapshots.removeValue(forKey: key)
+        cachedDirectoryIdentities.removeValue(forKey: key)
         cacheOrder.removeAll { $0 == key }
     }
 

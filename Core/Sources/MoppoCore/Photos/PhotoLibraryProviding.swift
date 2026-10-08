@@ -67,3 +67,7 @@ public enum PhotoSweepUnavailable: Error, Sendable, Equatable {
     /// now would compare a photo against copies that have not arrived yet.
     case librarySyncing(assetCount: Int)
 }
+
+public enum PhotoDeletionUnavailable: Error, Sendable, Equatable {
+    case missingAssets
+}

@@ -766,60 +766,6 @@ struct OperationPresentationDuration: Sendable {
     }
 }
 
-extension View {
-    /// Places page states below the controls with equal spacing and horizontal centering.
-    func pageStateLayout() -> some View {
-        fixedSize(horizontal: false, vertical: true)
-            .padding(32)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-}
-
-private struct ScanActionBounds: PreferenceKey {
-    static var defaultValue: Anchor<CGRect>? { nil }
-
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = nextValue() ?? value
-    }
-}
-
-extension View {
-    /// Marks the start action so the Stop button can use the same position.
-    func scanActionAnchor() -> some View {
-        anchorPreference(key: ScanActionBounds.self, value: .bounds) { $0 }
-    }
-}
-
-/// Measures the intro without showing it while the scan runs.
-struct ScanProgressPage<Intro: View, Progress: View>: View {
-    @ViewBuilder var intro: () -> Intro
-    @ViewBuilder var progress: (CGFloat?) -> Progress
-
-    var body: some View {
-        intro()
-            .hidden()
-            .disabled(true)
-            .accessibilityHidden(true)
-            .overlayPreferenceValue(ScanActionBounds.self) { anchor in
-                GeometryReader { geometry in
-                    progress(anchor.map { geometry[$0].maxY })
-                }
-            }
-    }
-}
-
-extension View {
-    /// Keeps progress and results in one content area below the page controls.
-    func operationPageLayout(actionBottom: CGFloat? = nil) -> some View {
-        fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 32)
-            .padding(.top, 32)
-            .frame(maxWidth: .infinity, minHeight: actionBottom ?? 320, alignment: .bottom)
-            .padding(.bottom, 32)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-}
-
 /// Confirms a stop request in buttons and status controls.
 struct ScanInterruptionView: View {
     static let title = "Interrupting Scan"
@@ -843,36 +789,29 @@ struct PageProgressView: View {
     var progress: Double? = nil
     var isInterrupting = false
     var onStop: (() -> Void)? = nil
-    var actionBottom: CGFloat? = nil
-
-    var body: some View {
-        content.operationPageLayout(actionBottom: actionBottom)
-    }
 
     private var displayedTitle: String { isInterrupting ? ScanInterruptionView.title : title }
 
-    private var content: some View {
-        VStack(spacing: 18) {
-            Text(displayedTitle)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Token.Text.primary)
-            if let detail {
-                Text(detail)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.secondary)
-                    .multilineTextAlignment(.center)
-                    .opacity(isInterrupting ? 0 : 1)
-                    .accessibilityHidden(isInterrupting)
+    var body: some View {
+        PageStateLayout(title: displayedTitle) {
+            PageStateSymbol(name: "hourglass")
+        } detail: {
+            VStack(spacing: 18) {
+                if let detail {
+                    Text(detail)
+                        .opacity(isInterrupting ? 0 : 1)
+                        .accessibilityHidden(isInterrupting)
+                }
+                OperationProgressBar(progress: isInterrupting ? nil : progress)
+                    .accessibilityLabel(displayedTitle)
             }
-            OperationProgressBar(progress: isInterrupting ? nil : progress)
-                .accessibilityLabel(displayedTitle)
+            .frame(maxWidth: .infinity)
+        } actions: {
             if let onStop {
                 Button(action: onStop) { Label("Stop", systemImage: "stop.fill") }
-                    .buttonStyle(PageActionButtonStyle())
                     .disabled(isInterrupting)
             }
         }
-        .frame(maxWidth: 380)
     }
 }
 
@@ -933,49 +872,39 @@ struct ScanCompletionView: View {
     var animate = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            CompletionMark(animate: animate)
-                .padding(.bottom, 4)
-            Text(title)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Token.Text.primary)
-            if let detail {
-                Text(detail)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.secondary)
-                    .multilineTextAlignment(.center)
-            }
+        PageCompletionView(title: title, animate: animate) {
+            if let detail { Text(detail) }
+        } actions: {
+            EmptyView()
         }
-        .frame(maxWidth: 420)
-        .operationPageLayout()
-        .accessibilityElement(children: .contain)
     }
 }
 
 struct CompletionMark: View {
     var animate = true
     var isSuccess = true
+    var size: CGFloat = 60
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drawn = false
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 15)
+            RoundedRectangle(cornerRadius: size / 4)
                 .fill(Token.color(isSuccess ? .green : .orange).opacity(0.12))
-            RoundedRectangle(cornerRadius: 15)
+            RoundedRectangle(cornerRadius: size / 4)
                 .strokeBorder(Token.textColor(isSuccess ? .green : .orange).opacity(0.3), lineWidth: 1)
             if isSuccess {
                 CheckmarkStroke()
                     .trim(from: 0, to: drawn || !animate ? 1 : 0)
-                    .stroke(Token.textColor(.green), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                    .padding(14)
+                    .stroke(Token.textColor(.green), style: StrokeStyle(lineWidth: size / 20, lineCap: .round, lineJoin: .round))
+                    .padding(size * 14 / 60)
             } else {
                 Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 26, weight: .medium))
+                    .font(.system(size: size * 26 / 60, weight: .medium))
                     .foregroundStyle(Token.textColor(.orange))
             }
         }
-        .frame(width: 60, height: 60)
+        .frame(width: size, height: size)
         .scaleEffect(drawn || !animate || reduceMotion ? 1 : 0.94)
         .opacity(drawn || !animate ? 1 : 0)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: drawn)

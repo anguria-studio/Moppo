@@ -36,36 +36,29 @@ struct FileDuplicatesView: View {
     }
 
     private var intro: some View {
-        ContentUnavailableView {
-            Label("Find duplicate files", systemImage: "doc.on.doc")
-        } description: {
-            // The skips are said up front. "Package" means nothing to most people,
-            // and Pages, Numbers and Keynote documents are packages — a duplicate
-            // scan that is silent about them reads as having checked them.
-            Text("Select one or more folders. Moppo verifies file contents and keeps "
-                 + "one copy in each set. Hidden files, cloud-only files and documents saved "
-                 + "as packages, such as Pages and Keynote files, are not compared.")
-        } actions: {
-            scanControls(buttonLabel: "Choose Folders")
+        PageState(
+            title: "Find duplicate files",
+            symbol: "doc.on.doc",
+            detail: "Select one or more folders. Moppo verifies file contents and keeps "
+                + "one copy in each set. Hidden files, cloud-only files and documents saved "
+                + "as packages, such as Pages and Keynote files, are not compared."
+        ) {
+            Button("Choose Folders", systemImage: "folder") { model.chooseFileDuplicateFolders() }
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+                .disabled(model.isBusyWithDisk)
         }
-        .pageStateLayout()
     }
 
     private var scanning: some View {
-        ScanProgressPage {
-            intro
-        } progress: { actionBottom in
-            PageProgressView(
-                title: "Scanning for duplicate files",
-                detail: progressLabel,
-                progress: model.fileDuplicateProgress.flatMap {
-                    $0.total > 0 ? Double($0.completed) / Double($0.total) : nil
-                },
-                isInterrupting: model.isInterruptingFileDuplicateScan,
-                onStop: { model.cancelFileDuplicateScan() },
-                actionBottom: actionBottom
-            )
-        }
+        PageProgressView(
+            title: "Scanning for duplicate files",
+            detail: progressLabel,
+            progress: model.fileDuplicateProgress.flatMap {
+                $0.total > 0 ? Double($0.completed) / Double($0.total) : nil
+            },
+            isInterrupting: model.isInterruptingFileDuplicateScan,
+            onStop: { model.cancelFileDuplicateScan() }
+        )
     }
 
     private var progressLabel: String {
@@ -85,12 +78,11 @@ struct FileDuplicatesView: View {
     @ViewBuilder
     private var nothingFound: some View {
         if hasFilteredResults {
-            ContentUnavailableView {
-                Label("No duplicates match this size", systemImage: "line.3.horizontal.decrease")
-            } description: {
-                Text("Choose a smaller minimum file size to show more results.")
-            }
-            .operationPageLayout()
+            PageState(
+                title: "No duplicates match this size",
+                symbol: "line.3.horizontal.decrease",
+                detail: "Choose a smaller minimum file size to show more results."
+            )
         } else {
             ScanCompletionView(
                 title: "No duplicate files found",
@@ -138,25 +130,6 @@ struct FileDuplicatesView: View {
             }
             .padding(.horizontal, Token.Size.pageGutter)
             .padding(.vertical, 14)
-        }
-    }
-
-    @ViewBuilder
-    private func scanControls(buttonLabel: String) -> some View {
-        HStack(spacing: 10) {
-            FileDuplicateMinimumPicker(model: model)
-
-            Button { model.chooseFileDuplicateFolders() } label: {
-                Text(buttonLabel)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.horizontal, 8)
-            }
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
-                .controlSize(.large)
-                .fixedSize(horizontal: true, vertical: false)
-                .scanActionAnchor()
-                .disabled(model.isBusyWithDisk)
         }
     }
 
@@ -298,7 +271,7 @@ struct FileDuplicatesView: View {
     }
 }
 
-/// Uses the same file size menu before and after a scan.
+/// Filters completed scan results by file size.
 struct FileDuplicateMinimumPicker: View {
     @Bindable var model: AppModel
 

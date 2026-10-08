@@ -145,6 +145,9 @@ public actor PhotoDuplicateService {
             onProgress?(Progress(stage: .fetching, percent: 0))
             let assets = try await library.fetchAssets()
             try Task.checkCancellation()
+            let accessAfterFetch = await library.authorize()
+            try Task.checkCancellation()
+            guard accessAfterFetch.canSweep else { throw PhotoSweepUnavailable.access(accessAfterFetch) }
 
             if minimumAssets > 0, assets.count < minimumAssets {
                 throw PhotoSweepUnavailable.librarySyncing(assetCount: assets.count)
@@ -268,6 +271,10 @@ public actor PhotoDuplicateService {
             // cancellation rather than presenting them as a finished sweep.
             try Task.checkCancellation()
 
+            let finalAccess = await library.authorize()
+            try Task.checkCancellation()
+            guard finalAccess.canSweep else { throw PhotoSweepUnavailable.access(finalAccess) }
+
             // Done only now: this used to fire before comparing, so the bar touched
             // 100 and then fell back for the longest phase of a cached sweep.
             onProgress?(Progress(
@@ -381,6 +388,10 @@ public actor PhotoDuplicateService {
     /// whole group — including its keeper — by passing the wrong property.
     public func delete(assetIDs: [String]) async throws {
         guard !assetIDs.isEmpty else { return }
+        try Task.checkCancellation()
+        let access = await library.authorize()
+        try Task.checkCancellation()
+        guard access.canSweep else { throw PhotoSweepUnavailable.access(access) }
         try await library.delete(assetIDs: assetIDs)
         // Keep later grouping results consistent with the completed deletion.
         let deleted = Set(assetIDs)

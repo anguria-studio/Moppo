@@ -45,23 +45,17 @@ struct TrashView: View {
     }
 
     private var unreadableNote: some View {
-        ContentUnavailableView {
-            Label("The Trash could not be read", systemImage: "trash.slash")
-        } description: {
-            // This is the system Trash — the same one Finder shows — but reading it
-            // is gated behind Full Disk Access. Say how to fix it, per the same rule
-            // that gave Docker's disabled row its "start it to measure" subtitle.
-            Text("This is the same Trash Finder shows, but macOS only lets apps with "
-                 + "Full Disk Access look inside it. Grant access in System Settings "
-                 + "and come back.")
-        } actions: {
+        PageState(
+            title: "The Trash could not be read", symbol: "trash.slash",
+            detail: "This is the same Trash Finder shows, but macOS only lets apps with "
+                + "Full Disk Access look inside it. Grant access in System Settings "
+                + "and come back."
+        ) {
             Button("Open System Settings") {
                 let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
                 NSWorkspace.shared.open(url)
             }
-            .buttonStyle(PageActionButtonStyle())
         }
-        .operationPageLayout()
     }
 }
 
@@ -102,16 +96,12 @@ private struct TrashContent: View {
                             if summary.items.isEmpty {
                                 emptyNote
                             } else if visibleItems.isEmpty {
-                                // The list can be capped (`TrashService.summary(limit:)`), and
-                                // then "no match" is only true of the rows that were read.
-                                ContentUnavailableView {
-                                    Label("No Results for “\(query)”", systemImage: "magnifyingglass")
-                                } description: {
-                                    Text(summary.itemCount > summary.items.count
-                                         ? "Only the \(summary.items.count) largest items were searched."
-                                         : "No item in the Trash has that in its name.")
-                                }
-                                .operationPageLayout()
+                                PageState(
+                                    title: "No Results for “\(query)”", symbol: "magnifyingglass",
+                                    detail: summary.itemCount > summary.items.count
+                                        ? "Only the \(summary.items.count) largest items were searched."
+                                        : "No item in the Trash has that in its name."
+                                )
                             } else {
                                 // Finder's Bin also shows iCloud's Recently Deleted, which are cloud
                                 // records with no bytes on this disk. Saying so heads off "why does
@@ -214,16 +204,12 @@ private struct TrashContent: View {
     }
 
     private var emptyNote: some View {
-        ContentUnavailableView {
-            Label("The Trash is empty", systemImage: "trash")
-        } description: {
-            // "This app's trash" is a misreading worth preventing: it is ~/.Trash,
-            // the same one in Finder's Dock.
-            Text("This is the system Trash, the same one Finder shows. Items this "
-                 + "app moves here record their original location. You can put "
-                 + "them back.")
-        }
-        .operationPageLayout()
+        PageState(
+            title: "The Trash is empty", symbol: "trash",
+            detail: "This is the system Trash, the same one Finder shows. Items this "
+                + "app moves here record their original location. You can put "
+                + "them back."
+        )
     }
 }
 
