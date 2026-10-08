@@ -159,9 +159,7 @@ struct ScannerView: View {
                     .contentTransition(reduceMotion ? .identity : .numericText())
                     .accessibilityHidden(model.isInterruptingScan)
             }
-            ProgressView(value: model.isInterruptingScan ? nil : Double(model.scanProgress), total: 100)
-                .progressViewStyle(.linear)
-                .tint(Token.Text.primary)
+            OperationProgressBar(progress: model.isInterruptingScan ? nil : Double(model.scanProgress) / 100)
                 .accessibilityLabel(model.isInterruptingScan ? ScanInterruptionView.title : "Cleanup scan")
                 .accessibilityValue(model.isInterruptingScan ? "" : "\(model.scanProgress)%")
         }

@@ -495,9 +495,7 @@ struct MainWindow: View {
                     .foregroundStyle(Token.Text.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .tint(Token.Text.primary)
+                OperationProgressBar(progress: progress)
                     .frame(width: 60)
                     .accessibilityLabel(title)
                 Button(action: onStop) {

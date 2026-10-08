@@ -864,9 +864,7 @@ struct PageProgressView: View {
                     .opacity(isInterrupting ? 0 : 1)
                     .accessibilityHidden(isInterrupting)
             }
-            ProgressView(value: isInterrupting ? nil : progress)
-                .progressViewStyle(.linear)
-                .tint(Token.Text.primary)
+            OperationProgressBar(progress: isInterrupting ? nil : progress)
                 .accessibilityLabel(displayedTitle)
             if let onStop {
                 Button(action: onStop) { Label("Stop", systemImage: "stop.fill") }
