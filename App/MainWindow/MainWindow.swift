@@ -509,7 +509,7 @@ struct MainWindow: View {
             }
         }
         .padding(.leading, 14)
-        .padding(.trailing, 6)
+        .padding(.trailing, isInterrupting ? 14 : 6)
         .frame(height: 38)
         .background(Token.Fill.control, in: Capsule())
         .overlay {
