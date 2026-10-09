@@ -12,6 +12,9 @@ final class AppModel {
     /// previews and tests can build a model without a store.
     @ObservationIgnored var settings: SettingsStore?
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
+    let dashboard: DashboardModel
+    let recovery: RecoveryModel
+    @ObservationIgnored private lazy var lowDiskNotifications = LowDiskNotificationService()
     let operations: OperationCoordinator
     let photoDuplicates: PhotoDuplicatesModel
     let uninstaller: AppUninstallerModel
@@ -27,7 +30,10 @@ final class AppModel {
         settings: SettingsStore? = nil,
         launchAccess: LaunchAccess = .ready,
         hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
-        trashService: TrashService = TrashService(),
+        trashService: any TrashServicing = TrashService(),
+        historyReader: (any CleanupHistoryReading)? = nil,
+        dashboardService: any DashboardMeasuring = DashboardMeasurementService(),
+        dashboardPersistence: any DashboardPersisting = DashboardPersistence(),
         cleanupHistoryService: CleanupHistoryService = CleanupHistoryService(),
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
@@ -85,8 +91,11 @@ final class AppModel {
                 )
             }
         )
-        self.trashService = trashService
-        self.cleanupHistoryService = cleanupHistoryService
+        self.dashboard = DashboardModel(service: dashboardService, persistence: dashboardPersistence)
+        self.recovery = RecoveryModel(
+            operations: operations, trashService: trashService,
+            historyService: historyReader ?? CleanupHistoryReader(service: cleanupHistoryService)
+        )
         self.uninstaller = AppUninstallerModel(
             operations: operations,
             scanner: uninstallerScanner ?? AppUninstallerScanService(planner: appUninstallPlanner),
@@ -101,6 +110,26 @@ final class AppModel {
             }
         )
         self.storageExplorer = StorageExplorerModel(settings: settings)
+        dashboard.iCloudPlanBytes = settings?.iCloudPlan.bytes
+        dashboard.canLoad = { [weak self] in self?.isShowingWelcome == false }
+        dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
+        dashboard.hasLimitedAccess = { [weak self] in self?.launchAccess == .limited }
+        dashboard.onVolumeChanged = { [weak self] volume in
+            guard let self, let settings = self.settings else { return }
+            await self.lowDiskNotifications.observe(
+                freeBytes: volume.freeBytes, volumeName: volume.name, thresholdGB: settings.warnBelowGB
+            )
+        }
+        recovery.onEvent = { [weak self] event in self?.handleRecoveryEvent(event) }
+        recovery.refreshAfterMutation = { [weak self] mutation in
+            guard let self else { return }
+            switch mutation {
+            case .emptyTrash:
+                await self.dashboard.measureStorage(trigger: .removal)
+            case .putBack:
+                if self.checkDiskAccess(automatic: true) { await self.dashboard.measureStorage() }
+            }
+        }
         operations.hasOtherOperation = { [weak self] in
             guard let self else { return false }
             return self.storageExplorer.isLoading
@@ -131,7 +160,7 @@ final class AppModel {
         cleanupScheduler.canCheck = { [weak self] in
             self?.checkDiskAccess(automatic: true) ?? false
         }
-        cleanupScheduler.refreshVolume = { [weak self] in await self?.refreshVolumeInfo() }
+        cleanupScheduler.refreshVolume = { [weak self] in await self?.dashboard.refreshVolumeInfo() }
         cleanupScheduler.conditions = { [weak self, weak settings] in
             guard let self, let settings else { return nil }
             return AutomaticScanPolicy.Conditions(
@@ -341,23 +370,6 @@ final class AppModel {
               cleanupCompletion == nil, !isBusyWithDisk else { return }
         cleanup.startScan(refreshOverview: false)
     }
-
-    // MARK: - Data
-
-    var volume: VolumeInfo?
-    var breakdown: StorageBreakdown?
-    var snapshots: [SnapshotInfo] = []
-
-    var isLoadingBreakdown = false
-    /// The first Dashboard task has finished its complete refresh. Cached figures
-    /// may be restored before then, but they are only inputs to that refresh — not a
-    /// finished state to flash on screen for a moment before measurement begins.
-    private(set) var hasCompletedInitialDashboardLoad = false
-    var isDashboardLoading: Bool {
-        !hasCompletedInitialDashboardLoad || isLoadingBreakdown
-    }
-
-    var snapshotsExpanded = false
 
     // MARK: - Selection
 
@@ -599,9 +611,6 @@ final class AppModel {
         }
     }
 
-    var boot: SnapshotInfo? { snapshots.first(where: \.isBootSnapshot) }
-    var removableSnapshots: [SnapshotInfo] { snapshots.filter { !$0.isBootSnapshot } }
-
     /// Opens the Scanner on one of its filtered lists.
     ///
     /// The order matters: the filter is set before the view, so the Scanner draws
@@ -628,11 +637,13 @@ final class AppModel {
             storageExplorer.refreshIfNeeded()
         }
         cleanup.pruneVanishedEntries()
-        async let trash: Void = loadTrash()
+        async let trash: Void = recovery.loadTrash()
+        async let history: Void = recovery.loadCleanupHistory()
         // `removal` marks this measurement as the post-clean-up baseline, which is
         // what "since the last clean-up" reads and what the ring never thins away.
-        await measureStorage(trigger: .removal)
+        await dashboard.measureStorage(trigger: .removal)
         await trash
+        await history
     }
 
     /// What is left to say once a clean-up has finished, or nil when it did what
@@ -670,340 +681,12 @@ final class AppModel {
             || path.hasPrefix(library + "/Group Containers/")
     }
 
-    // MARK: - Cleanup history
-
-    private let cleanupHistoryService: CleanupHistoryService
-    var cleanupHistory: CleanupHistorySummary?
-    var isLoadingCleanupHistory = false
-
-    func loadCleanupHistory() async {
-        guard !isLoadingCleanupHistory else { return }
-        isLoadingCleanupHistory = true
-        let service = cleanupHistoryService
-        cleanupHistory = await Task.detached {
-            service.summary()
-        }.value
-        isLoadingCleanupHistory = false
-    }
-
-    // MARK: - Trash
-
-    private let trashService: TrashService
-    @ObservationIgnored private var trashLoadID: UUID?
-    var trashSummary: TrashSummary?
-    var selectedTrashItemID: TrashItem.ID?
-    private var pendingTrashReveal: CleanupHistoryItem?
-
-    func showInTrash(_ item: CleanupHistoryItem) {
-        guard item.state == .availableInTrash, item.trashedURL != nil else { return }
-        pendingTrashReveal = item
-        selectedTrashItemID = nil
-        trashSummary = nil
-        view = .trash
-    }
-
-    func loadTrash() async {
-        let loadID = UUID()
-        trashLoadID = loadID
-        // Load every item so sorting, search, and History links use the complete Trash.
-        let summary = try? await trashService.summary(limit: Int.max)
-        guard trashLoadID == loadID, !Task.isCancelled else { return }
-        trashSummary = summary
-        if let request = pendingTrashReveal, let url = request.trashedURL {
-            pendingTrashReveal = nil
-            if let item = trashSummary?.items.first(where: {
-                $0.url.standardizedFileURL == url.standardizedFileURL
-            }), let identity = request.trashedIdentity, FileIdentity.of(item.url) == identity {
-                selectedTrashItemID = item.id
-            } else if trashSummary != nil {
-                report("Item Not Found", "This item is no longer available in the Trash.")
-            }
-        }
-        if let selectedTrashItemID,
-           trashSummary?.items.contains(where: { $0.id == selectedTrashItemID }) != true {
-            self.selectedTrashItemID = nil
-        }
-    }
-
     /// Last measured size per category, for the Preferences › Categories rows.
     /// Absent until a scan has run — those rows show an em dash rather than `0 B`,
     /// which would claim a measurement that never happened.
     var categorySizes: [CategoryID: Int64] {
         guard let results = cleanup.scanResults else { return [:] }
         return Dictionary(uniqueKeysWithValues: results.categories.map { ($0.categoryID, $0.totalBytes) })
-    }
-
-    func emptyTrash() async {
-        guard !isBusyWithDisk else { return }
-        activeSheet = nil
-        removalCompletion = nil
-        var presentation = OperationPresentationDuration()
-        let emptying = Activity.emptyingTrash(
-            itemCount: trashSummary?.itemCount ?? 0,
-            totalBytes: trashSummary?.totalBytes ?? 0
-        )
-        activity = emptying
-        presentation.extend(toShow: emptying.progressIcon)
-        do {
-            let result = try await trashService.empty(privilegedFallback: true)
-            try? await presentation.wait()
-            removalCompletion = RemovalCompletion(
-                destination: .trash,
-                title: result.skipped == 0 ? "Trash emptied" : "Some items remain in Trash",
-                detail: result.skipped == 0
-                    ? "\(ByteFormatting.string(result.freedBytes)) recovered."
-                    : "\(result.skipped) \(result.skipped == 1 ? "item could" : "items could") not be removed.",
-                isSuccess: result.skipped == 0
-            )
-        } catch {
-            // Do not pretend. Name the remedy: this is what a denied read looks
-            // like, and the permission is the fix.
-            report(
-                "The Trash Could Not Be Read",
-                "Grant Moppo Full Disk Access in System Settings, Privacy & Security, "
-                    + "then try again."
-            )
-        }
-        // Re-read under the scrim, so the Trash never lifts it over rows that are
-        // gone. The disk walk runs after, on the Dashboard's own skeleton.
-        await loadTrash()
-        activity = nil
-        // Emptying the Trash frees space, so this measurement is a clean-up
-        // baseline like any other removal's.
-        await measureStorage(trigger: .removal)
-    }
-
-    func putBack(_ item: TrashItem) async {
-        guard !isBusyWithDisk else { return }
-        activity = .restoringTrashItem(name: item.name)
-        var restored = false
-        do {
-            // The row leaves the Trash list below, which is the whole report.
-            try await trashService.putBack(item)
-            restored = true
-            fileDuplicates.invalidateResults()
-            storageExplorer.invalidateCache()
-            cleanup.invalidateResults()
-        } catch TrashError.destinationOccupied {
-            report(
-                "\(item.name) Was Not Put Back",
-                "Something is already at the place it came from. "
-                    + "Move that aside, or drag this out of the Trash yourself."
-            )
-        } catch {
-            report("\(item.name) Was Not Put Back", "It is still in the Trash.")
-        }
-        await loadTrash()
-        await loadCleanupHistory()
-        activity = nil
-        if restored, checkDiskAccess(automatic: true) {
-            await measureStorage()
-        }
-    }
-
-    // MARK: - Loading
-
-    // MARK: - iCloud
-
-    private let iCloudService = ICloudStorageService()
-    /// Nil until measured, and nil again if iCloud Drive is not signed in — the card
-    /// disappears rather than rendering an empty account, which would read as "you
-    /// have nothing in iCloud".
-    var iCloudStorage: ICloudStorage?
-
-    /// The plan size the user set in Preferences, if any. macOS reports no such
-    /// figure, so without this the service infers it from the free space.
-    var iCloudPlanBytes: Int64?
-
-    func loadICloud() async {
-        guard checkDiskAccess(automatic: true) else { return }
-        iCloudStorage = try? await iCloudService.storage(planBytes: iCloudPlanBytes)
-    }
-
-    private let diskInfo = DiskInfoService()
-    private let snapshotService = SnapshotService()
-    /// Never follows symlinks. The card's contract is that every byte of capacity
-    /// is accounted for exactly once, and a link's target already belongs to
-    /// whichever category owns its real location — counting it again here put a
-    /// 228 GB disk at 274 GB and pushed the bar off the card.
-    private let breakdownService = StorageBreakdownService()
-    @ObservationIgnored private lazy var lowDiskNotifications = LowDiskNotificationService()
-    @ObservationIgnored private var needsPostCleanupMeasurement = false
-
-    /// Last measured figures, shown immediately on launch.
-    private(set) var measuredAt: Date?
-    var breakdownIsStale: Bool {
-        if launchAccess == .limited { return true }
-        guard let measuredAt else { return true }
-        return Date().timeIntervalSince(measuredAt) > BreakdownCache.freshnessWindow
-    }
-
-    /// Loads saved figures and storage history. Full Disk Access permits a new measurement at launch.
-    func loadDashboard() async {
-        guard !isShowingWelcome else { return }
-        // A recreated main window runs this task again. Treat that refresh like the
-        // first one too, rather than briefly presenting cached values as final.
-        hasCompletedInitialDashboardLoad = false
-        defer { hasCompletedInitialDashboardLoad = true }
-
-        if let cached = BreakdownCache.load() {
-            volume = cached.volume
-            breakdown = cached.breakdown
-            measuredAt = cached.measuredAt
-        }
-
-        // Snapshot listing touches no user files and is safe on every launch.
-        // `measureStorage` refreshes volume totals and checks the low-space threshold.
-        snapshots = (try? await snapshotService.listAll()) ?? []
-
-        // The growth report is dated history, so the one the previous session left
-        // is already true. Reading it first puts it on screen at once instead of
-        // leaving the card blank for the length of a disk walk.
-        await loadStorageHistory()
-
-        if checkDiskAccess(automatic: true) {
-            await measureStorage(trigger: .launch)
-        } else {
-            await refreshVolumeInfo(notifyLowSpace: false)
-        }
-    }
-
-    /// Walks the disk. Only ever called deliberately.
-    ///
-    /// - Parameter trigger: what caused this measurement. It is stored with the
-    ///   snapshot, and `removal` is the one "since the last clean-up" reads, so a
-    ///   wrong trigger costs the user a baseline rather than a figure.
-    func measureStorage(trigger: SnapshotTrigger = .manual) async {
-        let automatic = trigger == .launch || trigger == .scheduled || trigger == .removal
-        guard checkDiskAccess(automatic: automatic) else { return }
-        guard !isLoadingBreakdown else {
-            if trigger == .removal { needsPostCleanupMeasurement = true }
-            return
-        }
-        isLoadingBreakdown = true
-        let presentation = OperationPresentationDuration()
-        defer {
-            isLoadingBreakdown = false
-            if needsPostCleanupMeasurement {
-                needsPostCleanupMeasurement = false
-                Task { await measureStorage(trigger: .removal) }
-            }
-        }
-
-        // iCloud rides along with every measurement, so the account card stays in
-        // step with the main card. Cheap enough to piggyback: one `brctl` call and
-        // a walk of the ubiquity container, where evicted files are stubs on disk.
-        Task { await self.loadICloud() }
-
-        // `diskutil info` is cheap and not TCC-gated. Refreshing here keeps the menu
-        // bar, Dashboard warning and system notification in step after cleanup too.
-        await refreshVolumeInfo()
-
-        // `measure` rather than `breakdown`: the same single walk, with the folder
-        // tables it produced kept instead of thrown away. The growth report reads
-        // those, and a second traversal to collect them would double the cost of
-        // the most expensive measurement in the app.
-        guard let measured = try? await breakdownService.measure() else {
-            try? await presentation.wait()
-            return
-        }
-        breakdown = measured.breakdown
-
-        // The walk takes time. Read the volatile volume figures again, then put
-        // Available, Free, and the sidebar on this one completed snapshot.
-        await refreshVolumeInfo()
-        measuredAt = Date()
-
-        if let volume, let breakdown {
-            BreakdownCache(volume: volume, breakdown: breakdown, measuredAt: Date()).save()
-        }
-
-        await recordSnapshot(of: measured, trigger: trigger)
-        try? await presentation.wait()
-    }
-
-    // MARK: - What grew
-
-    /// The ring of dated measurements the Dashboard compares. One JSON file per
-    /// measurement; ``StorageSnapshotStore`` documents the retention rules.
-    private let snapshotStore = StorageSnapshotStore()
-
-    /// Every stored measurement, newest first. Held in memory so that changing the
-    /// baseline is arithmetic over figures already read, not a second disk walk.
-    @ObservationIgnored private var storageHistory: [StorageSnapshot] = []
-
-    /// What changed since the chosen baseline.
-    ///
-    /// `nil` until the history has been read. The Dashboard draws no growth card at
-    /// all until then, rather than announcing "first measurement" before it has
-    /// looked at what is stored.
-    private(set) var growth: GrowthComparison?
-
-    private(set) var hasCleanupGrowthBaseline = false
-
-    /// Keep explicit choices. Without a choice, use the latest cleanup when available.
-    private var preferredGrowthBaseline: GrowthBaseline? = UserDefaults.standard.string(forKey: "growthBaseline")
-        .flatMap(GrowthBaseline.init(rawValue:))
-        .flatMap { $0 == .previousMeasurement ? nil : $0 }
-
-    var growthBaseline: GrowthBaseline {
-        get {
-            preferredGrowthBaseline == .sevenDays || !hasCleanupGrowthBaseline
-                ? .sevenDays : .lastCleanup
-        }
-        set {
-            guard newValue != .previousMeasurement else { return }
-            preferredGrowthBaseline = newValue
-            UserDefaults.standard.set(newValue.rawValue, forKey: "growthBaseline")
-            recomputeGrowth()
-        }
-    }
-
-    /// Reads the stored measurements without walking anything.
-    private func loadStorageHistory() async {
-        let store = snapshotStore
-        storageHistory = await Task.detached(priority: .utility) { store.load() }.value
-        recomputeGrowth()
-    }
-
-    /// Stores one finished measurement, then recomputes the report.
-    ///
-    /// All of it runs off the main actor: ``SnapshotCapture`` reads one `device:inode`
-    /// per recorded folder — a few hundred on this Mac — and the store then writes a
-    /// file and prunes the ring. Only the finished history comes back.
-    ///
-    /// A measurement whose segments do not sum to capacity is never stored:
-    /// ``SnapshotCapture/snapshot(from:trigger:now:id:minimumNodeBytes:maximumNodes:identity:)``
-    /// returns nil for it. One dropped snapshot costs one comparison; a stored bad
-    /// one would poison every future comparison.
-    private func recordSnapshot(
-        of measurement: StorageMeasurement,
-        trigger: SnapshotTrigger
-    ) async {
-        let store = snapshotStore
-        storageHistory = await Task.detached(priority: .utility) { () -> [StorageSnapshot] in
-            if let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) {
-                try? store.save(snapshot)
-            }
-            return store.load()
-        }.value
-        recomputeGrowth()
-    }
-
-    private func recomputeGrowth() {
-        hasCleanupGrowthBaseline = storageHistory.contains { $0.trigger == .removal }
-        growth = StorageGrowth.comparison(growthBaseline, in: storageHistory)
-    }
-
-    /// Preferences › Advanced › "Clear measurement history".
-    ///
-    /// The breakdown cache is a different file and a different button: this one
-    /// removes the dated measurements the Dashboard subtracts, and the next two
-    /// measurements start a new history.
-    func clearMeasurementHistory() {
-        try? snapshotStore.clear()
-        storageHistory = []
-        recomputeGrowth()
     }
 
     /// Opens the Storage Explorer at the folder the growth report named.
@@ -1030,22 +713,36 @@ final class AppModel {
         view = .storageExplorer
     }
 
-    /// Refreshes only the cheap volume totals, without walking user folders. This is
-    /// safe to run periodically and is the observation point for low-space alerts.
-    private func refreshVolumeInfo(notifyLowSpace: Bool = true) async {
-        volume = (try? await diskInfo.volumeInfo()) ?? volume
-        if let volume, let breakdown {
-            self.breakdown = breakdown.reconcilingVolume(
-                capacityBytes: volume.capacityBytes,
-                freeBytes: volume.freeBytes
+    // MARK: - Recovery presentation
+
+    private func handleRecoveryEvent(_ event: RecoveryModel.Event) {
+        switch event {
+        case .showTrash:
+            view = .trash
+        case .emptyingTrash(let count, let bytes):
+            activeSheet = nil
+            removalCompletion = nil
+            activity = .emptyingTrash(itemCount: count, totalBytes: bytes)
+        case .emptiedTrash(let freedBytes, let skipped):
+            removalCompletion = RemovalCompletion(
+                destination: .trash,
+                title: skipped == 0 ? "Trash emptied" : "Some items remain in Trash",
+                detail: skipped == 0
+                    ? "\(ByteFormatting.string(freedBytes)) recovered."
+                    : "\(skipped) \(skipped == 1 ? "item could" : "items could") not be removed.",
+                isSuccess: skipped == 0
             )
+        case .restoringTrashItem(let name):
+            activity = .restoringTrashItem(name: name)
+        case .restored:
+            fileDuplicates.invalidateResults()
+            storageExplorer.invalidateCache()
+            cleanup.invalidateResults()
+        case .operationFinished:
+            activity = nil
+        case .failure(let title, let message):
+            report(title, message)
         }
-        guard notifyLowSpace, let volume, let settings else { return }
-        await lowDiskNotifications.observe(
-            freeBytes: volume.freeBytes,
-            volumeName: volume.name,
-            thresholdGB: settings.warnBelowGB
-        )
     }
 
     // MARK: - Cleanup presentation
@@ -1056,7 +753,7 @@ final class AppModel {
             cleanupCompletion = nil
             if !automatic { view = .scanner }
             if refreshOverview {
-                Task { await measureStorage(trigger: automatic ? .scheduled : .scan) }
+                Task { await dashboard.measureStorage(trigger: automatic ? .scheduled : .scan) }
             }
         case .confirmationRequested:
             activeSheet = .cleanUp

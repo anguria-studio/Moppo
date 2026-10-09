@@ -8,7 +8,12 @@ import MoppoCore
 /// is emphatic that this is the point — "do not pin content below the toolbar" — so
 /// there is no manual top inset here; the platform provides it.
 struct DashboardView: View {
-    @Bindable var model: AppModel
+    @Bindable var model: DashboardModel
+    var scanResults: ScanResults?
+    var lastScanAt: Date?
+    var onShowScanner: (CleanupModel.ScanFilter) -> Void = { _ in }
+    var onScan: () -> Void = {}
+    var onRevealGrowth: (GrowthAttribution) -> Void = { _ in }
     /// Optional so previews and the Scanner's empty state need not supply one.
     var settings: SettingsStore?
 
@@ -39,15 +44,15 @@ struct DashboardView: View {
                 }
 
                 StatTiles(
-                    results: model.cleanup.scanResults,
-                    lastScanAt: model.cleanup.lastScanFinishedAt,
+                    results: scanResults,
+                    lastScanAt: lastScanAt,
                     iCloudStorage: model.iCloudStorage,
                     // The tiles are a summary of the scan; the scan's own page is
                     // where its rows live, so a tile opens the Scanner on the list
                     // it counted rather than a page of its own.
-                    onSafeTap: { model.showScanner(filtered: .safeToRemove) },
-                    onReviewTap: { model.showScanner(filtered: .needsReview) },
-                    onScan: { model.cleanup.startScan() }
+                    onSafeTap: { onShowScanner(.safeToRemove) },
+                    onReviewTap: { onShowScanner(.needsReview) },
+                    onScan: { onScan() }
                 )
 
                 // Below the tiles: the capacity card and the tiles are what the
@@ -58,10 +63,10 @@ struct DashboardView: View {
                     GrowthCard(
                         presentation: GrowthCard.Presentation(growth),
                         baseline: model.growthBaseline,
-                        lastScanAt: model.cleanup.scanResults?.finishedAt ?? model.cleanup.lastScanFinishedAt,
+                        lastScanAt: scanResults?.finishedAt ?? lastScanAt,
                         canCompareSinceCleanup: model.hasCleanupGrowthBaseline,
                         onSelectBaseline: { model.growthBaseline = $0 },
-                        onReveal: { model.revealGrowth($0) }
+                        onReveal: { onRevealGrowth($0) }
                     )
                 }
 

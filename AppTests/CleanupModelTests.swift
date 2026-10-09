@@ -291,13 +291,13 @@ struct CleanupModelTests {
         app.cleanup.scannerSelection = [protected.id]
         app.cleanup.userDataRemovalOverrides = [protected.id]
         app.cleanup.requestCleanUp(in: .all)
-        await app.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
+        await app.recovery.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
         #expect(FileManager.default.fileExists(atPath: removable.id))
         #expect(app.cleanup.scanResults == nil)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.cleanup.pendingCleanUp == nil)
         #expect(app.cleanup.userDataRemovalOverrides.isEmpty)
-        #expect(app.cleanupHistory?.items.first { $0.originalURL.path == removable.id }?.state == .restored)
+        #expect(app.recovery.cleanupHistory?.items.first { $0.originalURL.path == removable.id }?.state == .restored)
     }
 
     @Test("The scan service preserves exclusions, category settings, and leftover candidates", arguments: [false, true])

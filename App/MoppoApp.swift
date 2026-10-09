@@ -47,10 +47,9 @@ struct MoppoApp: App {
                 settings: settings,
                 categorySizes: model.categorySizes,
                 onRebuildIndex: {
-                    MoppoCore.BreakdownCache.clear()
-                    Task { await model.measureStorage() }
+                    Task { await model.dashboard.rebuildSizeIndex() }
                 },
-                onClearMeasurementHistory: { model.clearMeasurementHistory() }
+                onClearMeasurementHistory: { model.dashboard.clearMeasurementHistory() }
             )
         }
         // Without this AppKit lets the Settings window be dragged wider than any of
@@ -60,7 +59,7 @@ struct MoppoApp: App {
         MenuBarExtra(isInserted: $settings.showInMenuBar) {
             MenuBarView(model: model)
         } label: {
-            MenuBarLabel(volume: model.volume)
+            MenuBarLabel(volume: model.dashboard.volume)
         }
         .menuBarExtraStyle(.window)
         .commands { MoppoCommands(model: model) }

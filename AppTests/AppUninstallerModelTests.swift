@@ -329,11 +329,11 @@ struct AppUninstallerModelTests {
         #expect(receipt.originalPath == fixture.application.path)
         app.cleanup.scanResults = ScanResults(categories: [], startedAt: .now, finishedAt: .now)
         app.cleanup.scannerSelection = [stale.id]
-        await app.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
+        await app.recovery.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
         #expect(FileManager.default.fileExists(atPath: fixture.application.path))
         #expect(app.cleanup.scanResults == nil)
         #expect(app.cleanup.scannerSelection.isEmpty)
-        #expect(app.cleanupHistory?.items.first { $0.originalURL.path == receipt.originalPath }?.state == .restored)
+        #expect(app.recovery.cleanupHistory?.items.first { $0.originalURL.path == receipt.originalPath }?.state == .restored)
     }
 
     private func waitUntil(_ condition: () async -> Bool) async throws {

@@ -8,35 +8,30 @@ import MoppoCore
 /// from a `.task` rather than on the model's launch path, and the view says it is
 /// reading rather than showing an empty box while it does.
 struct TrashView: View {
-    @Bindable var model: AppModel
+    @Bindable var model: RecoveryModel
+    var findRequest = 0
     @Environment(\.scenePhase) private var scenePhase
-
-    /// Distinguishes "not read yet" from "read, and there was nothing to read".
-    /// `AppModel.loadTrash()` swallows its error into `nil`, so without this the
-    /// spinner would be indistinguishable from a failure and would never stop.
-    @State private var hasLoaded = false
 
     var body: some View {
         Group {
             if let summary = model.trashSummary {
                 TrashContent(
                     summary: summary,
-                    findRequest: model.findRequest,
+                    findRequest: findRequest,
                     selectedItemID: $model.selectedTrashItemID,
                     onPutBack: { item in Task { await model.putBack(item) } }
                 )
                 .disabled(model.isBusyWithDisk)
-            } else if hasLoaded {
+            } else if model.hasLoadedTrash {
                 unreadableNote
             } else {
                 loadingNote
             }
         }
-        .operationResultAnimation(isRunning: !hasLoaded && model.trashSummary == nil)
+        .operationResultAnimation(isRunning: !model.hasLoadedTrash && model.trashSummary == nil)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             await model.loadTrash()
-            if !Task.isCancelled { hasLoaded = true }
         }
     }
 

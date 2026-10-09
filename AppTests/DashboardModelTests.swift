@@ -1,0 +1,325 @@
+import Foundation
+import Testing
+@testable import MoppoCore
+
+@Suite("Dashboard feature ownership")
+@MainActor
+struct DashboardModelTests {
+    @Test("Limited access loads cached figures without starting background measurements")
+    func limitedLaunch() async throws {
+        let service = HeldDashboardMeasurements()
+        let measurement = dashboardMeasurement()
+        let cache = BreakdownCache(volume: measurement.volume, breakdown: measurement.breakdown, measuredAt: .now)
+        let persistence = HeldDashboardPersistence(cache: cache)
+        let app = AppModel(
+            launchAccess: .limited, hasFullDiskAccess: { false },
+            dashboardService: service, dashboardPersistence: persistence
+        )
+        await app.dashboard.loadDashboard()
+        #expect(app.dashboard.hasCompletedInitialDashboardLoad)
+        #expect(!app.dashboard.isDashboardLoading)
+        #expect(app.dashboard.breakdown == measurement.breakdown)
+        #expect(app.dashboard.breakdownIsStale)
+        #expect(app.dashboard.snapshots.count == 2)
+        #expect(app.dashboard.boot?.uuid == "boot")
+        #expect(app.dashboard.removableSnapshots.map(\.uuid) == ["data"])
+        #expect(await service.measurementCount == 0)
+        #expect(await service.cloudPlans.isEmpty)
+        #expect(await persistence.records.isEmpty)
+    }
+
+    @Test("Launch refresh owns its task across navigation and caller cancellation")
+    func launchLifetime() async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let app = AppModel(hasFullDiskAccess: { true }, dashboardService: service, dashboardPersistence: persistence)
+        let caller = Task { await app.dashboard.loadDashboard() }
+        try await waitUntil { await service.measurementCount == 1 }
+        app.view = .history
+        caller.cancel()
+        let second = Task { await app.dashboard.loadDashboard() }
+        #expect(app.dashboard.isDashboardLoading)
+        #expect(!app.dashboard.hasCompletedInitialDashboardLoad)
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await caller.value
+        await second.value
+        #expect(await persistence.cacheLoads == 1)
+        #expect(await service.measurementCount == 1)
+        #expect(await service.cancelled == [false])
+        #expect(await persistence.records == [.launch])
+        #expect(app.dashboard.measuredAt != nil)
+        #expect(!app.dashboard.isDashboardLoading)
+        #expect(app.view == .history)
+    }
+
+    @Test("Concurrent removal refreshes produce one additional cleanup baseline")
+    func removalBaseline() async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence)
+        let first = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        let removal = Task { await model.measureStorage(trigger: .removal) }
+        let repeated = Task { await model.measureStorage(trigger: .removal) }
+        await Task.yield()
+        await service.finishMeasurement(0, dashboardMeasurement())
+        try await waitUntil { await service.measurementCount == 2 }
+        #expect(model.isLoadingBreakdown)
+        await service.finishMeasurement(1, dashboardMeasurement(free: 300))
+        await first.value
+        await removal.value
+        await repeated.value
+        #expect(await service.measurementCount == 2)
+        #expect(await persistence.records == [.manual, .removal])
+        #expect(model.hasCleanupGrowthBaseline)
+        #expect(!model.isLoadingBreakdown)
+    }
+
+    @Test("Older cloud requests cannot replace the selected plan")
+    func cloudReplacement() async throws {
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        model.iCloudPlanBytes = 100
+        let first = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        model.iCloudPlanBytes = 200
+        let second = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 2 }
+        let latest = ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80)
+        await service.finishCloud(1, latest)
+        await second.value
+        await service.finishCloud(0, ICloudStorage(totalBytes: 100, freeBytes: 10, documentsBytes: 20))
+        await first.value
+        #expect(model.iCloudStorage == latest)
+        #expect(await service.cloudPlans == [100, 200])
+    }
+
+    @Test("Late volume reads cannot restore older totals or send stale notifications")
+    func volumeReplacement() async throws {
+        let service = HeldDashboardMeasurements(holdVolume: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        var notified: [Int64] = []
+        model.onVolumeChanged = { notified.append($0.freeBytes) }
+        let first = Task { await model.refreshVolumeInfo() }
+        try await waitUntil { await service.volumeCount == 1 }
+        let second = Task { await model.refreshVolumeInfo() }
+        try await waitUntil { await service.volumeCount == 2 }
+        await service.finishVolume(1, dashboardVolume(free: 300))
+        await second.value
+        await service.finishVolume(0, dashboardVolume(free: 10))
+        await first.value
+        #expect(model.volume?.freeBytes == 300)
+        #expect(notified == [300])
+    }
+
+    @Test("An older history read cannot remove a newly recorded cleanup baseline")
+    func historyLoadAfterMeasurement() async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence(holdHistory: true)
+        let model = DashboardModel(service: service, persistence: persistence)
+        let launch = Task { await model.loadDashboard() }
+        try await waitUntil { await persistence.historyLoads == 1 }
+        let removal = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await removal.value
+        #expect(model.hasCleanupGrowthBaseline)
+        model.canMeasure = { _ in false }
+        await persistence.finishHistory([])
+        await launch.value
+        #expect(model.hasCleanupGrowthBaseline)
+        #expect(await persistence.records == [.removal])
+    }
+
+    @Test("Clearing history rejects a stored history read already in progress")
+    func clearDuringHistoryLoad() async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence(holdHistory: true)
+        let model = DashboardModel(service: service, persistence: persistence)
+        model.canMeasure = { _ in false }
+        let caller = Task { await model.loadDashboard() }
+        try await waitUntil { await persistence.historyLoads == 1 }
+        model.clearMeasurementHistory()
+        try await waitUntil { await persistence.clearCount == 1 }
+        let previous = try #require(SnapshotCapture.snapshot(from: dashboardMeasurement(), trigger: .removal))
+        await persistence.finishHistory([previous])
+        await caller.value
+        #expect(model.growth == .insufficientHistory)
+        #expect(!model.hasCleanupGrowthBaseline)
+        #expect(model.growthBaseline == .sevenDays)
+    }
+
+    @Test("A measurement started before history was cleared cannot recreate its history")
+    func clearDuringMeasurement() async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence)
+        let caller = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { await service.measurementCount == 1 }
+        model.clearMeasurementHistory()
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await caller.value
+        #expect(await persistence.records.isEmpty)
+        #expect(await persistence.clearCount == 1)
+        #expect(model.breakdown != nil)
+        #expect(model.growth == .insufficientHistory)
+        let next = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 2 }
+        await service.finishMeasurement(1, dashboardMeasurement())
+        await next.value
+        #expect(await persistence.records == [.manual])
+    }
+
+    @Test("Clearing history rejects a late snapshot result and preserves the selected baseline")
+    func clearDuringRecord() async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence(holdRecord: true)
+        let suite = "DashboardTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = DashboardModel(service: service, persistence: persistence, defaults: defaults)
+        model.growthBaseline = .sevenDays
+        let caller = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, dashboardMeasurement())
+        try await waitUntil { await persistence.records.count == 1 }
+        model.clearMeasurementHistory()
+        try await waitUntil { await persistence.clearCount == 1 }
+        let previous = try #require(SnapshotCapture.snapshot(from: dashboardMeasurement(), trigger: .removal))
+        await persistence.finishRecord([previous])
+        await caller.value
+        #expect(model.growth == .insufficientHistory)
+        #expect(!model.hasCleanupGrowthBaseline)
+        #expect(defaults.string(forKey: "growthBaseline") == GrowthBaseline.sevenDays.rawValue)
+        model.growthBaseline = .previousMeasurement
+        #expect(model.growthBaseline == .sevenDays)
+    }
+
+    @Test("A failed measurement keeps cached figures and permits a retry")
+    func measurementFailure() async throws {
+        let service = HeldDashboardMeasurements()
+        let measurement = dashboardMeasurement()
+        let cache = BreakdownCache(volume: measurement.volume, breakdown: measurement.breakdown, measuredAt: .distantPast)
+        let persistence = HeldDashboardPersistence(cache: cache)
+        let model = DashboardModel(service: service, persistence: persistence)
+        model.canMeasure = { _ in false }
+        await model.loadDashboard()
+        #expect(model.breakdownIsStale)
+        model.canMeasure = { _ in true }
+        let caller = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.failMeasurement(0)
+        await caller.value
+        #expect(model.breakdown == cache.breakdown)
+        #expect(model.measuredAt == cache.measuredAt)
+        #expect(!model.isLoadingBreakdown)
+        #expect(await persistence.records.isEmpty)
+        let retry = Task { await model.rebuildSizeIndex() }
+        try await waitUntil { await service.measurementCount == 2 }
+        await service.finishMeasurement(1, measurement)
+        await retry.value
+        #expect(await persistence.cacheClears == 1)
+        #expect(!model.breakdownIsStale)
+        #expect(await persistence.records == [.manual])
+    }
+
+    private func waitUntil(_ condition: () async -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !(await condition()), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(await condition(), "The operation did not finish before the deadline.")
+    }
+}
+
+private func dashboardVolume(free: Int64 = 200) -> VolumeInfo {
+    VolumeInfo(name: "Fixture", capacityBytes: 1000, freeBytes: free, filesystem: "apfs", isEncrypted: true)
+}
+
+private func dashboardMeasurement(free: Int64 = 200) -> StorageMeasurement {
+    let raw: [StorageSegmentID: Int64] = [.documentsDesktop: 1000 - free, .free: free]
+    return StorageMeasurement(
+        home: URL(fileURLWithPath: "/moppo-fixture"), volume: dashboardVolume(free: free),
+        breakdown: .make(capacityBytes: 1000, rawSegments: raw, unreadableCount: 0), rawSegments: raw,
+        homeTree: [:], rootMeasurements: [:], nodeDepth: 4
+    )
+}
+
+private actor HeldDashboardMeasurements: DashboardMeasuring {
+    let holdCloud: Bool
+    let holdVolume: Bool
+    private(set) var measurementCount = 0
+    private(set) var cloudPlans: [Int64?] = []
+    private(set) var volumeCount = 0
+    private(set) var cancelled: [Bool] = []
+    private var measurements: [Int: CheckedContinuation<StorageMeasurement, Error>] = [:]
+    private var clouds: [Int: CheckedContinuation<ICloudStorage, Never>] = [:]
+    private var volumes: [Int: CheckedContinuation<VolumeInfo, Never>] = [:]
+    init(holdCloud: Bool = false, holdVolume: Bool = false) {
+        self.holdCloud = holdCloud
+        self.holdVolume = holdVolume
+    }
+    func volumeInfo() async throws -> VolumeInfo {
+        let index = volumeCount
+        volumeCount += 1
+        if holdVolume { return await withCheckedContinuation { volumes[index] = $0 } }
+        return dashboardVolume()
+    }
+    func snapshots() async throws -> [SnapshotInfo] {
+        ["boot", "data"].map {
+            SnapshotInfo(uuid: $0, name: $0, purgeable: $0 != "boot", limitingContainerShrink: false,
+                         isBootSnapshot: $0 == "boot", volumeDisk: "disk-fixture")
+        }
+    }
+    func measure() async throws -> StorageMeasurement {
+        let index = measurementCount
+        measurementCount += 1
+        let value = try await withCheckedThrowingContinuation { measurements[index] = $0 }
+        cancelled.append(Task.isCancelled)
+        return value
+    }
+    func iCloudStorage(planBytes: Int64?) async throws -> ICloudStorage {
+        let index = cloudPlans.count
+        cloudPlans.append(planBytes)
+        if holdCloud { return await withCheckedContinuation { clouds[index] = $0 } }
+        return ICloudStorage(totalBytes: planBytes ?? 100, freeBytes: 20, documentsBytes: 40)
+    }
+    func finishMeasurement(_ index: Int, _ value: StorageMeasurement) { measurements.removeValue(forKey: index)?.resume(returning: value) }
+    func failMeasurement(_ index: Int) { measurements.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadNoPermission)) }
+    func finishCloud(_ index: Int, _ value: ICloudStorage) { clouds.removeValue(forKey: index)?.resume(returning: value) }
+    func finishVolume(_ index: Int, _ value: VolumeInfo) { volumes.removeValue(forKey: index)?.resume(returning: value) }
+}
+
+private actor HeldDashboardPersistence: DashboardPersisting {
+    let holdHistory: Bool
+    let holdRecord: Bool
+    private(set) var cache: BreakdownCache?
+    private(set) var cacheLoads = 0
+    private(set) var cacheClears = 0
+    private(set) var historyLoads = 0
+    private(set) var records: [SnapshotTrigger] = []
+    private(set) var clearCount = 0
+    private var history: [StorageSnapshot] = []
+    private var historyReply: CheckedContinuation<[StorageSnapshot], Never>?
+    private var recordReply: CheckedContinuation<[StorageSnapshot], Never>?
+    init(cache: BreakdownCache? = nil, holdHistory: Bool = false, holdRecord: Bool = false) {
+        self.cache = cache
+        self.holdHistory = holdHistory
+        self.holdRecord = holdRecord
+    }
+    func loadCache() -> BreakdownCache? { cacheLoads += 1; return cache }
+    func saveCache(_ cache: BreakdownCache) { self.cache = cache }
+    func clearCache() { cache = nil; cacheClears += 1 }
+    func loadHistory() async -> [StorageSnapshot] {
+        historyLoads += 1
+        if holdHistory { return await withCheckedContinuation { historyReply = $0 } }
+        return history
+    }
+    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) async -> [StorageSnapshot] {
+        records.append(trigger)
+        if holdRecord { return await withCheckedContinuation { recordReply = $0 } }
+        if let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) { history.insert(snapshot, at: 0) }
+        return history
+    }
+    func clearHistory() { clearCount += 1; history = [] }
+    func finishHistory(_ history: [StorageSnapshot]) { historyReply?.resume(returning: history); historyReply = nil }
+    func finishRecord(_ history: [StorageSnapshot]) { recordReply?.resume(returning: history); recordReply = nil }
+}

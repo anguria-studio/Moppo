@@ -28,7 +28,7 @@ struct MainWindow: View {
         }
         .task {
             if scenePhase == .active { model.startInitialCleanupScan() }
-            await model.loadDashboard()
+            await model.dashboard.loadDashboard()
         }
         .onChange(of: model.view) { _, view in
             model.photoDuplicates.preview = nil
@@ -123,7 +123,12 @@ struct MainWindow: View {
         Group {
             switch model.view {
             case .dashboard:
-                DashboardView(model: model, settings: settings)
+                DashboardView(
+                    model: model.dashboard,
+                    scanResults: model.cleanup.scanResults, lastScanAt: model.cleanup.lastScanFinishedAt,
+                    onShowScanner: model.showScanner, onScan: { model.cleanup.startScan() },
+                    onRevealGrowth: model.revealGrowth, settings: settings
+                )
             case .scanner:
                 ScannerView(
                     model: model.cleanup,
@@ -143,9 +148,9 @@ struct MainWindow: View {
                     onViewDashboard: { model.view = .dashboard }
                 )
             case .history:
-                CleanupHistoryView(model: model)
+                CleanupHistoryView(model: model.recovery, findRequest: model.findRequest)
             case .trash:
-                TrashView(model: model)
+                TrashView(model: model.recovery, findRequest: model.findRequest)
             case .duplicates:
                 DuplicatesView(model: model)
             }
@@ -197,10 +202,10 @@ struct MainWindow: View {
             case .emptyTrash:
                 ConfirmationSheet(
                     variant: .emptyTrash(
-                        itemCount: model.trashSummary?.itemCount ?? 0,
-                        totalBytes: model.trashSummary?.totalBytes ?? 0
+                        itemCount: model.recovery.trashSummary?.itemCount ?? 0,
+                        totalBytes: model.recovery.trashSummary?.totalBytes ?? 0
                     ),
-                    onConfirm: { Task { await model.emptyTrash() } },
+                    onConfirm: { Task { await model.recovery.emptyTrash() } },
                     onCancel: { model.activeSheet = nil }
                 )
             }
@@ -233,7 +238,7 @@ struct MainWindow: View {
         case .storageExplorer: return model.storageExplorer.canRemoveSelection
             && !model.storageExplorer.isMapSelectionPending
             && !model.isStorageExplorerMeasurementBlocked
-        case .trash:           return (model.trashSummary?.itemCount ?? 0) > 0
+        case .trash:           return (model.recovery.trashSummary?.itemCount ?? 0) > 0
         case .dashboard, .history: return false
         }
     }
@@ -396,13 +401,13 @@ struct MainWindow: View {
             .controlSize(.large)
             .disabled(model.cleanup.isInterruptingScan || (!model.cleanup.isScanning && model.isBusyWithDisk))
         case .dashboard:
-            Button { Task { await model.measureStorage() } } label: {
+            Button { Task { await model.dashboard.measureStorage() } } label: {
                 Label("Refresh Overview", systemImage: "arrow.clockwise")
             }
                 .buttonStyle(PageActionButtonStyle())
-                .disabled(model.isBusyWithDisk || model.isLoadingBreakdown)
+                .disabled(model.isBusyWithDisk || model.dashboard.isLoadingBreakdown)
         case .trash:
-            Button { Task { await model.loadTrash() } } label: {
+            Button { Task { await model.recovery.loadTrash() } } label: {
                 Label("Refresh Trash", systemImage: "arrow.clockwise")
             }
                 .buttonStyle(PageActionButtonStyle())

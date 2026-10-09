@@ -222,15 +222,15 @@ struct OperationFlowTests {
         let operation = try #require(model.operations.begin(.fileScan))
         let item = TrashItem(url: trashed, bytes: 7, canPutBack: true)
 
-        await model.putBack(item)
+        await model.recovery.putBack(item)
         #expect(FileManager.default.fileExists(atPath: trashed.path))
         #expect(!FileManager.default.fileExists(atPath: original.path))
 
         model.operations.finish(operation)
-        await model.putBack(item)
+        await model.recovery.putBack(item)
         #expect(FileManager.default.fileExists(atPath: original.path))
-        #expect(model.trashSummary?.itemCount == 0)
-        #expect(model.cleanupHistory?.items.first?.state == .restored)
+        #expect(model.recovery.trashSummary?.itemCount == 0)
+        #expect(model.recovery.cleanupHistory?.items.first?.state == .restored)
         #expect(model.storageExplorer.snapshot == nil)
         #expect(model.storageExplorer.needsRefresh)
         #expect(model.cleanup.scanResults == nil)
@@ -242,12 +242,12 @@ struct OperationFlowTests {
         let folder = try FixtureFolder()
         let model = AppModel(trashService: TrashService(home: folder.url))
         let previous = TrashSummary(totalBytes: 123, itemCount: 1)
-        model.trashSummary = previous
-        let task = Task { await model.loadTrash() }
+        model.recovery.trashSummary = previous
+        let task = Task { await model.recovery.loadTrash() }
         task.cancel()
         await task.value
 
-        #expect(model.trashSummary == previous)
+        #expect(model.recovery.trashSummary == previous)
         #expect(model.notice == nil)
     }
 
@@ -302,11 +302,11 @@ struct OperationFlowTests {
         let fixture = try TrashFixture()
         let model = fixture.model()
         let receipt = try #require(fixture.history.summary().items.first)
-        model.showInTrash(receipt)
-        await model.loadTrash()
+        model.recovery.showInTrash(receipt)
+        await model.recovery.loadTrash()
         #expect(model.view == .trash)
-        let selected = try #require(model.trashSummary?.items.first {
-            $0.id == model.selectedTrashItemID
+        let selected = try #require(model.recovery.trashSummary?.items.first {
+            $0.id == model.recovery.selectedTrashItemID
         })
         #expect(FileIdentity.of(selected.url) == FileIdentity.of(fixture.trashed))
 
@@ -314,9 +314,9 @@ struct OperationFlowTests {
             at: fixture.trashed, to: fixture.folder.url.appendingPathComponent("moved.txt")
         )
         _ = try fixture.folder.write(".Trash/item.txt")
-        model.showInTrash(receipt)
-        await model.loadTrash()
-        #expect(model.selectedTrashItemID == nil)
+        model.recovery.showInTrash(receipt)
+        await model.recovery.loadTrash()
+        #expect(model.recovery.selectedTrashItemID == nil)
         #expect(model.notice?.title == "Item Not Found")
     }
 
@@ -327,7 +327,7 @@ struct OperationFlowTests {
         let model = fixture.model()
         let item = TrashItem(url: fixture.trashed, bytes: 7, canPutBack: true)
 
-        await model.putBack(item)
+        await model.recovery.putBack(item)
         #expect(FileManager.default.fileExists(atPath: fixture.trashed.path))
         #expect(FileManager.default.fileExists(atPath: fixture.original.path))
         #expect(model.notice != nil)
@@ -335,7 +335,7 @@ struct OperationFlowTests {
 
         try FileManager.default.removeItem(at: fixture.original)
         model.notice = nil
-        await model.putBack(item)
+        await model.recovery.putBack(item)
         #expect(!FileManager.default.fileExists(atPath: fixture.trashed.path))
         #expect(FileManager.default.fileExists(atPath: fixture.original.path))
         #expect(model.notice == nil)

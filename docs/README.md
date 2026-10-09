@@ -70,13 +70,15 @@ Regression tests cover each measurement bug below.
 ## State ownership
 
 `AppModel` creates feature models and owns navigation, onboarding, and shared presentation.
-It still owns the Dashboard and recovery state.
+It still owns Storage Explorer removal tasks.
 
 | Component | Responsibility |
 | --- | --- |
 | `PhotoDuplicatesModel` | Photos access, scans, regrouping, selection, preview state, thumbnail requests, and deletion. |
 | `CleanupModel` | Cleanup scans, filters, results, selection, captured removal plans, and operation tasks. |
 | `AppUninstallerModel` | Application lists, leftovers, uninstall reviews, selection, and removal tasks. |
+| `DashboardModel` | Storage measurements, cached figures, snapshots, iCloud data, and growth comparisons. |
+| `RecoveryModel` | History, Trash, recovery selection, Put Back, and empty Trash tasks. |
 | `CleanupScheduler` | Periodic volume checks and automatic scan requests. |
 | `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
 | `StorageExplorerModel` | Folder measurements, navigation history, cached results, and selection. |
@@ -86,6 +88,8 @@ Photo views receive `PhotoDuplicatesModel` directly.
 File duplicate views receive `FileDuplicatesModel` directly.
 Uninstaller views receive `AppUninstallerModel` and explicit navigation callbacks.
 Cleanup views receive `CleanupModel` and presentation values from the application model.
+Dashboard views receive `DashboardModel`, scan values, and explicit navigation callbacks.
+History and Trash views receive `RecoveryModel` directly.
 The photo model receives services, download preferences, an access condition, and an event handler.
 It does not hold `AppModel` or change navigation directly.
 `AppModel` handles scan-start, deletion-start, deletion-result, and failure events.
@@ -115,7 +119,7 @@ Completed removals retain their Trash receipts and recovery actions.
 
 `AppModel` handles file events for navigation, removal progress, completion, and failure presentation.
 After file removal, the model releases the shared guard and requests a refresh through an explicit callback.
-`AppModel` clears Cleanup and Storage Explorer results, refreshes Trash, and requests a storage measurement.
+`AppModel` clears Cleanup and Storage Explorer results, refreshes Trash and History, and requests a storage measurement.
 This refresh preserves the updated file review and cannot clear a later file operation.
 Other disk removals and successful Put Back actions invalidate file results and selection.
 
@@ -157,6 +161,25 @@ Leftover removal checks current application owners before it calls the removal s
 `AppModel` handles uninstall progress, navigation, and completion events.
 After removal, the uninstaller releases the shared guard and requests a disk refresh through an explicit callback.
 Cleanup can request a leftover refresh through a separate callback.
+
+The Dashboard model owns launch refreshes and measurements independently of the requesting view.
+Concurrent measurement requests share one task.
+Removal during measurement requests one additional measurement for the cleanup baseline.
+Background measurements remain separate from the shared scan and removal guard.
+New volume and iCloud requests reject older results.
+
+Dashboard persistence runs outside the main actor and serializes history writes and clearing.
+Clearing measurement history rejects results from earlier reads and measurements.
+An older history read cannot replace a newly recorded cleanup baseline.
+The selected growth baseline remains stored in preferences.
+
+The recovery model owns separate History and Trash read tasks.
+Replaced reads cannot restore old rows or selection.
+History links select a Trash item only when its path and file identity match.
+Put Back and empty Trash own their tasks independently of the requesting view.
+The shared guard stays active until the operation and updated list reads finish.
+The model then releases the guard and requests a Dashboard refresh through an explicit callback.
+Successful Put Back actions also invalidate Cleanup, file duplicate, and Storage Explorer results.
 
 ## Measurement rules
 

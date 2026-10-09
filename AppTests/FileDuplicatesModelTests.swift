@@ -317,8 +317,8 @@ struct FileDuplicatesModelTests {
         let receipt = try #require(receipts.first)
         let trashed = URL(fileURLWithPath: try #require(receipt.trashedPath))
         #expect(FileManager.default.fileExists(atPath: trashed.path))
-        await app.loadCleanupHistory()
-        #expect(app.cleanupHistory?.items.first?.state == .availableInTrash)
+        await app.recovery.loadCleanupHistory()
+        #expect(app.recovery.cleanupHistory?.items.first?.state == .availableInTrash)
 
         // A later review must be discarded when a removed file returns.
         _ = try fixture.writeCopy("later")
@@ -326,11 +326,11 @@ struct FileDuplicatesModelTests {
         try await waitUntil { !files.isScanning }
         files.selectAll()
         #expect(!files.selection.isEmpty)
-        await app.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
+        await app.recovery.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
         #expect(FileManager.default.fileExists(atPath: receipt.originalPath))
         #expect(files.results == nil)
         #expect(files.selection.isEmpty)
-        #expect(app.cleanupHistory?.items.first?.state == .restored)
+        #expect(app.recovery.cleanupHistory?.items.first?.state == .restored)
     }
 
     private func waitUntil(_ condition: () async -> Bool) async throws {

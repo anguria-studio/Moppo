@@ -8,6 +8,7 @@ final class OperationCoordinator {
     enum Kind {
         case photoScan, photoDeletion, fileScan, fileRemoval, cleanupScan, cleanupRemoval, cleanupQuit
         case appUninstallPlanning, appUninstall, appLeftoverRemoval
+        case emptyTrash, trashRestoration
     }
 
     struct Operation: Equatable {
