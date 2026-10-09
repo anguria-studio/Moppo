@@ -764,7 +764,7 @@ struct PageProgressView: View {
             case .hourglass: PageStateSymbol(name: "hourglass")
             case .mascot(let mode):
                 MoppoMascotView(mode: mode)
-                    .frame(width: PageStateMetrics.mascotSize, height: PageStateMetrics.mascotSize)
+                    .frame(width: PageStateMetrics.iconAreaSize, height: PageStateMetrics.iconAreaSize)
             }
         } detail: {
             VStack(spacing: 18) {

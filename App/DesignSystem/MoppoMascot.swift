@@ -765,14 +765,14 @@ final class MoppoMascotMotion {
 
 #Preview("Moppo destroying") {
     MoppoMascotView(mode: .destroying)
-        .frame(width: PageStateMetrics.mascotSize, height: PageStateMetrics.mascotSize)
+        .frame(width: PageStateMetrics.iconAreaSize, height: PageStateMetrics.iconAreaSize)
         .foregroundStyle(.tertiary)
         .padding(120)
 }
 
 #Preview("Moppo scanning") {
     MoppoMascotView(mode: .scanning)
-        .frame(width: PageStateMetrics.mascotSize, height: PageStateMetrics.mascotSize)
+        .frame(width: PageStateMetrics.iconAreaSize, height: PageStateMetrics.iconAreaSize)
         .foregroundStyle(.tertiary)
         .padding(40)
 }
