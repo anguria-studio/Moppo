@@ -60,6 +60,12 @@ targets:
     dependencies:
       - package: MoppoCore
         product: MoppoCore
+      - target: MoppoHomebrewAskpass
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     preBuildScripts:
       - name: Require signed build
         basedOnDependencyAnalysis: false
@@ -101,6 +107,23 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS: YES
 
+  MoppoHomebrewAskpass:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Helpers/HomebrewAskpass
+    settings:
+      base:
+        PRODUCT_NAME: MoppoHomebrewAskpass
+        PRODUCT_BUNDLE_IDENTIFIER: com.tommasolaterza.Moppo.HomebrewAskpass
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: L2P2KC4C69
+        CODE_SIGN_STYLE: Manual
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: YES
+
   MoppoAppTests:
     type: bundle.unit-test
     platform: macOS
@@ -112,6 +135,9 @@ targets:
           - "Resources/AppIcon.icon"
           - "Resources/AppIcon.icon/**"
       - path: AppTests
+      - path: Helpers/HomebrewAskpass
+        excludes:
+          - HomebrewAskpassMain.swift
     dependencies:
       - package: MoppoCore
         product: MoppoCore

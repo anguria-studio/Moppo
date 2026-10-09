@@ -490,7 +490,7 @@ struct AppUninstallerView: View {
                         managedPackageCard(package)
                     }
 
-                    if let package = plan.installerPackage {
+                    if plan.managedPackage == nil, let package = plan.installerPackage {
                         installerPackageCard(package)
                     }
 
@@ -539,20 +539,17 @@ struct AppUninstallerView: View {
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                 Text(plan.isApplicationOnly
                     ? "Application only"
-                    : "\(plan.items.count - 1) related items")
+                    : "\(plan.items.count - 1) related \(plan.items.count == 2 ? "item" : "items")")
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
             }
 
-            if let package = plan.managedPackage {
-                Button("Copy Homebrew Uninstall Command") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(package.uninstallCommand, forType: .string)
-                }
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+            if plan.managedPackage != nil {
+                Button("Uninstall with Homebrew", action: model.requestAppUninstall)
+                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
                 .controlSize(.regular)
+                .disabled(model.isBusyWithDisk)
                 .fixedSize()
-                .help(package.uninstallCommand)
             } else {
                 // The size is in the figures beside it, so the label does not
                 // repeat it.
@@ -623,7 +620,7 @@ struct AppUninstallerView: View {
                         .foregroundStyle(Token.Text.primary)
                     Text(
                         plan.isApplicationOnly
-                            ? "Moppo cannot identify related files safely. Only the application will move to the Trash."
+                            ? "Moppo cannot identify related files safely. Removal includes only the application."
                             : plan.protectedItems.isEmpty
                             ? "Every verified related file below will move to the Trash."
                             : "Every verified related file below will move to the Trash, including profiles and settings."
@@ -671,25 +668,14 @@ struct AppUninstallerView: View {
         _ package: AppUninstallPlan.ManagedPackage
     ) -> some View {
         GroupedBox {
-            HStack(spacing: 11) {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 17))
-                    .foregroundStyle(Token.textColor(.orange))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Managed by \(package.manager.rawValue)")
-                        .font(.mcBody.weight(.medium))
-                        .foregroundStyle(Token.Text.primary)
-                    Text(
-                        "Remove the cask through Homebrew so its package receipt stays correct. "
-                        + "Moppo will not trash only the app bundle."
-                    )
-                    .font(.mcCaption)
-                    .foregroundStyle(Token.Text.secondary)
-                }
-
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Homebrew package: \(package.name)", systemImage: "shippingbox")
+                    .font(.mcBody.weight(.medium))
+                HomebrewRemovalExplanation()
+                CopyHomebrewCommandButton(package: package)
             }
-            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
         }
     }
 
@@ -816,6 +802,13 @@ struct AppUninstallerView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    if review.homebrewCount > 0 {
+                        GroupedBox {
+                            HomebrewRemovalExplanation()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                        }
+                    }
                     if !review.plans.isEmpty {
                         GroupedBox {
                             VStack(spacing: 0) {
@@ -827,7 +820,7 @@ struct AppUninstallerView: View {
                         }
                     }
                     if !review.setAside.isEmpty {
-                        setAsideBox(review.setAside, title: "Not part of this uninstall")
+                        setAsideBox(review.setAside, title: "Not attempted")
                     }
                 }
                 .padding(.horizontal, Token.Size.pageGutter)
@@ -839,7 +832,7 @@ struct AppUninstallerView: View {
 
     private func batchReviewHeader(_ review: AppModel.BatchUninstallReview) -> some View {
         HStack(spacing: 10) {
-            Text("\(review.plans.count) applications · \(review.itemCount) items")
+            Text("\(review.plans.count) \(review.plans.count == 1 ? "application" : "applications") to review")
                 .font(.mcCaption)
                 .foregroundStyle(Token.Text.secondary)
                 .lineLimit(1)
@@ -849,7 +842,7 @@ struct AppUninstallerView: View {
             Button("Back", action: model.resetAppUninstall)
                 .buttonStyle(PageActionButtonStyle())
                 .fixedSize()
-            Button("Uninstall · \(ByteFormatting.string(review.totalBytes))",
+            Button("Uninstall Selected",
                    action: model.requestBatchUninstall)
                 .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
                 .controlSize(.regular)
@@ -877,14 +870,14 @@ struct AppUninstallerView: View {
                         Badge(text: "includes user data").fixedSize()
                     }
                 }
-                Text(plan.isApplicationOnly
+                Text(plan.managedPackage.map { "Homebrew · \($0.name) · \(plan.items.count - 1) related \(plan.items.count == 2 ? "item" : "items")" } ?? (plan.isApplicationOnly
                     ? "Application only — related files cannot be identified safely"
-                    : "Application and \(plan.items.count - 1) related "
-                        + (plan.items.count == 2 ? "item" : "items"))
+                    : "Trash · application and \(plan.items.count - 1) related "
+                        + (plan.items.count == 2 ? "item" : "items")))
                     .font(.mcCaption)
                     .foregroundStyle(plan.isApplicationOnly
                         ? Token.textColor(.orange) : Token.Text.tertiary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()
@@ -895,62 +888,28 @@ struct AppUninstallerView: View {
                 .fixedSize()
         }
         .padding(.horizontal, 13)
-        .frame(height: 48)
+        .padding(.vertical, 10)
     }
 
     private func setAsideBox(
         _ applications: [AppModel.SetAsideApplication], title: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title).mcEyebrowStyle()
-            GroupedBox {
-                VStack(spacing: 0) {
-                    ForEach(Array(applications.enumerated()), id: \.offset) { index, application in
-                        if index > 0 { HairlineDivider() }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(application.name)
-                                .font(.mcBody.weight(.medium))
-                                .foregroundStyle(Token.Text.primary)
-                            Text(application.reason)
-                                .font(.mcCaption)
-                                .foregroundStyle(Token.textColor(.orange))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 13)
-                        .padding(.vertical, 8)
-                    }
-                }
-            }
-        }
+        UninstallAttentionList(applications: applications, title: title, review: model.planAppUninstall)
     }
 
     private func batchDoneState(_ outcome: AppModel.BatchUninstallOutcome) -> some View {
-        let clean = outcome.setAside.isEmpty && outcome.survivorCount == 0
-        let count = outcome.uninstalled.count
-        return PageCompletionView(
-            title: count == 0
-                ? "No applications were uninstalled"
-                : "\(count) \(count == 1 ? "application" : "applications") uninstalled",
-            isSuccess: clean && count > 0
-        ) {
-            VStack(spacing: 12) {
-                if count > 0 {
-                    Text("\(ListFormatter.localizedString(byJoining: outcome.uninstalled)). "
-                        + "Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
-                }
-                if outcome.survivorCount > 0 {
-                    Text("\(outcome.survivorCount) related "
-                        + (outcome.survivorCount == 1 ? "item remains" : "items remain")
-                        + " on disk.")
-                        .foregroundStyle(Token.textColor(.orange))
-                }
-                if !outcome.setAside.isEmpty {
-                    setAsideBox(outcome.setAside, title: "Still installed")
-                }
-            }
-        } actions: {
-            completionActions
+        AppUninstallResultView(outcome: outcome) {
+            model.resetAppUninstall()
+            model.loadInstalledApplications()
+        } review: { url in
+            model.planAppUninstall(url)
+        } reviewLeftovers: {
+            model.resetAppUninstall()
+            model.uninstallerTab = .leftovers
+            model.loadApplicationLeftovers()
+        } viewDashboard: {
+            model.resetAppUninstall()
+            model.view = .dashboard
         }
     }
 

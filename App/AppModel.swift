@@ -30,6 +30,9 @@ final class AppModel {
         hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
         trashService: TrashService = TrashService(),
         cleanupHistoryService: CleanupHistoryService = CleanupHistoryService(),
+        appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
+        homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
+        cleanupService: CleanupService = CleanupService(),
         makePhotoService: @escaping (Bool) -> PhotoDuplicateService = { allowsNetwork in
             PhotoDuplicateService(
                 library: PhotoKitLibrary(allowsNetworkFetch: allowsNetwork),
@@ -44,6 +47,9 @@ final class AppModel {
         self.photoService = makePhotoService(settings?.allowPhotoDownloads ?? true)
         self.trashService = trashService
         self.cleanupHistoryService = cleanupHistoryService
+        self.appUninstallPlanner = appUninstallPlanner
+        self.homebrewUninstallService = homebrewUninstallService
+        self.cleanupService = cleanupService
         self.storageExplorer = StorageExplorerModel(settings: settings)
         photoThumbnails.allowsNetworkFetch = { [weak settings] in
             settings?.allowPhotoDownloads ?? SettingsStore.Defaults.allowPhotoDownloads
@@ -426,7 +432,7 @@ final class AppModel {
         case removingStorageItems(itemCount: Int, totalBytes: Int64)
         case reviewingStorageItems(itemCount: Int)
         case restoringTrashItem(name: String)
-        case uninstalling(applicationName: String, applicationOnly: Bool, waitingToQuit: Bool)
+        case uninstalling(applicationName: String, applicationOnly: Bool, waitingToQuit: Bool, usingHomebrew: Bool = false)
         case waitingForApplicationsToQuit(names: [String])
 
         var title: String {
@@ -447,7 +453,7 @@ final class AppModel {
                 return "Reviewing \(count) \(items)"
             case .restoringTrashItem(let name):
                 return "Putting Back \(name)"
-            case .uninstalling(let name, _, let waiting):
+            case .uninstalling(let name, _, let waiting, _):
                 return waiting ? "Waiting for \(name) to quit" : "Uninstalling \(name)"
             case .waitingForApplicationsToQuit(let names):
                 return "Waiting for \(ListFormatter.localizedString(byJoining: names)) to quit"
@@ -473,10 +479,13 @@ final class AppModel {
                 return "Moppo is checking the selected items before moving them to the Trash."
             case .restoringTrashItem:
                 return "Moving the item to its original location."
-            case .uninstalling(_, let applicationOnly, let waiting):
+            case .uninstalling(_, let applicationOnly, let waiting, let usingHomebrew):
                 if waiting {
                     return "The application and its helpers are asked to quit. "
                         + "Nothing is removed until they are gone."
+                }
+                if usingHomebrew {
+                    return "Homebrew removes the package. Moppo then moves its related data to the Trash."
                 }
                 return applicationOnly
                     ? "Related files stay on disk."
@@ -921,7 +930,8 @@ final class AppModel {
 
     // MARK: - App uninstaller
 
-    private let appUninstallPlanner = AppUninstallPlanner()
+    private let appUninstallPlanner: AppUninstallPlanner
+    private let homebrewUninstallService: HomebrewUninstallService
     private let orphanedAppLeftoverPlanner = OrphanedAppLeftoverPlanner()
     @ObservationIgnored private var appUninstallTask: Task<Void, Never>?
     @ObservationIgnored private var appUninstallPlanningID: UUID?
@@ -1195,7 +1205,7 @@ final class AppModel {
     }
 
     func requestAppUninstall() {
-        guard !isBusyWithDisk, let plan = appUninstallPlan, plan.managedPackage == nil else { return }
+        guard !isBusyWithDisk, let plan = appUninstallPlan else { return }
         pendingAppUninstall = PendingAppUninstall(plan: plan)
         Task { await performAppUninstall() }
     }
@@ -1204,6 +1214,7 @@ final class AppModel {
         case stillRunning
         case interrupted
         case finished(CleanupOutcome)
+        case homebrew(HomebrewUninstallOutcome)
     }
 
     /// One application, start to finish: ask it to quit, wait, then remove. Shared by
@@ -1241,6 +1252,15 @@ final class AppModel {
             applicationName: applicationName, applicationOnly: applicationOnly, waitingToQuit: false
         )
 
+        if plan.managedPackage != nil {
+            activity = .uninstalling(
+                applicationName: applicationName, applicationOnly: true, waitingToQuit: false, usingHomebrew: true
+            )
+            return .homebrew(await homebrewUninstallService.uninstall(
+                plan, privilegedFallback: true, keepReceipt: keepReceipt
+            ))
+        }
+
         do {
             return .finished(try await cleanupService.uninstall(
                 plan, privilegedFallback: true, keepReceipt: keepReceipt
@@ -1270,6 +1290,17 @@ final class AppModel {
             return
         case .finished(let finished):
             outcome = finished
+        case .homebrew(let finished):
+            var result = BatchUninstallOutcome()
+            result.recordHomebrew(finished, plan: request.plan)
+            batchUninstallOutcome = result
+            appUninstallPlan = nil
+            if finished.applicationRemoved { selectedApplicationIDs.remove(request.plan.applicationURL.path) }
+            try? await presentation.wait()
+            pruneVanishedEntries()
+            activity = nil
+            await refreshAfterRemoval()
+            return
         }
 
         appUninstallOutcome = outcome
@@ -1337,10 +1368,15 @@ final class AppModel {
 
     func clearApplicationSelection() { selectedApplicationIDs.removeAll() }
 
-    /// An application the batch will not touch, and why.
+    /// An application that needs attention, with its next available actions.
     struct SetAsideApplication {
+        enum Kind { case notAttempted, failed }
         let name: String
         let reason: String
+        var kind: Kind = .notAttempted
+        var applicationURL: URL?
+        var managedPackage: AppUninstallPlan.ManagedPackage?
+        var details: String?
     }
 
     /// Captures checked application plans and applications that cannot be removed.
@@ -1348,9 +1384,7 @@ final class AppModel {
         let plans: [AppUninstallPlan]
         let setAside: [SetAsideApplication]
 
-        var itemCount: Int { plans.reduce(0) { $0 + $1.items.count } }
-        var totalBytes: Int64 { plans.reduce(0) { $0 + $1.totalBytes } }
-        var protectedDataCount: Int { plans.reduce(0) { $0 + $1.protectedItems.count } }
+        var homebrewCount: Int { plans.filter { $0.managedPackage != nil }.count }
     }
 
     struct BatchUninstallOutcome {
@@ -1358,6 +1392,37 @@ final class AppModel {
         var setAside: [SetAsideApplication] = []
         var removedBytes: Int64 = 0
         var survivorCount = 0
+        var homebrewUninstalled: [String] = []
+
+        var title: String {
+            if uninstalled.isEmpty {
+                return setAside.allSatisfy { $0.kind == .notAttempted }
+                    ? "No applications were removed" : "Removal needs attention"
+            }
+            return "\(uninstalled.count) \(uninstalled.count == 1 ? "application" : "applications") uninstalled"
+        }
+
+        mutating func recordHomebrew(_ outcome: HomebrewUninstallOutcome, plan: AppUninstallPlan) {
+            if outcome.status == .completed {
+                uninstalled.append(plan.applicationName)
+                homebrewUninstalled.append(plan.applicationName)
+                removedBytes += outcome.relatedCleanup.removedBytes
+                survivorCount += outcome.relatedCleanup.failed.count
+                if !outcome.relatedCleanup.failed.isEmpty {
+                    setAside.append(SetAsideApplication(
+                        name: plan.applicationName, reason: "Homebrew removed the application. Moppo could not move some related data to the Trash.",
+                        kind: .failed, details: outcome.relatedCleanup.failed.joined(separator: "\n")
+                    ))
+                }
+            } else {
+                setAside.append(SetAsideApplication(
+                    name: plan.applicationName, reason: outcome.message,
+                    kind: outcome.status == .notStarted ? .notAttempted : .failed,
+                    applicationURL: outcome.applicationRemoved ? nil : plan.applicationURL,
+                    managedPackage: plan.managedPackage, details: outcome.details
+                ))
+            }
+        }
     }
 
     private(set) var batchUninstallReview: BatchUninstallReview?
@@ -1367,7 +1432,7 @@ final class AppModel {
     /// Captures the checked plans before removal starts.
     private(set) var pendingBatchUninstall: BatchUninstallReview?
 
-    /// Checks selected applications, then moves each valid plan to the Trash.
+    /// Checks selected applications and shows each removal path before execution.
     func moveSelectedApplicationsToTrash() {
         let selected = (installedApplications ?? [])
             .filter { selectedApplicationIDs.contains($0.id) }
@@ -1405,31 +1470,22 @@ final class AppModel {
                     let plan = try await planner.plan(
                         applicationURL: application.url, context: context
                     )
-                    if let package = plan.managedPackage {
-                        // Trashing a cask's bundle leaves Homebrew's receipt behind.
-                        // Its own page offers the command; the batch leaves it alone.
-                        setAside.append(SetAsideApplication(
-                            name: plan.applicationName,
-                            reason: "Managed by \(package.manager.rawValue) — open it to copy the uninstall command."
-                        ))
-                    } else {
-                        plans.append(plan)
-                    }
+                    plans.append(plan)
                 } catch is CancellationError {
                     return
                 } catch {
                     setAside.append(SetAsideApplication(
-                        name: application.name, reason: error.localizedDescription
+                        name: application.name, reason: error.localizedDescription,
+                        applicationURL: application.url
                     ))
                 }
             }
             guard !Task.isCancelled, self.appUninstallPlanningID == planningID else { return }
-            self.pendingBatchUninstall = BatchUninstallReview(plans: plans, setAside: setAside)
+            self.batchUninstallReview = BatchUninstallReview(plans: plans, setAside: setAside)
             self.isPlanningAppUninstall = false
             self.appUninstallPlanningDetail = nil
             self.appUninstallPlanningID = nil
             self.appUninstallTask = nil
-            await self.performBatchUninstall()
         }
     }
 
@@ -1439,8 +1495,8 @@ final class AppModel {
         Task { await performBatchUninstall() }
     }
 
-    /// In sequence, each application on its own terms: one that will not quit or will
-    /// not move is set aside with its files untouched, and the rest carry on.
+    /// Removes each reviewed application through its selected removal path.
+    /// A Homebrew failure can leave partial changes, which the result reports.
     func performBatchUninstall() async {
         guard let request = pendingBatchUninstall, activity == nil else { return }
         pendingBatchUninstall = nil
@@ -1454,18 +1510,24 @@ final class AppModel {
             switch await attemptUninstall(plan) {
             case .stillRunning:
                 result.setAside.append(SetAsideApplication(
-                    name: name, reason: "Still running. No files were removed."
+                    name: name, reason: "Still running. No files were removed.",
+                    applicationURL: plan.applicationURL, managedPackage: plan.managedPackage
                 ))
             case .interrupted:
                 result.setAside.append(SetAsideApplication(
-                    name: name, reason: "The uninstall was interrupted."
+                    name: name, reason: "The uninstall was interrupted.", kind: .failed,
+                    applicationURL: plan.applicationURL
                 ))
+            case .homebrew(let outcome):
+                result.recordHomebrew(outcome, plan: plan)
+                if outcome.applicationRemoved { selectedApplicationIDs.remove(plan.applicationURL.path) }
             case .finished(let outcome):
                 result.removedBytes += outcome.removedBytes
                 if outcome.failed.contains(plan.applicationURL.path) {
                     result.setAside.append(SetAsideApplication(
                         name: name,
-                        reason: "Could not be moved to the Trash. No related files were removed."
+                        reason: "Could not be moved to the Trash. No related files were removed.",
+                        kind: .failed, applicationURL: plan.applicationURL
                     ))
                 } else {
                     result.uninstalled.append(name)
@@ -1775,7 +1837,7 @@ final class AppModel {
 
     // MARK: - Removal
 
-    private let cleanupService = CleanupService()
+    private let cleanupService: CleanupService
 
     /// Performs the clean-up the sheet just confirmed.
     ///
@@ -2817,8 +2879,8 @@ final class AppModel {
         switch uninstallerTab {
         case .installed:
             let count = selectedApplicationIDs.count
-            guard count > 0 else { return "Move to Trash" }
-            return "Move to Trash (\(count) \(count == 1 ? "app" : "apps"))"
+            guard count > 0 else { return "Review Uninstall" }
+            return "Review Uninstall (\(count) \(count == 1 ? "app" : "apps"))"
         case .leftovers:
             return "Move Leftovers to Trash"
         }

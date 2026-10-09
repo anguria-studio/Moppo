@@ -288,17 +288,47 @@ public struct CleanupService: Sendable {
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
         guard plan.managedPackage == nil else {
-            // Trashing only a cask's app artifact leaves Homebrew's package receipt
-            // inconsistent. A future delegated workflow must remove both together;
-            // this direct filesystem path deliberately refuses to split them.
+            // HomebrewUninstallService handles managed packages and their records.
+            // This filesystem path must never remove a managed application directly.
             outcome.failed = [plan.applicationURL.path]
             if keepReceipt {
                 try? log.append([Self.failureRecord(for: plan.applicationItem.fileEntry)])
             }
             return outcome
         }
+        return try await removeApplicationItems(
+            plan, includingApplication: true, privilegedFallback: privilegedFallback, keepReceipt: keepReceipt
+        )
+    }
+
+    /// Homebrew must finish package removal before this method can move related data.
+    func removeRelatedFilesAfterHomebrew(
+        _ plan: AppUninstallPlan,
+        privilegedFallback: Bool,
+        keepReceipt: Bool
+    ) async -> CleanupOutcome {
+        guard plan.managedPackage != nil else {
+            return CleanupOutcome(failed: plan.items.dropFirst().map { $0.url.path })
+        }
+        // This mode records cancellation and measurement failures without losing completed results.
+        do {
+            return try await removeApplicationItems(
+                plan, includingApplication: false, privilegedFallback: privilegedFallback, keepReceipt: keepReceipt
+            )
+        } catch {
+            return CleanupOutcome(failed: plan.items.dropFirst().map { $0.url.path })
+        }
+    }
+
+    private func removeApplicationItems(
+        _ plan: AppUninstallPlan,
+        includingApplication: Bool,
+        privilegedFallback: Bool,
+        keepReceipt: Bool
+    ) async throws -> CleanupOutcome {
+        var outcome = CleanupOutcome()
         var failedSubtrees = Set<String>()
-        let removalOrder = plan.removalOrder()
+        let removalOrder = includingApplication ? plan.removalOrder() : Array(plan.removalOrder().dropFirst())
         guard !removalOrder.isEmpty else { return outcome }
 
         func recordFailure(_ item: AppUninstallPlan.Item, bytes: Int64? = nil) {
@@ -321,7 +351,16 @@ public struct CleanupService: Sendable {
         )
 
         for (index, item) in removalOrder.enumerated() {
-            try Task.checkCancellation()
+            if includingApplication {
+                try Task.checkCancellation()
+            } else {
+                // A replacement application at the same path must keep its data.
+                guard !Task.isCancelled, Self.pathIsAbsent(plan.applicationURL) else {
+                    for remaining in removalOrder[index...] { recordFailure(remaining) }
+                    return outcome
+                }
+                if Self.pathIsAbsent(item.url) { continue }
+            }
             // A planned containing folder must not smuggle through a descendant
             // that just failed its own identity, ownership, or permission check.
             // Leave the whole subtree where it is and report both review rows.
@@ -337,11 +376,18 @@ public struct CleanupService: Sendable {
                 recordFailure(item)
                 // The bundle is the transaction gate. Nothing related moves when
                 // the app itself no longer matches the reviewed plan.
-                if index == 0 { return outcome }
+                if includingApplication && index == 0 { return outcome }
                 continue
             }
 
-            let measured = try await measureSize(item.url).allocatedBytes
+            let measured: Int64
+            do {
+                measured = try await measureSize(item.url).allocatedBytes
+            } catch {
+                if includingApplication { throw error }
+                recordFailure(item)
+                continue
+            }
             let freed = try? await privateMeasurer.measure([item.url])
             do {
                 let landed = try Self.discard(item.url, disposition: .trashed)
@@ -368,7 +414,7 @@ public struct CleanupService: Sendable {
             } catch {
                 guard privilegedFallback, Self.isPermissionDenied(error) else {
                     recordFailure(item, bytes: measured)
-                    if index == 0 { return outcome }
+                    if includingApplication && index == 0 { return outcome }
                     continue
                 }
 
@@ -381,12 +427,21 @@ public struct CleanupService: Sendable {
                 )
                 if outcome.removedCount == removedBefore {
                     recordFailure(item)
-                    if index == 0 { return outcome }
+                    if includingApplication && index == 0 { return outcome }
                 }
             }
         }
 
         return outcome
+    }
+
+    private static func pathIsAbsent(_ url: URL) -> Bool {
+        do {
+            _ = try url.resourceValues(forKeys: [.isDirectoryKey])
+            return false
+        } catch let error as NSError {
+            return error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
+        }
     }
 
     /// Moves selected application leftovers to the Trash after a second owner check.
