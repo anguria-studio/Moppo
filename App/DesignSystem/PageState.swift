@@ -46,8 +46,11 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
                 Label {
                     Text(title)
                 } icon: {
+                    // Every state screen uses the same icon area, so the title does not move between screens.
+                    // Smaller icons sit at the bottom of the area, near the title.
                     icon()
-                        .frame(minWidth: PageStateMetrics.iconSize, minHeight: PageStateMetrics.iconSize)
+                        .frame(width: PageStateMetrics.iconAreaSize, height: PageStateMetrics.iconAreaSize,
+                               alignment: .bottom)
                 }
                 .labelStyle(PageStateLabelStyle())
             } description: {
@@ -154,7 +157,8 @@ struct PageCompletionView<Detail: View, Actions: View>: View {
 
 enum PageStateMetrics {
     static let iconSize: CGFloat = 44
-    static let mascotSize: CGFloat = 88
+    /// The icon area holds the animated Moppo. Symbols keep `iconSize` and sit at the bottom of it.
+    static let iconAreaSize: CGFloat = 88
     static let titleSize: CGFloat = 18
     static let iconTitleSpacing: CGFloat = 20
     static let titleBottomPadding: CGFloat = 6
