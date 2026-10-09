@@ -18,8 +18,8 @@ struct FileDuplicatesModelTests {
         app.view = .history
         #expect(app.isBusyWithDisk)
         #expect(app.isStorageExplorerMeasurementBlocked)
-        app.startScan()
-        #expect(!app.isScanning)
+        app.cleanup.startScan()
+        #expect(!app.cleanup.isScanning)
         #expect(app.operations.begin(.photoScan) == nil)
         #expect(app.operations.begin(.photoDeletion) == nil)
 
@@ -65,7 +65,7 @@ struct FileDuplicatesModelTests {
         try await waitUntil { !files.isScanning }
         files.selectAll()
         switch owner {
-        case .cleanup: app.isScanning = true
+        case .cleanup: _ = app.operations.begin(.cleanupScan)
         case .explorer: app.storageExplorer.isLoading = true
         case .photoScan: _ = app.operations.begin(.photoScan)
         case .photoDeletion: _ = app.operations.begin(.photoDeletion)
@@ -299,7 +299,7 @@ struct FileDuplicatesModelTests {
         let changed = try #require(group.removable.first)
         try Data("Changed after the scan".utf8).write(to: changed.url)
         files.selectAll()
-        app.scanResults = ScanResults(categories: [], startedAt: .now, finishedAt: .now)
+        app.cleanup.scanResults = ScanResults(categories: [], startedAt: .now, finishedAt: .now)
         app.storageExplorer.selectLocation(fixture.root)
         try await waitUntil { !app.storageExplorer.isLoading }
         await files.removeSelected()
@@ -308,7 +308,7 @@ struct FileDuplicatesModelTests {
         #expect(files.groups.isEmpty)
         #expect(files.selection.isEmpty)
         #expect(app.removalCompletion?.title == "Some items were not removed")
-        #expect(app.scanResults == nil)
+        #expect(app.cleanup.scanResults == nil)
         #expect(app.storageExplorer.snapshot == nil)
         #expect(app.storageExplorer.needsRefresh)
         #expect(!app.isBusyWithDisk)

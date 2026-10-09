@@ -75,20 +75,20 @@ struct OperationFlowTests {
             childCount: 2, children: children
         )
         let model = AppModel()
-        model.scanResults = ScanResults(
+        model.cleanup.scanResults = ScanResults(
             categories: [ScanCategoryResult(
                 categoryID: .applicationLeftovers, totalBytes: 200, entries: [group]
             )], startedAt: .now, finishedAt: .now
         )
-        model.scannerSelection = [missing.path]
+        model.cleanup.scannerSelection = [missing.path]
         try FileManager.default.removeItem(at: missing)
 
-        model.pruneVanishedEntries()
+        model.cleanup.pruneVanishedEntries()
 
-        let result = try #require(model.scanResults?.categories.first)
+        let result = try #require(model.cleanup.scanResults?.categories.first)
         #expect(result.entries.first?.children.map(\.id) == [kept.path])
         #expect(result.totalBytes == 100)
-        #expect(model.scannerSelection.isEmpty)
+        #expect(model.cleanup.scannerSelection.isEmpty)
     }
 
     @Test("An unavailable cached folder reports an error and permits retry", arguments: [false, true])
@@ -218,7 +218,7 @@ struct OperationFlowTests {
         )
         model.storageExplorer.selectLocation(folder.url)
         try await waitUntil { !model.storageExplorer.isLoading }
-        model.scanResults = ScanResults(categories: [], startedAt: .now, finishedAt: .now)
+        model.cleanup.scanResults = ScanResults(categories: [], startedAt: .now, finishedAt: .now)
         let operation = try #require(model.operations.begin(.fileScan))
         let item = TrashItem(url: trashed, bytes: 7, canPutBack: true)
 
@@ -233,7 +233,7 @@ struct OperationFlowTests {
         #expect(model.cleanupHistory?.items.first?.state == .restored)
         #expect(model.storageExplorer.snapshot == nil)
         #expect(model.storageExplorer.needsRefresh)
-        #expect(model.scanResults == nil)
+        #expect(model.cleanup.scanResults == nil)
         #expect(!model.isBusyWithDisk)
     }
 

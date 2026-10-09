@@ -42,7 +42,7 @@ struct MainWindow: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 guard model.checkDiskAccess() else { return }
-                model.pruneVanishedEntries()
+                model.cleanup.pruneVanishedEntries()
                 model.startInitialCleanupScan()
             }
         }
@@ -125,7 +125,13 @@ struct MainWindow: View {
             case .dashboard:
                 DashboardView(model: model, settings: settings)
             case .scanner:
-                ScannerView(model: model)
+                ScannerView(
+                    model: model.cleanup,
+                    activity: model.activity,
+                    cleanupCompletion: model.cleanupCompletion,
+                    onViewDashboard: { model.showDashboardAfterCleanup($0) },
+                    onUninstallApplication: { model.planAppUninstall($0.url) }
+                )
             case .storageExplorer:
                 StorageExplorerView(
                     model: model.storageExplorer,
@@ -161,12 +167,12 @@ struct MainWindow: View {
                     // Every figure from the captured plan, so the sheet describes
                     // the operation that will actually run.
                     variant: .cleanUp(
-                        itemCount: model.pendingCleanUp?.itemCount ?? 0,
-                        totalBytes: model.pendingCleanUp?.totalBytes ?? 0,
-                        protectedDataCount: model.pendingCleanUp?.protectedDataCount ?? 0,
+                        itemCount: model.cleanup.pendingCleanUp?.itemCount ?? 0,
+                        totalBytes: model.cleanup.pendingCleanUp?.totalBytes ?? 0,
+                        protectedDataCount: model.cleanup.pendingCleanUp?.protectedDataCount ?? 0,
                         // Absent until the private-size reading lands, a moment
                         // after the sheet appears.
-                        saving: model.pendingCleanUp?.freed.flatMap {
+                        saving: model.cleanup.pendingCleanUp?.freed.flatMap {
                             // A reading with gaps in it is no reading: an item the
                             // filesystem would not answer for could hold anything,
                             // so the sheet says nothing rather than a partial total.
@@ -178,12 +184,12 @@ struct MainWindow: View {
                                 : nil
                         }
                     ),
-                    runningOwnerNames: model.pendingCleanUp?.runningOwners.map(\.name) ?? [],
-                    onConfirm: { Task { await model.performCleanUp() } },
+                    runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
+                    onConfirm: { Task { await model.cleanup.performCleanUp() } },
                     onQuitAndConfirm: {
-                        Task { await model.performCleanUp(quittingOwners: true) }
+                        Task { await model.cleanup.performCleanUp(quittingOwners: true) }
                     },
-                    onCancel: { model.cancelCleanUp() }
+                    onCancel: { model.cleanup.cancelCleanUp() }
                 )
             case .emptyTrash:
                 ConfirmationSheet(
@@ -214,7 +220,7 @@ struct MainWindow: View {
     private var canRemove: Bool {
         guard !model.isBusyWithDisk else { return false }
         switch model.view {
-        case .scanner:         return !model.cleanupSelection(in: .all).isEmpty
+        case .scanner:         return !model.cleanup.cleanupSelection(in: .all).isEmpty
         case .duplicates:      return model.duplicateKind == .files
             ? !model.fileDuplicates.selection.isEmpty && !model.fileDuplicates.isScanning
             : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping
@@ -231,7 +237,7 @@ struct MainWindow: View {
 
     private func removeTapped() {
         switch model.view {
-        case .scanner: model.requestCleanUp(in: .all)
+        case .scanner: model.cleanup.requestCleanUp(in: .all)
         case .duplicates:
             if model.duplicateKind == .files {
                 Task { await model.fileDuplicates.removeSelected() }
@@ -279,13 +285,13 @@ struct MainWindow: View {
     /// Names the operation that blocks scans on the current page.
     @ViewBuilder
     private var headerCentre: some View {
-        if model.isScanning, model.view != .scanner {
+        if model.cleanup.isScanning, model.view != .scanner {
             backgroundWorkStatus(
                 title: "Cleanup scan",
-                detail: "\(model.scanProgress)% complete",
-                progress: Double(model.scanProgress) / 100,
-                isInterrupting: model.isInterruptingScan,
-                onStop: { model.cancelScan() }
+                detail: "\(model.cleanup.scanProgress)% complete",
+                progress: Double(model.cleanup.scanProgress) / 100,
+                isInterrupting: model.cleanup.isInterruptingScan,
+                onStop: { model.cleanup.cancelScan() }
             )
         } else if model.storageExplorer.isLoading, model.view != .storageExplorer {
             backgroundWorkStatus(
@@ -372,20 +378,20 @@ struct MainWindow: View {
         switch model.view {
         case .scanner:
             Button {
-                if model.isScanning { model.cancelScan() } else { model.startScan() }
+                if model.cleanup.isScanning { model.cleanup.cancelScan() } else { model.cleanup.startScan() }
             } label: {
-                if model.isInterruptingScan {
+                if model.cleanup.isInterruptingScan {
                     ScanInterruptionView()
                 } else {
                     Label(
-                        model.isScanning ? "Stop Scan" : "Scan",
-                        systemImage: model.isScanning ? "stop.fill" : "magnifyingglass"
+                        model.cleanup.isScanning ? "Stop Scan" : "Scan",
+                        systemImage: model.cleanup.isScanning ? "stop.fill" : "magnifyingglass"
                     )
                 }
             }
             .buttonStyle(PageActionButtonStyle())
             .controlSize(.large)
-            .disabled(model.isInterruptingScan || (!model.isScanning && model.isBusyWithDisk))
+            .disabled(model.cleanup.isInterruptingScan || (!model.cleanup.isScanning && model.isBusyWithDisk))
         case .dashboard:
             Button { Task { await model.measureStorage() } } label: {
                 Label("Refresh Overview", systemImage: "arrow.clockwise")

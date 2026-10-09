@@ -38,10 +38,10 @@ struct PhotoDuplicatesModelTests {
         #expect(photos.isScanning)
         #expect(app.isBusyWithDisk)
         #expect(app.isStorageExplorerMeasurementBlocked)
-        app.startScan()
+        app.cleanup.startScan()
         app.fileDuplicates.startScan(roots: [URL(fileURLWithPath: "/unused-photo-test")])
         app.planAppUninstall(URL(fileURLWithPath: "/unused-photo-test.app"))
-        #expect(!app.isScanning)
+        #expect(!app.cleanup.isScanning)
         #expect(!app.fileDuplicates.isScanning)
         #expect(!app.isPlanningAppUninstall)
         #expect(app.view == .history)
@@ -86,7 +86,7 @@ struct PhotoDuplicatesModelTests {
         try await waitUntil { !photos.isScanning }
         #expect(!photos.selection.isEmpty)
         switch owner {
-        case .cleanup: app.isScanning = true
+        case .cleanup: _ = app.operations.begin(.cleanupScan)
         case .files: _ = app.operations.begin(.fileScan)
         case .explorer: app.storageExplorer.isLoading = true
         }
@@ -123,9 +123,9 @@ struct PhotoDuplicatesModelTests {
         } onChange: {
             legacyChanged.mark()
         }
-        app.isScanning = true
+        app.storageExplorer.isLoading = true
         #expect(legacyChanged.changed)
-        app.isScanning = false
+        app.storageExplorer.isLoading = false
 
         let featureChanged = ObservationFlag()
         withObservationTracking {

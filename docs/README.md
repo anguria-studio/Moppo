@@ -70,22 +70,25 @@ Regression tests cover each measurement bug below.
 ## State ownership
 
 `AppModel` creates feature models and owns navigation, onboarding, and shared presentation.
-It still owns the Cleanup, uninstall, Dashboard, and recovery state.
+It still owns the uninstall, Dashboard, and recovery state.
 
 | Component | Responsibility |
 | --- | --- |
 | `PhotoDuplicatesModel` | Photos access, scans, regrouping, selection, preview state, thumbnail requests, and deletion. |
+| `CleanupModel` | Cleanup scans, filters, results, selection, captured removal plans, and operation tasks. |
+| `CleanupScheduler` | Periodic volume checks and automatic scan requests. |
 | `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
 | `StorageExplorerModel` | Folder measurements, navigation history, cached results, and selection. |
 | `OperationCoordinator` | Shared operation guards and operation identity for extracted features. |
 
 Photo views receive `PhotoDuplicatesModel` directly.
 File duplicate views receive `FileDuplicatesModel` directly.
+Cleanup views receive `CleanupModel` and presentation values from the application model.
 The photo model receives services, download preferences, an access condition, and an event handler.
 It does not hold `AppModel` or change navigation directly.
 `AppModel` handles scan-start, deletion-start, deletion-result, and failure events.
 
-Photo and file scans continue when the user changes pages.
+Photo, file, and Cleanup scans continue when the user changes pages.
 A stop request cancels the scan task and keeps the shared operation guard until the service returns.
 Scan and regroup identifiers reject results from cancelled or replaced tasks.
 Only the matching operation can release the shared guard.
@@ -113,7 +116,28 @@ After file removal, the model releases the shared guard and requests a refresh t
 `AppModel` clears Cleanup and Storage Explorer results, refreshes Trash, and requests a storage measurement.
 This refresh preserves the updated file review and cannot clear a later file operation.
 Other disk removals and successful Put Back actions invalidate file results and selection.
-Cleanup scheduling remains with its scan owner in `AppModel`.
+
+The Cleanup model captures enabled categories and exclusions before each scan.
+The scan service resolves application owners from one leftover candidate scan.
+A new scan clears protected-data authorizations from the previous review.
+Safe selection starts once per completed scan and preserves later deselection.
+
+A Cleanup plan captures entries, protected-data authorizations, leftover paths, open applications, and the receipt setting.
+Delayed size measurements can update only the same pending plan.
+Cancelling confirmation discards that plan.
+Cleanup removal and application quit requests own their tasks independently of the requesting view.
+The shared guard remains active until each task completes.
+A quit refusal stops removal before files change.
+
+`AppModel` handles Cleanup events for navigation, confirmation, progress, completion, and failure presentation.
+Explicit callbacks refresh application leftovers and disk results after removal.
+Successful removal and Put Back invalidate Cleanup results and selection.
+Partial removal keeps completed receipts and reports failed items.
+
+`CleanupScheduler` owns the timer and checks the existing automatic scan policy.
+It reads current access, power, idle time, preferences, last scan time, and operation state before requesting a scan.
+Automatic scans preserve the current page.
+The periodic volume check still supplies low-space notifications.
 
 ## Measurement rules
 

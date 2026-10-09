@@ -1,7 +1,5 @@
 import SwiftUI
 import AppKit
-import CoreGraphics
-import IOKit.ps
 import Observation
 import MoppoCore
 
@@ -16,6 +14,9 @@ final class AppModel {
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
     let operations: OperationCoordinator
     let photoDuplicates: PhotoDuplicatesModel
+    let cleanup: CleanupModel
+    @ObservationIgnored private let cleanupScheduler = CleanupScheduler()
+    @ObservationIgnored private var cleanupDestination: View?
     let fileDuplicates: FileDuplicatesModel
     let storageExplorer: StorageExplorerModel
     private(set) var launchAccess: LaunchAccess
@@ -30,6 +31,8 @@ final class AppModel {
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
         cleanupService: CleanupService = CleanupService(),
+        cleanupScanner: any CleanupScanning = CleanupScanService(),
+        cleanupRemover: (any CleanupRemoving)? = nil,
         fileDuplicateService: any FileDuplicatesScanning = FileDuplicateService(),
         fileDuplicateRemovalService: any FileDuplicatesRemoving = FileDuplicateRemovalService(),
         makePhotoService: @escaping (Bool) -> any PhotoDuplicatesServicing = { allowsNetwork in
@@ -44,6 +47,22 @@ final class AppModel {
         self.hasFullDiskAccess = hasFullDiskAccess
         let operations = OperationCoordinator()
         self.operations = operations
+        self.cleanup = CleanupModel(
+            operations: operations,
+            scanner: cleanupScanner,
+            remover: cleanupRemover ?? cleanupService,
+            preferences: { [weak settings] in
+                CleanupModel.Preferences(
+                    enabledCategories: settings.map { store in
+                        Set(CategoryID.allCases.filter { store.isEnabled($0) })
+                    },
+                    excludedPaths: settings?.excludedFolderPaths ?? [],
+                    excludedPatterns: settings?.excludedPatterns ?? [],
+                    confirmBeforeCleanup: settings?.confirmBeforeCleanup ?? SettingsStore.Defaults.confirmBeforeCleanup,
+                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
+                )
+            }
+        )
         self.photoDuplicates = PhotoDuplicatesModel(
             operations: operations,
             allowsNetworkFetch: { [weak settings] in
@@ -71,7 +90,7 @@ final class AppModel {
         self.storageExplorer = StorageExplorerModel(settings: settings)
         operations.hasOtherOperation = { [weak self] in
             guard let self else { return false }
-            return self.isScanning || self.storageExplorer.isLoading
+            return self.storageExplorer.isLoading
                 || self.isPlanningAppUninstall || self.activity != nil
         }
         photoDuplicates.canRequestAccess = { [weak self] in
@@ -83,7 +102,36 @@ final class AppModel {
         fileDuplicates.refreshAfterRemoval = { [weak self] in
             await self?.refreshAfterRemoval(invalidateFileDuplicates: false)
         }
-        if settings != nil { startScheduler() }
+        cleanup.canScan = { [weak self] automatic in
+            self?.checkDiskAccess(automatic: automatic) ?? false
+        }
+        cleanup.onEvent = { [weak self] event in self?.handleCleanupEvent(event) }
+        cleanup.refreshAfterRemoval = { [weak self] in
+            await self?.refreshAfterRemoval(invalidateCleanup: false)
+        }
+        cleanup.refreshLeftovers = { [weak self] identifiers in
+            guard let self, self.applicationLeftovers != nil, !identifiers.isEmpty else { return }
+            self.selectedLeftoverIdentifiers.subtract(identifiers)
+            self.loadApplicationLeftovers()
+            if self.cleanupDestination == .uninstaller { await self.applicationLeftoversTask?.value }
+        }
+        cleanupScheduler.canCheck = { [weak self] in
+            self?.checkDiskAccess(automatic: true) ?? false
+        }
+        cleanupScheduler.refreshVolume = { [weak self] in await self?.refreshVolumeInfo() }
+        cleanupScheduler.conditions = { [weak self, weak settings] in
+            guard let self, let settings else { return nil }
+            return AutomaticScanPolicy.Conditions(
+                lastFinished: self.cleanup.lastScanFinishedAt,
+                cadence: settings.scanSchedule.cadence,
+                requiresIdleAndPower: settings.idleOnly,
+                isOnACPower: CleanupScheduler.isOnACPower,
+                secondsSinceUserInput: CleanupScheduler.secondsSinceUserInput,
+                isScanning: self.isBusyWithDisk
+            )
+        }
+        cleanupScheduler.startScan = { [weak cleanup] in cleanup?.startScan(automatic: true) }
+        if settings != nil { cleanupScheduler.start() }
     }
 
     func showWelcomeGuide() {
@@ -97,67 +145,6 @@ final class AppModel {
     /// Keeps automatic scans off when the user continues with limited access.
     func checkDiskAccess(automatic: Bool = false) -> Bool {
         launchAccess.authorizeScan(hasFullDiskAccess: hasFullDiskAccess(), automatic: automatic)
-    }
-
-    // MARK: - Automatic scanning
-
-    /// The scheduler checks the scan schedule and the free-space threshold at this
-    /// interval. Most idle-only checks decline. A later check starts the due scan.
-    /// The volume check also finds low-space crossings caused by other apps.
-    private static let schedulerTick: Duration = .seconds(300)
-    @ObservationIgnored private var schedulerTask: Task<Void, Never>?
-
-    /// Drives Preferences › General › "Scan automatically", which until now was
-    /// persisted, displayed, and consulted by nothing at all.
-    private func startScheduler() {
-        schedulerTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.schedulerTick)
-                guard let self, !Task.isCancelled else { return }
-                guard self.checkDiskAccess(automatic: true) else { continue }
-                await self.refreshVolumeInfo()
-                if self.scheduledScanIsDue() {
-                    // Automatic: the view does not jump to the Scanner under
-                    // whatever the user was reading.
-                    self.startScan(automatic: true)
-                }
-            }
-        }
-    }
-
-    /// Gathers the live inputs; ``AutomaticScanPolicy`` makes the decision, where
-    /// `swift test` can reach it.
-    func scheduledScanIsDue() -> Bool {
-        guard let settings else { return false }
-        return AutomaticScanPolicy.isDue(AutomaticScanPolicy.Conditions(
-            now: Date(),
-            lastFinished: lastScanFinishedAt,
-            cadence: settings.scanSchedule.cadence,
-            requiresIdleAndPower: settings.idleOnly,
-            isOnACPower: Self.isOnACPower,
-            secondsSinceUserInput: Self.secondsSinceUserInput,
-            isScanning: isScanning
-        ))
-    }
-
-    /// "Plugged in", as the setting words it. A desktop with no battery reports AC
-    /// and qualifies, which is the right answer for it.
-    ///
-    /// `IOPSGetProvidingPowerSourceType` reads a snapshot; passing `nil` asked it to
-    /// describe nothing. And it is a *Get*, so the string it returns is not owned by
-    /// the caller — only the snapshot from the *Copy* is.
-    private static var isOnACPower: Bool {
-        guard let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
-              let source = IOPSGetProvidingPowerSourceType(snapshot)?.takeUnretainedValue()
-        else { return true }
-        // `kIOPSACPowerValue`, spelled out: the constant is not bridged into Swift.
-        return (source as String) == "AC Power"
-    }
-
-    /// Seconds since the last keyboard or mouse event anywhere in the session.
-    private static var secondsSinceUserInput: TimeInterval {
-        guard let anyInput = CGEventType(rawValue: ~0) else { return 0 }
-        return CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: anyInput)
     }
 
     enum View: String, CaseIterable, Identifiable {
@@ -207,42 +194,6 @@ final class AppModel {
         /// Sparkles uses the same symbol in both selection states.
         var selectedSymbol: String {
             self == .scanner ? symbol : symbol + ".fill"
-        }
-    }
-
-    /// Which part of the scan the Scanner is showing.
-    ///
-    /// Safe to Remove and Needs Review used to be views of their own, reached from
-    /// the Dashboard tiles and from nowhere else. A scan lands on the Scanner, so
-    /// the scan's conclusion — what regenerates, what wants a decision — has to be
-    /// readable there; asking the user to go back to the Dashboard for it was
-    /// asking them to leave the page the scan had just put them on.
-    ///
-    /// The filter narrows the list and nothing else. The composition bar above it
-    /// keeps describing the whole scan, whichever lens is chosen.
-    enum ScanFilter: String, CaseIterable, Identifiable {
-        case all, safeToRemove, needsReview
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .all:          "All"
-            case .safeToRemove: "Safe to Remove"
-            case .needsReview:  "Needs Review"
-            }
-        }
-
-        /// What this lens holds, in one line. `all` has none: the header and the
-        /// composition bar above it already describe the whole scan.
-        var explanation: String? {
-            switch self {
-            case .all:
-                nil
-            case .safeToRemove:
-                "Caches and package files. They regenerate on demand, so removing them costs nothing."
-            case .needsReview:
-                "Large files, unused apps and what removed apps left behind. Look before you remove."
-            }
         }
     }
 
@@ -303,8 +254,6 @@ final class AppModel {
         findRequest += 1
     }
 
-    var scanFilter: ScanFilter = .safeToRemove
-    private(set) var cleanupOutcome: CleanupOutcome?
     struct CleanupCompletion: Identifiable {
         let id = UUID()
         let outcome: CleanupOutcome
@@ -371,15 +320,13 @@ final class AppModel {
         guard cleanupCompletion?.id == id else { return }
         view = .dashboard
     }
-    private var hasStartedInitialCleanupScan = false
 
     /// Starts the first Cleanup scan with the access the user chose.
     func startInitialCleanupScan() {
         guard checkDiskAccess() else { return }
-        guard view == .scanner, scanResults == nil, !hasStartedInitialCleanupScan,
+        guard view == .scanner, cleanup.scanResults == nil, !cleanup.hasStartedInitialScan,
               cleanupCompletion == nil, !isBusyWithDisk else { return }
-        hasStartedInitialCleanupScan = true
-        startScan(refreshOverview: false)
+        cleanup.startScan(refreshOverview: false)
     }
 
     // MARK: - Data
@@ -387,13 +334,6 @@ final class AppModel {
     var volume: VolumeInfo?
     var breakdown: StorageBreakdown?
     var snapshots: [SnapshotInfo] = []
-    var scanResults: ScanResults?
-
-    /// When the last junk scan finished, surviving relaunch. The results themselves
-    /// are recomputed on demand — cheap to re-earn, dangerous to trust stale — but
-    /// "when did I last scan" is an answer the Dashboard should always have.
-    private(set) var lastScanFinishedAt: Date? =
-        UserDefaults.standard.object(forKey: "lastScanFinishedAt") as? Date
 
     var isLoadingBreakdown = false
     /// The first Dashboard task has finished its complete refresh. Cached figures
@@ -403,20 +343,11 @@ final class AppModel {
     var isDashboardLoading: Bool {
         !hasCompletedInitialDashboardLoad || isLoadingBreakdown
     }
-    var isScanning = false
-    private(set) var isInterruptingScan = false
-    var scanProgress = 0
 
     var snapshotsExpanded = false
-    var openCategories: Set<CategoryID> = [.documentsAndFiles]
 
     // MARK: - Selection
 
-    var scannerSelection: Set<FileEntry.ID> = []
-    /// User-data rows whose lock the user explicitly opened for this selection.
-    /// Kept separate from the selection itself so neither a stale ID nor a bulk
-    /// selection can silently acquire the override.
-    var userDataRemovalOverrides: Set<FileEntry.ID> = []
     var activeSheet: Sheet?
 
     /// What is left to say when an operation did not simply do what it said.
@@ -542,7 +473,7 @@ final class AppModel {
     var isShowingAppDataAccessAlert = false
 
     var isStorageExplorerMeasurementBlocked: Bool {
-        isScanning || operations.activeOperation != nil
+        operations.activeOperation != nil
             || isPlanningAppUninstall || activity != nil
     }
 
@@ -641,58 +572,11 @@ final class AppModel {
 
     // MARK: - Derived
 
-    var allEntries: [FileEntry] {
-        let tops = scanResults?.categories.flatMap(\.entries) ?? []
-        // Children are selectable in their own right (removing an app's cache while
-        // keeping the app), so they must resolve from the selection set too. A
-        // selected parent strips its children from the set, so nothing double-counts.
-        return tops + tops.flatMap(\.children)
-    }
-
-    var selectedEntries: [FileEntry] {
-        let selected = scannerSelection
-        // Application bundles use the dedicated uninstaller. Their disclosed
-        // children remain ordinary cleanup rows, but a stale app ID can never
-        // reach the generic cleanup service.
-        return allEntries.filter {
-            selected.contains($0.id)
-                && $0.kind != .appBundle
-                && $0.removalAction == nil
-        }
-    }
-
-    private var selectedOrphanApplicationEntries: [FileEntry] {
-        let selected = scannerSelection
-        return scanResults?.categories
-            .first(where: { $0.categoryID == .applicationLeftovers })?
-            .entries.filter { selected.contains($0.id) } ?? []
-    }
-
-    var selectedBytes: Int64 {
-        selectedEntries.reduce(0) { $0 + plannedBytes(for: $1) }
-            + selectedOrphanApplicationEntries.reduce(0) { $0 + $1.displayBytes }
-    }
-
-    private func plannedTargets(for entry: FileEntry) -> [FileEntry] {
-        CleanupService.removalTargets(
-            for: entry,
-            removeProtectedAppData: false
-        )
-    }
-
-    private func plannedBytes(for entry: FileEntry) -> Int64 {
-        plannedTargets(for: entry).reduce(0) { $0 + $1.allocatedBytes }
-    }
-
-    var hasSelection: Bool {
-        !selectedEntries.isEmpty || !selectedOrphanApplicationEntries.isEmpty
-    }
-
     /// Names the action for the current page.
     var removeLabel: String {
         switch view {
         case .scanner:
-            "Move to Trash (\(ByteFormatting.string(cleanupSelectionBytes(in: .all))))"
+            "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: .all))))"
         case .duplicates:
             duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
@@ -709,246 +593,14 @@ final class AppModel {
     var boot: SnapshotInfo? { snapshots.first(where: \.isBootSnapshot) }
     var removableSnapshots: [SnapshotInfo] { snapshots.filter { !$0.isBootSnapshot } }
 
-    func selectedBytes(in category: CategoryID, filter: ScanFilter = .all) -> Int64 {
-        let selected = cleanupSelection(in: filter)
-        guard let result = scanResults?.categories.first(where: { $0.categoryID == category })
-        else { return 0 }
-        let entries = filter == .all
-            ? result.entries : result.tileRows(safeToRemove: filter == .safeToRemove)
-        if category == .applicationLeftovers {
-            return entries
-                .filter { selected.contains($0.id) }
-                .reduce(0) { $0 + $1.displayBytes }
-        }
-        return entries.reduce(Int64(0)) { total, entry in
-            if selected.contains(entry.id) {
-                let targets = plannedTargets(for: entry)
-                let covered = Set(targets.map(\.id))
-                // A protected child may be unlocked individually after selecting
-                // “keep data” for its parent. It is not covered by the parent's
-                // plan, so count that explicit child selection too.
-                let extraChildren = entry.children
-                    .filter { selected.contains($0.id) && !covered.contains($0.id) }
-                    .reduce(0) { $0 + plannedBytes(for: $1) }
-                return total + targets.reduce(0) { $0 + $1.allocatedBytes } + extraChildren
-            }
-            // Individually selected children count toward their category's readout.
-            return total + entry.children
-                .filter { selected.contains($0.id) }
-                .reduce(0) { $0 + $1.allocatedBytes }
-        }
-    }
-
-    /// Drops entries whose files no longer exist.
-    ///
-    /// The scan table is a snapshot, and the world changes under it: the user
-    /// deletes an app in Finder, empties the Trash, a build regenerates. A stale
-    /// row keeps its old size against a path that is gone, and renders with the
-    /// generic missing-file icon: a 3.69 GB "empty file" that does not exist.
-    func pruneVanishedEntries() {
-        guard var results = scanResults else { return }
-        let fileManager = FileManager.default
-        var vanished: Set<FileEntry.ID> = []
-
-        results.categories = results.categories.map { category in
-            var copy = category
-            copy.entries = copy.entries.compactMap { original in
-                var entry = original
-                if entry.removalAction != nil {
-                    entry.children.removeAll {
-                        let gone = !fileManager.fileExists(atPath: $0.url.path)
-                        if gone { vanished.insert($0.id) }
-                        return gone
-                    }
-                    guard !entry.children.isEmpty else {
-                        vanished.insert(entry.id)
-                        return nil
-                    }
-                    entry.url = entry.children[0].url
-                    entry.childCount = entry.children.count
-                    return entry
-                }
-                // Synthetic rows (Docker's accounting, manual-removal aggregates)
-                // keep their place; only real paths are checked.
-                guard entry.url.isFileURL, entry.manualRemoval == nil else { return entry }
-                let gone = !fileManager.fileExists(atPath: entry.url.path)
-                if gone { vanished.insert(entry.id) }
-                return gone ? nil : entry
-            }
-            copy.entries = copy.entries.map { entry in
-                var entry = entry
-                entry.children.removeAll { child in
-                    let gone = !fileManager.fileExists(atPath: child.url.path)
-                    if gone { vanished.insert(child.id) }
-                    return gone
-                }
-                return entry
-            }
-            copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
-            return copy
-        }
-
-        if !vanished.isEmpty {
-            scanResults = results
-            scannerSelection.subtract(vanished)
-            userDataRemovalOverrides.subtract(vanished)
-        }
-    }
-
-    /// The rows behind a Dashboard tile — the same arithmetic the tile summed, so
-    /// the list and the figure above it can never disagree.
-    ///
-    /// Judged per entry, not per category: a non-regenerable row inside a safe
-    /// category (an `.xcarchive`) belongs to "Needs review", whatever badge its
-    /// category wears. Deduplicated by path, because an entry two categories both
-    /// claim is one thing to remove, not two.
-    /// The rows behind a Dashboard tile.
-    ///
-    /// The split itself is `ScanCategoryResult.tileRows`, in Core beside the two
-    /// figures the tiles print, so the number and the list it opens cannot come apart.
-    /// This adds only what is view-level: one appearance per row across categories,
-    /// and the order the table draws.
-    func tileEntries(safeToRemove wantSafe: Bool) -> [FileEntry] {
-        guard let results = scanResults else { return [] }
-        var seen: Set<FileEntry.ID> = []
-        return results.categories
-            .flatMap { $0.tileRows(safeToRemove: wantSafe) }
-            .filter { seen.insert($0.id).inserted }
-            .sorted { $0.displayBytes > $1.displayBytes }
-    }
-
     /// Opens the Scanner on one of its filtered lists.
     ///
     /// The order matters: the filter is set before the view, so the Scanner draws
     /// the requested list on its first frame instead of showing the whole outline
     /// for a frame and then replacing it.
-    func showScanner(filtered filter: ScanFilter) {
-        scanFilter = filter
+    func showScanner(filtered filter: CleanupModel.ScanFilter) {
+        cleanup.scanFilter = filter
         view = .scanner
-    }
-
-    /// Returns the rows shown in the current filter.
-    private var rowsInCurrentView: [FileEntry] {
-        switch scanFilter {
-        case .all: scanResults?.categories.flatMap(\.entries) ?? []
-        case .safeToRemove: tileEntries(safeToRemove: true)
-        case .needsReview: tileEntries(safeToRemove: false)
-        }
-    }
-
-    /// Excludes locked rows and applications from bulk selection.
-    private var selectableInCurrentView: [FileEntry] {
-        let rows = rowsInCurrentView
-        let candidates = scanFilter == .all
-            ? rows + tileEntries(safeToRemove: true) : rows
-        var seen = Set<FileEntry.ID>()
-        let selectable = candidates.filter {
-            !$0.isRemovalLocked && $0.kind != .appBundle && seen.insert($0.id).inserted
-        }
-        let covered = Set(selectable.flatMap(\.children).map(\.id))
-        return selectable.filter { !covered.contains($0.id) }
-    }
-
-    /// Keeps safe cleanup separate from selections that need review.
-    func cleanupSelection(in filter: ScanFilter) -> Set<FileEntry.ID> {
-        let scope: CleanupSelection.Scope = switch filter {
-        case .all: .all
-        case .safeToRemove: .safe
-        case .needsReview: .review
-        }
-        return CleanupSelection.ids(
-            in: scanResults?.categories ?? [], selected: scannerSelection, scope: scope
-        )
-    }
-
-    func cleanupSelectionBytes(in filter: ScanFilter) -> Int64 {
-        let ids = cleanupSelection(in: filter)
-        return selectedEntries.filter { ids.contains($0.id) }
-            .reduce(0) { $0 + plannedBytes(for: $1) }
-            + selectedOrphanApplicationEntries.filter { ids.contains($0.id) }
-                .reduce(0) { $0 + $1.displayBytes }
-    }
-
-    /// Indicates whether bulk selection would add items.
-    var canSelectAllInCurrentView: Bool {
-        let selectable = selectableInCurrentView
-        return !selectable.isEmpty
-            && !selectable.allSatisfy { scannerSelection.contains($0.id) }
-    }
-
-    var hasSelectableItemsInCurrentView: Bool { !selectableInCurrentView.isEmpty }
-
-    var hasSelectionInCurrentView: Bool {
-        let rows = rowsInCurrentView
-        return (rows + rows.flatMap(\.children)).contains { scannerSelection.contains($0.id) }
-    }
-
-    /// Clears selection only for items shown in the current filter.
-    func deselectAllInCurrentView() {
-        let rows = rowsInCurrentView
-        let ids = Set((rows + rows.flatMap(\.children)).map(\.id))
-        scannerSelection.subtract(ids)
-        userDataRemovalOverrides.subtract(ids)
-    }
-
-    /// The scan whose Safe to Remove list has already been pre-selected, so the
-    /// seeding happens once per scan and never fights the user afterwards.
-    @ObservationIgnored private var safeSelectionSeededAt: Date?
-
-    /// Ticks everything in the Safe to Remove list the moment it is shown.
-    ///
-    /// This list contains regenerable data and verified application leftovers.
-    /// Locked rows stay clear of the selection, and Clean Up still asks for
-    /// confirmation. Needs Review starts with no selection because the user must
-    /// make that decision.
-    ///
-    /// Called when a scan finishes, and only then. It was a view's `.task` once,
-    /// on the summary line of the "Safe to Remove" tab, which made the app's whole
-    /// opening selection a side effect of looking at one tab: land on "All" after a
-    /// scan and nothing was ticked, so Remove was disabled over a list of rows that
-    /// were about to tick themselves the moment the user clicked elsewhere.
-    ///
-    /// Still guarded by `safeSelectionSeededAt`, so re-seeding cannot undo a
-    /// deliberate deselection. A new scan is a new list, so it re-arms.
-    func seedSafeToRemoveSelection() {
-        guard let finishedAt = scanResults?.finishedAt,
-              safeSelectionSeededAt != finishedAt
-        else { return }
-        safeSelectionSeededAt = finishedAt
-
-        // Everything under this tab is ticked, because everything under it costs
-        // nothing to remove. Application leftovers used to sit here unticked — safe
-        // by one meaning and not by the other — and are under Needs Review now; the
-        // `removalAction` test stays as a guard, since a leftover group is never
-        // removed through the ordinary selection.
-        let selectable = tileEntries(safeToRemove: true).filter {
-            !$0.isRemovalLocked && $0.kind != .appBundle && $0.removalAction == nil
-        }
-        guard !selectable.isEmpty else { return }
-        scannerSelection.formUnion(selectable.map(\.id))
-        // Parent selection replaces individual child selection so cleanup never
-        // counts the same bytes twice.
-        let childIDs = Set(selectable.flatMap(\.children).map(\.id))
-        scannerSelection.subtract(childIDs)
-        userDataRemovalOverrides.subtract(childIDs)
-    }
-
-    /// Selects every selectable row in the current drill-down.
-    ///
-    /// Selecting a parent strips individual children from the pool — the same rule
-    /// the table applies row by row — so the sweep never counts a byte twice.
-    func selectAllInCurrentView() {
-        let selectable = selectableInCurrentView
-        guard !selectable.isEmpty else { return }
-        scannerSelection.formUnion(selectable.map(\.id))
-        let childIDs = Set(selectable.flatMap(\.children).map(\.id))
-        scannerSelection.subtract(childIDs)
-        userDataRemovalOverrides.subtract(childIDs)
-    }
-
-    func deselectAll() {
-        scannerSelection.removeAll()
-        userDataRemovalOverrides.removeAll()
     }
 
     // MARK: - App uninstaller
@@ -964,6 +616,7 @@ final class AppModel {
         }
     }
 
+    private let cleanupService: CleanupService
     private let appUninstallPlanner: AppUninstallPlanner
     private let homebrewUninstallService: HomebrewUninstallService
     private let orphanedAppLeftoverPlanner = OrphanedAppLeftoverPlanner()
@@ -1143,7 +796,7 @@ final class AppModel {
                 planner.scanCandidates()
             }.value
             guard self != nil, !Task.isCancelled else { return }
-            let registered = Self.registeredApplicationBundleIdentifiers(for: candidates.identifiers)
+            let registered = ApplicationRuntime.registeredApplicationBundleIdentifiers(for: candidates.identifiers)
             let plan = try? await planner.plan(
                 context: context,
                 registeredApplicationBundleIdentifiers: registered,
@@ -1175,14 +828,14 @@ final class AppModel {
             .filter { identifiers.contains($0.bundleIdentifier) }
             .flatMap(\.items)
         guard !items.isEmpty else { return }
-        pendingCleanUp = CleanupPlan(
+        let plan = CleanupModel.CleanupPlan(
             entries: [],
             userDataRemovalOverrides: [],
             applicationLeftoverPlan: leftovers,
             orphanedApplicationBundleIdentifiers: identifiers,
             orphanedApplicationItemPaths: Set(items.map(\.id))
         )
-        await performCleanUp()
+        await cleanup.removeLeftovers(plan)
     }
 
     func loadInstalledApplications() {
@@ -1218,24 +871,6 @@ final class AppModel {
             }
             self.installedApplicationsMeasured = true
         }
-    }
-
-    /// Resolves current application owners through Launch Services. The walk
-    /// itself lives in Core and is shared with the CLI; only the oracle is AppKit.
-    private static func registeredApplicationBundleIdentifiers(
-        for candidates: Set<String>
-    ) -> Set<String> {
-        let fileManager = FileManager.default
-        return OrphanedAppLeftoverPlanner.registeredApplicationBundleIdentifiers(
-            for: candidates,
-            running: Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)),
-            isInstalled: { identifier in
-                guard let application = NSWorkspace.shared.urlForApplication(
-                    withBundleIdentifier: identifier
-                ) else { return false }
-                return fileManager.fileExists(atPath: application.path)
-            }
-        )
     }
 
     func requestAppUninstall() {
@@ -1331,7 +966,7 @@ final class AppModel {
             appUninstallPlan = nil
             if finished.applicationRemoved { selectedApplicationIDs.remove(request.plan.applicationURL.path) }
             try? await presentation.wait()
-            pruneVanishedEntries()
+            cleanup.pruneVanishedEntries()
             activity = nil
             await refreshAfterRemoval()
             return
@@ -1353,7 +988,7 @@ final class AppModel {
         // and how many related items remain on disk.
 
         try? await presentation.wait()
-        pruneVanishedEntries()
+        cleanup.pruneVanishedEntries()
         activity = nil
         await refreshAfterRemoval()
     }
@@ -1576,7 +1211,7 @@ final class AppModel {
         batchUninstallOutcome = result
 
         try? await presentation.wait()
-        pruneVanishedEntries()
+        cleanup.pruneVanishedEntries()
         activity = nil
         await refreshAfterRemoval()
     }
@@ -1584,456 +1219,19 @@ final class AppModel {
     /// All removal actions use the saved receipt setting.
     var keepReceipt: Bool { settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt }
 
-    /// Exactly what the confirmation was asked about: which entries, and whether
-    /// they go to the Trash.
-    ///
-    /// Captured when the sheet opens rather than read again when it is confirmed:
-    /// the plan the user agreed to is the plan that runs.
-    ///
-    /// It carried a `trashFirst` flag, for a preference — "Always move to Trash,
-    /// never delete" — that let a Scanner clean-up unlink files outright. The
-    /// preference was removed on 20 Sep 2026 (the owner's call): every other
-    /// removal in the app already went to the Trash, a cleaner that deletes for
-    /// good on a setting the user flipped months ago is a trap, and the Trash is
-    /// what Put Back, the receipts and History are built on. A clean-up moves to
-    /// the Trash, and space comes back when the Trash is emptied.
-    /// `CleanupService.remove(trashFirst:)` keeps its parameter, as a Core primitive
-    /// with its tests, and the app always passes `true`.
-    struct CleanupPlan {
-        let entries: [FileEntry]
-        let userDataRemovalOverrides: Set<FileEntry.ID>
-        let applicationLeftoverPlan: OrphanedAppLeftoverPlan?
-        let orphanedApplicationBundleIdentifiers: Set<String>
-        let orphanedApplicationItemPaths: Set<String>
-        /// Applications that own something in this plan and were open when the
-        /// sheet was — checked against NSWorkspace at capture, not read off the
-        /// scan, so an app the user has since quit is not named.
-        var runningOwners: [FileEntry.RunningOwner] = []
-
-        /// What this plan would actually free, filled in after the sheet is already
-        /// on screen. The plan itself is fixed at capture; this is a reading of the
-        /// same set taken a moment later, and it changes nothing the confirmation
-        /// executes — only what it tells the user to expect.
-        ///
-        /// `nil` while the measurement is still running, or when the filesystem
-        /// would not answer, and the sheet then says nothing rather than guessing.
-        var freed: PrivateSizeMeasurement?
-
-        var orphanedApplicationItems: [AppUninstallPlan.Item] {
-            applicationLeftoverPlan?.groups.filter {
-                orphanedApplicationBundleIdentifiers.contains($0.bundleIdentifier)
-            }.flatMap(\.items).filter {
-                orphanedApplicationItemPaths.contains($0.id)
-            } ?? []
-        }
-
-        var itemCount: Int {
-            entries.count + orphanedApplicationItems.count
-        }
-        var totalBytes: Int64 {
-            let ordinary = entries.reduce(0) { total, entry in
-                total + CleanupService.removalTargets(
-                    for: entry,
-                    removeProtectedAppData: false
-                ).reduce(0) { $0 + $1.allocatedBytes }
-            }
-            return ordinary + orphanedApplicationItems.reduce(0) { $0 + $1.allocatedBytes }
-        }
-        /// Rows the user deliberately unlocked. The final confirmation calls these
-        /// out separately from ordinary cache removal.
-        var protectedDataCount: Int {
-            var protectedIDs: Set<FileEntry.ID> = []
-            for entry in entries {
-                if entry.protectionReason == .userData,
-                   userDataRemovalOverrides.contains(entry.id) {
-                    protectedIDs.insert(entry.id)
-                }
-            }
-            let orphanedCount = orphanedApplicationItems.filter(\.isProtectedUserData).count
-            return protectedIDs.count + orphanedCount
-        }
-    }
-
-    private(set) var pendingCleanUp: CleanupPlan?
-
-    /// Starts cleanup directly unless confirmation is enabled or selected files belong to open apps.
-    func requestCleanUp(in filter: ScanFilter) {
-        guard !isBusyWithDisk else { return }
-        let scope = cleanupSelection(in: filter)
-        let entries = selectedEntries.filter { scope.contains($0.id) }
-        let selectedIDs = Set(entries.map(\.id))
-        let orphanedEntries = selectedOrphanApplicationEntries.filter { scope.contains($0.id) }
-        let orphanedIdentifiers = Set(orphanedEntries.compactMap(\.orphanedApplicationBundleIdentifier))
-        let orphanedItemPaths = Set(orphanedEntries.flatMap(\.children).map(\.id))
-        let orphanedPlan = scanResults?.categories
-            .first(where: { $0.categoryID == .applicationLeftovers })?
-            .applicationLeftoverPlan
-        let plan = CleanupPlan(
-            entries: entries,
-            // Capture authorizations only for rows in this exact operation. The
-            // service therefore cannot receive a broader capability than it needs.
-            userDataRemovalOverrides: userDataRemovalOverrides.intersection(selectedIDs),
-            applicationLeftoverPlan: orphanedPlan,
-            orphanedApplicationBundleIdentifiers: orphanedIdentifiers,
-            orphanedApplicationItemPaths: orphanedItemPaths
-        )
-        guard !plan.entries.isEmpty || !plan.orphanedApplicationBundleIdentifiers.isEmpty
-        else { return }
-        var captured = plan
-        captured.runningOwners = Self.stillRunning(
-            entries.flatMap {
-                CleanupService.removalTargets(for: $0, removeProtectedAppData: false)
-            }.compactMap(\.inUseBy)
-        )
-        pendingCleanUp = captured
-
-        // Selected protected data follows the confirmation setting. Open apps still offer a quit action.
-        if (settings?.confirmBeforeCleanup ?? SettingsStore.Defaults.confirmBeforeCleanup)
-            || !captured.runningOwners.isEmpty {
-            activeSheet = .cleanUp
-            measureCleanUpSaving(for: plan)
-        } else {
-            Task { await performCleanUp() }
-        }
-    }
-
-    /// Reads how much of the pending plan the disk would actually give back.
-    ///
-    /// Runs *after* the sheet is presented, never before: the walk costs one
-    /// `getattrlist` per file, and a plan holding a DerivedData tree would keep the
-    /// user staring at a button that had not appeared yet. The sheet opens on the
-    /// figures it always had and gains this one when it arrives.
-    private func measureCleanUpSaving(for plan: CleanupPlan) {
-        let urls = plan.entries.flatMap {
-            CleanupService.removalTargets(for: $0, removeProtectedAppData: false).map(\.url)
-        } + plan.orphanedApplicationItems.map(\.url)
-        guard !urls.isEmpty else { return }
-
-        cleanUpSavingTask?.cancel()
-        cleanUpSavingTask = Task { [weak self] in
-            let measurement = try? await PrivateSizeMeasurer().measure(urls)
-            guard !Task.isCancelled, let measurement else { return }
-            // The plan may have been confirmed or cancelled while this ran. Only a
-            // sheet still showing the same plan may be updated.
-            guard let self, self.activeSheet == .cleanUp else { return }
-            self.pendingCleanUp?.freed = measurement
-        }
-    }
-
-    private var cleanUpSavingTask: Task<Void, Never>?
-
-    /// Dismissing the sheet abandons the plan; nothing may run afterwards.
-    func cancelCleanUp() {
-        cleanUpSavingTask?.cancel()
-        cleanUpSavingTask = nil
-        pendingCleanUp = nil
-        activeSheet = nil
-    }
-
-    /// The notice tracks only open apps with eligible cache files in this scan.
-    private(set) var cleanupRunningOwners: [FileEntry.RunningOwner] = []
-
-    private var runningCacheCandidates: [FileEntry] {
-        var candidates: [FileEntry] = []
-        var seen: Set<FileEntry.ID> = []
-        func visit(_ entry: FileEntry) {
-            guard entry.removalAction == nil, !entry.removesAsUnit,
-                  entry.manualRemoval == nil, entry.protectionReason != .userData else { return }
-            if !entry.children.isEmpty {
-                entry.children.forEach(visit)
-                return
-            }
-            guard entry.kind != .appBundle, entry.isRegenerable,
-                  !entry.isRemovalLocked, entry.inUseBy != nil,
-                  entry.allocatedBytes > 0, seen.insert(entry.id).inserted else { return }
-            candidates.append(entry)
-        }
-        scanResults?.categories.flatMap(\.entries).forEach(visit)
-        return candidates
-    }
-
-    var runningAppCaches: [FileEntry] {
-        let owners = Set(cleanupRunningOwners)
-        return runningCacheCandidates.filter { entry in
-            entry.inUseBy.map { owners.contains($0) } ?? false
-        }
-    }
-
-    /// Refresh the notice when a scan finishes or an app closes.
-    func refreshCleanupRunningOwners() {
-        let known = Array(Set(runningCacheCandidates.compactMap(\.inUseBy)))
-        let live = Self.stillRunning(known)
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        cleanupRunningOwners = live
-    }
-
-    /// Quit the listed apps and make their caches available in Safe to Remove.
-    func quitAppsForCleanup() async {
-        guard !isBusyWithDisk, pendingCleanUp == nil else { return }
-        refreshCleanupRunningOwners()
-        let owners = cleanupRunningOwners
-        guard !owners.isEmpty else { return }
-
-        let stillOpen = await quit(owners)
-        clearInUse(of: owners.filter { !stillOpen.contains($0) })
-        refreshCleanupRunningOwners()
-        activity = nil
-
-        if !stillOpen.isEmpty {
-            let names = ListFormatter.localizedString(byJoining: stillOpen.map(\.name))
-            report(
-                "Some Apps Are Still Open",
-                "\(names) did not quit. Close these apps, then try Quit Apps again."
-            )
-        }
-    }
-
-    // MARK: - Open applications
-
-    /// Every open application the user could be asked to quit, as Core's
-    /// `RunningOwner`.
-    ///
-    /// Ordinary Dock applications only. The first real scan named "Siri" as an
-    /// owner — a background agent — and by the same reading Finder, or Moppo's own
-    /// cache folder, would put Finder or Moppo on the list "Quit and Clean" works
-    /// through. An owner is something the user opened and can close.
-    static func currentRunningOwners() -> [FileEntry.RunningOwner] {
-        NSWorkspace.shared.runningApplications.compactMap { application in
-            guard application.activationPolicy == .regular,
-                  application.bundleIdentifier != Bundle.main.bundleIdentifier,
-                  application.bundleIdentifier != "com.apple.finder"
-            else { return nil }
-            guard let url = application.bundleURL else { return nil }
-            return FileEntry.RunningOwner(
-                name: application.localizedName
-                    ?? url.deletingPathExtension().lastPathComponent,
-                bundleIdentifier: application.bundleIdentifier,
-                bundlePath: url.path
-            )
-        }
-    }
-
-    /// The live processes behind one owner: the application itself and every helper
-    /// embedded in its bundle, the same net the uninstaller casts.
-    private static func processes(of owner: FileEntry.RunningOwner) -> [NSRunningApplication] {
-        let path = URL(fileURLWithPath: owner.bundlePath).standardizedFileURL.path
-        return NSWorkspace.shared.runningApplications.filter { application in
-            if let identifier = owner.bundleIdentifier,
-               application.bundleIdentifier == identifier { return true }
-            guard let url = application.bundleURL?.standardizedFileURL else { return false }
-            return url.path == path || url.path.hasPrefix(path + "/")
-        }
-    }
-
-    /// The owners among these that are open right now, once each.
-    private static func stillRunning(
-        _ owners: [FileEntry.RunningOwner]
-    ) -> [FileEntry.RunningOwner] {
-        var seen: Set<FileEntry.RunningOwner> = []
-        return owners.filter { seen.insert($0).inserted && !processes(of: $0).isEmpty }
-    }
-
-    /// Asks each owner to quit and waits. Returns the ones that stayed.
-    ///
-    /// `terminate()`, never `forceTerminate()`: a browser with forty tabs or an
-    /// Xcode with unsaved files may put up a prompt, and that prompt is the user's
-    /// to answer. Hence 30 s and not the uninstaller's 3 — measured against nothing;
-    /// it is a guess at how long a person takes to press Save.
-    private func quit(_ owners: [FileEntry.RunningOwner]) async -> [FileEntry.RunningOwner] {
-        activity = .waitingForApplicationsToQuit(names: owners.map(\.name))
-        for owner in owners {
-            for process in Self.processes(of: owner) { process.terminate() }
-        }
-        for _ in 0..<300 where !Self.stillRunning(owners).isEmpty {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        return Self.stillRunning(owners)
-    }
-
-    /// The owners are gone, so the rows they held are ordinary caches again: the
-    /// ones this clean-up leaves behind go back to Safe to Remove without a rescan.
-    private func clearInUse(of owners: [FileEntry.RunningOwner]) {
-        guard var results = scanResults else { return }
-        let gone = Set(owners)
-        func cleared(_ entry: FileEntry) -> FileEntry {
-            var entry = entry
-            if let owner = entry.inUseBy, gone.contains(owner) { entry.inUseBy = nil }
-            entry.children = entry.children.map(cleared)
-            return entry
-        }
-        results.categories = results.categories.map { category in
-            var copy = category
-            copy.entries = category.entries.map(cleared)
-            return copy
-        }
-        scanResults = results
-    }
-
-    // MARK: - Removal
-
-    private let cleanupService: CleanupService
-
-    /// Performs the clean-up the sheet just confirmed.
-    ///
-    /// Freed bytes come from `CleanupOutcome`, measured immediately before each
-    /// removal — never from the selection total, which would report what we *hoped*
-    /// to free rather than what actually went.
-    ///
-    /// - Parameter quittingOwners: ask the plan's open applications to quit first.
-    ///   If any of them is still there when the wait ends, **nothing is removed**:
-    ///   the user asked for a clean-up without a live owner, and quietly doing the
-    ///   other kind is how Chrome lost its dictionaries.
-    func performCleanUp(quittingOwners: Bool = false) async {
-        // The captured plan, never the live settings — see `CleanupPlan`.
-        guard let plan = pendingCleanUp, activity == nil else { return }
-        cleanupCompletion = nil
-        removalCompletion = nil
-        let completionDestination = view
-        var presentation = OperationPresentationDuration()
-
-        if quittingOwners, !plan.runningOwners.isEmpty {
-            cleanUpSavingTask?.cancel()
-            // The sheet goes first or the overlay that says what is happening
-            // would sit underneath it.
-            activeSheet = nil
-            let stragglers = await quit(plan.runningOwners)
-            guard stragglers.isEmpty else {
-                activity = nil
-                pendingCleanUp = nil
-                let names = ListFormatter.localizedString(byJoining: stragglers.map(\.name))
-                report(
-                    "Nothing Was Removed",
-                    "\(names) did not quit, so Moppo stopped before touching anything. "
-                        + "Quit it yourself and try Clean Up again."
-                )
-                return
-            }
-            clearInUse(of: plan.runningOwners)
-        }
-
-        // The overlay says what is happening while it happens.
-        let cleanup = Activity.cleaningUp(itemCount: plan.itemCount, totalBytes: plan.totalBytes)
-        activity = cleanup
-        presentation.extend(toShow: cleanup.progressIcon)
-        let entries = plan.entries
-        pendingCleanUp = nil
-        activeSheet = nil
-
-        var outcome = CleanupOutcome()
-        if !entries.isEmpty {
-            let ordinary = (try? await cleanupService.remove(
-                entries: entries,
-                trashFirst: true,
-                // Root-owned App Store installs need Finder's remedy: one admin
-                // prompt. Only the app enables this fallback.
-                privilegedFallback: true,
-                keepReceipt: keepReceipt,
-                userDataRemovalOverrides: plan.userDataRemovalOverrides
-            )) ?? CleanupOutcome(failed: entries.map(\.id))
-            outcome.merge(ordinary)
-        }
-
-        if let leftoverPlan = plan.applicationLeftoverPlan,
-           !plan.orphanedApplicationBundleIdentifiers.isEmpty {
-            let registeredIdentifiers = Self.registeredApplicationBundleIdentifiers(
-                for: plan.orphanedApplicationBundleIdentifiers
-            )
-            let orphaned = (try? await cleanupService.removeOrphanedAppLeftovers(
-                leftoverPlan,
-                bundleIdentifiers: plan.orphanedApplicationBundleIdentifiers,
-                itemPaths: plan.orphanedApplicationItemPaths,
-                registeredApplicationBundleIdentifiers: registeredIdentifiers,
-                privilegedFallback: true,
-                keepReceipt: keepReceipt
-            )) ?? CleanupOutcome(
-                failed: plan.orphanedApplicationItems.map { $0.url.path }
-            )
-            outcome.merge(orphaned)
-        }
-
-        cleanupOutcome = outcome
-        let completedIDs = Set(entries.map(\.id)).subtracting(outcome.failed)
-        scannerSelection.subtract(completedIDs)
-        userDataRemovalOverrides.subtract(completedIDs)
-        // The Uninstaller's list of leftovers was read from the disk this changed.
-        if applicationLeftovers != nil, !plan.orphanedApplicationBundleIdentifiers.isEmpty {
-            selectedLeftoverIdentifiers.subtract(plan.orphanedApplicationBundleIdentifiers)
-            loadApplicationLeftovers()
-        }
-        // Removed entries must leave the tables, or the next total counts files that
-        // are already gone.
-        if var results = scanResults {
-            let removed = Set(entries.map(\.id)).subtracting(Set(outcome.failed))
-            results.categories = results.categories.map { category in
-                var copy = category
-                copy.entries.removeAll { removed.contains($0.id) }
-                // Individually removed children leave their parent's disclosure too.
-                copy.entries = copy.entries.map { entry in
-                    var entry = entry
-                    entry.children.removeAll { removed.contains($0.id) }
-                    return entry
-                }
-                copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
-                return copy
-            }
-            scanResults = results
-        }
-        pruneVanishedEntries()
-
-        if completionDestination == .uninstaller {
-            // Refresh the list during progress, before the success animation starts.
-            await applicationLeftoversTask?.value
-        }
-        try? await presentation.wait()
-        let deniedAppDataCount = outcome.permissionDenied.filter {
-            Self.isAppDataPath($0)
-        }.count
-        if deniedAppDataCount > 0 {
-            // Its own alert, because it is the one failure with a remedy: the
-            // permission is granted in System Settings, and the alert offers to
-            // open it.
-            isShowingAppDataAccessAlert = true
-        } else if completionDestination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
-            notice = unfinished
-        }
-        if completionDestination != .scanner {
-            completeTrashRemoval(outcome, in: completionDestination)
-        }
-        // Show success only when every requested item was moved.
-        if view == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,
-           outcome.trashedCount == outcome.removedCount, outcome.deletedCount == 0 {
-            cleanupCompletion = CleanupCompletion(outcome: outcome)
-        }
-        if outcome.removedCount > 0 {
-            // File sizes and cache contents can change during removal.
-            invalidateCleanupResults()
-        }
-        activity = nil
-        await refreshAfterRemoval(invalidateCleanup: false)
-    }
-
-    private func invalidateCleanupResults() {
-        scanResults = nil
-        scannerSelection.removeAll()
-        userDataRemovalOverrides.removeAll()
-        cleanupRunningOwners = []
-        scanFilter = .safeToRemove
-        hasStartedInitialCleanupScan = false
-    }
-
     /// The disk changed, so the cached breakdown and the Trash summary are both
     /// wrong. They run together: the Trash read is usually quick and feeds the
     /// sidebar count, and it should not queue behind a 20-second walk.
     private func refreshAfterRemoval(invalidateCleanup: Bool = true, invalidateFileDuplicates: Bool = true) async {
         if invalidateFileDuplicates { fileDuplicates.invalidateResults() }
-        if invalidateCleanup { invalidateCleanupResults() }
+        if invalidateCleanup { cleanup.invalidateResults() }
         // Every cached Explorer level is stale too: a folder measured before a
         // Scanner clean-up came back from the cache with its old figure.
         storageExplorer.invalidateCache()
         if view == .storageExplorer, !isStorageExplorerMeasurementBlocked {
             storageExplorer.refreshIfNeeded()
         }
-        pruneVanishedEntries()
+        cleanup.pruneVanishedEntries()
         async let trash: Void = loadTrash()
         // `removal` marks this measurement as the post-clean-up baseline, which is
         // what "since the last clean-up" reads and what the ring never thins away.
@@ -2135,7 +1333,7 @@ final class AppModel {
     /// Absent until a scan has run — those rows show an em dash rather than `0 B`,
     /// which would claim a measurement that never happened.
     var categorySizes: [CategoryID: Int64] {
-        guard let results = scanResults else { return [:] }
+        guard let results = cleanup.scanResults else { return [:] }
         return Dictionary(uniqueKeysWithValues: results.categories.map { ($0.categoryID, $0.totalBytes) })
     }
 
@@ -2189,7 +1387,7 @@ final class AppModel {
             restored = true
             fileDuplicates.invalidateResults()
             storageExplorer.invalidateCache()
-            invalidateCleanupResults()
+            cleanup.invalidateResults()
         } catch TrashError.destinationOccupied {
             report(
                 "\(item.name) Was Not Put Back",
@@ -2234,9 +1432,6 @@ final class AppModel {
     /// 228 GB disk at 274 GB and pushed the bar off the card.
     private let breakdownService = StorageBreakdownService()
     @ObservationIgnored private lazy var lowDiskNotifications = LowDiskNotificationService()
-    private let coordinator = ScanCoordinator.standard()
-    private var scanTask: Task<Void, Never>?
-    @ObservationIgnored private var cleanupScanID: UUID?
     @ObservationIgnored private var needsPostCleanupMeasurement = false
 
     /// Last measured figures, shown immediately on launch.
@@ -2457,135 +1652,46 @@ final class AppModel {
         )
     }
 
-    /// Re-entrancy is the coordinator's job; this only drives the UI state.
-    ///
-    /// - Parameter automatic: set by the scheduler. A scan the user did not ask for
-    ///   must not steal the view they are looking at; the status bar and the
-    ///   toolbar's progress readout say it is running.
-    func startScan(automatic: Bool = false, refreshOverview: Bool = true) {
-        guard checkDiskAccess(automatic: automatic) else { return }
-        // Not during a removal either: a scan replaces the results the removal
-        // is about to edit, and the scheduler can fire at any moment.
-        guard !isBusyWithDisk else { return }
-        hasStartedInitialCleanupScan = true
-        // An override belongs to one reviewed result set. Carrying it into a fresh
-        // scan would turn a newly discovered row into an authorized deletion merely
-        // because it reused the same path.
-        let destructiveOverrides = userDataRemovalOverrides
-        scannerSelection.subtract(destructiveOverrides)
-        userDataRemovalOverrides.removeAll()
-        cleanupOutcome = nil
-        cleanupCompletion = nil
-        isScanning = true
-        isInterruptingScan = false
-        let scanID = UUID()
-        cleanupScanID = scanID
-        scanProgress = 0
-        if !automatic { view = .scanner }
+    // MARK: - Cleanup presentation
 
-        // The breakdown refresh runs alongside the scan, not after it: the
-        // Dashboard's main card should already be recalculating by the time the
-        // user looks at it, and the scan is paying the traversal cost anyway.
-        //
-        // The scheduler's scan is the one that fills the ring while nobody is
-        // looking, so it is stored under its own trigger.
-        if refreshOverview {
-            Task { await self.measureStorage(trigger: automatic ? .scheduled : .scan) }
-        }
-
-        scanTask = Task { [weak self] in
-            guard let self else { return }
-            let presentation = OperationPresentationDuration()
-            defer {
-                self.isScanning = false
-                self.isInterruptingScan = false
-                self.scanTask = nil
-                self.cleanupScanID = nil
+    private func handleCleanupEvent(_ event: CleanupModel.Event) {
+        switch event {
+        case .scanStarted(let automatic, let refreshOverview):
+            cleanupCompletion = nil
+            if !automatic { view = .scanner }
+            if refreshOverview {
+                Task { await measureStorage(trigger: automatic ? .scheduled : .scan) }
             }
-            do {
-                // Ground truth for app protection: what is running right now.
-                // NSWorkspace is AppKit, so the set is built here and handed to Core.
-                let running = Set(
-                    NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }
-                )
-                // The same truth with names attached, so a cache can say whose it
-                // is — see `FileEntry.inUseBy`.
-                let runningOwners = Self.currentRunningOwners()
-                // The preferences' whole reason to exist flows in here: exclusions
-                // and disabled categories were all collected and then ignored until this call passed them.
-                let settings = self.settings
-                let enabled = settings.map { store in
-                    Set(CategoryID.allCases.filter { store.isEnabled($0) })
-                }
-                // One candidate scan, resolved once, handed to the planner whole:
-                // scanning twice let an identifier appear between the two passes
-                // and reach the planner with no owner check at all. The directory
-                // reads run off the main actor; the Launch Services lookups stay
-                // on it, since NSWorkspace is main-actor bound and they are cheap.
-                var registeredIdentifiers: Set<String> = []
-                var leftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan?
-                if enabled?.contains(.applicationLeftovers) ?? true {
-                    let planner = self.orphanedAppLeftoverPlanner
-                    let candidates = await Task.detached { planner.scanCandidates() }.value
-                    try Task.checkCancellation()
-                    leftoverCandidates = candidates
-                    registeredIdentifiers = Self.registeredApplicationBundleIdentifiers(
-                        for: candidates.identifiers
-                    )
-                }
-                let context = ScanContext(
-                    // Never follows symlinks. A scan produces removal candidates,
-                    // and removing a row unlinks the link — the target keeps its
-                    // bytes — so counting them would make the confirmation promise
-                    // gigabytes that stay exactly where they are.
-                    measurer: AllocatedSizeMeasurer(followSymlinks: false),
-                    excludedPaths: settings?.excludedFolderPaths ?? [],
-                    excludedPatterns: settings?.excludedPatterns ?? [],
-                    runningApplicationPaths: running,
-                    runningApplications: runningOwners,
-                    registeredApplicationBundleIdentifiers: registeredIdentifiers,
-                    applicationLeftoverCandidates: leftoverCandidates
-                )
-                let results = try await coordinator.scan(
-                    enabled: enabled,
-                    context: context,
-                    onProgress: { progress in
-                        Task { @MainActor in
-                            guard self.cleanupScanID == scanID, !self.isInterruptingScan else { return }
-                            self.scanProgress = progress.percent
-                        }
-                    }
-                )
-                try Task.checkCancellation()
-                self.scanResults = results
-                self.lastScanFinishedAt = results.finishedAt
-                UserDefaults.standard.set(results.finishedAt, forKey: "lastScanFinishedAt")
-                // Fresh results arrive collapsed. Closed rows form a short summary
-                // the user can take in at a glance, and opening one is a click.
-                self.openCategories = []
-                // Here, because a scan finishing is what arms the selection. It
-                // used to be a `.task` on the "Safe to Remove" tab's summary, so
-                // nothing was ticked until the user happened to visit that tab —
-                // and the Remove button, which reads the same selection, stayed
-                // dead on the tab the scan actually lands on.
-                self.seedSafeToRemoveSelection()
-            } catch is CancellationError {
-                // The user stopped it.
-            } catch {
-                guard !Task.isCancelled else { return }
-                self.report(
-                    "The Scan Did Not Finish",
-                    "Moppo could not finish measuring. Nothing was removed; try scanning again."
-                )
+        case .confirmationRequested:
+            activeSheet = .cleanUp
+        case .confirmationDismissed:
+            if activeSheet == .cleanUp { activeSheet = nil }
+        case .operationStarted:
+            cleanupDestination = view
+            cleanupCompletion = nil
+            removalCompletion = nil
+        case .waitingForApplications(let names):
+            activity = .waitingForApplicationsToQuit(names: names)
+        case .removalStarted(let count, let bytes):
+            activity = .cleaningUp(itemCount: count, totalBytes: bytes)
+        case .removed(let outcome):
+            let destination = cleanupDestination ?? view
+            if outcome.permissionDenied.contains(where: Self.isAppDataPath) {
+                isShowingAppDataAccessAlert = true
+            } else if destination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
+                notice = unfinished
             }
-            try? await presentation.wait()
+            if destination != .scanner { completeTrashRemoval(outcome, in: destination) }
+            if view == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,
+               outcome.trashedCount == outcome.removedCount, outcome.deletedCount == 0 {
+                cleanupCompletion = CleanupCompletion(outcome: outcome)
+            }
+        case .operationFinished:
+            activity = nil
+            cleanupDestination = nil
+        case .failure(let title, let message):
+            report(title, message)
         }
-    }
-
-    func cancelScan() {
-        guard isScanning, !isInterruptingScan else { return }
-        isInterruptingScan = true
-        scanTask?.cancel()
     }
 
     // MARK: - File duplicate presentation

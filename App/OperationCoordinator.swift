@@ -6,7 +6,7 @@ import Observation
 @Observable
 final class OperationCoordinator {
     enum Kind {
-        case photoScan, photoDeletion, fileScan, fileRemoval
+        case photoScan, photoDeletion, fileScan, fileRemoval, cleanupScan, cleanupRemoval, cleanupQuit
     }
 
     struct Operation: Equatable {
