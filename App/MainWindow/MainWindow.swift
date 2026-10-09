@@ -20,18 +20,18 @@ struct MainWindow: View {
         // Traffic-light geometry, and the window's drag turned off — see
         // `WindowChrome`, which explains why a nested opt-out cannot do it.
         .background(WindowChrome(headerBand: Token.Size.headerBand))
-        .disabled(model.activity != nil || model.isDeletingPhotos)
-        .background(PhotoPreviewWindowPresenter(item: model.photoPreview, model: model))
-        .onChange(of: model.duplicateKind) { _, _ in model.photoPreview = nil }
+        .disabled(model.activity != nil || model.photoDuplicates.isDeleting)
+        .background(PhotoPreviewWindowPresenter(item: model.photoDuplicates.preview, model: model.photoDuplicates))
+        .onChange(of: model.duplicateKind) { _, _ in model.photoDuplicates.preview = nil }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            model.photoPreview = nil
+            model.photoDuplicates.preview = nil
         }
         .task {
             if scenePhase == .active { model.startInitialCleanupScan() }
             await model.loadDashboard()
         }
         .onChange(of: model.view) { _, view in
-            model.photoPreview = nil
+            model.photoDuplicates.preview = nil
             if view == .scanner, scenePhase == .active { model.startInitialCleanupScan() }
         }
         .onChange(of: model.isBusyWithDisk) { _, isBusy in
@@ -217,7 +217,7 @@ struct MainWindow: View {
         case .scanner:         return !model.cleanupSelection(in: .all).isEmpty
         case .duplicates:      return model.duplicateKind == .files
             ? !model.fileDuplicateSelection.isEmpty && !model.isScanningDuplicateFiles
-            : model.canAccessPhotos && !model.photoSelection.isEmpty && !model.isRegroupingPhotos
+            : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping
         case .uninstaller:     return model.uninstallerTab == .installed
             ? !model.selectedApplicationIDs.isEmpty
             : !model.selectedLeftoverIdentifiers.isEmpty && !model.isLoadingApplicationLeftovers
@@ -236,7 +236,7 @@ struct MainWindow: View {
             if model.duplicateKind == .files {
                 Task { await model.removeSelectedDuplicateFiles() }
             } else {
-                Task { await model.deleteSelectedPhotos() }
+                Task { await model.photoDuplicates.deleteSelected() }
             }
         case .uninstaller:
             if model.uninstallerTab == .installed {
@@ -306,14 +306,14 @@ struct MainWindow: View {
                 isInterrupting: model.isInterruptingFileDuplicateScan,
                 onStop: { model.cancelFileDuplicateScan() }
             )
-        } else if model.isSweepingPhotos,
+        } else if model.photoDuplicates.isScanning,
                   model.view != .duplicates || model.duplicateKind != .photos {
             backgroundWorkStatus(
                 title: "Duplicate photo scan",
-                detail: "\(model.photoProgress?.percent ?? 0)% complete",
-                progress: Double(model.photoProgress?.percent ?? 0) / 100,
-                isInterrupting: model.isInterruptingPhotoSweep,
-                onStop: { model.cancelPhotoSweep() }
+                detail: "\(model.photoDuplicates.progress?.percent ?? 0)% complete",
+                progress: Double(model.photoDuplicates.progress?.percent ?? 0) / 100,
+                isInterrupting: model.photoDuplicates.isInterrupting,
+                onStop: { model.photoDuplicates.cancelScan() }
             )
         } else if model.isPlanningAppUninstall, model.view != .uninstaller {
             backgroundWorkStatus(
@@ -414,8 +414,8 @@ struct MainWindow: View {
             }
         case .duplicates:
             if model.duplicateKind == .photos,
-               model.canAccessPhotos, model.photoResults != nil, model.photoUnavailable == nil {
-                Button { model.startPhotoSweep() } label: {
+               model.photoDuplicates.canAccessPhotos, model.photoDuplicates.results != nil, model.photoDuplicates.unavailableReason == nil {
+                Button { model.photoDuplicates.startScan() } label: {
                     Label("Scan Again", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(PageActionButtonStyle())

@@ -12,7 +12,7 @@ struct RemovalOperationSurface: View {
     }
 
     private var isPresented: Bool {
-        showsActivity || model.isDeletingPhotos || model.removalCompletion?.destination == model.view
+        showsActivity || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == model.view
     }
 
     var body: some View {
@@ -23,7 +23,7 @@ struct RemovalOperationSurface: View {
                     if showsActivity, let activity = model.activity {
                         ActivityOverlay(activity: activity)
                             .transition(.opacity)
-                    } else if model.isDeletingPhotos {
+                    } else if model.photoDuplicates.isDeleting {
                         PageProgressView(title: "Deleting photos", detail: "Waiting for Photos to finish.")
                             .transition(.opacity)
                     } else if let completion = model.removalCompletion, completion.destination == model.view {

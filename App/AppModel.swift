@@ -5,12 +5,7 @@ import IOKit.ps
 import Observation
 import MoppoCore
 
-/// The design's `State Management` block, as one observable object.
-///
-/// Everything derivable is a computed property, never stored — the handoff lists
-/// selected totals, item counts, the Clean Up label and the enabled state of Clean Up
-/// as "Derived, never stored". Storing them is how they drift out of sync with the
-/// selection that produced them.
+/// Owns navigation, shared presentation, and features that do not yet have separate models.
 @MainActor
 @Observable
 final class AppModel {
@@ -19,7 +14,8 @@ final class AppModel {
     /// previews and tests can build a model without a store.
     @ObservationIgnored var settings: SettingsStore?
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
-    @ObservationIgnored private let makePhotoService: (Bool) -> PhotoDuplicateService
+    let operations: OperationCoordinator
+    let photoDuplicates: PhotoDuplicatesModel
     let storageExplorer: StorageExplorerModel
     private(set) var launchAccess: LaunchAccess
     var isShowingWelcome: Bool { launchAccess.requiresOnboarding }
@@ -33,7 +29,7 @@ final class AppModel {
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
         cleanupService: CleanupService = CleanupService(),
-        makePhotoService: @escaping (Bool) -> PhotoDuplicateService = { allowsNetwork in
+        makePhotoService: @escaping (Bool) -> any PhotoDuplicatesServicing = { allowsNetwork in
             PhotoDuplicateService(
                 library: PhotoKitLibrary(allowsNetworkFetch: allowsNetwork),
                 visionRevision: UInt32(PhotoKitLibrary.featurePrintRevision)
@@ -43,17 +39,31 @@ final class AppModel {
         self.settings = settings
         self.launchAccess = launchAccess
         self.hasFullDiskAccess = hasFullDiskAccess
-        self.makePhotoService = makePhotoService
-        self.photoService = makePhotoService(settings?.allowPhotoDownloads ?? true)
+        let operations = OperationCoordinator()
+        self.operations = operations
+        self.photoDuplicates = PhotoDuplicatesModel(
+            operations: operations,
+            allowsNetworkFetch: { [weak settings] in
+                settings?.allowPhotoDownloads ?? SettingsStore.Defaults.allowPhotoDownloads
+            },
+            makeService: makePhotoService
+        )
         self.trashService = trashService
         self.cleanupHistoryService = cleanupHistoryService
         self.appUninstallPlanner = appUninstallPlanner
         self.homebrewUninstallService = homebrewUninstallService
         self.cleanupService = cleanupService
         self.storageExplorer = StorageExplorerModel(settings: settings)
-        photoThumbnails.allowsNetworkFetch = { [weak settings] in
-            settings?.allowPhotoDownloads ?? SettingsStore.Defaults.allowPhotoDownloads
+        operations.hasOtherOperation = { [weak self] in
+            guard let self else { return false }
+            return self.isScanning || self.isScanningDuplicateFiles || self.storageExplorer.isLoading
+                || self.isPlanningAppUninstall || self.activity != nil
         }
+        photoDuplicates.canRequestAccess = { [weak self] in
+            guard let self else { return false }
+            return self.view == .duplicates && self.duplicateKind == .photos && !self.isShowingWelcome
+        }
+        photoDuplicates.onEvent = { [weak self] event in self?.handlePhotoEvent(event) }
         if settings != nil { startScheduler() }
     }
 
@@ -513,18 +523,12 @@ final class AppModel {
     var isShowingAppDataAccessAlert = false
 
     var isStorageExplorerMeasurementBlocked: Bool {
-        isScanning || isScanningDuplicateFiles || isSweepingPhotos || isDeletingPhotos
+        isScanning || isScanningDuplicateFiles || operations.activeOperation != nil
             || isPlanningAppUninstall || activity != nil
     }
 
-    /// One disk walk at a time. A junk scan, a duplicate scan, a photo sweep, an
-    /// Explorer measurement and a removal all contend for the same disk, and each
-    /// start guard refuses silently — so the buttons that would start one read this
-    /// and disable themselves, rather than clicking to no effect.
-    var isBusyWithDisk: Bool {
-        isScanning || isScanningDuplicateFiles || isSweepingPhotos || isDeletingPhotos
-            || storageExplorer.isLoading || isPlanningAppUninstall || activity != nil
-    }
+    /// Share the operation guard with extracted feature models.
+    var isBusyWithDisk: Bool { operations.isBusy }
 
     var storageExplorerRemoveLabel: String {
         guard !storageExplorer.isMapSelectionPending else { return "Move to Trash" }
@@ -671,7 +675,7 @@ final class AppModel {
         case .scanner:
             "Move to Trash (\(ByteFormatting.string(cleanupSelectionBytes(in: .all))))"
         case .duplicates:
-            duplicateKind == .files ? fileDuplicateRemoveLabel : photoRemoveLabel
+            duplicateKind == .files ? fileDuplicateRemoveLabel : photoDuplicates.removeLabel
         case .uninstaller:
             uninstallerRemoveLabel
         case .storageExplorer:
@@ -929,6 +933,17 @@ final class AppModel {
     }
 
     // MARK: - App uninstaller
+
+    var uninstallerRemoveLabel: String {
+        switch uninstallerTab {
+        case .installed:
+            let count = selectedApplicationIDs.count
+            guard count > 0 else { return "Review Uninstall" }
+            return "Review Uninstall (\(count) \(count == 1 ? "app" : "apps"))"
+        case .leftovers:
+            return "Move Leftovers to Trash"
+        }
+    }
 
     private let appUninstallPlanner: AppUninstallPlanner
     private let homebrewUninstallService: HomebrewUninstallService
@@ -2764,381 +2779,24 @@ final class AppModel {
         await refreshAfterRemoval()
     }
 
-    // MARK: - Photo duplicates
+    // MARK: - Photo presentation
 
-    private var photoService: PhotoDuplicateService
-    private var photoTask: Task<Void, Never>?
-    private var photoScanID: UUID?
-
-    var photoPreview: PhotoDuplicatesView.Preview?
-    let photoThumbnails = PhotoThumbnailLoader()
-    var photoResults: PhotoDuplicateResults?
-    var photoProgress: PhotoDuplicateService.Progress?
-    var isSweepingPhotos = false
-    private(set) var isInterruptingPhotoSweep = false
-    private(set) var isDeletingPhotos = false
-    /// Asset ids the user has marked to delete. Only ever populated from a group's
-    /// `removable`, never from `assets` — a keeper cannot reach this set.
-    var photoSelection: Set<String> = []
-    /// Set when a sweep could not run at all, with copy naming the remedy.
-    var photoUnavailable: String?
-
-    private(set) var photoLibraryAccess: PhotoLibraryAccess?
-    private(set) var isRequestingPhotoAccess = false
-
-    var canAccessPhotos: Bool {
-        photoLibraryAccess?.canSweep == true && !isRequestingPhotoAccess
-    }
-
-    /// Requests Photos access only while the photo duplicate view is open.
-    func requestPhotoAccess() async {
-        guard view == .duplicates, duplicateKind == .photos, !isShowingWelcome,
-              !isRequestingPhotoAccess, !Task.isCancelled else { return }
-        isRequestingPhotoAccess = true
-        defer { isRequestingPhotoAccess = false }
-        let access = await photoService.requestAccess()
-        applyPhotoAccess(access)
-    }
-
-    private func applyPhotoAccess(_ access: PhotoLibraryAccess) {
-        photoLibraryAccess = access
-        if !access.canSweep {
-            cancelPhotoSweep()
-            photoRegroupTask?.cancel()
-            photoRegroupTask = nil
-            photoRegroupID = nil
-            isRegroupingPhotos = false
-            photoResults = nil
-            photoProgress = nil
-            photoUnavailable = nil
-            photoSelection.removeAll()
-            photoPreview = nil
-            photoThumbnails.reset()
-        }
-    }
-
-    /// How alike the similar tier requires two photographs to be.
-    ///
-    /// Persisted: it is a calibration against this library, not a per-session
-    /// choice, and the user arrives at it by looking at the distances on the groups
-    /// it produced.
-    ///
-    /// Changing it re-groups the sweep already in hand — see `regroupPhotos`. It
-    /// does not sweep: the library fetch and the fingerprinting are the same work
-    /// whatever the number is, and they are the half that goes to iCloud.
-    var photoSimilarity: PhotoSimilarity = UserDefaults.standard
-        .string(forKey: "photoSimilarity")
-        .flatMap(PhotoSimilarity.init(rawValue:)) ?? .default {
-        didSet {
-            guard photoSimilarity != oldValue else { return }
-            UserDefaults.standard.set(photoSimilarity.rawValue, forKey: "photoSimilarity")
-            regroupPhotos()
-        }
-    }
-
-    /// Re-grouping in progress. Distinct from `isSweepingPhotos`, which replaces the
-    /// page with its own progress screen: this keeps the groups on screen, because
-    /// they are about to be replaced rather than thrown away, and the phase is
-    /// seconds rather than the length of a sweep.
-    private(set) var isRegroupingPhotos = false
-    @ObservationIgnored private var photoRegroupTask: Task<Void, Never>?
-    @ObservationIgnored private var photoRegroupID: UUID?
-
-    /// Groups in date order, newest first.
-    ///
-    /// Chronology is how people remember photographs, so it is how the review reads —
-    /// a trip's worth of near-identical shots arrives together instead of being split
-    /// across the list by tier. The tier is still on every group's badge.
-    ///
-    /// Undated assets sort last rather than first: they would otherwise lead the list
-    /// with nothing to explain why.
-    var photoGroups: [DuplicateGroup] {
-        guard let photoResults else { return [] }
-        return photoResults.groups.sorted {
-            // Keep groups in place when the user chooses another photo to keep.
-            switch ($0.assets.first?.creationDate, $1.assets.first?.creationDate) {
-            case let (left?, right?): left == right ? $0.id < $1.id : left > right
-            case (nil, _?):           false
-            case (_?, nil):           true
-            case (nil, nil):          $0.id < $1.id
-            }
-        }
-    }
-
-    /// No size, and this is the one label that cannot have one. `PHAssetResource`
-    /// exposes no byte figure without downloading the original, so the whole photo
-    /// feature counts photographs and never claims bytes. A figure here would be
-    /// the only invented number in the app.
-    var photoRemoveLabel: String {
-        let count = photoSelection.count
-        guard count > 0 else { return "Delete Photos" }
-        return "Delete \(count) \(count == 1 ? "Photo" : "Photos")"
-    }
-
-    var uninstallerRemoveLabel: String {
-        switch uninstallerTab {
-        case .installed:
-            let count = selectedApplicationIDs.count
-            guard count > 0 else { return "Review Uninstall" }
-            return "Review Uninstall (\(count) \(count == 1 ? "app" : "apps"))"
-        case .leftovers:
-            return "Move Leftovers to Trash"
-        }
-    }
-
-    func startPhotoSweep() {
-        guard canAccessPhotos, !isBusyWithDisk else { return }
-        photoRegroupTask?.cancel()
-        photoRegroupTask = nil
-        photoRegroupID = nil
-        isRegroupingPhotos = false
-        let service = makePhotoService(settings?.allowPhotoDownloads ?? true)
-        // Captured here rather than read inside the task: the picker is on the page
-        // the sweep is running under, and results labelled with one threshold must
-        // have been produced by it.
-        let similarity = photoSimilarity
-        let scanID = UUID()
-        photoScanID = scanID
-        isSweepingPhotos = true
-        isInterruptingPhotoSweep = false
-        photoProgress = nil
-        removalCompletion = nil
-        photoUnavailable = nil
-        photoSelection.removeAll()
-        view = .duplicates
-        duplicateKind = .photos
-
-        photoTask = Task { [weak self] in
-            guard let self else { return }
-            let presentation = OperationPresentationDuration()
-            defer {
-                if self.photoScanID == scanID {
-                    self.isSweepingPhotos = false
-                    self.isInterruptingPhotoSweep = false
-                    if Task.isCancelled { self.photoProgress = nil }
-                    self.photoTask = nil
-                    self.photoScanID = nil
-                }
-            }
-            do {
-                let results = try await service.sweep(
-                    similarity: similarity,
-                    onProgress: { progress in
-                        Task { @MainActor in
-                            guard self.photoScanID == scanID, !self.isInterruptingPhotoSweep else { return }
-                            self.photoProgress = progress
-                        }
-                    }
-                )
-                try Task.checkCancellation()
-                guard self.photoScanID == scanID else { return }
-                self.photoService = service
-                self.photoResults = results
-                self.photoSelection = Self.defaultSelection(for: results)
-                // The results page counts the sets, the photos and what was skipped.
-            } catch let unavailable as PhotoSweepUnavailable {
-                guard self.photoScanID == scanID, !Task.isCancelled else { return }
-                // Shown on the page, with what to do about it.
-                if case .access(let access) = unavailable {
-                    self.applyPhotoAccess(access)
-                } else {
-                    self.photoUnavailable = Self.describe(unavailable)
-                }
-            } catch is CancellationError {
-                // The user stopped it.
-            } catch {
-                guard self.photoScanID == scanID, !Task.isCancelled else { return }
-                self.report(
-                    "The Photo Sweep Did Not Finish",
-                    "Moppo could not finish comparing the library. Nothing was deleted; "
-                        + "try again."
-                )
-            }
-            try? await presentation.wait()
-        }
-    }
-
-    /// Re-groups the last sweep at the current setting.
-    ///
-    /// Silent when there is nothing to re-group: `regroup` returns nil before any
-    /// sweep has run, and the page is showing its intro in that case, so the new
-    /// setting simply applies to the sweep the user starts next.
-    private func regroupPhotos() {
-        guard canAccessPhotos, photoResults != nil, !isSweepingPhotos, !isDeletingPhotos else { return }
-        photoRegroupTask?.cancel()
-        let regroupID = UUID()
-        photoRegroupID = regroupID
-        let similarity = photoSimilarity
-        isRegroupingPhotos = true
-
-        photoRegroupTask = Task { [weak self] in
-            guard let self else { return }
-            defer {
-                if self.photoRegroupID == regroupID {
-                    self.isRegroupingPhotos = false
-                    self.photoRegroupTask = nil
-                    self.photoRegroupID = nil
-                }
-            }
-            do {
-                guard let results = try await photoService.regroup(similarity: similarity) else {
-                    return
-                }
-                // A setting changed again while this ran: that later change owns the
-                // page, and this result is for a threshold nobody is asking about.
-                guard self.photoRegroupID == regroupID, !Task.isCancelled,
-                      similarity == self.photoSimilarity else { return }
-                self.photoResults = results
-                // Re-seeded, never carried over. The selection is ids from the old
-                // grouping, and an id that was removable in one grouping can be a
-                // keeper in the next — which is the one thing the selection must
-                // never contain.
-                self.photoSelection = Self.defaultSelection(for: results)
-            } catch is CancellationError {
-                // Superseded by a later change, or the user left.
-            } catch {
-                guard self.photoRegroupID == regroupID, !Task.isCancelled else { return }
-                self.report(
-                    "The Photos Could Not Be Regrouped",
-                    "Moppo could not apply that setting to the sweep it has. "
-                        + "Scan again to use it."
-                )
-            }
-        }
-    }
-
-    func cancelPhotoSweep() {
-        guard isSweepingPhotos, !isInterruptingPhotoSweep else { return }
-        isInterruptingPhotoSweep = true
-        photoTask?.cancel()
-    }
-
-    private static func describe(_ unavailable: PhotoSweepUnavailable) -> String {
-        switch unavailable {
-        case .access(let access):
-            access.unavailableReason ?? "The photo library is unavailable."
-        case .librarySyncing(let count):
-            "Only \(count) photos have arrived from iCloud so far. Let Photos finish "
-                + "syncing — sweeping now would compare photos against copies that are "
-                + "not here yet."
-        }
-    }
-
-    /// Ticks everything, judgement calls included — no longer the default, and a
-    /// deliberate act. See `defaultSelection(for:)`.
-    func selectAllRemovablePhotos() {
-        photoSelection = Set(photoGroups.flatMap(\.removable).map(\.id))
-    }
-
-    /// What a finished grouping arrives with ticked: the **certain** tiers, and
-    /// nothing that a threshold decided.
-    ///
-    /// Bursts come from Photos' own grouping and `exact` is a metadata match the
-    /// feature prints then confirmed; both are safe to take in bulk. `similar` is a
-    /// judgement call, and on a real library it accounted for 1,050 of 1,058 groups
-    /// — so arriving with those ticked handed the user 1,619 photographs to delete
-    /// on the strength of a threshold, which is the exact shape of the bug that
-    /// proposed deleting 1,075 distinct photos earlier.
-    ///
-    /// This used to be the "Certain Only" button, with everything ticked by default
-    /// and one click back to safety. It is the default now, and Select All is the
-    /// deliberate act instead — the safe state should not be something the user has
-    /// to know to ask for. The similarity picker took the button's place: it is the
-    /// same question, "show me only what you are sure of", with the line where the
-    /// user puts it rather than fixed at the tier boundary.
-    ///
-    /// Keepers are unreachable regardless: the set is built from `removable` alone.
-    private static func defaultSelection(for results: PhotoDuplicateResults) -> Set<String> {
-        Set(
-            results.groups
-                .filter { $0.kind != .similar }
-                .flatMap(\.removable)
-                .map(\.id)
-        )
-    }
-
-    func deselectAllPhotos() { photoSelection.removeAll() }
-
-    /// Makes `assetID` the copy that survives in its group.
-    ///
-    /// The promoted photo leaves the selection and the demoted keeper joins it, so
-    /// the group still deletes everything but one — the choice moves, the arithmetic
-    /// does not.
-    func keepInstead(groupID: String, assetID: String) {
-        guard var results = photoResults,
-              let index = results.groups.firstIndex(where: { $0.id == groupID }),
-              let promoted = results.groups[index].promoting(assetID)
-        else { return }
-
-        let previousKeeper = results.groups[index].keeper.id
-        results.groups[index] = promoted
-        photoResults = results
-
-        photoSelection.remove(assetID)
-        // Only if the rest of the group was armed; promoting inside a group the user
-        // had deliberately cleared should not arm it again behind their back.
-        if promoted.removable.contains(where: { photoSelection.contains($0.id) }) {
-            photoSelection.insert(previousKeeper)
-        }
-    }
-
-    func togglePhoto(_ assetID: String) {
-        if photoSelection.contains(assetID) {
-            photoSelection.remove(assetID)
-        } else {
-            photoSelection.insert(assetID)
-        }
-    }
-
-    func deleteSelectedPhotos() async {
-        guard canAccessPhotos, !isBusyWithDisk, !isRegroupingPhotos else { return }
-        let removableIDs = Set(photoGroups.flatMap(\.removable).map(\.id))
-        let ids = Array(photoSelection.intersection(removableIDs))
-        guard !ids.isEmpty else { return }
-        isDeletingPhotos = true
-        let presentation = OperationPresentationDuration()
-        removalCompletion = nil
-        photoPreview = nil
-        defer { isDeletingPhotos = false }
-
-        do {
-            try await photoService.delete(assetIDs: ids)
-            let gone = Set(ids)
-            // Drop the deleted assets from every group, and drop any group that no
-            // longer has anything to remove — a set showing only its keeper is a row
-            // that costs attention and returns nothing.
-            if var results = photoResults {
-                results.groups = results.groups.compactMap { group in
-                    let remaining = group.removable.filter { !gone.contains($0.id) }
-                    guard !remaining.isEmpty else { return nil }
-                    return DuplicateGroup(
-                        id: group.id, kind: group.kind, keeper: group.keeper, removable: remaining
-                    )
-                }
-                photoResults = results
-            }
-            photoSelection.removeAll()
-            try? await presentation.wait()
+    private func handlePhotoEvent(_ event: PhotoDuplicatesModel.Event) {
+        switch event {
+        case .scanStarted:
+            removalCompletion = nil
+            view = .duplicates
+            duplicateKind = .photos
+        case .deletionStarted:
+            removalCompletion = nil
+        case .deleted(let count):
             removalCompletion = RemovalCompletion(
                 destination: .duplicates,
                 title: "Moved to Recently Deleted",
-                detail: "\(ids.count) \(ids.count == 1 ? "photo" : "photos"). You can recover them in Photos for up to 30 days."
+                detail: "\(count) \(count == 1 ? "photo" : "photos"). You can recover them in Photos for up to 30 days."
             )
-        } catch is CancellationError {
-            // Keep the selection when the user declines the Photos request.
-        } catch PhotoSweepUnavailable.access(let access) {
-            applyPhotoAccess(access)
-        } catch PhotoDeletionUnavailable.missingAssets {
-            photoResults = nil
-            photoSelection.removeAll()
-            photoUnavailable = "Some photos are no longer available. Scan again before you delete photos."
-        } catch {
-            // Deletion is the one operation the user cannot verify at a glance across
-            // devices, so a failure is stated rather than left to inference.
-            report(
-                "Those Photos Were Not Deleted",
-                "Photos refused the deletion. Nothing was removed from the library."
-            )
+        case .failure(let title, let message):
+            report(title, message)
         }
     }
 
