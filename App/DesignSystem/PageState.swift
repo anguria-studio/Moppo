@@ -41,18 +41,21 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
     }
 
     private var content: some View {
-        ContentUnavailableView {
-            Label {
-                Text(title)
-            } icon: {
-                icon()
-                    .frame(minWidth: PageStateMetrics.iconSize, minHeight: PageStateMetrics.iconSize)
+        VStack(spacing: 0) {
+            ContentUnavailableView {
+                Label {
+                    Text(title)
+                } icon: {
+                    icon()
+                        .frame(minWidth: PageStateMetrics.iconSize, minHeight: PageStateMetrics.iconSize)
+                }
+                .labelStyle(PageStateLabelStyle())
+            } description: {
+                detail()
+                    .lineSpacing(PageStateMetrics.detailLineSpacing)
             }
-            .labelStyle(PageStateLabelStyle())
-        } description: {
-            detail()
-                .lineSpacing(PageStateMetrics.detailLineSpacing)
-        } actions: {
+
+            // Keep actions outside the message's limited width.
             actions()
                 .buttonStyle(PageStateButtonStyle())
                 .controlSize(.large)
@@ -97,11 +100,15 @@ struct PageStateSymbol: View {
 struct PageStateButtonStyle: ButtonStyle {
     var tint: Color? = nil
     var foreground: Color? = nil
+    @Environment(\.pageStateActionsStacked) private var isStacked
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .fixedSize(horizontal: true, vertical: false)
-            .frame(minWidth: PageStateMetrics.actionLabelWidth)
+            .frame(
+                minWidth: PageStateMetrics.actionLabelWidth,
+                maxWidth: isStacked ? .infinity : nil
+            )
             .padding(.horizontal, 8)
             .modifier(PageActionSurface(tint: tint, isPressed: configuration.isPressed, foreground: foreground))
     }
@@ -115,8 +122,15 @@ struct PageStateActions<Content: View>: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) { content() }
             VStack(spacing: 10) { content() }
+                // Use the widest action as the column width.
+                .fixedSize(horizontal: true, vertical: false)
+                .environment(\.pageStateActionsStacked, true)
         }
     }
+}
+
+private extension EnvironmentValues {
+    @Entry var pageStateActionsStacked = false
 }
 
 /// Uses the shared page layout for completed operations and their actions.
@@ -167,8 +181,25 @@ enum PageStateMetrics {
               detail: "Connect the volume or choose another folder.") {
         PageStateActions {
             Button("Try Again") {}
-            Button("Choose Another Folder") {}
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+            Button {} label: {
+                Label("Choose Another Folder", systemImage: "folder")
+            }
         }
     }
     .frame(width: 380, height: 260)
+}
+
+#Preview("Stopped measurement") {
+    PageState(title: "Measurement stopped", symbol: "stop.circle",
+              detail: "Measure this folder again or choose another location.") {
+        PageStateActions {
+            Button("Measure Again") {}
+                .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+            Button {} label: {
+                Label("Choose Another Folder", systemImage: "folder")
+            }
+        }
+    }
+    .frame(width: 760, height: 480)
 }
