@@ -89,6 +89,10 @@ private enum MascotTuning {
     static let turnBetweenShots = 0.4, turnWhileShooting = 0.4
     static let shotBlinkEvery = 1.1
     static let flashSize = 460.0, flashWindow = 0.85
+    // Floor. The beams stop at an invisible floor below Moppo, so they do not cross the text under it.
+    // A beam that reaches the floor lights an oval there. The floor is seen from above, so the oval is flat.
+    static let floorY = 930.0, floorFlatness = 0.1
+    static let poolGlowSize = 1.45, poolBrightness = 0.75, poolCore = 0.5
     // Rays during a large deletion
     static let destroyColor = Color(red: 0xFF / 255, green: 0x3B / 255, blue: 0x30 / 255)
     static let destroyLength = 1230.0, destroyStartWidth = 34.0
@@ -566,26 +570,113 @@ final class MoppoMascotMotion {
             eyeCenters.append(deform(CGPoint(x: c.x + gazeOffset.x, y: c.y + gazeOffset.y), weight: 0, pivot: pivot))
         }
 
+        let beams = mode == .search ? [] : beamShapes(eyeCenters: eyeCenters, openness: openness)
+        // The lit floor goes behind Moppo, so the tails cover it where they overlap.
+        drawFloorLight(of: beams, in: &graphics)
         // The eyes are holes, so they show whatever is behind Moppo.
         graphics.drawLayer { layer in
             layer.fill(Self.smoothRing(body), with: .foreground)
             layer.blendMode = .destinationOut
             layer.fill(eyes, with: .color(.black))
         }
-        if mode != .search { drawBeams(in: &graphics, eyes: eyes, eyeCenters: eyeCenters, openness: openness) }
+        if mode != .search { drawBeams(beams, in: &graphics, eyes: eyes, eyeCenters: eyeCenters, openness: openness) }
     }
 
-    private func drawBeams(in graphics: inout GraphicsContext, eyes: Path, eyeCenters: [CGPoint], openness: Double) {
+    private var beamColor: Color { mode == .destroying ? T.destroyColor : T.beamColor }
+
+    /// One beam from one eye. When the beam reaches the floor, `floor` is the oval it lights there.
+    private struct BeamShape {
+        struct FloorSpot {
+            let center: CGPoint
+            let radiusX: CGFloat, radiusY: CGFloat
+            let light: Double
+        }
+
+        let origin: CGPoint
+        let fadeEnd: CGPoint
+        let end: CGPoint
+        let startHalfWidth: CGFloat, endHalfWidth: CGFloat
+        let normal: CGPoint
+        let floor: FloorSpot?
+    }
+
+    private func beamShapes(eyeCenters: [CGPoint], openness: Double) -> [BeamShape] {
         let isDestroying = mode == .destroying
-        let color = isDestroying ? T.destroyColor : T.beamColor
+        let thickness = CGFloat(max(0, beamThickness.value) * openness)
+        let length = CGFloat((isDestroying ? T.destroyLength : T.beamLength) * max(0, beamLength.value))
+        guard length > 1, thickness > 0.005 else { return [] }
+        let (direction, reach) = beamDirection()
+        let normal = CGPoint(x: -direction.y, y: direction.x)
+        let spread = CGFloat(T.beamSpread) * thickness
+        let startHalfWidth = CGFloat(isDestroying ? T.destroyStartWidth : T.beamStartWidth) * thickness / 2
+        let reachLength = length * reach
+        let floorY = CGFloat(T.floorY)
+
+        return eyeCenters.map { o in
+            let fadeEnd = CGPoint(x: o.x + direction.x * reachLength, y: o.y + direction.y * reachLength)
+            var drawn = reachLength
+            var spot: BeamShape.FloorSpot?
+            let toFloor = direction.y > 0.02 ? (floorY - o.y) / direction.y : -1
+            // Every downward beam reaches the floor. Past the beam's length its light has faded out,
+            // so a far spot fades in as the angle gets steeper instead of appearing at once.
+            if toFloor > 0, toFloor < reachLength * 3 {
+                drawn = reachLength * 3
+                let farHalfWidth = startHalfWidth + drawn * spread
+                let far = CGPoint(x: o.x + direction.x * drawn, y: o.y + direction.y * drawn)
+                // The oval's ends are where the two edges of the beam meet the floor.
+                func edgeX(_ side: CGFloat) -> CGFloat {
+                    let start = CGPoint(x: o.x + normal.x * startHalfWidth * side, y: o.y + normal.y * startHalfWidth * side)
+                    let tip = CGPoint(x: far.x + normal.x * farHalfWidth * side, y: far.y + normal.y * farHalfWidth * side)
+                    guard tip.y > floorY, tip.y > start.y else { return tip.x }
+                    let u = max(0, (floorY - start.y) / (tip.y - start.y))
+                    return start.x + (tip.x - start.x) * u
+                }
+                let x1 = edgeX(1), x2 = edgeX(-1)
+                let across = startHalfWidth + min(toFloor, reachLength) * spread
+                // The beam fades along its length, so a far floor gets less light. Light at an angle also spreads out.
+                let light = T.poolBrightness * max(0, 1 - Double(toFloor / reachLength))
+                    * min(1, Double(direction.y) * 1.4) * Double(thickness)
+                spot = BeamShape.FloorSpot(center: CGPoint(x: (x1 + x2) / 2, y: floorY), radiusX: max(1, abs(x2 - x1) / 2),
+                                           radiusY: across * CGFloat(T.floorFlatness), light: light)
+            }
+            let end = CGPoint(x: o.x + direction.x * drawn, y: o.y + direction.y * drawn)
+            return BeamShape(origin: o, fadeEnd: fadeEnd, end: end, startHalfWidth: startHalfWidth,
+                             endHalfWidth: startHalfWidth + drawn * spread, normal: normal, floor: spot)
+        }
+    }
+
+    private func drawFloorLight(of beams: [BeamShape], in graphics: inout GraphicsContext) {
+        let color = beamColor
+        let core = T.poolCore
+        for beam in beams {
+            guard let spot = beam.floor else { continue }
+            let light = min(1, max(0, spot.light))
+            guard light > 0.01 else { continue }
+            // A hot, paler core that fades to the beam color at the edge.
+            let gradient = Gradient(stops: [
+                .init(color: Color(red: 1, green: (150 + 80 * core) / 255, blue: 140 * core / 255)
+                    .opacity(light * (0.4 + 0.6 * core)), location: 0),
+                .init(color: color.opacity(light * 0.75), location: 0.35),
+                .init(color: color.opacity(0), location: 1),
+            ])
+            var pool = graphics
+            pool.translateBy(x: spot.center.x, y: spot.center.y)
+            pool.scaleBy(x: spot.radiusX * CGFloat(T.poolGlowSize), y: spot.radiusY * CGFloat(T.poolGlowSize))
+            pool.fill(Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2)),
+                      with: .radialGradient(gradient, center: .zero, startRadius: 0, endRadius: 1))
+        }
+    }
+
+    private func drawBeams(_ beams: [BeamShape], in graphics: inout GraphicsContext,
+                           eyes: Path, eyeCenters: [CGPoint], openness: Double) {
+        let isDestroying = mode == .destroying
+        let color = beamColor
         let startWidth = isDestroying ? T.destroyStartWidth : T.beamStartWidth
         let glow = min(1, max(0, eyeGlow.value))
         if glow > 0.01 { graphics.fill(eyes, with: .color(color.opacity(glow))) }
 
         let thickness = CGFloat(max(0, beamThickness.value) * openness)
-        let length = CGFloat((isDestroying ? T.destroyLength : T.beamLength) * max(0, beamLength.value))
-        guard length > 1, thickness > 0.005 else { return }
-        let (direction, reach) = beamDirection()
+        guard !beams.isEmpty else { return }
 
         // Facing the viewer mid turn, each beam blooms into a soft disc over its eye.
         let facingViewer = max(0, 1 - abs(turn.value) / T.flashWindow) * min(1, max(0, beamLength.value)) * Double(thickness)
@@ -603,22 +694,44 @@ final class MoppoMascotMotion {
             }
         }
 
-        let normal = CGPoint(x: -direction.y, y: direction.x)
-        let startHalfWidth = CGFloat(startWidth) * thickness / 2
-        let endHalfWidth = startHalfWidth + length * CGFloat(T.beamSpread) * thickness
         let fade = Gradient(colors: [color.opacity(T.beamOpacity), color.opacity(0)])
-        for o in eyeCenters {
-            let end = CGPoint(x: o.x + direction.x * length * reach, y: o.y + direction.y * length * reach)
+        for shape in beams {
+            let (o, end, n) = (shape.origin, shape.end, shape.normal)
+            let (w0, w1) = (shape.startHalfWidth, shape.endHalfWidth)
             var beam = Path()
-            beam.move(to: CGPoint(x: o.x + normal.x * startHalfWidth, y: o.y + normal.y * startHalfWidth))
-            beam.addLine(to: CGPoint(x: end.x + normal.x * endHalfWidth, y: end.y + normal.y * endHalfWidth))
-            beam.addLine(to: CGPoint(x: end.x - normal.x * endHalfWidth, y: end.y - normal.y * endHalfWidth))
-            beam.addLine(to: CGPoint(x: o.x - normal.x * startHalfWidth, y: o.y - normal.y * startHalfWidth))
+            beam.move(to: CGPoint(x: o.x + n.x * w0, y: o.y + n.y * w0))
+            beam.addLine(to: CGPoint(x: end.x + n.x * w1, y: end.y + n.y * w1))
+            beam.addLine(to: CGPoint(x: end.x - n.x * w1, y: end.y - n.y * w1))
+            beam.addLine(to: CGPoint(x: o.x - n.x * w0, y: o.y - n.y * w0))
             beam.closeSubpath()
-            beam.addEllipse(in: CGRect(x: o.x - startHalfWidth, y: o.y - startHalfWidth,
-                                       width: startHalfWidth * 2, height: startHalfWidth * 2))
-            graphics.fill(beam, with: .linearGradient(fade, startPoint: o, endPoint: end))
+            beam.addEllipse(in: CGRect(x: o.x - w0, y: o.y - w0, width: w0 * 2, height: w0 * 2))
+            var context = graphics
+            // The beam keeps its straight shape. The floor hides it below the floor line, except inside the lit oval,
+            // so the beam's foot follows the oval's rim.
+            if let spot = shape.floor { context.clip(to: Self.floorClip(spot)) }
+            context.fill(beam, with: .linearGradient(fade, startPoint: o, endPoint: shape.fadeEnd))
         }
+    }
+
+    /// Everything above the floor line, plus the lit oval. Both outlines run in the same direction,
+    /// so together they make one region.
+    private static func floorClip(_ spot: BeamShape.FloorSpot) -> Path {
+        var path = Path()
+        let top: CGFloat = -100_000, side: CGFloat = 100_000, floor = spot.center.y
+        path.move(to: CGPoint(x: -side, y: top))
+        path.addLine(to: CGPoint(x: side, y: top))
+        path.addLine(to: CGPoint(x: side, y: floor))
+        path.addLine(to: CGPoint(x: -side, y: floor))
+        path.closeSubpath()
+        let steps = 64
+        for i in 0..<steps {
+            let angle = Double(i) / Double(steps) * 2 * .pi
+            let point = CGPoint(x: spot.center.x + spot.radiusX * CGFloat(cos(angle)),
+                                y: floor + spot.radiusY * CGFloat(sin(angle)))
+            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+        return path
     }
 
     /// Bends the posed shape. Points near the head follow the head, and points near the tips lag and sway.
