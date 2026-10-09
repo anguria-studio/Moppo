@@ -5,8 +5,8 @@ enum HomebrewPasswordPrompt {
     static func makeAlert(package: String) -> (alert: NSAlert, password: NSSecureTextField) {
         let alert = NSAlert()
         alert.messageText = "Homebrew needs administrator access"
-        alert.informativeText = "Homebrew needs your login password to remove the “\(package)” package.\n\nAccount: \(NSUserName())\n\nMoppo sends the password to sudo. Moppo does not save it."
-        alert.addButton(withTitle: "Continue Removal")
+        alert.informativeText = "Homebrew needs your login password to remove the “\(package)” package.\n\nAccount: \(NSUserName())\n\nMoppo sends the password to sudo and does not save it."
+        alert.addButton(withTitle: "Continue")
         alert.addButton(withTitle: "Cancel")
         alert.buttons[0].isEnabled = false
         alert.buttons[1].keyEquivalent = "\u{1b}"

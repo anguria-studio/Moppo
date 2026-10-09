@@ -6,11 +6,13 @@ struct HomebrewRemovalExplanation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("Moppo Put Back cannot restore applications that Homebrew removes.")
+                .font(.mcRowTitle)
                 .foregroundStyle(Token.textColor(.orange))
             Text("Homebrew removes the package. Moppo then moves its verified related data to the Trash, including profiles and settings.")
+                .font(.mcControlLabel)
             Text("If Homebrew needs administrator access, Moppo asks for your login password.")
+                .font(.mcSubtitle)
         }
-        .font(.mcCaption)
         .foregroundStyle(Token.Text.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -36,16 +38,17 @@ struct UninstallAttentionList: View {
     let applications: [AppModel.SetAsideApplication]
     let title: String
     let review: (URL) -> Void
+    var isCentered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: isCentered ? .center : .leading, spacing: 8) {
             Text(title).mcEyebrowStyle()
             GroupedBox {
                 VStack(spacing: 0) {
                     ForEach(Array(applications.enumerated()), id: \.offset) { index, application in
                         if index > 0 { Rectangle().fill(Token.Fill.boxBorder).frame(height: Token.hairline) }
-                        VStack(alignment: .leading, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: isCentered ? .center : .leading, spacing: 10) {
+                            VStack(alignment: isCentered ? .center : .leading, spacing: 4) {
                                 Text(application.name)
                                     .font(.mcBody.weight(.semibold))
                                     .foregroundStyle(Token.Text.primary)
@@ -54,18 +57,9 @@ struct UninstallAttentionList: View {
                                     .foregroundStyle(Token.Text.secondary)
                             }
                             .accessibilityElement(children: .combine)
-                            if let details = application.details, !details.isEmpty {
-                                DisclosureGroup("Details") {
-                                    Text(details)
-                                        .font(.mcMonoSmall)
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .font(.mcCaption)
-                            }
                             ViewThatFits(in: .horizontal) {
                                 HStack(spacing: 10) { actions(application) }
-                                VStack(alignment: .leading, spacing: 10) { actions(application) }
+                                VStack(alignment: isCentered ? .center : .leading, spacing: 10) { actions(application) }
                             }
                             if application.managedPackage != nil {
                                 Text("Review the application to try again. If removal still fails, run the copied command in Terminal for more details.")
@@ -74,8 +68,8 @@ struct UninstallAttentionList: View {
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: isCentered ? .center : .leading)
+                        .multilineTextAlignment(isCentered ? .center : .leading)
                         .padding(14)
                     }
                 }
@@ -101,71 +95,63 @@ struct AppUninstallResultView: View {
     let back: () -> Void
     let review: (URL) -> Void
     let reviewLeftovers: () -> Void
+    var viewDashboard: () -> Void = {}
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .center, spacing: 14) {
-                    CompletionMark(
-                        animate: false,
-                        isSuccess: outcome.setAside.isEmpty && outcome.survivorCount == 0,
-                        size: 36
-                    )
-                    .accessibilityHidden(true)
-                    Text(outcome.title)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(Token.Text.primary)
-                        .accessibilityAddTraits(.isHeader)
-                }
-
-                if !outcome.uninstalled.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(ListFormatter.localizedString(byJoining: outcome.uninstalled))
-                            .font(.mcBody)
-                        if outcome.removedBytes > 0 {
-                            Text("Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
-                        }
-                        if !outcome.homebrewUninstalled.isEmpty {
-                            Text("Removed through Homebrew: \(ListFormatter.localizedString(byJoining: outcome.homebrewUninstalled)).")
-                            Text("Moppo Put Back cannot restore applications that Homebrew removes. Related data stays in the Trash.")
-                        }
-                        if outcome.survivorCount > 0 {
-                            Text("Moppo could not move \(outcome.survivorCount) related items to the Trash.")
-                                .foregroundStyle(Token.textColor(.orange))
-                        }
-                    }
-                    .font(.mcCaption)
-                    .foregroundStyle(Token.Text.secondary)
-                }
-
+        PageCompletionView(title: outcome.title, isSuccess: isSuccess) {
+            summary
+        } actions: {
+            VStack(spacing: 22) {
                 let failed = outcome.setAside.filter { $0.kind == .failed }
                 let skipped = outcome.setAside.filter { $0.kind == .notAttempted }
                 if !failed.isEmpty {
-                    UninstallAttentionList(applications: failed, title: "Removal incomplete", review: review)
+                    UninstallAttentionList(applications: failed, title: "Removal incomplete", review: review, isCentered: true)
+                        .frame(maxWidth: 640)
                 }
                 if !skipped.isEmpty {
-                    UninstallAttentionList(applications: skipped, title: "Not attempted", review: review)
+                    UninstallAttentionList(applications: skipped, title: "Not attempted", review: review, isCentered: true)
+                        .frame(maxWidth: 640)
                 }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) { completionActions }
-                    VStack(alignment: .leading, spacing: 10) { completionActions }
+                PageStateActions {
+                    completionActions
                 }
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 640, alignment: .leading)
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    private var isSuccess: Bool {
+        outcome.setAside.isEmpty && outcome.survivorCount == 0
+    }
+
+    @ViewBuilder
+    private var summary: some View {
+        if !outcome.uninstalled.isEmpty {
+            VStack(spacing: 8) {
+                Text(ListFormatter.localizedString(byJoining: outcome.uninstalled))
+                if outcome.removedBytes > 0 {
+                    Text("Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                }
+                if !outcome.homebrewUninstalled.isEmpty {
+                    Text("Removed through Homebrew: \(ListFormatter.localizedString(byJoining: outcome.homebrewUninstalled)).")
+                    Text("Moppo Put Back cannot restore applications that Homebrew removes. Related data stays in the Trash.")
+                }
+                if outcome.survivorCount > 0 {
+                    Text("Moppo could not move \(outcome.survivorCount) related items to the Trash.")
+                        .foregroundStyle(Token.textColor(.orange))
+                }
+            }
         }
     }
 
     @ViewBuilder
     private var completionActions: some View {
         Button("Back to Applications", action: back)
-            .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+            .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
         if outcome.survivorCount > 0 || outcome.setAside.contains(where: { $0.kind == .failed && $0.applicationURL == nil }) {
             Button("Review Leftovers", action: reviewLeftovers)
-                .buttonStyle(PageActionButtonStyle())
+        }
+        if isSuccess {
+            Button("View Dashboard", action: viewDashboard)
         }
     }
 }

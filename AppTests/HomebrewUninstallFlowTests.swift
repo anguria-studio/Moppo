@@ -116,6 +116,13 @@ struct HomebrewUninstallFlowTests {
         let package = try #require(plan.managedPackage)
         let model = fixture.model()
         model.appUninstallPlan = plan
+        let batchModel = fixture.model()
+        batchModel.loadInstalledApplications()
+        try await waitUntil { batchModel.installedApplicationsMeasured }
+        let application = try #require(batchModel.installedApplications?.first { $0.url == plan.applicationURL })
+        batchModel.toggleApplicationSelection(application)
+        batchModel.moveSelectedApplicationsToTrash()
+        try await waitUntil { !batchModel.isPlanningAppUninstall }
         var result = AppModel.BatchUninstallOutcome()
         result.uninstalled = ["Ordinary application", "Managed application"]
         result.homebrewUninstalled = ["Managed application"]
@@ -130,15 +137,39 @@ struct HomebrewUninstallFlowTests {
             .init(name: "Protected application", reason: "The application is excluded.", applicationURL: plan.applicationURL),
         ]
         for dark in [false, true] {
+            let success = AppModel.BatchUninstallOutcome(
+                uninstalled: ["Ferdium"], removedBytes: 175_200_000, homebrewUninstalled: ["Ferdium"]
+            )
+            try await render(
+                AppUninstallResultView(outcome: success, back: {}, review: { _ in }, reviewLeftovers: {}),
+                name: "success-\(dark ? "dark" : "light")", dark: dark
+            )
+            try await render(
+                CleanupOperationView(itemCount: 3, totalBytes: 175_200_000, isComplete: true),
+                name: "cleanup-success-\(dark ? "dark" : "light")", dark: dark
+            )
             try await render(
                 AppUninstallResultView(outcome: result, back: {}, review: { _ in }, reviewLeftovers: {}),
                 name: "mixed-\(dark ? "dark" : "light")", dark: dark
             )
             try await render(AppUninstallerView(model: model), name: "review-\(dark ? "dark" : "light")", dark: dark)
+            try await render(AppUninstallerView(model: batchModel), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
             let failed = AppModel.BatchUninstallOutcome(setAside: [result.setAside[0]])
             try await render(
                 AppUninstallResultView(outcome: failed, back: {}, review: { _ in }, reviewLeftovers: {}),
                 name: "failed-\(dark ? "dark" : "light")", dark: dark
+            )
+            let cancelled = AppModel.BatchUninstallOutcome(setAside: [
+                .init(
+                    name: "Ferdium",
+                    reason: "Administrator authentication was cancelled. Homebrew removal may be incomplete.",
+                    kind: .failed, applicationURL: plan.applicationURL, managedPackage: package,
+                    details: "Moppo: administrator authentication was cancelled."
+                ),
+            ])
+            try await render(
+                AppUninstallResultView(outcome: cancelled, back: {}, review: { _ in }, reviewLeftovers: {}),
+                name: "cancelled-\(dark ? "dark" : "light")", dark: dark
             )
         }
     }
@@ -154,7 +185,7 @@ struct HomebrewUninstallFlowTests {
         window.contentView = host
         host.setFrameSize(size)
         host.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(150))
+        try await Task.sleep(for: .milliseconds(400))
         host.displayIfNeeded()
         let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)

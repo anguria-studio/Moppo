@@ -675,7 +675,7 @@ struct AppUninstallerView: View {
                 CopyHomebrewCommandButton(package: package)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
+            .padding(14)
         }
     }
 
@@ -806,7 +806,7 @@ struct AppUninstallerView: View {
                         GroupedBox {
                             HomebrewRemovalExplanation()
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(12)
+                                .padding(14)
                         }
                     }
                     if !review.plans.isEmpty {
@@ -907,6 +907,9 @@ struct AppUninstallerView: View {
             model.resetAppUninstall()
             model.uninstallerTab = .leftovers
             model.loadApplicationLeftovers()
+        } viewDashboard: {
+            model.resetAppUninstall()
+            model.view = .dashboard
         }
     }
 
