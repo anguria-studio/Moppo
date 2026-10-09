@@ -130,7 +130,7 @@ struct MainWindow: View {
                     activity: model.activity,
                     cleanupCompletion: model.cleanupCompletion,
                     onViewDashboard: { model.showDashboardAfterCleanup($0) },
-                    onUninstallApplication: { model.planAppUninstall($0.url) }
+                    onUninstallApplication: { model.uninstaller.planAppUninstall($0.url) }
                 )
             case .storageExplorer:
                 StorageExplorerView(
@@ -138,7 +138,10 @@ struct MainWindow: View {
                     isMeasurementBlocked: model.isStorageExplorerMeasurementBlocked
                 )
             case .uninstaller:
-                AppUninstallerView(model: model)
+                AppUninstallerView(
+                    model: model.uninstaller, findRequest: model.findRequest,
+                    onViewDashboard: { model.view = .dashboard }
+                )
             case .history:
                 CleanupHistoryView(model: model)
             case .trash:
@@ -212,7 +215,7 @@ struct MainWindow: View {
         case .scanner, .duplicates, .storageExplorer, .trash: true
         // Only over the grid of applications. The review and done pages are steps
         // in a sequence and carry their own buttons.
-        case .uninstaller: model.isShowingUninstallerLibrary
+        case .uninstaller: model.uninstaller.isShowingUninstallerLibrary
         case .dashboard, .history: false
         }
     }
@@ -224,9 +227,9 @@ struct MainWindow: View {
         case .duplicates:      return model.duplicateKind == .files
             ? !model.fileDuplicates.selection.isEmpty && !model.fileDuplicates.isScanning
             : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping
-        case .uninstaller:     return model.uninstallerTab == .installed
-            ? !model.selectedApplicationIDs.isEmpty
-            : !model.selectedLeftoverIdentifiers.isEmpty && !model.isLoadingApplicationLeftovers
+        case .uninstaller:     return model.uninstaller.uninstallerTab == .installed
+            ? !model.uninstaller.selectedApplicationIDs.isEmpty
+            : !model.uninstaller.selectedLeftoverIdentifiers.isEmpty && !model.uninstaller.isLoadingApplicationLeftovers
         case .storageExplorer: return model.storageExplorer.canRemoveSelection
             && !model.storageExplorer.isMapSelectionPending
             && !model.isStorageExplorerMeasurementBlocked
@@ -245,10 +248,10 @@ struct MainWindow: View {
                 Task { await model.photoDuplicates.deleteSelected() }
             }
         case .uninstaller:
-            if model.uninstallerTab == .installed {
-                model.moveSelectedApplicationsToTrash()
+            if model.uninstaller.uninstallerTab == .installed {
+                model.uninstaller.moveSelectedApplicationsToTrash()
             } else {
-                Task { await model.requestLeftoverRemoval() }
+                Task { await model.uninstaller.requestLeftoverRemoval() }
             }
         case .storageExplorer: Task { await model.requestStorageExplorerRemoval() }
         case .trash:      model.activeSheet = .emptyTrash
@@ -277,7 +280,7 @@ struct MainWindow: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.removeLabel)
         .help(model.view == .scanner
               ? "Moves selected items from all filters to the Trash."
-              : model.view == .uninstaller && model.uninstallerTab == .installed
+              : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
                 ? "Reviews the removal path for each selected application."
                 : model.removeLabel)
     }
@@ -321,12 +324,12 @@ struct MainWindow: View {
                 isInterrupting: model.photoDuplicates.isInterrupting,
                 onStop: { model.photoDuplicates.cancelScan() }
             )
-        } else if model.isPlanningAppUninstall, model.view != .uninstaller {
+        } else if model.uninstaller.isPlanningAppUninstall, model.view != .uninstaller {
             backgroundWorkStatus(
                 title: "Checking selected apps",
-                detail: model.appUninstallPlanningDetail ?? "Finding related files",
-                isInterrupting: model.isInterruptingAppUninstall,
-                onStop: { model.resetAppUninstall() }
+                detail: model.uninstaller.appUninstallPlanningDetail ?? "Finding related files",
+                isInterrupting: model.uninstaller.isInterruptingAppUninstall,
+                onStop: { model.uninstaller.resetAppUninstall() }
             )
         }
     }
@@ -405,18 +408,18 @@ struct MainWindow: View {
                 .buttonStyle(PageActionButtonStyle())
                 .disabled(model.isBusyWithDisk)
         case .uninstaller:
-            if model.isShowingUninstallerLibrary {
+            if model.uninstaller.isShowingUninstallerLibrary {
                 Button {
-                    if model.uninstallerTab == .installed {
-                        model.loadInstalledApplications()
+                    if model.uninstaller.uninstallerTab == .installed {
+                        model.uninstaller.loadInstalledApplications()
                     } else {
-                        model.loadApplicationLeftovers()
+                        model.uninstaller.loadApplicationLeftovers()
                     }
                 } label: {
-                    Label(model.uninstallerTab == .installed ? "Refresh Apps" : "Refresh Leftovers", systemImage: "arrow.clockwise")
+                    Label(model.uninstaller.uninstallerTab == .installed ? "Refresh Apps" : "Refresh Leftovers", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(PageActionButtonStyle())
-                .disabled(model.isBusyWithDisk || model.isLoadingApplicationLeftovers)
+                .disabled(model.isBusyWithDisk || model.uninstaller.isLoadingApplicationLeftovers)
             }
         case .duplicates:
             if model.duplicateKind == .photos,

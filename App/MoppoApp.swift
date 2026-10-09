@@ -20,7 +20,7 @@ struct MoppoApp: App {
         _settings = State(initialValue: settings)
         _model = State(initialValue: model)
         FinderUninstallRequestCenter.shared.install { [weak model] applicationURL in
-            model?.planAppUninstall(applicationURL)
+            model?.uninstaller.planAppUninstall(applicationURL)
         }
     }
 

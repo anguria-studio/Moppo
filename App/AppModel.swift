@@ -14,6 +14,7 @@ final class AppModel {
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
     let operations: OperationCoordinator
     let photoDuplicates: PhotoDuplicatesModel
+    let uninstaller: AppUninstallerModel
     let cleanup: CleanupModel
     @ObservationIgnored private let cleanupScheduler = CleanupScheduler()
     @ObservationIgnored private var cleanupDestination: View?
@@ -31,6 +32,8 @@ final class AppModel {
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
         cleanupService: CleanupService = CleanupService(),
+        uninstallerScanner: (any AppUninstallerScanning)? = nil,
+        uninstallerRemover: (any AppUninstallRemoving)? = nil,
         cleanupScanner: any CleanupScanning = CleanupScanService(),
         cleanupRemover: (any CleanupRemoving)? = nil,
         fileDuplicateService: any FileDuplicatesScanning = FileDuplicateService(),
@@ -84,14 +87,24 @@ final class AppModel {
         )
         self.trashService = trashService
         self.cleanupHistoryService = cleanupHistoryService
-        self.appUninstallPlanner = appUninstallPlanner
-        self.homebrewUninstallService = homebrewUninstallService
-        self.cleanupService = cleanupService
+        self.uninstaller = AppUninstallerModel(
+            operations: operations,
+            scanner: uninstallerScanner ?? AppUninstallerScanService(planner: appUninstallPlanner),
+            remover: uninstallerRemover ?? cleanupService,
+            homebrewRemover: homebrewUninstallService,
+            preferences: { [weak settings] in
+                AppUninstallerModel.Preferences(
+                    excludedPaths: settings?.excludedFolderPaths ?? [],
+                    excludedPatterns: settings?.excludedPatterns ?? [],
+                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
+                )
+            }
+        )
         self.storageExplorer = StorageExplorerModel(settings: settings)
         operations.hasOtherOperation = { [weak self] in
             guard let self else { return false }
             return self.storageExplorer.isLoading
-                || self.isPlanningAppUninstall || self.activity != nil
+                || self.activity != nil
         }
         photoDuplicates.canRequestAccess = { [weak self] in
             guard let self else { return false }
@@ -110,11 +123,11 @@ final class AppModel {
             await self?.refreshAfterRemoval(invalidateCleanup: false)
         }
         cleanup.refreshLeftovers = { [weak self] identifiers in
-            guard let self, self.applicationLeftovers != nil, !identifiers.isEmpty else { return }
-            self.selectedLeftoverIdentifiers.subtract(identifiers)
-            self.loadApplicationLeftovers()
-            if self.cleanupDestination == .uninstaller { await self.applicationLeftoversTask?.value }
+            await self?.uninstaller.refreshLeftovers(afterRemoving: identifiers)
         }
+        uninstaller.canPlan = { [weak self] in self?.checkDiskAccess() ?? false }
+        uninstaller.onEvent = { [weak self] event in self?.handleUninstallerEvent(event) }
+        uninstaller.refreshAfterRemoval = { [weak self] in await self?.refreshAfterRemoval() }
         cleanupScheduler.canCheck = { [weak self] in
             self?.checkDiskAccess(automatic: true) ?? false
         }
@@ -287,7 +300,7 @@ final class AppModel {
             try await Task.sleep(for: .seconds(destination == .uninstaller ? 1 : 2))
             // Keep the result visible until the refreshed list is ready.
             while (destination == .storageExplorer && storageExplorer.isLoading)
-                || (destination == .uninstaller && isLoadingApplicationLeftovers) {
+                || (destination == .uninstaller && uninstaller.isLoadingApplicationLeftovers) {
                 guard removalCompletion?.id == id, view == destination else { return }
                 try await Task.sleep(for: .milliseconds(100))
             }
@@ -458,10 +471,6 @@ final class AppModel {
         if case .cleaningUp? = activity { return true }
         return false
     }
-    var isUninstallingApp: Bool {
-        if case .uninstalling? = activity { return true }
-        return false
-    }
     var isRemovingDuplicateFiles: Bool {
         if case .removingDuplicateFiles? = activity { return true }
         return false
@@ -474,7 +483,7 @@ final class AppModel {
 
     var isStorageExplorerMeasurementBlocked: Bool {
         operations.activeOperation != nil
-            || isPlanningAppUninstall || activity != nil
+            || activity != nil
     }
 
     /// Share the operation guard with extracted feature models.
@@ -580,7 +589,7 @@ final class AppModel {
         case .duplicates:
             duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
-            uninstallerRemoveLabel
+            uninstaller.uninstallerRemoveLabel
         case .storageExplorer:
             storageExplorerRemoveLabel
         case .trash:
@@ -601,619 +610,6 @@ final class AppModel {
     func showScanner(filtered filter: CleanupModel.ScanFilter) {
         cleanup.scanFilter = filter
         view = .scanner
-    }
-
-    // MARK: - App uninstaller
-
-    var uninstallerRemoveLabel: String {
-        switch uninstallerTab {
-        case .installed:
-            let count = selectedApplicationIDs.count
-            guard count > 0 else { return "Review Uninstall" }
-            return "Review Uninstall (\(count) \(count == 1 ? "app" : "apps"))"
-        case .leftovers:
-            return "Move Leftovers to Trash"
-        }
-    }
-
-    private let cleanupService: CleanupService
-    private let appUninstallPlanner: AppUninstallPlanner
-    private let homebrewUninstallService: HomebrewUninstallService
-    private let orphanedAppLeftoverPlanner = OrphanedAppLeftoverPlanner()
-    @ObservationIgnored private var appUninstallTask: Task<Void, Never>?
-    @ObservationIgnored private var appUninstallPlanningID: UUID?
-
-    var appUninstallPlan: AppUninstallPlan?
-    var isPlanningAppUninstall = false
-    private(set) var isInterruptingAppUninstall = false
-    /// The one application being planned, so its review can draw its header before
-    /// the plan exists. Nil while several are planned in turn.
-    private(set) var appUninstallPlanningURL: URL?
-    var appUninstallError: String?
-    var appUninstallOutcome: CleanupOutcome?
-    var lastUninstalledApplicationName: String?
-
-    struct PendingAppUninstall {
-        let plan: AppUninstallPlan
-
-        var itemCount: Int { plan.items.count }
-        var totalBytes: Int64 { plan.totalBytes }
-        var protectedDataCount: Int { plan.protectedItems.count }
-        var isApplicationOnly: Bool { plan.isApplicationOnly }
-    }
-
-    private(set) var pendingAppUninstall: PendingAppUninstall?
-
-    /// Opens the dedicated review for an installed application. Called by the
-    /// Uninstaller's picker/drop target and by “Uninstall App…” on scanner rows.
-    func planAppUninstall(_ applicationURL: URL) {
-        guard !isBusyWithDisk else {
-            report(
-                "Wait for the Current Operation",
-                "Finish or stop the current operation before you review another application."
-            )
-            return
-        }
-        guard checkDiskAccess() else { return }
-        appUninstallTask?.cancel()
-        appUninstallPlan = nil
-        appUninstallOutcome = nil
-        lastUninstalledApplicationName = nil
-        appUninstallError = nil
-        appUninstallPlanningDetail = nil
-        batchUninstallReview = nil
-        batchUninstallOutcome = nil
-        isPlanningAppUninstall = true
-        isInterruptingAppUninstall = false
-        appUninstallPlanningURL = applicationURL.standardizedFileURL
-        view = .uninstaller
-        let planningID = UUID()
-        appUninstallPlanningID = planningID
-
-        let settings = settings
-        let context = ScanContext(
-            // Uninstall candidates must always be the paths themselves. Following a
-            // symlink would measure bytes that unlinking the candidate cannot free.
-            measurer: AllocatedSizeMeasurer(followSymlinks: false),
-            excludedPaths: settings?.excludedFolderPaths ?? [],
-            excludedPatterns: settings?.excludedPatterns ?? []
-        )
-        let planner = appUninstallPlanner
-        appUninstallTask = Task { [weak self] in
-            guard let self else { return }
-            let presentation = OperationPresentationDuration()
-            defer {
-                if self.appUninstallPlanningID == planningID {
-                    self.isPlanningAppUninstall = false
-                    self.appUninstallPlanningURL = nil
-                    self.appUninstallTask = nil
-                    self.appUninstallPlanningID = nil
-                    if self.isInterruptingAppUninstall { self.resetAppUninstall() }
-                }
-            }
-            do {
-                let plan = try await planner.plan(
-                    applicationURL: applicationURL, context: context
-                )
-                try Task.checkCancellation()
-                self.appUninstallPlan = plan
-            } catch is CancellationError {
-                return
-            } catch {
-                guard !Task.isCancelled else { return }
-                // Shown on the review page itself, where the user is waiting.
-                self.appUninstallError = error.localizedDescription
-            }
-            try? await presentation.wait()
-        }
-    }
-
-    func resetAppUninstall() {
-        guard !isUninstallingApp else { return }
-        if isPlanningAppUninstall {
-            guard !isInterruptingAppUninstall else { return }
-            isInterruptingAppUninstall = true
-            appUninstallTask?.cancel()
-            return
-        }
-        appUninstallTask?.cancel()
-        appUninstallTask = nil
-        appUninstallPlanningID = nil
-        appUninstallPlan = nil
-        appUninstallError = nil
-        appUninstallOutcome = nil
-        lastUninstalledApplicationName = nil
-        pendingAppUninstall = nil
-        isPlanningAppUninstall = false
-        isInterruptingAppUninstall = false
-        appUninstallPlanningURL = nil
-        appUninstallPlanningDetail = nil
-        batchUninstallReview = nil
-        batchUninstallOutcome = nil
-        pendingBatchUninstall = nil
-    }
-
-    // MARK: Installed applications
-
-    /// What the Uninstaller opens on. `nil` until the folders have been read, so the
-    /// page shows nothing rather than "no applications" before it has looked.
-    private(set) var installedApplications: [InstalledApplication]?
-
-    /// Bundle sizes by path, filled in as each is measured. An application missing
-    /// from here has not been measured yet — its card shows a bone, never a zero.
-    /// Kept across visits: a bundle changes when the app updates, and the review
-    /// measures it again before anything is promised.
-    private(set) var installedApplicationBytes: [String: Int64] = [:]
-
-    /// True once every listed application has been given its chance to be measured.
-    /// The grid sorts by size only then: sorting on figures as they arrive moved a
-    /// card every time one landed, for as long as the measuring took.
-    private(set) var installedApplicationsMeasured = false
-
-    @ObservationIgnored private var installedApplicationsTask: Task<Void, Never>?
-
-    /// Reads the application folders again and measures whatever is new. Listing is
-    /// one `contentsOfDirectory` per root plus an Info.plist per app; the sizes are
-    /// the slow part (Xcode alone is a few seconds) and arrive one card at a time.
-    // MARK: Application leftovers, in the Uninstaller
-
-    /// What removed applications left behind, for the Uninstaller's second tab.
-    ///
-    /// The Scanner lists these under Needs Review. They are here as well because
-    /// this is where the question gets asked: someone who came to uninstall an
-    /// application is the person who wants to know what the last one left. `nil`
-    /// until it has been looked for, so the tab shows nothing rather than "no
-    /// leftovers" before it has looked. It is read from the disk on its own and
-    /// needs no junk scan.
-    private(set) var applicationLeftovers: OrphanedAppLeftoverPlan?
-    private(set) var isLoadingApplicationLeftovers = false
-    /// Removed applications ticked in that tab, by bundle identifier.
-    var selectedLeftoverIdentifiers: Set<String> = []
-    @ObservationIgnored private var applicationLeftoversTask: Task<Void, Never>?
-
-    var selectedLeftoverBytes: Int64 {
-        applicationLeftovers?.groups
-            .filter { selectedLeftoverIdentifiers.contains($0.bundleIdentifier) }
-            .reduce(0) { $0 + $1.totalBytes } ?? 0
-    }
-
-    func loadApplicationLeftovers() {
-        applicationLeftoversTask?.cancel()
-        let settings = settings
-        let context = ScanContext(
-            measurer: AllocatedSizeMeasurer(followSymlinks: false),
-            excludedPaths: settings?.excludedFolderPaths ?? [],
-            excludedPatterns: settings?.excludedPatterns ?? []
-        )
-        let planner = orphanedAppLeftoverPlanner
-        isLoadingApplicationLeftovers = true
-        applicationLeftoversTask = Task { [weak self] in
-            let presentation = OperationPresentationDuration()
-            // One candidate scan, resolved once, handed to the planner whole — the
-            // same order the junk scan uses, for the same reason: scanning twice
-            // lets an identifier appear between the passes with no owner check.
-            let candidates = await Task.detached(priority: .userInitiated) {
-                planner.scanCandidates()
-            }.value
-            guard self != nil, !Task.isCancelled else { return }
-            let registered = ApplicationRuntime.registeredApplicationBundleIdentifiers(for: candidates.identifiers)
-            let plan = try? await planner.plan(
-                context: context,
-                registeredApplicationBundleIdentifiers: registered,
-                candidates: candidates
-            )
-            try? await presentation.wait()
-            guard let self, !Task.isCancelled else { return }
-            self.applicationLeftovers = plan
-            self.isLoadingApplicationLeftovers = false
-            let listed = Set(plan?.groups.map(\.bundleIdentifier) ?? [])
-            self.selectedLeftoverIdentifiers.formIntersection(listed)
-        }
-    }
-
-    func toggleLeftoverSelection(_ bundleIdentifier: String) {
-        if selectedLeftoverIdentifiers.contains(bundleIdentifier) {
-            selectedLeftoverIdentifiers.remove(bundleIdentifier)
-        } else {
-            selectedLeftoverIdentifiers.insert(bundleIdentifier)
-        }
-    }
-
-    /// Removes selected leftovers after the service checks each owner and file identity.
-    func requestLeftoverRemoval() async {
-        guard !isBusyWithDisk, !isLoadingApplicationLeftovers,
-              let leftovers = applicationLeftovers else { return }
-        let identifiers = selectedLeftoverIdentifiers
-        let items = leftovers.groups
-            .filter { identifiers.contains($0.bundleIdentifier) }
-            .flatMap(\.items)
-        guard !items.isEmpty else { return }
-        let plan = CleanupModel.CleanupPlan(
-            entries: [],
-            userDataRemovalOverrides: [],
-            applicationLeftoverPlan: leftovers,
-            orphanedApplicationBundleIdentifiers: identifiers,
-            orphanedApplicationItemPaths: Set(items.map(\.id))
-        )
-        await cleanup.removeLeftovers(plan)
-    }
-
-    func loadInstalledApplications() {
-        installedApplicationsTask?.cancel()
-        let settings = settings
-        let context = ScanContext(
-            measurer: AllocatedSizeMeasurer(followSymlinks: false),
-            excludedPaths: settings?.excludedFolderPaths ?? [],
-            excludedPatterns: settings?.excludedPatterns ?? []
-        )
-        let planner = appUninstallPlanner
-        installedApplicationsTask = Task { [weak self] in
-            let applications = await Task.detached(priority: .userInitiated) {
-                planner.installedApplications(context: context)
-            }.value
-            guard let self, !Task.isCancelled else { return }
-            self.installedApplications = applications
-            let listed = Set(applications.map(\.id))
-            self.installedApplicationBytes = self.installedApplicationBytes
-                .filter { listed.contains($0.key) }
-            self.selectedApplicationIDs.formIntersection(listed)
-            self.installedApplicationsMeasured = applications
-                .allSatisfy { self.installedApplicationBytes[$0.id] != nil }
-
-            for application in applications
-            where self.installedApplicationBytes[application.id] == nil {
-                guard !Task.isCancelled else { return }
-                // An unreadable bundle stays a bone. The review will say why.
-                guard let measurement = try? await context.measurer.measure(application.url)
-                else { continue }
-                guard !Task.isCancelled else { return }
-                self.installedApplicationBytes[application.id] = measurement.allocatedBytes
-            }
-            self.installedApplicationsMeasured = true
-        }
-    }
-
-    func requestAppUninstall() {
-        guard !isBusyWithDisk, let plan = appUninstallPlan else { return }
-        pendingAppUninstall = PendingAppUninstall(plan: plan)
-        Task { await performAppUninstall() }
-    }
-
-    private enum UninstallAttempt {
-        case stillRunning
-        case interrupted
-        case finished(CleanupOutcome)
-        case homebrew(HomebrewUninstallOutcome)
-    }
-
-    /// One application, start to finish: ask it to quit, wait, then remove. Shared by
-    /// the single review and the batch so both keep the same two promises — nothing
-    /// is force-killed, and nothing is removed under a process that is still up.
-    private func attemptUninstall(_ plan: AppUninstallPlan) async -> UninstallAttempt {
-        let applicationName = plan.applicationName
-        let applicationOnly = plan.isApplicationOnly
-        activity = .uninstalling(
-            applicationName: applicationName, applicationOnly: applicationOnly, waitingToQuit: false
-        )
-
-        // Ask the selected app and every helper embedded inside its bundle to quit.
-        // Cleanup starts only after they are gone; it never force-kills a process
-        // that may still be writing settings.
-        let targetPath = plan.applicationURL.standardizedFileURL.path
-        func matchingRunningApplications() -> [NSRunningApplication] {
-            NSWorkspace.shared.runningApplications.filter { application in
-                guard let url = application.bundleURL?.standardizedFileURL else { return false }
-                return url.path == targetPath || url.path.hasPrefix(targetPath + "/")
-            }
-        }
-        let running = matchingRunningApplications()
-        if !running.isEmpty {
-            activity = .uninstalling(
-                applicationName: applicationName, applicationOnly: applicationOnly, waitingToQuit: true
-            )
-            for application in running { application.terminate() }
-        }
-        for _ in 0..<30 where !matchingRunningApplications().isEmpty {
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-        if !matchingRunningApplications().isEmpty { return .stillRunning }
-        activity = .uninstalling(
-            applicationName: applicationName, applicationOnly: applicationOnly, waitingToQuit: false
-        )
-
-        if plan.managedPackage != nil {
-            activity = .uninstalling(
-                applicationName: applicationName, applicationOnly: true, waitingToQuit: false, usingHomebrew: true
-            )
-            return .homebrew(await homebrewUninstallService.uninstall(
-                plan, privilegedFallback: true, keepReceipt: keepReceipt
-            ))
-        }
-
-        do {
-            return .finished(try await cleanupService.uninstall(
-                plan, privilegedFallback: true, keepReceipt: keepReceipt
-            ))
-        } catch {
-            return .interrupted
-        }
-    }
-
-    func performAppUninstall() async {
-        guard let request = pendingAppUninstall, activity == nil else { return }
-        pendingAppUninstall = nil
-        activeSheet = nil
-        appUninstallError = nil
-        let presentation = OperationPresentationDuration()
-
-        let outcome: CleanupOutcome
-        switch await attemptUninstall(request.plan) {
-        case .stillRunning:
-            activity = nil
-            appUninstallError = "\(request.plan.applicationName) is still running. "
-                + "Quit it and try again; no files were removed."
-            return
-        case .interrupted:
-            activity = nil
-            appUninstallError = "The uninstall was interrupted. Review the application and try again."
-            return
-        case .finished(let finished):
-            outcome = finished
-        case .homebrew(let finished):
-            var result = BatchUninstallOutcome()
-            result.recordHomebrew(finished, plan: request.plan)
-            batchUninstallOutcome = result
-            appUninstallPlan = nil
-            if finished.applicationRemoved { selectedApplicationIDs.remove(request.plan.applicationURL.path) }
-            try? await presentation.wait()
-            cleanup.pruneVanishedEntries()
-            activity = nil
-            await refreshAfterRemoval()
-            return
-        }
-
-        appUninstallOutcome = outcome
-        lastUninstalledApplicationName = request.plan.applicationName
-        appUninstallPlan = nil
-        selectedApplicationIDs.remove(request.plan.applicationURL.path)
-
-        let applicationFailed = outcome.failed.contains(request.plan.applicationURL.path)
-        if applicationFailed {
-            let relatedFilesMessage = request.plan.isApplicationOnly
-                ? "" : " No related files were removed."
-            appUninstallError = "\(request.plan.applicationName) could not be moved to the Trash."
-                + relatedFilesMessage
-        }
-        // Everything else this used to say is on the done page: what was removed,
-        // and how many related items remain on disk.
-
-        try? await presentation.wait()
-        cleanup.pruneVanishedEntries()
-        activity = nil
-        await refreshAfterRemoval()
-    }
-
-    // MARK: Several applications at once
-
-    /// Ticked cards, by path. Survives a trip into one application's review and back.
-    /// Which half of the Uninstaller is showing.
-    ///
-    /// On the model rather than in the view because the toolbar's remove button
-    /// has to say what it would remove, and "3 apps" and "2 leftovers" are
-    /// different sentences with different actions behind them.
-    enum UninstallerTab: String, CaseIterable {
-        case installed = "Installed"
-        case leftovers = "Leftovers"
-    }
-    var uninstallerTab: UninstallerTab = .installed
-
-    /// The grid of applications is what the toolbar's button acts on. Every other
-    /// state of this view — planning, a review, a done page — carries its own
-    /// buttons, because each is a step in a sequence rather than a list.
-    var isShowingUninstallerLibrary: Bool {
-        appUninstallPlan == nil && batchUninstallReview == nil
-            && appUninstallOutcome == nil && batchUninstallOutcome == nil
-            && !isPlanningAppUninstall
-    }
-
-    /// The bundles of the ticked applications. Nil until every card has a figure:
-    /// a sum over the ones measured so far would read as the whole and grow.
-    var selectedApplicationBytes: Int64? {
-        var total: Int64 = 0
-        for id in selectedApplicationIDs {
-            guard let bytes = installedApplicationBytes[id] else { return nil }
-            total += bytes
-        }
-        return total
-    }
-
-    private(set) var selectedApplicationIDs: Set<String> = []
-
-    func toggleApplicationSelection(_ application: InstalledApplication) {
-        if selectedApplicationIDs.remove(application.id) == nil {
-            selectedApplicationIDs.insert(application.id)
-        }
-    }
-
-    func clearApplicationSelection() { selectedApplicationIDs.removeAll() }
-
-    /// An application that needs attention, with its next available actions.
-    struct SetAsideApplication {
-        enum Kind { case notAttempted, failed }
-        let name: String
-        let reason: String
-        var kind: Kind = .notAttempted
-        var applicationURL: URL?
-        var managedPackage: AppUninstallPlan.ManagedPackage?
-        var details: String?
-    }
-
-    /// Captures checked application plans and applications that cannot be removed.
-    struct BatchUninstallReview {
-        let plans: [AppUninstallPlan]
-        let setAside: [SetAsideApplication]
-
-        var homebrewCount: Int { plans.filter { $0.managedPackage != nil }.count }
-    }
-
-    struct BatchUninstallOutcome {
-        var uninstalled: [String] = []
-        var setAside: [SetAsideApplication] = []
-        var removedBytes: Int64 = 0
-        var survivorCount = 0
-        var homebrewUninstalled: [String] = []
-
-        var title: String {
-            if uninstalled.isEmpty {
-                return setAside.allSatisfy { $0.kind == .notAttempted }
-                    ? "No applications were removed" : "Removal needs attention"
-            }
-            return "\(uninstalled.count) \(uninstalled.count == 1 ? "application" : "applications") uninstalled"
-        }
-
-        mutating func recordHomebrew(_ outcome: HomebrewUninstallOutcome, plan: AppUninstallPlan) {
-            if outcome.status == .completed {
-                uninstalled.append(plan.applicationName)
-                homebrewUninstalled.append(plan.applicationName)
-                removedBytes += outcome.relatedCleanup.removedBytes
-                survivorCount += outcome.relatedCleanup.failed.count
-                if !outcome.relatedCleanup.failed.isEmpty {
-                    setAside.append(SetAsideApplication(
-                        name: plan.applicationName, reason: "Homebrew removed the application. Moppo could not move some related data to the Trash.",
-                        kind: .failed, details: outcome.relatedCleanup.failed.joined(separator: "\n")
-                    ))
-                }
-            } else {
-                setAside.append(SetAsideApplication(
-                    name: plan.applicationName, reason: outcome.message,
-                    kind: outcome.status == .notStarted ? .notAttempted : .failed,
-                    applicationURL: outcome.applicationRemoved ? nil : plan.applicationURL,
-                    managedPackage: plan.managedPackage, details: outcome.details
-                ))
-            }
-        }
-    }
-
-    private(set) var batchUninstallReview: BatchUninstallReview?
-    private(set) var batchUninstallOutcome: BatchUninstallOutcome?
-    /// "Slack · 2 of 5" under the planning spinner; nil for a single application.
-    private(set) var appUninstallPlanningDetail: String?
-    /// Captures the checked plans before removal starts.
-    private(set) var pendingBatchUninstall: BatchUninstallReview?
-
-    /// Checks selected applications and shows each removal path before execution.
-    func moveSelectedApplicationsToTrash() {
-        let selected = (installedApplications ?? [])
-            .filter { selectedApplicationIDs.contains($0.id) }
-        guard !selected.isEmpty, !isBusyWithDisk, !isPlanningAppUninstall else { return }
-
-        resetAppUninstall()
-        isPlanningAppUninstall = true
-        let planningID = UUID()
-        appUninstallPlanningID = planningID
-        let settings = settings
-        let context = ScanContext(
-            measurer: AllocatedSizeMeasurer(followSymlinks: false),
-            excludedPaths: settings?.excludedFolderPaths ?? [],
-            excludedPatterns: settings?.excludedPatterns ?? []
-        )
-        let planner = appUninstallPlanner
-        appUninstallTask = Task { [weak self] in
-            guard let self else { return }
-            defer {
-                if self.appUninstallPlanningID == planningID {
-                    self.isPlanningAppUninstall = false
-                    self.appUninstallPlanningDetail = nil
-                    self.appUninstallTask = nil
-                    self.appUninstallPlanningID = nil
-                    if self.isInterruptingAppUninstall { self.resetAppUninstall() }
-                }
-            }
-            var plans: [AppUninstallPlan] = []
-            var setAside: [SetAsideApplication] = []
-            for (index, application) in selected.enumerated() {
-                guard !Task.isCancelled else { return }
-                self.appUninstallPlanningDetail =
-                    "\(application.name) · \(index + 1) of \(selected.count)"
-                do {
-                    let plan = try await planner.plan(
-                        applicationURL: application.url, context: context
-                    )
-                    plans.append(plan)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    setAside.append(SetAsideApplication(
-                        name: application.name, reason: error.localizedDescription,
-                        applicationURL: application.url
-                    ))
-                }
-            }
-            guard !Task.isCancelled, self.appUninstallPlanningID == planningID else { return }
-            self.batchUninstallReview = BatchUninstallReview(plans: plans, setAside: setAside)
-            self.isPlanningAppUninstall = false
-            self.appUninstallPlanningDetail = nil
-            self.appUninstallPlanningID = nil
-            self.appUninstallTask = nil
-        }
-    }
-
-    func requestBatchUninstall() {
-        guard !isBusyWithDisk, let review = batchUninstallReview, !review.plans.isEmpty else { return }
-        pendingBatchUninstall = review
-        Task { await performBatchUninstall() }
-    }
-
-    /// Removes each reviewed application through its selected removal path.
-    /// A Homebrew failure can leave partial changes, which the result reports.
-    func performBatchUninstall() async {
-        guard let request = pendingBatchUninstall, activity == nil else { return }
-        pendingBatchUninstall = nil
-        activeSheet = nil
-        appUninstallError = nil
-        let presentation = OperationPresentationDuration()
-
-        var result = BatchUninstallOutcome(setAside: request.setAside)
-        for plan in request.plans {
-            let name = plan.applicationName
-            switch await attemptUninstall(plan) {
-            case .stillRunning:
-                result.setAside.append(SetAsideApplication(
-                    name: name, reason: "Still running. No files were removed.",
-                    applicationURL: plan.applicationURL, managedPackage: plan.managedPackage
-                ))
-            case .interrupted:
-                result.setAside.append(SetAsideApplication(
-                    name: name, reason: "The uninstall was interrupted.", kind: .failed,
-                    applicationURL: plan.applicationURL
-                ))
-            case .homebrew(let outcome):
-                result.recordHomebrew(outcome, plan: plan)
-                if outcome.applicationRemoved { selectedApplicationIDs.remove(plan.applicationURL.path) }
-            case .finished(let outcome):
-                result.removedBytes += outcome.removedBytes
-                if outcome.failed.contains(plan.applicationURL.path) {
-                    result.setAside.append(SetAsideApplication(
-                        name: name,
-                        reason: "Could not be moved to the Trash. No related files were removed.",
-                        kind: .failed, applicationURL: plan.applicationURL
-                    ))
-                } else {
-                    result.uninstalled.append(name)
-                    result.survivorCount += outcome.failed.count
-                    selectedApplicationIDs.remove(plan.applicationURL.path)
-                }
-            }
-        }
-
-        batchUninstallReview = nil
-        // The done page lists what was uninstalled and what is still installed.
-        batchUninstallOutcome = result
-
-        try? await presentation.wait()
-        cleanup.pruneVanishedEntries()
-        activity = nil
-        await refreshAfterRemoval()
     }
 
     /// All removal actions use the saved receipt setting.
@@ -1689,6 +1085,34 @@ final class AppModel {
         case .operationFinished:
             activity = nil
             cleanupDestination = nil
+        case .failure(let title, let message):
+            report(title, message)
+        }
+    }
+
+    // MARK: - Uninstaller presentation
+
+    private func handleUninstallerEvent(_ event: AppUninstallerModel.Event) {
+        switch event {
+        case .planningStarted:
+            view = .uninstaller
+        case .operationStarted:
+            activeSheet = nil
+            removalCompletion = nil
+        case .uninstalling(let name, let applicationOnly, let waiting, let homebrew):
+            activity = .uninstalling(
+                applicationName: name, applicationOnly: applicationOnly,
+                waitingToQuit: waiting, usingHomebrew: homebrew
+            )
+        case .leftoverRemovalStarted(let count, let bytes):
+            activity = .cleaningUp(itemCount: count, totalBytes: bytes)
+        case .leftoversRemoved(let outcome):
+            if outcome.permissionDenied.contains(where: Self.isAppDataPath) {
+                isShowingAppDataAccessAlert = true
+            }
+            completeTrashRemoval(outcome, in: .uninstaller)
+        case .operationFinished:
+            activity = nil
         case .failure(let title, let message):
             report(title, message)
         }

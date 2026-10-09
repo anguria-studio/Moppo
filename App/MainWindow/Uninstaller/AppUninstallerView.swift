@@ -4,7 +4,9 @@ import MoppoCore
 
 /// Removes selected applications after checking their related files and ownership.
 struct AppUninstallerView: View {
-    @Bindable var model: AppModel
+    @Bindable var model: AppUninstallerModel
+    var findRequest = 0
+    var onViewDashboard: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isDropTargeted = false
@@ -25,7 +27,7 @@ struct AppUninstallerView: View {
     /// application is the person who wants to know what the last one left behind.
     /// On the model, not here: the toolbar's remove button has to name what it
     /// would take, and "3 apps" and "2 leftovers" are different sentences.
-    private var tab: AppModel.UninstallerTab { model.uninstallerTab }
+    private var tab: AppUninstallerModel.UninstallerTab { model.uninstallerTab }
     /// Removed applications whose files are disclosed, by bundle identifier.
     @State private var expandedLeftovers: Set<String> = []
 
@@ -288,7 +290,7 @@ struct AppUninstallerView: View {
     private var libraryHeader: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                ForEach(AppModel.UninstallerTab.allCases, id: \.self) { tab in
+                ForEach(AppUninstallerModel.UninstallerTab.allCases, id: \.self) { tab in
                     PageTabPill(
                         title: tab.rawValue,
                         symbol: tab == .installed ? "app" : "archivebox",
@@ -342,7 +344,7 @@ struct AppUninstallerView: View {
         // The one thing in this header that may narrow. At a fixed 180 pt it
         // won the space and the button beside it was cut to "Unins…" — a
         // truncated label on the destructive control is the wrong one to lose.
-        FindField(text: $searchText, findRequest: model.findRequest)
+        FindField(text: $searchText, findRequest: findRequest)
             .frame(minWidth: 90, idealWidth: 180, maxWidth: 180)
 
     }
@@ -557,7 +559,7 @@ struct AppUninstallerView: View {
                        action: model.requestAppUninstall)
                     .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
                     .controlSize(.regular)
-                    .disabled(model.activity != nil)
+                    .disabled(model.isBusyWithDisk)
                     .fixedSize()
             }
         }
@@ -795,7 +797,7 @@ struct AppUninstallerView: View {
 
     // MARK: Several applications
 
-    private func batchReviewState(_ review: AppModel.BatchUninstallReview) -> some View {
+    private func batchReviewState(_ review: AppUninstallerModel.BatchUninstallReview) -> some View {
         VStack(spacing: 0) {
             batchReviewHeader(review)
             HairlineDivider()
@@ -830,7 +832,7 @@ struct AppUninstallerView: View {
         }
     }
 
-    private func batchReviewHeader(_ review: AppModel.BatchUninstallReview) -> some View {
+    private func batchReviewHeader(_ review: AppUninstallerModel.BatchUninstallReview) -> some View {
         HStack(spacing: 10) {
             Text("\(review.plans.count) \(review.plans.count == 1 ? "application" : "applications") to review")
                 .font(.mcCaption)
@@ -846,7 +848,7 @@ struct AppUninstallerView: View {
                    action: model.requestBatchUninstall)
                 .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
                 .controlSize(.regular)
-                .disabled(review.plans.isEmpty || model.activity != nil)
+                .disabled(review.plans.isEmpty || model.isBusyWithDisk)
                 .fixedSize()
         }
         .frame(height: Self.headerControlHeight)
@@ -892,12 +894,12 @@ struct AppUninstallerView: View {
     }
 
     private func setAsideBox(
-        _ applications: [AppModel.SetAsideApplication], title: String
+        _ applications: [AppUninstallerModel.SetAsideApplication], title: String
     ) -> some View {
         UninstallAttentionList(applications: applications, title: title, review: model.planAppUninstall)
     }
 
-    private func batchDoneState(_ outcome: AppModel.BatchUninstallOutcome) -> some View {
+    private func batchDoneState(_ outcome: AppUninstallerModel.BatchUninstallOutcome) -> some View {
         AppUninstallResultView(outcome: outcome) {
             model.resetAppUninstall()
             model.loadInstalledApplications()
@@ -909,7 +911,7 @@ struct AppUninstallerView: View {
             model.loadApplicationLeftovers()
         } viewDashboard: {
             model.resetAppUninstall()
-            model.view = .dashboard
+            onViewDashboard()
         }
     }
 
@@ -922,7 +924,7 @@ struct AppUninstallerView: View {
             .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
             Button("View Dashboard") {
                 model.resetAppUninstall()
-                model.view = .dashboard
+                onViewDashboard()
             }
             .buttonStyle(PageStateButtonStyle())
         }

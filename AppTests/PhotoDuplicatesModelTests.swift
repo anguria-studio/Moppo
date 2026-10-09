@@ -40,10 +40,10 @@ struct PhotoDuplicatesModelTests {
         #expect(app.isStorageExplorerMeasurementBlocked)
         app.cleanup.startScan()
         app.fileDuplicates.startScan(roots: [URL(fileURLWithPath: "/unused-photo-test")])
-        app.planAppUninstall(URL(fileURLWithPath: "/unused-photo-test.app"))
+        app.uninstaller.planAppUninstall(URL(fileURLWithPath: "/unused-photo-test.app"))
         #expect(!app.cleanup.isScanning)
         #expect(!app.fileDuplicates.isScanning)
-        #expect(!app.isPlanningAppUninstall)
+        #expect(!app.uninstaller.isPlanningAppUninstall)
         #expect(app.view == .history)
 
         photos.cancelScan()

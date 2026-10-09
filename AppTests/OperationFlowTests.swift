@@ -256,9 +256,9 @@ struct OperationFlowTests {
         let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
         _ = model.operations.begin(.fileScan)
 
-        model.planAppUninstall(URL(fileURLWithPath: "/unused-fixture.app"))
+        model.uninstaller.planAppUninstall(URL(fileURLWithPath: "/unused-fixture.app"))
 
-        #expect(!model.isPlanningAppUninstall)
+        #expect(!model.uninstaller.isPlanningAppUninstall)
         #expect(model.notice?.title == "Wait for the Current Operation")
     }
 
@@ -266,14 +266,14 @@ struct OperationFlowTests {
     func uninstallPlanningBlocksExplorer() async throws {
         let folder = try FixtureFolder()
         let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
-        model.planAppUninstall(folder.url.appendingPathComponent("fixture.app"))
-        #expect(model.isPlanningAppUninstall)
+        model.uninstaller.planAppUninstall(folder.url.appendingPathComponent("fixture.app"))
+        #expect(model.uninstaller.isPlanningAppUninstall)
         #expect(model.isStorageExplorerMeasurementBlocked)
 
-        model.resetAppUninstall()
-        try await waitUntil { !model.isPlanningAppUninstall }
+        model.uninstaller.resetAppUninstall()
+        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
         #expect(!model.isStorageExplorerMeasurementBlocked)
-        #expect(model.appUninstallPlan == nil)
+        #expect(model.uninstaller.appUninstallPlan == nil)
     }
 
     @Test("A file duplicate scan continues after navigation and can restart after stopping")
