@@ -400,14 +400,15 @@ struct FindField: View {
 
 // MARK: - Sortable column header
 
-/// A column label that sorts the list beneath it, Finder-style: click to adopt the
-/// column, click again to flip direction. The arrow appears only on the active
-/// column. Typography and casing come from the surrounding header row, so this
-/// composes with each table's existing style.
+/// A sortable header with a button that covers the full cell.
+/// The arrow appears only on the active column.
+/// The surrounding row supplies the text style.
 struct SortableColumnHeader: View {
     let title: String
     let isActive: Bool
     let ascending: Bool
+    var alignment: Alignment = .leading
+    var verticalPadding: CGFloat = 10
     let action: () -> Void
 
     var body: some View {
@@ -419,6 +420,8 @@ struct SortableColumnHeader: View {
                         .font(.system(size: 7, weight: .bold))
                 }
             }
+            .frame(maxWidth: .infinity, alignment: alignment)
+            .padding(.vertical, verticalPadding)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

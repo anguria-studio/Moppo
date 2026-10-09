@@ -19,7 +19,7 @@ struct DuplicatesView: View {
                     }
                 }
                 if (model.duplicateKind == .photos && model.photoDuplicates.libraryAccess?.canSweep == true && model.photoDuplicates.unavailableReason == nil)
-                    || (model.duplicateKind == .files && model.fileDuplicateResults != nil) {
+                    || (model.duplicateKind == .files && model.fileDuplicates.results != nil) {
                     Rectangle()
                         .fill(Token.Fill.controlBorder)
                         .frame(width: Token.hairline, height: 22)
@@ -28,12 +28,12 @@ struct DuplicatesView: View {
                         PhotoSimilarityPicker(model: model.photoDuplicates)
                             .disabled(model.photoDuplicates.isRequestingAccess)
                     } else {
-                        FileDuplicateMinimumPicker(model: model)
+                        FileDuplicateMinimumPicker(model: model.fileDuplicates)
                     }
                 }
                 Spacer(minLength: 0)
-                if model.duplicateKind == .files, model.fileDuplicateResults != nil {
-                    Button("Choose Other Folders") { model.chooseFileDuplicateFolders() }
+                if model.duplicateKind == .files, model.fileDuplicates.results != nil {
+                    Button("Choose Other Folders") { model.fileDuplicates.chooseFolders() }
                         .buttonStyle(PageActionButtonStyle())
                         .disabled(model.isBusyWithDisk)
                 }
@@ -44,7 +44,7 @@ struct DuplicatesView: View {
             Divider()
             Group {
                 switch model.duplicateKind {
-                case .files: FileDuplicatesView(model: model)
+                case .files: FileDuplicatesView(model: model.fileDuplicates)
                 case .photos: PhotoDuplicatesView(model: model.photoDuplicates)
                 }
             }

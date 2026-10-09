@@ -70,20 +70,22 @@ Regression tests cover each measurement bug below.
 ## State ownership
 
 `AppModel` creates feature models and owns navigation, onboarding, and shared presentation.
-It still owns the Cleanup, file duplicate, uninstall, Dashboard, and recovery state.
+It still owns the Cleanup, uninstall, Dashboard, and recovery state.
 
 | Component | Responsibility |
 | --- | --- |
 | `PhotoDuplicatesModel` | Photos access, scans, regrouping, selection, preview state, thumbnail requests, and deletion. |
+| `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
 | `StorageExplorerModel` | Folder measurements, navigation history, cached results, and selection. |
 | `OperationCoordinator` | Shared operation guards and operation identity for extracted features. |
 
 Photo views receive `PhotoDuplicatesModel` directly.
+File duplicate views receive `FileDuplicatesModel` directly.
 The photo model receives services, download preferences, an access condition, and an event handler.
 It does not hold `AppModel` or change navigation directly.
 `AppModel` handles scan-start, deletion-start, deletion-result, and failure events.
 
-Photo scans continue when the user changes pages.
+Photo and file scans continue when the user changes pages.
 A stop request cancels the scan task and keeps the shared operation guard until the service returns.
 Scan and regroup identifiers reject results from cancelled or replaced tasks.
 Only the matching operation can release the shared guard.
@@ -98,6 +100,19 @@ Preview cancellation and retry remain with `PhotoThumbnailLoader`.
 
 Photos deletion moves assets to Recently Deleted and does not create Trash receipts.
 It does not request a disk refresh because Photos does not immediately release storage.
+
+The file model captures exclusions for each scan and receipt preferences for each removal.
+It scans all eligible sizes, so filter changes do not require another scan.
+Selection actions reject keepers, hidden files, and files outside the current results.
+File removal owns its task independently of the requesting view.
+Changed groups leave the review, while verified copies with permission failures remain selected.
+Completed removals retain their Trash receipts and recovery actions.
+
+`AppModel` handles file events for navigation, removal progress, completion, and failure presentation.
+After file removal, the model releases the shared guard and requests a refresh through an explicit callback.
+`AppModel` clears Cleanup and Storage Explorer results, refreshes Trash, and requests a storage measurement.
+This refresh preserves the updated file review and cannot clear a later file operation.
+Other disk removals and successful Put Back actions invalidate file results and selection.
 Cleanup scheduling remains with its scan owner in `AppModel`.
 
 ## Measurement rules
