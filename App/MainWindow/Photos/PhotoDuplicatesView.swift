@@ -88,13 +88,11 @@ struct PhotoDuplicatesView: View {
         guard let progress = model.progress else { return "Preparing…" }
         return switch progress.stage {
         case .fetching:      "Reading your photo library…"
-        case .grouping:
-            progress.percent > 90
-                ? "Comparing \(progress.total.formatted()) photos to each other…"
-                : "Grouping bursts…"
+        case .grouping:      "Grouping bursts…"
+        case .comparing:     "Comparing \(progress.total.formatted()) photos to each other…"
         case .fingerprinting:
             "Comparing photos — \(progress.completed.formatted()) of \(progress.total.formatted())"
-        case .done:          "Finishing…"
+        case .finishing, .done: "Finishing…"
         }
     }
 
