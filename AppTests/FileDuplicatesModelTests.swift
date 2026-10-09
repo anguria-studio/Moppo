@@ -17,7 +17,7 @@ struct FileDuplicatesModelTests {
         #expect(app.duplicateKind == .files)
         app.view = .history
         #expect(app.isBusyWithDisk)
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         app.cleanup.startScan()
         #expect(!app.cleanup.isScanning)
         #expect(app.operations.begin(.photoScan) == nil)
@@ -66,7 +66,7 @@ struct FileDuplicatesModelTests {
         files.selectAll()
         switch owner {
         case .cleanup: _ = app.operations.begin(.cleanupScan)
-        case .explorer: app.storageExplorer.isLoading = true
+        case .explorer: _ = app.operations.begin(.storageMeasurement)
         case .photoScan: _ = app.operations.begin(.photoScan)
         case .photoDeletion: _ = app.operations.begin(.photoDeletion)
         }
@@ -133,7 +133,7 @@ struct FileDuplicatesModelTests {
         try await waitUntil { await removal.isPending }
         #expect(files.isRemoving)
         #expect(app.isRemovingDuplicateFiles)
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.removalCompletion == nil)
         let selected = files.selection
         files.keepInstead(groupID: "initial", fileID: "/initial/copy-1")

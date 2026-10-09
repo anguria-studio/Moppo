@@ -70,7 +70,7 @@ Regression tests cover each measurement bug below.
 ## State ownership
 
 `AppModel` creates feature models and owns navigation, onboarding, and shared presentation.
-It still owns Storage Explorer removal tasks.
+It connects feature events, access checks, and requests to refresh other features.
 
 | Component | Responsibility |
 | --- | --- |
@@ -81,8 +81,8 @@ It still owns Storage Explorer removal tasks.
 | `RecoveryModel` | History, Trash, recovery selection, Put Back, and empty Trash tasks. |
 | `CleanupScheduler` | Periodic volume checks and automatic scan requests. |
 | `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
-| `StorageExplorerModel` | Folder measurements, navigation history, cached results, and selection. |
-| `OperationCoordinator` | Shared operation guards and operation identity for extracted features. |
+| `StorageExplorerModel` | Folder measurements, navigation history, cached results, selection, and removal tasks. |
+| `OperationCoordinator` | Shared operation guards and operation identity for scans, reviews, removal, and recovery. |
 
 Photo views receive `PhotoDuplicatesModel` directly.
 File duplicate views receive `FileDuplicatesModel` directly.
@@ -90,6 +90,7 @@ Uninstaller views receive `AppUninstallerModel` and explicit navigation callback
 Cleanup views receive `CleanupModel` and presentation values from the application model.
 Dashboard views receive `DashboardModel`, scan values, and explicit navigation callbacks.
 History and Trash views receive `RecoveryModel` directly.
+Storage Explorer views receive `StorageExplorerModel`, including its operation controls.
 The photo model receives services, download preferences, an access condition, and an event handler.
 It does not hold `AppModel` or change navigation directly.
 `AppModel` handles scan-start, deletion-start, deletion-result, and failure events.
@@ -98,7 +99,8 @@ Photo, file, and Cleanup scans continue when the user changes pages.
 A stop request cancels the scan task and keeps the shared operation guard until the service returns.
 Scan and regroup identifiers reject results from cancelled or replaced tasks.
 Only the matching operation can release the shared guard.
-Existing disk operations supply their busy state through the coordinator until their feature models own those operations.
+All feature scans, removal reviews, removal tasks, and recovery operations use the same coordinator.
+Presentation state does not determine whether an operation is active.
 
 The photo model owns access and deletion tasks independently of the requesting view.
 Photos can decline deletion through its confirmation request.
@@ -180,6 +182,24 @@ Put Back and empty Trash own their tasks independently of the requesting view.
 The shared guard stays active until the operation and updated list reads finish.
 The model then releases the guard and requests a Dashboard refresh through an explicit callback.
 Successful Put Back actions also invalidate Cleanup, file duplicate, and Storage Explorer results.
+
+Storage Explorer captures exclusions before each measurement and removal review.
+Removal captures the selected rows, parent folder, and receipt setting before the review starts.
+The review checks current file identities and protection rules before removal.
+Changed, protected, missing, or unreadable selections stop removal with the existing explanation.
+Removal owns its task independently of the requesting view.
+Completion invalidates measured rows and selection before releasing the shared guard and requesting refreshes.
+
+An Explorer replacement measurement waits for the cancelled measurement to return before starting.
+The model retains the same guard through replacement and cancellation.
+Generation checks reject late results and progress callbacks, including callbacks after completion.
+Cache invalidation retains an active guard until the measurement returns.
+The visible Explorer page refreshes invalidated results when the current operation permits it.
+Navigation methods also check the guard, so commands cannot bypass disabled controls.
+
+The scheduler remains separate from feature state and reads current conditions before each automatic scan request.
+Stopping the scheduler during a volume refresh prevents that check from starting a scan.
+Dashboard background measurements keep their existing independent lifetime and do not acquire the shared scan and removal guard.
 
 ## Measurement rules
 

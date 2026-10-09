@@ -11,7 +11,7 @@ struct StorageExplorerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
-    let isMeasurementBlocked: Bool
+    private var isMeasurementBlocked: Bool { model.isMeasurementBlocked }
     @State private var previewURL: URL?
     @State private var previewNavigation = StoragePreviewNavigation()
     @State private var presentation = StorageExplorerPresentation.list
@@ -36,7 +36,7 @@ struct StorageExplorerView: View {
         .onChange(of: model.needsRefresh) { _, _ in refreshIfNeeded() }
         .onChange(of: isMeasurementBlocked) { _, _ in refreshIfNeeded() }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, !model.isLoading else { return }
+            guard phase == .active, !model.isLoading, !model.isRemoving else { return }
             model.invalidateCache()
             refreshIfNeeded()
         }
@@ -45,6 +45,7 @@ struct StorageExplorerView: View {
                 resultBeforeScan = model.snapshot?.measuredAt
                 animateEmptyResult = false
             } else if wasRunning {
+                refreshIfNeeded()
                 animateEmptyResult = model.snapshot?.measuredAt != nil
                     && model.snapshot?.measuredAt != resultBeforeScan
             }

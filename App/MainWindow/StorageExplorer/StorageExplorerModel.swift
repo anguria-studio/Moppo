@@ -12,13 +12,31 @@ struct StorageExplorerLocation: Identifiable, Hashable {
     var symbol: String { isInternal ? "internaldrive" : "externaldrive" }
 }
 
-/// Owns one Storage Explorer session and its folder history.
+/// Owns Storage Explorer measurements, folder history, selection, and removal tasks.
 @MainActor
 @Observable
 final class StorageExplorerModel {
-    @ObservationIgnored private let settings: SettingsStore?
-    @ObservationIgnored private let service: StorageExplorerService
-    @ObservationIgnored private let removalService: StorageExplorerRemovalService
+    struct Preferences {
+        var excludedPaths: [String] = []
+        var excludedPatterns: [String] = []
+        var keepReceipt = true
+    }
+    enum Event {
+        case reviewing(count: Int)
+        case removing(count: Int, bytes: Int64)
+        case removed(CleanupOutcome)
+        case operationFinished
+        case failure(title: String, message: String)
+    }
+
+    @ObservationIgnored private let operations: OperationCoordinator
+    @ObservationIgnored private let preferences: () -> Preferences
+    @ObservationIgnored private let service: any StorageExplorerScanning
+    @ObservationIgnored private let removalService: any StorageExplorerRemoving
+    @ObservationIgnored private var removalTask: Task<Void, Never>?
+    @ObservationIgnored private var scanOperation: OperationCoordinator.Operation?
+    @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
+    @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanGeneration = 0
     @ObservationIgnored private var cachedSnapshots: [String: StorageExplorerSnapshot] = [:]
@@ -43,7 +61,9 @@ final class StorageExplorerModel {
     }
     private(set) var isMapSelectionPending = false
     @ObservationIgnored private var mapSelectionTask: Task<Void, Never>?
-    var isLoading = false
+    private(set) var isLoading = false
+    private(set) var isRemoving = false
+    var isMeasurementBlocked: Bool { operations.isBusy && scanOperation == nil }
     private(set) var isInterrupting = false
     var progress = SizeMeasurement.zero
     var error: StorageExplorerError?
@@ -55,11 +75,13 @@ final class StorageExplorerModel {
     private var forwardHistory: [URL] = []
 
     init(
-        settings: SettingsStore? = nil,
-        service: StorageExplorerService = StorageExplorerService(),
-        removalService: StorageExplorerRemovalService = StorageExplorerRemovalService()
+        operations: OperationCoordinator = OperationCoordinator(),
+        service: any StorageExplorerScanning = StorageExplorerService(),
+        removalService: any StorageExplorerRemoving = StorageExplorerRemovalService(),
+        preferences: @escaping () -> Preferences = { Preferences() }
     ) {
-        self.settings = settings
+        self.operations = operations
+        self.preferences = preferences
         self.service = service
         self.removalService = removalService
     }
@@ -74,6 +96,11 @@ final class StorageExplorerModel {
 
     var selectedBytes: Int64 {
         selectedItems.reduce(0) { $0 + $1.allocatedBytes }
+    }
+
+    var removeLabel: String {
+        guard !isMapSelectionPending, !selectedItems.isEmpty else { return "Move to Trash" }
+        return "Move to Trash (\(ByteFormatting.string(selectedBytes)))"
     }
 
     var canRemoveSelection: Bool {
@@ -104,6 +131,7 @@ final class StorageExplorerModel {
     }
 
     func chooseFolder() {
+        guard !isMeasurementBlocked else { return }
         let panel = NSOpenPanel()
         panel.title = "Choose a Folder"
         panel.message = "Moppo will measure the folder and its immediate contents."
@@ -118,25 +146,25 @@ final class StorageExplorerModel {
         }
     }
 
-    /// Drops every cached level. The model clears its own cache after an Explorer
-    /// removal; `AppModel` calls this after every other removal, since those move
-    /// files the cached levels still count.
+    /// Invalidate measured rows without releasing an active measurement guard.
     func invalidateCache() {
         clearCache()
-        scanGeneration += 1
-        scanTask?.cancel()
-        scanTask = nil
         snapshot = nil
         selection.removeAll()
-        isLoading = false
-        isInterrupting = false
+        pendingSelection = nil
         wasCancelled = false
         error = nil
         needsRefresh = currentURL != nil
+        if let scanTask {
+            isInterrupting = true
+            scanTask.cancel()
+        } else {
+            scanGeneration += 1
+        }
     }
 
     func refreshIfNeeded() {
-        guard needsRefresh, !isLoading else { return }
+        guard needsRefresh, !isLoading, !isMeasurementBlocked else { return }
         refresh()
     }
 
@@ -146,39 +174,40 @@ final class StorageExplorerModel {
 
     /// - Parameter revealing: a direct child of `url` to select once it is measured.
     func selectLocation(_ url: URL, revealing item: URL? = nil) {
+        guard !isMeasurementBlocked else { return }
         history.removeAll()
         forwardHistory.removeAll()
         load(url, useCache: false, revealing: item)
     }
 
     func open(_ item: StorageExplorerItem) {
-        guard item.opensAsDirectory, let currentURL else { return }
+        guard !isMeasurementBlocked, item.opensAsDirectory, let currentURL else { return }
         history.append(currentURL)
         forwardHistory.removeAll()
         load(item.url)
     }
 
     func navigate(to url: URL) {
-        guard url != currentURL else { return }
+        guard !isMeasurementBlocked, url != currentURL else { return }
         if let currentURL { history.append(currentURL) }
         forwardHistory.removeAll()
         load(url)
     }
 
     func goBack() {
-        guard let target = history.popLast() else { return }
+        guard !isMeasurementBlocked, let target = history.popLast() else { return }
         if let currentURL { forwardHistory.append(currentURL) }
         load(target)
     }
 
     func goForward() {
-        guard let target = forwardHistory.popLast() else { return }
+        guard !isMeasurementBlocked, let target = forwardHistory.popLast() else { return }
         if let currentURL { history.append(currentURL) }
         load(target)
     }
 
     func refresh(clearAllCachedFolders: Bool = false) {
-        guard let currentURL else { return }
+        guard !isMeasurementBlocked, let currentURL else { return }
         if clearAllCachedFolders {
             clearCache()
         } else {
@@ -193,30 +222,94 @@ final class StorageExplorerModel {
         scanTask?.cancel()
     }
 
-    func remove(_ items: [StorageExplorerItem], keepReceipt: Bool) async throws -> CleanupOutcome {
-        guard let directory = snapshot?.directory else { return CleanupOutcome() }
-        return try await removalService.remove(
-            items,
-            from: directory,
-            keepReceipt: keepReceipt
-        )
+    /// Capture the review and receipt setting before starting an owned removal task.
+    func requestRemoval() async {
+        guard !Task.isCancelled, canRemoveSelection, !isMapSelectionPending,
+              let directory = snapshot?.directory,
+              let operation = operations.begin(.storageRemoval) else { return }
+        let items = selectedItems
+        let capturedPreferences = preferences()
+        let generation = scanGeneration
+        isRemoving = true
+        onEvent(.reviewing(count: items.count))
+        let task = Task { [self] in
+            let attemptedRemoval = await performRemoval(
+                items, from: directory, preferences: capturedPreferences, generation: generation
+            )
+            if attemptedRemoval { invalidateCache() }
+            isRemoving = false
+            removalTask = nil
+            onEvent(.operationFinished)
+            operations.finish(operation)
+            if attemptedRemoval { await refreshAfterRemoval() }
+        }
+        removalTask = task
+        await task.value
     }
 
-    func reviewSelectionForRemoval(
-        _ items: [StorageExplorerItem]
-    ) async throws -> StorageExplorerSelectionReview? {
-        guard let currentURL else { return nil }
-        let review = try await service.reviewSelection(
-            items,
-            in: currentURL,
-            excludedPaths: settings?.excludedFolderPaths ?? [],
-            excludedPatterns: settings?.excludedPatterns ?? []
-        )
+    private func performRemoval(
+        _ items: [StorageExplorerItem], from directory: URL,
+        preferences: Preferences, generation: Int
+    ) async -> Bool {
+        var presentation = OperationPresentationDuration()
+        let review: StorageExplorerSelectionReview
+        do {
+            review = try await service.reviewSelection(
+                items, in: directory,
+                excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns
+            )
+        } catch is CancellationError {
+            return false
+        } catch {
+            onEvent(.failure(
+                title: "The Selection Could Not Be Checked",
+                message: "Moppo could not check the selected items. Nothing was removed."
+            ))
+            return false
+        }
+        guard generation == scanGeneration else { return false }
         snapshot = review.snapshot
         store(review.snapshot)
-        selection = selection.intersection(Set(review.snapshot.items.map(\.id)))
-
-        return review
+        selection = Set(items.map(\.id)).intersection(Set(review.snapshot.items.map(\.id)))
+        guard review.isReady else {
+            if !review.changedPaths.isEmpty {
+                onEvent(.failure(
+                    title: "The Selection Changed",
+                    message: "Some of those items are not what they were when you picked them. "
+                        + "Review the updated list and try again."
+                ))
+            } else if !review.protectedPaths.isEmpty {
+                onEvent(.failure(
+                    title: "Some Items Are Protected",
+                    message: "Moppo will not remove some of the selected items. "
+                        + "Review the list and try again."
+                ))
+            } else {
+                onEvent(.failure(
+                    title: "Nothing Left to Remove",
+                    message: "The selected items are no longer in this folder."
+                ))
+            }
+            return false
+        }
+        let bytes = review.items.reduce(0) { $0 + $1.allocatedBytes }
+        onEvent(.removing(count: review.items.count, bytes: bytes))
+        presentation.extend(toShow: .deletion(bytes: bytes))
+        do {
+            let outcome = try await removalService.remove(
+                review.items, from: directory, keepReceipt: preferences.keepReceipt
+            )
+            try? await presentation.wait()
+            onEvent(.removed(outcome))
+        } catch is CancellationError {
+            // Refresh the list because the service can stop after partial removal.
+        } catch {
+            onEvent(.failure(
+                title: "The Items Could Not Be Moved",
+                message: "The selected items could not move to the Trash. Nothing was removed."
+            ))
+        }
+        return true
     }
 
     private func load(
@@ -224,55 +317,53 @@ final class StorageExplorerModel {
         useCache: Bool = true,
         revealing item: URL? = nil
     ) {
+        guard !isMeasurementBlocked,
+              let operation = scanOperation ?? operations.begin(.storageMeasurement) else { return }
+        scanOperation = operation
+        let previous = scanTask
+        previous?.cancel()
         scanGeneration += 1
         let generation = scanGeneration
         needsRefresh = false
-        scanTask?.cancel()
         selection.removeAll()
-        // Set on every load, so a navigation that asks for nothing also discards a
-        // request the previous navigation never got to apply.
         pendingSelection = item
         progress = .zero
         error = nil
         wasCancelled = false
         isInterrupting = false
-
-        if useCache, let cached = cachedSnapshot(for: url) {
-            currentURL = cached.directory
-            snapshot = cached
-            isLoading = false
-            scanTask = nil
-            applyPendingSelection()
-            return
-        }
-
         currentURL = url
         snapshot = nil
         isLoading = true
+        let capturedPreferences = preferences()
 
-        let excludedPaths = settings?.excludedFolderPaths ?? []
-        let excludedPatterns = settings?.excludedPatterns ?? []
-        scanTask = Task { [weak self] in
-            guard let self else { return }
-            let presentation = OperationPresentationDuration()
+        scanTask = Task { [self] in
             defer {
                 if scanGeneration == generation {
+                    scanGeneration += 1
                     isLoading = false
                     isInterrupting = false
                     scanTask = nil
-                    if Task.isCancelled { wasCancelled = true }
+                    scanOperation = nil
+                    if Task.isCancelled { wasCancelled = !needsRefresh }
+                    operations.finish(operation)
                 }
             }
+            // Retain the guard until every replaced measurement has returned.
+            await previous?.value
+            let presentation = OperationPresentationDuration()
             do {
-                let snapshot = try await service.scan(
+                try Task.checkCancellation()
+                if useCache, let cached = cachedSnapshot(for: url) {
+                    currentURL = cached.directory
+                    snapshot = cached
+                    applyPendingSelection()
+                    return
+                }
+                let measured = try await service.scan(
                     directory: url,
-                    excludedPaths: excludedPaths,
-                    excludedPatterns: excludedPatterns,
+                    excludedPaths: capturedPreferences.excludedPaths,
+                    excludedPatterns: capturedPreferences.excludedPatterns,
                     progress: { measurement in
-                        // Strong `self`: the task above already holds it for the
-                        // whole scan, so a second weak capture only looked like it
-                        // was releasing something. A later navigation is ruled out
-                        // by the generation, not by the reference.
                         Task { @MainActor in
                             guard self.scanGeneration == generation, !self.isInterrupting else { return }
                             self.progress = measurement
@@ -280,13 +371,14 @@ final class StorageExplorerModel {
                     }
                 )
                 try await presentation.wait()
+                try Task.checkCancellation()
                 guard scanGeneration == generation else { return }
-                self.snapshot = snapshot
-                store(snapshot)
-                currentURL = snapshot.directory
+                snapshot = measured
+                store(measured)
+                currentURL = measured.directory
                 applyPendingSelection()
             } catch is CancellationError {
-                // The completion block keeps the view busy until the task ends.
+                // Keep the guard until the service and presentation have stopped.
             } catch let explorerError as StorageExplorerError {
                 try? await presentation.wait()
                 guard scanGeneration == generation, !Task.isCancelled else { return }

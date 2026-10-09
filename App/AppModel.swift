@@ -3,7 +3,7 @@ import AppKit
 import Observation
 import MoppoCore
 
-/// Owns navigation, shared presentation, and features that do not yet have separate models.
+/// Creates feature models and owns navigation, onboarding, access checks, and shared presentation.
 @MainActor
 @Observable
 final class AppModel {
@@ -40,6 +40,8 @@ final class AppModel {
         cleanupService: CleanupService = CleanupService(),
         uninstallerScanner: (any AppUninstallerScanning)? = nil,
         uninstallerRemover: (any AppUninstallRemoving)? = nil,
+        storageExplorerService: any StorageExplorerScanning = StorageExplorerService(),
+        storageExplorerRemover: any StorageExplorerRemoving = StorageExplorerRemovalService(),
         cleanupScanner: any CleanupScanning = CleanupScanService(),
         cleanupRemover: (any CleanupRemoving)? = nil,
         fileDuplicateService: any FileDuplicatesScanning = FileDuplicateService(),
@@ -109,7 +111,18 @@ final class AppModel {
                 )
             }
         )
-        self.storageExplorer = StorageExplorerModel(settings: settings)
+        self.storageExplorer = StorageExplorerModel(
+            operations: operations, service: storageExplorerService, removalService: storageExplorerRemover,
+            preferences: { [weak settings] in
+                StorageExplorerModel.Preferences(
+                    excludedPaths: settings?.excludedFolderPaths ?? [],
+                    excludedPatterns: settings?.excludedPatterns ?? [],
+                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
+                )
+            }
+        )
+        storageExplorer.onEvent = { [weak self] event in self?.handleStorageExplorerEvent(event) }
+        storageExplorer.refreshAfterRemoval = { [weak self] in await self?.refreshAfterRemoval() }
         dashboard.iCloudPlanBytes = settings?.iCloudPlan.bytes
         dashboard.canLoad = { [weak self] in self?.isShowingWelcome == false }
         dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
@@ -129,11 +142,6 @@ final class AppModel {
             case .putBack:
                 if self.checkDiskAccess(automatic: true) { await self.dashboard.measureStorage() }
             }
-        }
-        operations.hasOtherOperation = { [weak self] in
-            guard let self else { return false }
-            return self.storageExplorer.isLoading
-                || self.activity != nil
         }
         photoDuplicates.canRequestAccess = { [weak self] in
             guard let self else { return false }
@@ -487,109 +495,9 @@ final class AppModel {
         if case .removingDuplicateFiles? = activity { return true }
         return false
     }
-    var isRemovingStorageItems: Bool {
-        if case .removingStorageItems? = activity { return true }
-        return false
-    }
     var isShowingAppDataAccessAlert = false
 
-    var isStorageExplorerMeasurementBlocked: Bool {
-        operations.activeOperation != nil
-            || activity != nil
-    }
-
-    /// Share the operation guard with extracted feature models.
     var isBusyWithDisk: Bool { operations.isBusy }
-
-    var storageExplorerRemoveLabel: String {
-        guard !storageExplorer.isMapSelectionPending else { return "Move to Trash" }
-        let count = storageExplorer.selectedItems.count
-        guard count > 0 else { return "Move to Trash" }
-        return "Move to Trash (\(ByteFormatting.string(storageExplorer.selectedBytes)))"
-    }
-
-    func requestStorageExplorerRemoval() async {
-        guard storageExplorer.canRemoveSelection, !isBusyWithDisk else { return }
-        let selectedItems = storageExplorer.selectedItems
-        removalCompletion = nil
-        let presentation = OperationPresentationDuration()
-        activity = .reviewingStorageItems(itemCount: selectedItems.count)
-
-        do {
-            let review = try await storageExplorer.reviewSelectionForRemoval(selectedItems)
-            guard let review else {
-                activity = nil
-                return
-            }
-            // Show why removal stopped when the selection fails validation.
-            guard review.isReady else {
-                activity = nil
-                if !review.changedPaths.isEmpty {
-                    report(
-                        "The Selection Changed",
-                        "Some of those items are not what they were when you picked them. "
-                            + "Review the updated list and try again."
-                    )
-                } else if !review.protectedPaths.isEmpty {
-                    report(
-                        "Some Items Are Protected",
-                        "Moppo will not remove some of the selected items. "
-                            + "Review the list and try again."
-                    )
-                } else {
-                    // The third way a review is not ready: nothing selected is
-                    // still there to remove.
-                    report(
-                        "Nothing Left to Remove",
-                        "The selected items are no longer in this folder."
-                    )
-                }
-                return
-            }
-            await performStorageExplorerRemoval(review.items, presentation: presentation)
-        } catch is CancellationError {
-            activity = nil
-        } catch {
-            activity = nil
-            report(
-                "The Selection Could Not Be Checked",
-                "Moppo could not check the selected items. Nothing was removed."
-            )
-        }
-    }
-
-    private func performStorageExplorerRemoval(
-        _ items: [StorageExplorerItem],
-        presentation: OperationPresentationDuration
-    ) async {
-        guard !items.isEmpty else {
-            activity = nil
-            return
-        }
-        let removal = Activity.removingStorageItems(
-            itemCount: items.count,
-            totalBytes: items.reduce(0) { $0 + $1.allocatedBytes }
-        )
-        activity = removal
-        var presentation = presentation
-        presentation.extend(toShow: removal.progressIcon)
-
-        do {
-            let outcome = try await storageExplorer.remove(items, keepReceipt: keepReceipt)
-            try? await presentation.wait()
-            completeTrashRemoval(outcome, in: .storageExplorer)
-        } catch is CancellationError {
-            // The user stopped it.
-        } catch {
-            report(
-                "The Items Could Not Be Moved",
-                "The selected items could not move to the Trash. Nothing was removed."
-            )
-        }
-
-        activity = nil
-        await refreshAfterRemoval()
-    }
 
     // MARK: - Derived
 
@@ -603,7 +511,7 @@ final class AppModel {
         case .uninstaller:
             uninstaller.uninstallerRemoveLabel
         case .storageExplorer:
-            storageExplorerRemoveLabel
+            storageExplorer.removeLabel
         case .trash:
             "Empty Trash"
         case .dashboard, .history:
@@ -621,9 +529,6 @@ final class AppModel {
         view = .scanner
     }
 
-    /// All removal actions use the saved receipt setting.
-    var keepReceipt: Bool { settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt }
-
     /// The disk changed, so the cached breakdown and the Trash summary are both
     /// wrong. They run together: the Trash read is usually quick and feeds the
     /// sidebar count, and it should not queue behind a 20-second walk.
@@ -633,7 +538,7 @@ final class AppModel {
         // Every cached Explorer level is stale too: a folder measured before a
         // Scanner clean-up came back from the cache with its old figure.
         storageExplorer.invalidateCache()
-        if view == .storageExplorer, !isStorageExplorerMeasurementBlocked {
+        if view == .storageExplorer, !storageExplorer.isMeasurementBlocked {
             storageExplorer.refreshIfNeeded()
         }
         cleanup.pruneVanishedEntries()
@@ -711,6 +616,24 @@ final class AppModel {
         let url = URL(fileURLWithPath: attribution.path)
         storageExplorer.selectLocation(url.deletingLastPathComponent(), revealing: url)
         view = .storageExplorer
+    }
+
+    // MARK: - Storage Explorer presentation
+
+    private func handleStorageExplorerEvent(_ event: StorageExplorerModel.Event) {
+        switch event {
+        case .reviewing(let count):
+            removalCompletion = nil
+            activity = .reviewingStorageItems(itemCount: count)
+        case .removing(let count, let bytes):
+            activity = .removingStorageItems(itemCount: count, totalBytes: bytes)
+        case .removed(let outcome):
+            completeTrashRemoval(outcome, in: .storageExplorer)
+        case .operationFinished:
+            activity = nil
+        case .failure(let title, let message):
+            report(title, message)
+        }
     }
 
     // MARK: - Recovery presentation

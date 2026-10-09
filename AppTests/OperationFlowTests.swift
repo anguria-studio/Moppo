@@ -268,11 +268,11 @@ struct OperationFlowTests {
         let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
         model.uninstaller.planAppUninstall(folder.url.appendingPathComponent("fixture.app"))
         #expect(model.uninstaller.isPlanningAppUninstall)
-        #expect(model.isStorageExplorerMeasurementBlocked)
+        #expect(model.storageExplorer.isMeasurementBlocked)
 
         model.uninstaller.resetAppUninstall()
         try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
-        #expect(!model.isStorageExplorerMeasurementBlocked)
+        #expect(!model.storageExplorer.isMeasurementBlocked)
         #expect(model.uninstaller.appUninstallPlan == nil)
     }
 
