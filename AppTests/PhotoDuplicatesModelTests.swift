@@ -37,7 +37,7 @@ struct PhotoDuplicatesModelTests {
         app.view = .history
         #expect(photos.isScanning)
         #expect(app.isBusyWithDisk)
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         app.cleanup.startScan()
         app.fileDuplicates.startScan(roots: [URL(fileURLWithPath: "/unused-photo-test")])
         app.uninstaller.planAppUninstall(URL(fileURLWithPath: "/unused-photo-test.app"))
@@ -88,7 +88,7 @@ struct PhotoDuplicatesModelTests {
         switch owner {
         case .cleanup: _ = app.operations.begin(.cleanupScan)
         case .files: _ = app.operations.begin(.fileScan)
-        case .explorer: app.storageExplorer.isLoading = true
+        case .explorer: _ = app.operations.begin(.storageMeasurement)
         }
         #expect(photos.isBusyWithDisk)
         photos.startScan()
@@ -114,18 +114,18 @@ struct PhotoDuplicatesModelTests {
         #expect(!operations.isBusy)
     }
 
-    @Test("Shared busy state observes operations from both owners")
+    @Test("Shared busy state observes Explorer and photo operations")
     func busyObservation() throws {
         let app = makeApp(HeldPhotoService())
-        let legacyChanged = ObservationFlag()
+        let explorerChanged = ObservationFlag()
         withObservationTracking {
             _ = app.photoDuplicates.isBusyWithDisk
         } onChange: {
-            legacyChanged.mark()
+            explorerChanged.mark()
         }
-        app.storageExplorer.isLoading = true
-        #expect(legacyChanged.changed)
-        app.storageExplorer.isLoading = false
+        let explorer = try #require(app.operations.begin(.storageMeasurement))
+        #expect(explorerChanged.changed)
+        app.operations.finish(explorer)
 
         let featureChanged = ObservationFlag()
         withObservationTracking {
@@ -210,7 +210,7 @@ struct PhotoDuplicatesModelTests {
         try await waitUntil { await service.isDeletionPending }
         #expect(photos.isDeleting)
         #expect(app.isBusyWithDisk)
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.removalCompletion == nil)
         await photos.deleteSelected()
         photos.startScan()

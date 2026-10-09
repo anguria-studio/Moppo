@@ -17,7 +17,7 @@ struct AppUninstallerModelTests {
         app.view = .history
         model.resetAppUninstall()
         #expect(model.isInterruptingAppUninstall)
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.operations.begin(.photoScan) == nil)
         #expect(app.operations.begin(.cleanupRemoval) == nil)
         model.planAppUninstall(uninstallPlan("Blocked").applicationURL)

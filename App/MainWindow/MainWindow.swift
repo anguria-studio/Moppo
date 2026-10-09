@@ -138,10 +138,7 @@ struct MainWindow: View {
                     onUninstallApplication: { model.uninstaller.planAppUninstall($0.url) }
                 )
             case .storageExplorer:
-                StorageExplorerView(
-                    model: model.storageExplorer,
-                    isMeasurementBlocked: model.isStorageExplorerMeasurementBlocked
-                )
+                StorageExplorerView(model: model.storageExplorer)
             case .uninstaller:
                 AppUninstallerView(
                     model: model.uninstaller, findRequest: model.findRequest,
@@ -237,7 +234,7 @@ struct MainWindow: View {
             : !model.uninstaller.selectedLeftoverIdentifiers.isEmpty && !model.uninstaller.isLoadingApplicationLeftovers
         case .storageExplorer: return model.storageExplorer.canRemoveSelection
             && !model.storageExplorer.isMapSelectionPending
-            && !model.isStorageExplorerMeasurementBlocked
+            && !model.storageExplorer.isMeasurementBlocked
         case .trash:           return (model.recovery.trashSummary?.itemCount ?? 0) > 0
         case .dashboard, .history: return false
         }
@@ -258,7 +255,7 @@ struct MainWindow: View {
             } else {
                 Task { await model.uninstaller.requestLeftoverRemoval() }
             }
-        case .storageExplorer: Task { await model.requestStorageExplorerRemoval() }
+        case .storageExplorer: Task { await model.storageExplorer.requestRemoval() }
         case .trash:      model.activeSheet = .emptyTrash
         case .dashboard, .history: break
         }

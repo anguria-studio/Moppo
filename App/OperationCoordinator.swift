@@ -5,10 +5,10 @@ import Observation
 @MainActor
 @Observable
 final class OperationCoordinator {
-    enum Kind {
+    enum Kind: CaseIterable {
         case photoScan, photoDeletion, fileScan, fileRemoval, cleanupScan, cleanupRemoval, cleanupQuit
         case appUninstallPlanning, appUninstall, appLeftoverRemoval
-        case emptyTrash, trashRestoration
+        case emptyTrash, trashRestoration, storageMeasurement, storageRemoval
     }
 
     struct Operation: Equatable {
@@ -16,11 +16,9 @@ final class OperationCoordinator {
         let kind: Kind
     }
 
-    /// Includes operations that still belong to AppModel during feature extraction.
-    @ObservationIgnored var hasOtherOperation: () -> Bool = { false }
     private(set) var activeOperation: Operation?
 
-    var isBusy: Bool { activeOperation != nil || hasOtherOperation() }
+    var isBusy: Bool { activeOperation != nil }
 
     func begin(_ kind: Kind) -> Operation? {
         guard !isBusy else { return nil }

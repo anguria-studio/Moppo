@@ -63,7 +63,7 @@ struct RecoveryModelTests {
         app.view = .history
         caller.cancel()
         #expect(app.activity == .restoringTrashItem(name: item.name))
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.operations.begin(.appUninstall) == nil)
         await app.recovery.putBack(item)
         #expect(await trash.restorations.count == 1)

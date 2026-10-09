@@ -13,7 +13,7 @@ struct CleanupModelTests {
         cleanup.startScan(refreshOverview: false)
         try await waitUntil { await scanner.requestCount == 1 }
         app.view = .history
-        #expect(app.isStorageExplorerMeasurementBlocked)
+        #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.operations.begin(.photoScan) == nil)
         #expect(app.operations.begin(.fileRemoval) == nil)
         cleanup.cancelScan()
