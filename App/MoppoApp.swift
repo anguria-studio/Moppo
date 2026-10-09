@@ -222,12 +222,12 @@ private struct MoppoCommands: Commands {
     var body: some Commands {
         // Update menu availability without rebuilding the application scene.
         CommandMenu("Cleanup") {
-            Button("Scan for Cleanup Items") { model.startScan() }
+            Button("Scan for Cleanup Items") { model.cleanup.startScan() }
                 .keyboardShortcut("r")
                 .disabled(model.isShowingWelcome || model.isBusyWithDisk)
-            Button(model.isInterruptingScan ? ScanInterruptionView.title : "Stop Scan") { model.cancelScan() }
+            Button(model.cleanup.isInterruptingScan ? ScanInterruptionView.title : "Stop Scan") { model.cleanup.cancelScan() }
                 .keyboardShortcut(".")
-                .disabled(!model.isScanning || model.isInterruptingScan)
+                .disabled(!model.cleanup.isScanning || model.cleanup.isInterruptingScan)
         }
         // Replace document editing commands with the application search command.
         CommandGroup(replacing: .textEditing) {

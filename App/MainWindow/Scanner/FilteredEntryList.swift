@@ -11,8 +11,8 @@ import MoppoCore
 /// `ScannerView.categories(of:for:)` — and what is left of the list is its summary
 /// and the one behaviour that was its own: the safe tab opens pre-selected.
 struct FilteredSummary: View {
-    @Bindable var model: AppModel
-    let filter: AppModel.ScanFilter
+    @Bindable var model: CleanupModel
+    let filter: CleanupModel.ScanFilter
 
     var body: some View {
         // The model owns this list: the status bar's Select All acts on exactly
@@ -34,6 +34,6 @@ struct FilteredSummary: View {
         .padding(.horizontal, 2)
         // No seeding here any more. What is ticked when a scan finishes is the
         // scan's business, not this summary line's: see
-        // `AppModel.seedSafeToRemoveSelection`, now called when the scan returns.
+        // `CleanupModel.seedSafeToRemoveSelection`, now called when the scan returns.
     }
 }

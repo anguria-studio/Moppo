@@ -3,7 +3,11 @@ import MoppoCore
 
 /// Keeps the cleanup filters above the file list.
 struct ScannerView: View {
-    @Bindable var model: AppModel
+    @Bindable var model: CleanupModel
+    let activity: AppModel.Activity?
+    let cleanupCompletion: AppModel.CleanupCompletion?
+    let onViewDashboard: (UUID) -> Void
+    let onUninstallApplication: (FileEntry) -> Void
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -11,17 +15,17 @@ struct ScannerView: View {
 
     var body: some View {
         Group {
-            if case .cleaningUp(let itemCount, let totalBytes) = model.activity {
+            if case .cleaningUp(let itemCount, let totalBytes) = activity {
                 CleanupOperationView(itemCount: itemCount, totalBytes: totalBytes)
                     .transition(.opacity)
-            } else if let completion = model.cleanupCompletion {
+            } else if let completion = cleanupCompletion {
                 CleanupOperationView(
                     itemCount: completion.outcome.removedCount,
                     totalBytes: completion.outcome.removedBytes,
                     isComplete: true,
                     canScan: !model.isBusyWithDisk,
                     onScanAgain: { model.startScan() },
-                    onViewDashboard: { model.showDashboardAfterCleanup(completion.id) }
+                    onViewDashboard: { onViewDashboard(completion.id) }
                 )
                 .id(completion.id)
                 .transition(.opacity)
@@ -81,7 +85,7 @@ struct ScannerView: View {
         .onChange(of: model.scanFilter) { _, _ in animateEmptyResult = false }
         .onDisappear { animateEmptyResult = false }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showsOperation)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: model.cleanupCompletion?.id)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: cleanupCompletion?.id)
         .task {
             model.pruneVanishedEntries()
             model.refreshCleanupRunningOwners()
@@ -142,7 +146,7 @@ struct ScannerView: View {
     }
 
     private var showsOperation: Bool {
-        model.isScanning || model.isCleaningUp || model.cleanupCompletion != nil
+        model.isScanning || model.isRemoving || cleanupCompletion != nil
     }
 
     private var scanProgress: some View {
@@ -199,7 +203,7 @@ struct ScannerView: View {
     /// Filters stay visible while the file list scrolls.
     private func filterPicker(_ results: ScanResults) -> some View {
         HStack(spacing: 8) {
-            ForEach(AppModel.ScanFilter.allCases) { filter in
+            ForEach(CleanupModel.ScanFilter.allCases) { filter in
                 filterPill(filter, results: results)
             }
         }
@@ -207,7 +211,7 @@ struct ScannerView: View {
         .disabled(model.isBusyWithDisk)
     }
 
-    private func filterPill(_ filter: AppModel.ScanFilter, results: ScanResults) -> some View {
+    private func filterPill(_ filter: CleanupModel.ScanFilter, results: ScanResults) -> some View {
         let isSelected = model.scanFilter == filter
         let tint: Color = switch filter {
         case .all: Token.textColor(.accent)
@@ -227,7 +231,7 @@ struct ScannerView: View {
         ) { model.scanFilter = filter }
     }
 
-    private func bytes(in filter: AppModel.ScanFilter, results: ScanResults) -> Int64 {
+    private func bytes(in filter: CleanupModel.ScanFilter, results: ScanResults) -> Int64 {
         switch filter {
         case .all: results.totalBytes
         case .safeToRemove: results.safeToRemoveBytes
@@ -241,7 +245,7 @@ struct ScannerView: View {
     /// `ScanCategoryResult.filtered(safeToRemove:)`. `All` keeps every category,
     /// an empty or unavailable one included, because its message is the point there.
     private func categories(
-        of results: ScanResults, for filter: AppModel.ScanFilter
+        of results: ScanResults, for filter: CleanupModel.ScanFilter
     ) -> [ScanCategoryResult] {
         guard filter != .all else { return results.categories }
         return results.categories
@@ -300,7 +304,7 @@ struct ScannerView: View {
                     showsSafeToRemoveBadges: model.scanFilter != .safeToRemove,
                     selection: $model.scannerSelection,
                     userDataRemovalOverrides: $model.userDataRemovalOverrides,
-                    onUninstallApplication: { model.planAppUninstall($0.url) }
+                    onUninstallApplication: onUninstallApplication
                 )
                 .id(model.scanFilter)
                 .disabled(model.isBusyWithDisk)

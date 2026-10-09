@@ -44,7 +44,7 @@ struct MenuBarView: View {
 
             Button("Scan for Cleanup Items") {
                 NSApp.activate(ignoringOtherApps: true)
-                model.startScan()
+                model.cleanup.startScan()
             }
             .disabled(model.isShowingWelcome || model.isBusyWithDisk)
 

@@ -39,15 +39,15 @@ struct DashboardView: View {
                 }
 
                 StatTiles(
-                    results: model.scanResults,
-                    lastScanAt: model.lastScanFinishedAt,
+                    results: model.cleanup.scanResults,
+                    lastScanAt: model.cleanup.lastScanFinishedAt,
                     iCloudStorage: model.iCloudStorage,
                     // The tiles are a summary of the scan; the scan's own page is
                     // where its rows live, so a tile opens the Scanner on the list
                     // it counted rather than a page of its own.
                     onSafeTap: { model.showScanner(filtered: .safeToRemove) },
                     onReviewTap: { model.showScanner(filtered: .needsReview) },
-                    onScan: { model.startScan() }
+                    onScan: { model.cleanup.startScan() }
                 )
 
                 // Below the tiles: the capacity card and the tiles are what the
@@ -58,7 +58,7 @@ struct DashboardView: View {
                     GrowthCard(
                         presentation: GrowthCard.Presentation(growth),
                         baseline: model.growthBaseline,
-                        lastScanAt: model.scanResults?.finishedAt ?? model.lastScanFinishedAt,
+                        lastScanAt: model.cleanup.scanResults?.finishedAt ?? model.cleanup.lastScanFinishedAt,
                         canCompareSinceCleanup: model.hasCleanupGrowthBaseline,
                         onSelectBaseline: { model.growthBaseline = $0 },
                         onReveal: { model.revealGrowth($0) }
