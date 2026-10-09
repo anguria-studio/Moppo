@@ -10,7 +10,7 @@ public actor PhotoDuplicateService {
 
     public struct Progress: Sendable, Equatable {
         public enum Stage: String, Sendable {
-            case fetching, grouping, fingerprinting, done
+            case fetching, grouping, fingerprinting, comparing, finishing, done
         }
         public var stage: Stage
         public var percent: Int
@@ -251,12 +251,17 @@ public actor PhotoDuplicateService {
                 isCancelled: { cancellation.isCancelled }
             ) { fraction in
                 onProgress?(Progress(
-                    stage: .grouping,
-                    percent: Int(comparingBase + fraction * (100 - comparingBase)),
+                    stage: .comparing,
+                    percent: Int(comparingBase + fraction * (99 - comparingBase)),
                     completed: candidates.count, total: candidates.count, fromCache: cached
                 ))
             }
             try Task.checkCancellation()
+
+            onProgress?(Progress(
+                stage: .finishing, percent: 99,
+                completed: candidates.count, total: candidates.count, fromCache: cached
+            ))
 
             // Bursts reach the same verdict they did above — that tier never
             // consults fingerprints — so this is one pass producing one disjoint

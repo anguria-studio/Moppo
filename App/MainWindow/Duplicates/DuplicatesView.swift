@@ -18,15 +18,15 @@ struct DuplicatesView: View {
                         withTransaction(transaction) { model.duplicateKind = kind }
                     }
                 }
-                if (model.duplicateKind == .photos && model.photoLibraryAccess?.canSweep == true && model.photoUnavailable == nil)
+                if (model.duplicateKind == .photos && model.photoDuplicates.libraryAccess?.canSweep == true && model.photoDuplicates.unavailableReason == nil)
                     || (model.duplicateKind == .files && model.fileDuplicateResults != nil) {
                     Rectangle()
                         .fill(Token.Fill.controlBorder)
                         .frame(width: Token.hairline, height: 22)
                         .padding(.horizontal, 8)
                     if model.duplicateKind == .photos {
-                        PhotoSimilarityPicker(model: model)
-                            .disabled(model.isRequestingPhotoAccess)
+                        PhotoSimilarityPicker(model: model.photoDuplicates)
+                            .disabled(model.photoDuplicates.isRequestingAccess)
                     } else {
                         FileDuplicateMinimumPicker(model: model)
                     }
@@ -38,14 +38,14 @@ struct DuplicatesView: View {
                         .disabled(model.isBusyWithDisk)
                 }
             }
-            .disabled(model.activity != nil || model.isDeletingPhotos || model.removalCompletion?.destination == .duplicates)
+            .disabled(model.activity != nil || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == .duplicates)
             .frame(minHeight: 38)
             .padding(Token.Size.pageGutter)
             Divider()
             Group {
                 switch model.duplicateKind {
                 case .files: FileDuplicatesView(model: model)
-                case .photos: PhotoDuplicatesView(model: model)
+                case .photos: PhotoDuplicatesView(model: model.photoDuplicates)
                 }
             }
             // Replace the whole tab so shared page states cannot retain text from the previous tab.

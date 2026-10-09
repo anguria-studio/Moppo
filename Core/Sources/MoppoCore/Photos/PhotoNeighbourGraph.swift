@@ -112,34 +112,63 @@ public struct PhotoNeighbourGraph: Sendable, Equatable {
             buckets[key, default: []].append(asset)
         }
 
-        // Costed the way the work actually falls, so the progress bar moves evenly
-        // through a library that lands almost entirely in one bucket.
+        // Count pairs across all buckets so large buckets can report progress while they run.
         let ordered = buckets.sorted { $0.key < $1.key }.map(\.value)
-        let costs = ordered.map { pow(Double($0.count), 2) }
-        let totalCost = costs.reduce(0, +)
-        var doneCost: Double = 0
+        let totalPairs = ordered.reduce(Int64(0)) {
+            $0 + Int64($1.count) * Int64($1.count - 1) / 2
+        }
+        let progress = onProgress.map { ComparisonProgress(totalPairs: totalPairs, onProgress: $0) }
+        if !isCancelled() { onProgress?(0) }
 
         var edges: [(String, String, Float)] = []
-        for (index, bucket) in ordered.enumerated() {
+        for bucket in ordered {
             if isCancelled() { break }
-            defer {
-                doneCost += costs[index]
-                if totalCost > 0 { onProgress?(min(1, doneCost / totalCost)) }
-            }
             guard bucket.count > 1 else { continue }
-            edges.append(contentsOf: compare(bucket, fingerprints: fingerprints, ceiling: ceiling, isCancelled: isCancelled))
+            edges.append(contentsOf: compare(
+                bucket, fingerprints: fingerprints, ceiling: ceiling,
+                isCancelled: isCancelled, progress: progress
+            ))
         }
 
-        return PhotoNeighbourGraph(
+        let graph = PhotoNeighbourGraph(
             ceiling: ceiling, fingerprinted: fingerprinted, edges: edges
         )
+        if !isCancelled() { onProgress?(1) }
+        return graph
+    }
+
+    /// Reports each percentage once. The lock keeps callbacks from parallel workers in order.
+    private final class ComparisonProgress: @unchecked Sendable {
+        private let lock = NSLock()
+        private let totalPairs: Int64
+        private let onProgress: @Sendable (Double) -> Void
+        private var completedPairs: Int64 = 0
+        private var reportedPercent = 0
+
+        init(totalPairs: Int64, onProgress: @escaping @Sendable (Double) -> Void) {
+            self.totalPairs = totalPairs
+            self.onProgress = onProgress
+        }
+
+        func advance(by count: Int) {
+            lock.withLock {
+                completedPairs += Int64(count)
+                guard totalPairs > 0 else { return }
+                // Reserve completion until all workers and graph construction finish.
+                let percent = min(99, Int(100 * Double(completedPairs) / Double(totalPairs)))
+                guard percent > reportedPercent else { return }
+                reportedPercent = percent
+                onProgress(Double(percent) / 100)
+            }
+        }
     }
 
     private static func compare(
         _ bucket: [PhotoAsset],
         fingerprints: [String: PhotoFingerprint],
         ceiling: Float,
-        isCancelled: @Sendable () -> Bool
+        isCancelled: @Sendable () -> Bool,
+        progress: ComparisonProgress?
     ) -> [(String, String, Float)] {
         // Hoisted out of the dictionary: the inner loop runs tens of millions of
         // times and the lookup dominated the comparison itself.
@@ -159,10 +188,10 @@ public struct PhotoNeighbourGraph: Sendable, Equatable {
         DispatchQueue.concurrentPerform(iterations: workers) { worker in
             var local: [(String, String, Float)] = []
             var i = worker
-            while i < printsRef.count {
+            rows: while i < printsRef.count {
                 if isCancelled() { break }
                 for j in (i + 1)..<printsRef.count {
-                    if j.isMultiple(of: 256), isCancelled() { break }
+                    if j.isMultiple(of: 256), isCancelled() { break rows }
                     guard printsRef[i].isWithin(ceiling, of: printsRef[j]) else { continue }
                     // Only for the survivors — 0.02% of pairs — so the full
                     // 768-dimension distance here costs nothing next to the scan.
@@ -170,6 +199,7 @@ public struct PhotoNeighbourGraph: Sendable, Equatable {
                         local.append((idsRef[i], idsRef[j], d))
                     }
                 }
+                if !isCancelled() { progress?.advance(by: printsRef.count - i - 1) }
                 i += workers
             }
             lock.lock()

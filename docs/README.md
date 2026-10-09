@@ -67,6 +67,39 @@ design/                       Archived design handoff, kept locally
 Run `swift test --package-path Core` to check engine behavior before you build the interface.
 Regression tests cover each measurement bug below.
 
+## State ownership
+
+`AppModel` creates feature models and owns navigation, onboarding, and shared presentation.
+It still owns the Cleanup, file duplicate, uninstall, Dashboard, and recovery state.
+
+| Component | Responsibility |
+| --- | --- |
+| `PhotoDuplicatesModel` | Photos access, scans, regrouping, selection, preview state, thumbnail requests, and deletion. |
+| `StorageExplorerModel` | Folder measurements, navigation history, cached results, and selection. |
+| `OperationCoordinator` | Shared operation guards and operation identity for extracted features. |
+
+Photo views receive `PhotoDuplicatesModel` directly.
+The photo model receives services, download preferences, an access condition, and an event handler.
+It does not hold `AppModel` or change navigation directly.
+`AppModel` handles scan-start, deletion-start, deletion-result, and failure events.
+
+Photo scans continue when the user changes pages.
+A stop request cancels the scan task and keeps the shared operation guard until the service returns.
+Scan and regroup identifiers reject results from cancelled or replaced tasks.
+Only the matching operation can release the shared guard.
+Existing disk operations supply their busy state through the coordinator until their feature models own those operations.
+
+The photo model owns access and deletion tasks independently of the requesting view.
+Photos can decline deletion through its confirmation request.
+A completed deletion removes assets from the retained scan and clears the selection before Moppo reports success.
+Regrouping creates a new selection because group keepers can change.
+Access revocation clears results, selection, previews, and thumbnail requests.
+Preview cancellation and retry remain with `PhotoThumbnailLoader`.
+
+Photos deletion moves assets to Recently Deleted and does not create Trash receipts.
+It does not request a disk refresh because Photos does not immediately release storage.
+Cleanup scheduling remains with its scan owner in `AppModel`.
+
 ## Measurement rules
 
 These are not style preferences. Each one is a bug the Electron version shipped.

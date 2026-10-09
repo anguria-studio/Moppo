@@ -78,44 +78,44 @@ struct PhotoRecoveryTests {
     func revokedReview(access: PhotoLibraryAccess) async throws {
         let fixture = PhotoFixture()
         let model = fixture.model()
-        await model.requestPhotoAccess()
-        model.startPhotoSweep()
-        try await waitUntil { !model.isSweepingPhotos }
-        let group = try #require(model.photoGroups.first)
-        model.photoPreview = .init(groupID: group.id, asset: group.keeper)
-        model.photoSelection = [try #require(group.removable.first).id]
+        await model.photoDuplicates.requestAccess()
+        model.photoDuplicates.startScan()
+        try await waitUntil { !model.photoDuplicates.isScanning }
+        let group = try #require(model.photoDuplicates.groups.first)
+        model.photoDuplicates.preview = .init(groupID: group.id, asset: group.keeper)
+        model.photoDuplicates.setSelected(true, assetID: try #require(group.removable.first).id)
 
         await fixture.library.configure(access: access)
-        await model.requestPhotoAccess()
-        #expect(!model.canAccessPhotos)
-        #expect(model.photoResults == nil)
-        #expect(model.photoSelection.isEmpty)
-        #expect(model.photoPreview == nil)
+        await model.photoDuplicates.requestAccess()
+        #expect(!model.photoDuplicates.canAccessPhotos)
+        #expect(model.photoDuplicates.results == nil)
+        #expect(model.photoDuplicates.selection.isEmpty)
+        #expect(model.photoDuplicates.preview == nil)
         #expect(!model.isBusyWithDisk)
 
         await fixture.library.configure()
-        await model.requestPhotoAccess()
-        #expect(model.canAccessPhotos)
-        #expect(model.photoResults == nil)
-        model.startPhotoSweep()
-        try await waitUntil { !model.isSweepingPhotos }
-        #expect(model.photoGroups.count == 1)
+        await model.photoDuplicates.requestAccess()
+        #expect(model.photoDuplicates.canAccessPhotos)
+        #expect(model.photoDuplicates.results == nil)
+        model.photoDuplicates.startScan()
+        try await waitUntil { !model.photoDuplicates.isScanning }
+        #expect(model.photoDuplicates.groups.count == 1)
     }
 
     @Test("Revoked access before deletion clears review without reporting success")
     func revokedDeletion() async throws {
         let fixture = PhotoFixture()
         let model = fixture.model()
-        await model.requestPhotoAccess()
-        model.startPhotoSweep()
-        try await waitUntil { !model.isSweepingPhotos }
-        model.selectAllRemovablePhotos()
+        await model.photoDuplicates.requestAccess()
+        model.photoDuplicates.startScan()
+        try await waitUntil { !model.photoDuplicates.isScanning }
+        model.photoDuplicates.selectAll()
         await fixture.library.configure(access: .denied)
-        await model.deleteSelectedPhotos()
+        await model.photoDuplicates.deleteSelected()
         #expect(await fixture.library.deletions == 0)
-        #expect(model.photoResults == nil)
+        #expect(model.photoDuplicates.results == nil)
         #expect(model.removalCompletion == nil)
-        #expect(!model.canAccessPhotos)
+        #expect(!model.photoDuplicates.canAccessPhotos)
         #expect(!model.isBusyWithDisk)
     }
 
@@ -123,22 +123,45 @@ struct PhotoRecoveryTests {
     func missingPhotos() async throws {
         let fixture = PhotoFixture()
         let model = fixture.model()
-        await model.requestPhotoAccess()
-        model.startPhotoSweep()
-        try await waitUntil { !model.isSweepingPhotos }
-        model.selectAllRemovablePhotos()
+        await model.photoDuplicates.requestAccess()
+        model.photoDuplicates.startScan()
+        try await waitUntil { !model.photoDuplicates.isScanning }
+        model.photoDuplicates.selectAll()
         await fixture.library.configure(missing: true)
-        await model.deleteSelectedPhotos()
-        #expect(model.photoResults == nil)
-        #expect(model.photoSelection.isEmpty)
-        #expect(model.photoUnavailable != nil)
+        await model.photoDuplicates.deleteSelected()
+        #expect(model.photoDuplicates.results == nil)
+        #expect(model.photoDuplicates.selection.isEmpty)
+        #expect(model.photoDuplicates.unavailableReason != nil)
         #expect(model.removalCompletion == nil)
         #expect(!model.isBusyWithDisk)
         await fixture.library.configure()
-        model.startPhotoSweep()
-        try await waitUntil { !model.isSweepingPhotos }
-        #expect(model.photoGroups.count == 1)
-        #expect(model.photoUnavailable == nil)
+        model.photoDuplicates.startScan()
+        try await waitUntil { !model.photoDuplicates.isScanning }
+        #expect(model.photoDuplicates.groups.count == 1)
+        #expect(model.photoDuplicates.unavailableReason == nil)
+    }
+
+    @Test("Deleted photos stay absent when the extracted model regroups the retained scan")
+    func deletionThenRegroup() async throws {
+        let fixture = PhotoFixture()
+        let service = PhotoDuplicateService(library: fixture.library, visionRevision: 2, cacheDirectory: fixture.cache)
+        let suite = "PhotoRecoveryTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = PhotoDuplicatesModel(
+            operations: OperationCoordinator(), defaults: defaults, makeService: { _ in service }
+        )
+        await model.requestAccess()
+        model.startScan()
+        try await waitUntil { !model.isScanning }
+        #expect(model.groups.count == 1)
+        await model.deleteSelected()
+        #expect(model.groups.isEmpty)
+        model.similarity = .veryLoose
+        try await waitUntil { !model.isRegrouping }
+        #expect(model.groups.isEmpty)
+        #expect(model.selection.isEmpty)
+        #expect(model.results?.examinedCount == 1)
     }
 
     private func waitUntil(_ condition: () async -> Bool) async throws {
