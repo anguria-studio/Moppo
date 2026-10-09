@@ -32,7 +32,7 @@ struct RemovalOperationSurface: View {
                             detail: completion.detail,
                             isSuccess: completion.isSuccess,
                             showsActions: !completion.dismissesAutomatically,
-                            canContinue: !model.isBusyWithDisk && !model.isLoadingApplicationLeftovers,
+                            canContinue: !model.isBusyWithDisk && !model.uninstaller.isLoadingApplicationLeftovers,
                             onContinue: model.dismissRemovalCompletion,
                             onViewDashboard: { model.view = .dashboard }
                         )

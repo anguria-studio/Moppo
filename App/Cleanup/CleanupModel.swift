@@ -541,15 +541,6 @@ final class CleanupModel {
         onEvent(.confirmationDismissed)
     }
 
-    /// The uninstaller supplies its reviewed leftover plan through this entry point.
-    func removeLeftovers(_ plan: CleanupPlan) async {
-        guard !Task.isCancelled, !isBusyWithDisk, pendingCleanUp == nil else { return }
-        var captured = plan
-        captured.keepReceipt = preferences().keepReceipt
-        pendingCleanUp = captured
-        await performCleanUp()
-    }
-
     func performCleanUp(quittingOwners: Bool = false) async {
         guard !Task.isCancelled, let task = beginRemoval(quittingOwners: quittingOwners) else { return }
         await task.value

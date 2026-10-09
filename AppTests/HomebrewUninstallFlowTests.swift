@@ -12,18 +12,18 @@ struct HomebrewUninstallFlowTests {
         let fixture = try Fixture()
         let model = fixture.model()
         let app = fixture.applications["managed"]!
-        model.planAppUninstall(app)
-        try await waitUntil { !model.isPlanningAppUninstall }
-        #expect(model.appUninstallPlan?.managedPackage?.name == "managed")
-        #expect(model.appUninstallPlan?.protectedItems.isEmpty == false)
+        model.uninstaller.planAppUninstall(app)
+        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
+        #expect(model.uninstaller.appUninstallPlan?.managedPackage?.name == "managed")
+        #expect(model.uninstaller.appUninstallPlan?.protectedItems.isEmpty == false)
         #expect(await fixture.brew.uninstalls.isEmpty)
 
-        model.requestAppUninstall()
-        try await waitUntil { model.batchUninstallOutcome != nil && model.activity == nil }
+        model.uninstaller.requestAppUninstall()
+        try await waitUntil { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
 
-        #expect(model.batchUninstallOutcome?.homebrewUninstalled == [app.deletingPathExtension().lastPathComponent])
-        #expect((model.batchUninstallOutcome?.removedBytes ?? 0) > 0)
-        #expect(model.batchUninstallOutcome?.setAside.isEmpty == true)
+        #expect(model.uninstaller.batchUninstallOutcome?.homebrewUninstalled == [app.deletingPathExtension().lastPathComponent])
+        #expect((model.uninstaller.batchUninstallOutcome?.removedBytes ?? 0) > 0)
+        #expect(model.uninstaller.batchUninstallOutcome?.setAside.isEmpty == true)
         #expect(await fixture.brew.uninstalls == ["managed"])
         #expect(!FileManager.default.fileExists(atPath: fixture.profile.path))
     }
@@ -32,15 +32,15 @@ struct HomebrewUninstallFlowTests {
     func mixedBatch() async throws {
         let fixture = try Fixture()
         let model = fixture.model()
-        model.loadInstalledApplications()
-        try await waitUntil { model.installedApplicationsMeasured }
-        let applications = try #require(model.installedApplications)
+        model.uninstaller.loadInstalledApplications()
+        try await waitUntil { model.uninstaller.installedApplicationsMeasured }
+        let applications = try #require(model.uninstaller.installedApplications)
         #expect(applications.count == 4)
-        for app in applications { model.toggleApplicationSelection(app) }
+        for app in applications { model.uninstaller.toggleApplicationSelection(app) }
 
-        model.moveSelectedApplicationsToTrash()
-        try await waitUntil { !model.isPlanningAppUninstall }
-        let review = try #require(model.batchUninstallReview)
+        model.uninstaller.moveSelectedApplicationsToTrash()
+        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
+        let review = try #require(model.uninstaller.batchUninstallReview)
         #expect(review.plans.count == 4)
         #expect(review.homebrewCount == 2)
         #expect(await fixture.brew.uninstalls.isEmpty)
@@ -51,9 +51,9 @@ struct HomebrewUninstallFlowTests {
         try FileManager.default.moveItem(at: changed, to: fixture.root.appendingPathComponent("old.app"))
         try FileManager.default.createDirectory(at: changed, withIntermediateDirectories: true)
 
-        model.requestBatchUninstall()
-        try await waitUntil { model.batchUninstallOutcome != nil && model.activity == nil }
-        let outcome = try #require(model.batchUninstallOutcome)
+        model.uninstaller.requestBatchUninstall()
+        try await waitUntil { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
+        let outcome = try #require(model.uninstaller.batchUninstallOutcome)
         #expect(outcome.uninstalled.count == 2)
         #expect(outcome.homebrewUninstalled.count == 1)
         #expect(outcome.setAside.count == 2)
@@ -63,23 +63,23 @@ struct HomebrewUninstallFlowTests {
         #expect(FileManager.default.fileExists(atPath: changed.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.profile.path))
         #expect(FileManager.default.fileExists(atPath: fixture.deniedProfile.path))
-        #expect(model.selectedApplicationIDs.count == 2)
+        #expect(model.uninstaller.selectedApplicationIDs.count == 2)
     }
 
     @Test("Data cleanup failures remain visible after the application is removed")
     func relatedDataFailure() async throws {
         let fixture = try Fixture()
         let model = fixture.model()
-        model.planAppUninstall(fixture.applications["managed"]!)
-        try await waitUntil { !model.isPlanningAppUninstall }
+        model.uninstaller.planAppUninstall(fixture.applications["managed"]!)
+        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
         let support = fixture.profile.deletingLastPathComponent()
         try FileManager.default.moveItem(at: support, to: fixture.root.appendingPathComponent("original-support"))
         try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         try Data("Replacement data".utf8).write(to: fixture.profile)
 
-        model.requestAppUninstall()
-        try await waitUntil { model.batchUninstallOutcome != nil && model.activity == nil }
-        let result = try #require(model.batchUninstallOutcome)
+        model.uninstaller.requestAppUninstall()
+        try await waitUntil { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
+        let result = try #require(model.uninstaller.batchUninstallOutcome)
         #expect(result.uninstalled.count == 1)
         #expect(result.homebrewUninstalled.count == 1)
         #expect(result.survivorCount == 1)
@@ -102,8 +102,8 @@ struct HomebrewUninstallFlowTests {
 
     @Test("Planning failures remain distinct from removal failures")
     func skippedResult() {
-        let skipped = AppModel.SetAsideApplication(name: "Protected", reason: "The application is excluded.")
-        var result = AppModel.BatchUninstallOutcome(setAside: [skipped])
+        let skipped = AppUninstallerModel.SetAsideApplication(name: "Protected", reason: "The application is excluded.")
+        var result = AppUninstallerModel.BatchUninstallOutcome(setAside: [skipped])
         #expect(result.title == "No applications were removed")
         result.setAside.append(.init(name: "Failed", reason: "Removal failed.", kind: .failed))
         #expect(result.title == "Removal needs attention")
@@ -115,15 +115,15 @@ struct HomebrewUninstallFlowTests {
         let plan = try await fixture.planner().plan(applicationURL: fixture.applications["managed"]!)
         let package = try #require(plan.managedPackage)
         let model = fixture.model()
-        model.appUninstallPlan = plan
+        model.uninstaller.appUninstallPlan = plan
         let batchModel = fixture.model()
-        batchModel.loadInstalledApplications()
-        try await waitUntil { batchModel.installedApplicationsMeasured }
-        let application = try #require(batchModel.installedApplications?.first { $0.url == plan.applicationURL })
-        batchModel.toggleApplicationSelection(application)
-        batchModel.moveSelectedApplicationsToTrash()
-        try await waitUntil { !batchModel.isPlanningAppUninstall }
-        var result = AppModel.BatchUninstallOutcome()
+        batchModel.uninstaller.loadInstalledApplications()
+        try await waitUntil { batchModel.uninstaller.installedApplicationsMeasured }
+        let application = try #require(batchModel.uninstaller.installedApplications?.first { $0.url == plan.applicationURL })
+        batchModel.uninstaller.toggleApplicationSelection(application)
+        batchModel.uninstaller.moveSelectedApplicationsToTrash()
+        try await waitUntil { !batchModel.uninstaller.isPlanningAppUninstall }
+        var result = AppUninstallerModel.BatchUninstallOutcome()
         result.uninstalled = ["Ordinary application", "Managed application"]
         result.homebrewUninstalled = ["Managed application"]
         result.removedBytes = 42_000_000
@@ -137,7 +137,7 @@ struct HomebrewUninstallFlowTests {
             .init(name: "Protected application", reason: "The application is excluded.", applicationURL: plan.applicationURL),
         ]
         for dark in [false, true] {
-            let success = AppModel.BatchUninstallOutcome(
+            let success = AppUninstallerModel.BatchUninstallOutcome(
                 uninstalled: ["Ferdium"], removedBytes: 175_200_000, homebrewUninstalled: ["Ferdium"]
             )
             try await render(
@@ -152,14 +152,14 @@ struct HomebrewUninstallFlowTests {
                 AppUninstallResultView(outcome: result, back: {}, review: { _ in }, reviewLeftovers: {}),
                 name: "mixed-\(dark ? "dark" : "light")", dark: dark
             )
-            try await render(AppUninstallerView(model: model), name: "review-\(dark ? "dark" : "light")", dark: dark)
-            try await render(AppUninstallerView(model: batchModel), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
-            let failed = AppModel.BatchUninstallOutcome(setAside: [result.setAside[0]])
+            try await render(AppUninstallerView(model: model.uninstaller), name: "review-\(dark ? "dark" : "light")", dark: dark)
+            try await render(AppUninstallerView(model: batchModel.uninstaller), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
+            let failed = AppUninstallerModel.BatchUninstallOutcome(setAside: [result.setAside[0]])
             try await render(
                 AppUninstallResultView(outcome: failed, back: {}, review: { _ in }, reviewLeftovers: {}),
                 name: "failed-\(dark ? "dark" : "light")", dark: dark
             )
-            let cancelled = AppModel.BatchUninstallOutcome(setAside: [
+            let cancelled = AppUninstallerModel.BatchUninstallOutcome(setAside: [
                 .init(
                     name: "Ferdium",
                     reason: "Administrator authentication was cancelled. Homebrew removal may be incomplete.",

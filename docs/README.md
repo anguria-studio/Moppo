@@ -70,12 +70,13 @@ Regression tests cover each measurement bug below.
 ## State ownership
 
 `AppModel` creates feature models and owns navigation, onboarding, and shared presentation.
-It still owns the uninstall, Dashboard, and recovery state.
+It still owns the Dashboard and recovery state.
 
 | Component | Responsibility |
 | --- | --- |
 | `PhotoDuplicatesModel` | Photos access, scans, regrouping, selection, preview state, thumbnail requests, and deletion. |
 | `CleanupModel` | Cleanup scans, filters, results, selection, captured removal plans, and operation tasks. |
+| `AppUninstallerModel` | Application lists, leftovers, uninstall reviews, selection, and removal tasks. |
 | `CleanupScheduler` | Periodic volume checks and automatic scan requests. |
 | `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
 | `StorageExplorerModel` | Folder measurements, navigation history, cached results, and selection. |
@@ -83,6 +84,7 @@ It still owns the uninstall, Dashboard, and recovery state.
 
 Photo views receive `PhotoDuplicatesModel` directly.
 File duplicate views receive `FileDuplicatesModel` directly.
+Uninstaller views receive `AppUninstallerModel` and explicit navigation callbacks.
 Cleanup views receive `CleanupModel` and presentation values from the application model.
 The photo model receives services, download preferences, an access condition, and an event handler.
 It does not hold `AppModel` or change navigation directly.
@@ -138,6 +140,23 @@ Partial removal keeps completed receipts and reports failed items.
 It reads current access, power, idle time, preferences, last scan time, and operation state before requesting a scan.
 Automatic scans preserve the current page.
 The periodic volume check still supplies low-space notifications.
+
+The uninstaller captures exclusions for each review and the receipt setting for each removal request.
+Application lists and leftover lists use separate tasks with request identifiers.
+Replaced loads cannot restore old results, measurements, or selection.
+Review cancellation retains the shared guard until the planner returns.
+Navigation preserves the review and its task.
+
+Individual uninstalls, batch uninstalls, and leftover removal own their tasks independently of the requesting view.
+Removal captures the reviewed plans before execution starts.
+The application and its helpers receive normal quit requests before removal.
+A quit refusal preserves the review and prevents removal.
+Homebrew results retain partial failures and completed removal details.
+Leftover removal checks current application owners before it calls the removal service.
+
+`AppModel` handles uninstall progress, navigation, and completion events.
+After removal, the uninstaller releases the shared guard and requests a disk refresh through an explicit callback.
+Cleanup can request a leftover refresh through a separate callback.
 
 ## Measurement rules
 

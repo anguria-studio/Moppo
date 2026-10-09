@@ -5,7 +5,7 @@ import MoppoCore
 struct HomebrewRemovalExplanation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Moppo Put Back cannot restore applications that Homebrew removes.")
+            Text("Reinstall the application through Homebrew. Put Back can restore its recorded profiles and settings.")
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.textColor(.orange))
             Text("Homebrew removes the package. Moppo then moves its verified related data to the Trash, including profiles and settings.")
@@ -35,7 +35,7 @@ struct CopyHomebrewCommandButton: View {
 
 /// Keeps errors, skipped applications, and available recovery actions together.
 struct UninstallAttentionList: View {
-    let applications: [AppModel.SetAsideApplication]
+    let applications: [AppUninstallerModel.SetAsideApplication]
     let title: String
     let review: (URL) -> Void
     var isCentered = false
@@ -78,7 +78,7 @@ struct UninstallAttentionList: View {
     }
 
     @ViewBuilder
-    private func actions(_ application: AppModel.SetAsideApplication) -> some View {
+    private func actions(_ application: AppUninstallerModel.SetAsideApplication) -> some View {
         if let package = application.managedPackage {
             CopyHomebrewCommandButton(package: package)
         }
@@ -91,7 +91,7 @@ struct UninstallAttentionList: View {
 }
 
 struct AppUninstallResultView: View {
-    let outcome: AppModel.BatchUninstallOutcome
+    let outcome: AppUninstallerModel.BatchUninstallOutcome
     let back: () -> Void
     let review: (URL) -> Void
     let reviewLeftovers: () -> Void
@@ -133,7 +133,7 @@ struct AppUninstallResultView: View {
                 }
                 if !outcome.homebrewUninstalled.isEmpty {
                     Text("Removed through Homebrew: \(ListFormatter.localizedString(byJoining: outcome.homebrewUninstalled)).")
-                    Text("Moppo Put Back cannot restore applications that Homebrew removes. Related data stays in the Trash.")
+                    Text("Reinstall the application through Homebrew. Put Back can restore its recorded profiles and settings.")
                 }
                 if outcome.survivorCount > 0 {
                     Text("Moppo could not move \(outcome.survivorCount) related items to the Trash.")
