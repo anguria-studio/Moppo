@@ -261,8 +261,10 @@ struct StorageExplorerView: View {
             PageStateActions {
                 Button("Try Again") { model.refresh() }
                     .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
-                Button("Choose Another Folder") { model.chooseFolder() }
-                    .buttonStyle(PageStateButtonStyle())
+                Button { model.chooseFolder() } label: {
+                    Label("Choose Another Folder", systemImage: "folder")
+                }
+                .buttonStyle(PageStateButtonStyle())
             }
         }
     }
@@ -275,8 +277,10 @@ struct StorageExplorerView: View {
             PageStateActions {
                 Button("Measure Again") { model.refresh() }
                     .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
-                Button("Choose Another Folder") { model.chooseFolder() }
-                    .buttonStyle(PageStateButtonStyle())
+                Button { model.chooseFolder() } label: {
+                    Label("Choose Another Folder", systemImage: "folder")
+                }
+                .buttonStyle(PageStateButtonStyle())
             }
         }
     }
@@ -437,6 +441,22 @@ struct StorageExplorerView: View {
                 model.selectHome()
             } label: {
                 Label("Home Folder", systemImage: "house")
+            }
+
+            if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                Button {
+                    model.selectLocation(downloads)
+                } label: {
+                    Label("Downloads", systemImage: "arrow.down.circle")
+                }
+            }
+
+            if let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                Button {
+                    model.selectLocation(documents)
+                } label: {
+                    Label("Documents", systemImage: "doc")
+                }
             }
 
             if !model.locations.isEmpty { Divider() }
