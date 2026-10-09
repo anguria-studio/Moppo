@@ -216,7 +216,7 @@ struct MainWindow: View {
         switch model.view {
         case .scanner:         return !model.cleanupSelection(in: .all).isEmpty
         case .duplicates:      return model.duplicateKind == .files
-            ? !model.fileDuplicateSelection.isEmpty && !model.isScanningDuplicateFiles
+            ? !model.fileDuplicates.selection.isEmpty && !model.fileDuplicates.isScanning
             : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping
         case .uninstaller:     return model.uninstallerTab == .installed
             ? !model.selectedApplicationIDs.isEmpty
@@ -234,7 +234,7 @@ struct MainWindow: View {
         case .scanner: model.requestCleanUp(in: .all)
         case .duplicates:
             if model.duplicateKind == .files {
-                Task { await model.removeSelectedDuplicateFiles() }
+                Task { await model.fileDuplicates.removeSelected() }
             } else {
                 Task { await model.photoDuplicates.deleteSelected() }
             }
@@ -295,16 +295,16 @@ struct MainWindow: View {
                 isInterrupting: model.storageExplorer.isInterrupting,
                 onStop: { model.storageExplorer.cancel() }
             )
-        } else if model.isScanningDuplicateFiles,
+        } else if model.fileDuplicates.isScanning,
                   model.view != .duplicates || model.duplicateKind != .files {
-            let progress = model.fileDuplicateProgress
+            let progress = model.fileDuplicates.progress
             backgroundWorkStatus(
                 title: "Duplicate file scan",
                 detail: progress.map { "\($0.completed.formatted()) of \($0.total.formatted()) files" }
                     ?? "Preparing scan",
                 progress: progress.flatMap { $0.total > 0 ? Double($0.completed) / Double($0.total) : nil },
-                isInterrupting: model.isInterruptingFileDuplicateScan,
-                onStop: { model.cancelFileDuplicateScan() }
+                isInterrupting: model.fileDuplicates.isInterrupting,
+                onStop: { model.fileDuplicates.cancelScan() }
             )
         } else if model.photoDuplicates.isScanning,
                   model.view != .duplicates || model.duplicateKind != .photos {
@@ -421,8 +421,8 @@ struct MainWindow: View {
                 .buttonStyle(PageActionButtonStyle())
                 .disabled(model.isBusyWithDisk)
                 .help("Scan the photo library again.")
-            } else if model.duplicateKind == .files, model.fileDuplicateResults != nil {
-                Button { model.startFileDuplicateScan() } label: {
+            } else if model.duplicateKind == .files, model.fileDuplicates.results != nil {
+                Button { model.fileDuplicates.startScan() } label: {
                     Label("Scan Again", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(PageActionButtonStyle())

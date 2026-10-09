@@ -16,6 +16,7 @@ final class AppModel {
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
     let operations: OperationCoordinator
     let photoDuplicates: PhotoDuplicatesModel
+    let fileDuplicates: FileDuplicatesModel
     let storageExplorer: StorageExplorerModel
     private(set) var launchAccess: LaunchAccess
     var isShowingWelcome: Bool { launchAccess.requiresOnboarding }
@@ -29,6 +30,8 @@ final class AppModel {
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
         cleanupService: CleanupService = CleanupService(),
+        fileDuplicateService: any FileDuplicatesScanning = FileDuplicateService(),
+        fileDuplicateRemovalService: any FileDuplicatesRemoving = FileDuplicateRemovalService(),
         makePhotoService: @escaping (Bool) -> any PhotoDuplicatesServicing = { allowsNetwork in
             PhotoDuplicateService(
                 library: PhotoKitLibrary(allowsNetworkFetch: allowsNetwork),
@@ -48,6 +51,18 @@ final class AppModel {
             },
             makeService: makePhotoService
         )
+        self.fileDuplicates = FileDuplicatesModel(
+            operations: operations,
+            service: fileDuplicateService,
+            removalService: fileDuplicateRemovalService,
+            preferences: { [weak settings] in
+                FileDuplicatesModel.Preferences(
+                    excludedPaths: settings?.excludedFolderPaths ?? [],
+                    excludedPatterns: settings?.excludedPatterns ?? [],
+                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
+                )
+            }
+        )
         self.trashService = trashService
         self.cleanupHistoryService = cleanupHistoryService
         self.appUninstallPlanner = appUninstallPlanner
@@ -56,7 +71,7 @@ final class AppModel {
         self.storageExplorer = StorageExplorerModel(settings: settings)
         operations.hasOtherOperation = { [weak self] in
             guard let self else { return false }
-            return self.isScanning || self.isScanningDuplicateFiles || self.storageExplorer.isLoading
+            return self.isScanning || self.storageExplorer.isLoading
                 || self.isPlanningAppUninstall || self.activity != nil
         }
         photoDuplicates.canRequestAccess = { [weak self] in
@@ -64,6 +79,10 @@ final class AppModel {
             return self.view == .duplicates && self.duplicateKind == .photos && !self.isShowingWelcome
         }
         photoDuplicates.onEvent = { [weak self] event in self?.handlePhotoEvent(event) }
+        fileDuplicates.onEvent = { [weak self] event in self?.handleFileDuplicateEvent(event) }
+        fileDuplicates.refreshAfterRemoval = { [weak self] in
+            await self?.refreshAfterRemoval(invalidateFileDuplicates: false)
+        }
         if settings != nil { startScheduler() }
     }
 
@@ -523,7 +542,7 @@ final class AppModel {
     var isShowingAppDataAccessAlert = false
 
     var isStorageExplorerMeasurementBlocked: Bool {
-        isScanning || isScanningDuplicateFiles || operations.activeOperation != nil
+        isScanning || operations.activeOperation != nil
             || isPlanningAppUninstall || activity != nil
     }
 
@@ -675,7 +694,7 @@ final class AppModel {
         case .scanner:
             "Move to Trash (\(ByteFormatting.string(cleanupSelectionBytes(in: .all))))"
         case .duplicates:
-            duplicateKind == .files ? fileDuplicateRemoveLabel : photoDuplicates.removeLabel
+            duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
             uninstallerRemoveLabel
         case .storageExplorer:
@@ -2005,7 +2024,8 @@ final class AppModel {
     /// The disk changed, so the cached breakdown and the Trash summary are both
     /// wrong. They run together: the Trash read is usually quick and feeds the
     /// sidebar count, and it should not queue behind a 20-second walk.
-    private func refreshAfterRemoval(invalidateCleanup: Bool = true) async {
+    private func refreshAfterRemoval(invalidateCleanup: Bool = true, invalidateFileDuplicates: Bool = true) async {
+        if invalidateFileDuplicates { fileDuplicates.invalidateResults() }
         if invalidateCleanup { invalidateCleanupResults() }
         // Every cached Explorer level is stale too: a folder measured before a
         // Scanner clean-up came back from the cache with its old figure.
@@ -2091,9 +2111,7 @@ final class AppModel {
     func loadTrash() async {
         let loadID = UUID()
         trashLoadID = loadID
-        // Everything, largest first. The list is lazy, so row count costs nothing,
-        // and a Trash screen that hides items reads as missing files. (The design
-        // mock's "showing the 4 largest" was sample data, not a principle.)
+        // Load every item so sorting, search, and History links use the complete Trash.
         let summary = try? await trashService.summary(limit: Int.max)
         guard trashLoadID == loadID, !Task.isCancelled else { return }
         trashSummary = summary
@@ -2169,6 +2187,7 @@ final class AppModel {
             // The row leaves the Trash list below, which is the whole report.
             try await trashService.putBack(item)
             restored = true
+            fileDuplicates.invalidateResults()
             storageExplorer.invalidateCache()
             invalidateCleanupResults()
         } catch TrashError.destinationOccupied {
@@ -2569,214 +2588,27 @@ final class AppModel {
         scanTask?.cancel()
     }
 
-    // MARK: - File duplicates
+    // MARK: - File duplicate presentation
 
-    private let fileDuplicateService = FileDuplicateService()
-    private let fileDuplicateRemovalService = FileDuplicateRemovalService()
-    @ObservationIgnored private var fileDuplicateTask: Task<Void, Never>?
-    @ObservationIgnored private var fileDuplicateScanID: UUID?
-
-    var fileDuplicateResults: FileDuplicateResults?
-    var fileDuplicateProgress: FileDuplicateService.Progress?
-    var isScanningDuplicateFiles = false
-    private(set) var isInterruptingFileDuplicateScan = false
-    var fileDuplicateSelection: Set<DuplicateFile.ID> = []
-    var fileDuplicateMinimumBytes: Int64 = 1_000_000 {
-        didSet {
-            let visibleIDs = Set(fileDuplicateGroups.flatMap(\.removable).map(\.id))
-            fileDuplicateSelection.formIntersection(visibleIDs)
-        }
-    }
-
-    var fileDuplicateGroups: [FileDuplicateGroup] {
-        (fileDuplicateResults?.groups ?? []).filter {
-            $0.keeper.logicalBytes >= fileDuplicateMinimumBytes
-        }
-    }
-
-    var fileDuplicateSelectionBytes: Int64 {
-        fileDuplicateGroups
-            .flatMap(\.removable)
-            .filter { fileDuplicateSelection.contains($0.id) }
-            .reduce(0) { $0 + $1.allocatedBytes }
-    }
-
-    var fileDuplicateRemoveLabel: String {
-        let count = fileDuplicateSelection.count
-        guard count > 0 else { return "Move to Trash" }
-        return "Move to Trash (\(ByteFormatting.string(fileDuplicateSelectionBytes)))"
-    }
-
-    func chooseFileDuplicateFolders() {
-        let panel = NSOpenPanel()
-        panel.title = "Choose Folders to Scan"
-        panel.message = "Moppo compares the contents of files in these folders."
-        panel.prompt = "Scan"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = true
-        panel.resolvesAliases = true
-
-        Task { @MainActor in
-            guard await panel.presentAsSheet() == .OK else { return }
-            startFileDuplicateScan(roots: panel.urls)
-        }
-    }
-
-    func startFileDuplicateScan(roots: [URL]? = nil) {
-        guard !isBusyWithDisk else { return }
-        let scanRoots = roots ?? fileDuplicateResults?.roots ?? []
-        if scanRoots.isEmpty {
-            chooseFileDuplicateFolders()
-            return
-        }
-
-        isScanningDuplicateFiles = true
-        isInterruptingFileDuplicateScan = false
-        let scanID = UUID()
-        fileDuplicateScanID = scanID
-        fileDuplicateProgress = .init(stage: .enumerating)
-        fileDuplicateSelection.removeAll()
-        duplicateKind = .files
-        view = .duplicates
-
-        fileDuplicateTask = Task { [weak self] in
-            guard let self else { return }
-            let presentation = OperationPresentationDuration()
-            defer {
-                self.isScanningDuplicateFiles = false
-                self.isInterruptingFileDuplicateScan = false
-                self.fileDuplicateTask = nil
-                self.fileDuplicateScanID = nil
-            }
-            do {
-                let results = try await fileDuplicateService.scan(
-                    roots: scanRoots,
-                    // Keep all sizes so the size filter can change without another scan.
-                    options: .init(minimumLogicalBytes: 0),
-                    excludedPaths: settings?.excludedFolderPaths ?? [],
-                    excludedPatterns: settings?.excludedPatterns ?? [],
-                    onProgress: { progress in
-                        Task { @MainActor in
-                            guard self.fileDuplicateScanID == scanID, !self.isInterruptingFileDuplicateScan else { return }
-                            self.fileDuplicateProgress = progress
-                        }
-                    }
-                )
-                try Task.checkCancellation()
-                // The results page counts what was checked and what was found.
-                fileDuplicateResults = results
-            } catch is CancellationError {
-                // The user stopped it.
-            } catch {
-                guard !Task.isCancelled else { return }
-                report(
-                    "The Duplicate Scan Did Not Finish",
-                    "Moppo could not finish comparing those folders. Try scanning again."
-                )
-            }
-            try? await presentation.wait()
-        }
-    }
-
-    func cancelFileDuplicateScan() {
-        guard isScanningDuplicateFiles, !isInterruptingFileDuplicateScan else { return }
-        isInterruptingFileDuplicateScan = true
-        fileDuplicateTask?.cancel()
-    }
-
-    func selectAllFileDuplicates() {
-        fileDuplicateSelection = Set(fileDuplicateGroups.flatMap(\.removable).map(\.id))
-    }
-
-    func deselectAllFileDuplicates() {
-        fileDuplicateSelection.removeAll()
-    }
-
-    func toggleFileDuplicate(_ fileID: DuplicateFile.ID) {
-        if fileDuplicateSelection.contains(fileID) {
-            fileDuplicateSelection.remove(fileID)
-        } else {
-            fileDuplicateSelection.insert(fileID)
-        }
-    }
-
-    func toggleFileDuplicateGroup(_ group: FileDuplicateGroup) {
-        let ids = Set(group.removable.map(\.id))
-        if ids.isSubset(of: fileDuplicateSelection) {
-            fileDuplicateSelection.subtract(ids)
-        } else {
-            fileDuplicateSelection.formUnion(ids)
-        }
-    }
-
-    func keepFileInstead(groupID: String, fileID: DuplicateFile.ID) {
-        guard var results = fileDuplicateResults,
-              let index = results.groups.firstIndex(where: { $0.id == groupID }),
-              let promoted = results.groups[index].promoting(fileID)
-        else { return }
-
-        let groupWasSelected = results.groups[index].removable.contains {
-            fileDuplicateSelection.contains($0.id)
-        }
-        let previousKeeper = results.groups[index].keeper.id
-        results.groups[index] = promoted
-        fileDuplicateResults = results
-        fileDuplicateSelection.remove(fileID)
-        if groupWasSelected { fileDuplicateSelection.insert(previousKeeper) }
-    }
-
-    func removeSelectedDuplicateFiles() async {
-        let selected = fileDuplicateSelection
-        guard !selected.isEmpty, !isBusyWithDisk else { return }
-        removalCompletion = nil
-        var presentation = OperationPresentationDuration()
-        let removal = Activity.removingDuplicateFiles(
-            itemCount: selected.count,
-            totalBytes: fileDuplicateSelectionBytes
-        )
-        activity = removal
-        presentation.extend(toShow: removal.progressIcon)
-
-        do {
-            let result = try await fileDuplicateRemovalService.remove(
-                selectedIDs: selected,
-                from: fileDuplicateGroups,
-                privilegedFallback: true,
-                keepReceipt: keepReceipt
-            )
-            let outcome = result.cleanup
-            let failed = Set(outcome.failed)
-            let removed = selected.subtracting(failed)
-            let noLongerVerified = removed.union(result.staleFileIDs)
-            if var results = fileDuplicateResults {
-                results.groups = results.groups.compactMap { group in
-                    guard !result.staleGroupIDs.contains(group.id) else { return nil }
-                    return group.removingFiles(withIDs: noLongerVerified)
-                }
-                fileDuplicateResults = results
-            }
-            fileDuplicateSelection.subtract(noLongerVerified)
-
-            try? await presentation.wait()
-            completeTrashRemoval(
-                outcome, in: .duplicates,
-                extraFailures: max(0, selected.count - outcome.removedCount - outcome.failed.count)
-            )
+    private func handleFileDuplicateEvent(_ event: FileDuplicatesModel.Event) {
+        switch event {
+        case .scanStarted:
+            removalCompletion = nil
+            view = .duplicates
+            duplicateKind = .files
+        case .removalStarted(let count, let bytes):
+            removalCompletion = nil
+            activity = .removingDuplicateFiles(itemCount: count, totalBytes: bytes)
+        case .removed(let outcome, let extraFailures):
+            completeTrashRemoval(outcome, in: .duplicates, extraFailures: extraFailures)
             if outcome.permissionDenied.contains(where: Self.isAppDataPath) {
                 isShowingAppDataAccessAlert = true
             }
-        } catch is CancellationError {
-            // The user stopped it.
-        } catch {
-            report(
-                "The Duplicates Could Not Be Moved",
-                "The selected copies could not move to the Trash. Nothing was removed."
-            )
+        case .removalFinished:
+            activity = nil
+        case .failure(let title, let message):
+            report(title, message)
         }
-        // The completion is ready before the progress surface closes.
-        activity = nil
-        await refreshAfterRemoval()
     }
 
     // MARK: - Photo presentation

@@ -134,7 +134,6 @@ struct CleanupHistoryView: View {
         .font(.mcControlLabel)
         .foregroundStyle(Token.Text.tertiary)
         .padding(.horizontal, Metrics.sidePadding)
-        .padding(.vertical, 10)
     }
 
     private func sortHeader(_ title: String, _ key: SortKey) -> some View {
@@ -142,6 +141,7 @@ struct CleanupHistoryView: View {
             title: title,
             isActive: sortKey == key,
             ascending: ascending,
+            alignment: key == .size ? .trailing : .leading,
             action: { adopt(key) }
         )
     }

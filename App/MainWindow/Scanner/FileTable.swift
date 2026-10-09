@@ -115,6 +115,7 @@ struct FileTable: View {
                 title: "Name",
                 isActive: sortKey == .name,
                 ascending: ascending,
+                verticalPadding: 8,
                 action: { adopt(.name) }
             )
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,6 +126,7 @@ struct FileTable: View {
                 title: "Last opened",
                 isActive: sortKey == .lastOpened,
                 ascending: ascending,
+                verticalPadding: 8,
                 action: { adopt(.lastOpened) }
             )
             .frame(width: Metrics.lastOpened, alignment: .leading)
@@ -139,6 +141,8 @@ struct FileTable: View {
                 title: "Size",
                 isActive: sortKey == .size,
                 ascending: ascending,
+                alignment: .trailing,
+                verticalPadding: 8,
                 action: { adopt(.size) }
             )
             .frame(width: Metrics.size, alignment: .trailing)
@@ -150,7 +154,6 @@ struct FileTable: View {
         .foregroundStyle(Token.Text.secondary)
         .padding(.leading, Metrics.headerInset)
         .padding(.trailing, Metrics.sidePadding)
-        .padding(.vertical, 8)
     }
 
     // MARK: - Rows

@@ -219,14 +219,14 @@ struct OperationFlowTests {
         model.storageExplorer.selectLocation(folder.url)
         try await waitUntil { !model.storageExplorer.isLoading }
         model.scanResults = ScanResults(categories: [], startedAt: .now, finishedAt: .now)
-        model.isScanningDuplicateFiles = true
+        let operation = try #require(model.operations.begin(.fileScan))
         let item = TrashItem(url: trashed, bytes: 7, canPutBack: true)
 
         await model.putBack(item)
         #expect(FileManager.default.fileExists(atPath: trashed.path))
         #expect(!FileManager.default.fileExists(atPath: original.path))
 
-        model.isScanningDuplicateFiles = false
+        model.operations.finish(operation)
         await model.putBack(item)
         #expect(FileManager.default.fileExists(atPath: original.path))
         #expect(model.trashSummary?.itemCount == 0)
@@ -254,7 +254,7 @@ struct OperationFlowTests {
     @Test("Uninstall review waits for another scan")
     func uninstallReviewWhileBusy() {
         let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
-        model.isScanningDuplicateFiles = true
+        _ = model.operations.begin(.fileScan)
 
         model.planAppUninstall(URL(fileURLWithPath: "/unused-fixture.app"))
 
@@ -282,18 +282,18 @@ struct OperationFlowTests {
         _ = try folder.write("first.txt")
         _ = try folder.write("second.txt")
         let model = AppModel()
-        model.fileDuplicateMinimumBytes = 0
-        model.startFileDuplicateScan(roots: [folder.url])
-        model.cancelFileDuplicateScan()
-        #expect(model.isInterruptingFileDuplicateScan)
-        try await waitUntil { !model.isScanningDuplicateFiles }
-        #expect(!model.isInterruptingFileDuplicateScan)
+        model.fileDuplicates.minimumBytes = 0
+        model.fileDuplicates.startScan(roots: [folder.url])
+        model.fileDuplicates.cancelScan()
+        #expect(model.fileDuplicates.isInterrupting)
+        try await waitUntil { !model.fileDuplicates.isScanning }
+        #expect(!model.fileDuplicates.isInterrupting)
 
-        model.startFileDuplicateScan(roots: [folder.url])
+        model.fileDuplicates.startScan(roots: [folder.url])
         model.view = .history
-        try await waitUntil { !model.isScanningDuplicateFiles }
+        try await waitUntil { !model.fileDuplicates.isScanning }
         #expect(model.view == .history)
-        #expect(model.fileDuplicateResults?.groups.count == 1)
+        #expect(model.fileDuplicates.results?.groups.count == 1)
         #expect(!model.isBusyWithDisk)
     }
 

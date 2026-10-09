@@ -73,6 +73,17 @@ private struct TrashContent: View {
     /// Narrows the rows and nothing else. The header's size and count stay the whole
     /// Trash's: they are what Empty Trash will remove, whatever is typed here.
     @State private var searchText = ""
+    @State private var sortOrder: TrashSortOrder = .date
+    @State private var ascending = false
+
+    private func adopt(_ order: TrashSortOrder) {
+        if sortOrder == order {
+            ascending.toggle()
+        } else {
+            sortOrder = order
+            ascending = order == .name
+        }
+    }
 
     private var query: String {
         searchText.trimmingCharacters(in: .whitespaces)
@@ -81,8 +92,10 @@ private struct TrashContent: View {
     /// Names only. A trashed item's path is `~/.Trash/<name>` for every row, so
     /// matching it would make "trash" match everything.
     private var visibleItems: [TrashItem] {
-        guard !query.isEmpty else { return summary.items }
-        return summary.items.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        let matching = query.isEmpty ? summary.items : summary.items.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+        }
+        return sortOrder.sorted(matching, ascending: ascending)
     }
 
     var body: some View {
@@ -99,7 +112,7 @@ private struct TrashContent: View {
                                 PageState(
                                     title: "No Results for “\(query)”", symbol: "magnifyingglass",
                                     detail: summary.itemCount > summary.items.count
-                                        ? "Only the \(summary.items.count) largest items were searched."
+                                        ? "Only the \(summary.items.count) listed items were searched."
                                         : "No item in the Trash has that in its name."
                                 )
                             } else {
@@ -114,29 +127,30 @@ private struct TrashContent: View {
                                         .padding(.horizontal, 2)
                                 }
                                 GroupedBox {
-                                    // Lazy: `TrashService` caps the rows it returns, but the cap is 50 and
-                                    // each row carries a button and a hover tracker.
-                                    LazyVStack(spacing: 0) {
-                                        ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
-                                            VStack(spacing: 0) {
-                                                if index > 0 { Hairline() }
-                                                TrashRow(
-                                                    item: item,
-                                                    isSelected: selectedItemID == item.id,
-                                                    onSelect: { selectedItemID = item.id },
-                                                    onPutBack: { onPutBack(item) }
-                                                )
+                                    VStack(spacing: 0) {
+                                        columnHeader
+                                        Hairline()
+                                        // Create rows as they enter the visible area.
+                                        LazyVStack(spacing: 0) {
+                                            ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
+                                                VStack(spacing: 0) {
+                                                    if index > 0 { Hairline() }
+                                                    TrashRow(
+                                                        item: item,
+                                                        isSelected: selectedItemID == item.id,
+                                                        onSelect: { selectedItemID = item.id },
+                                                        onPutBack: { onPutBack(item) }
+                                                    )
+                                                }
+                                                .id(item.id)
                                             }
-                                            .id(item.id)
                                         }
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
                                 }
 
-                                // Finder shows every item; this list deliberately shows the biggest.
-                                // Said out loud, or the shorter list reads as missing files.
                                 if summary.itemCount > summary.items.count {
-                                    Text("Showing the \(summary.items.count) largest of "
+                                    Text("Showing \(summary.items.count) of "
                                          + "\(summary.itemCount) items. Finder lists them all.")
                                         .font(.mcSubtitle)
                                         .foregroundStyle(Token.Text.tertiary)
@@ -157,6 +171,32 @@ private struct TrashContent: View {
                 }
             }
         }
+    }
+
+    private var columnHeader: some View {
+        HStack(spacing: Metrics.gap) {
+            sortHeader(.name)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Action")
+                .frame(width: Metrics.action, alignment: .leading)
+            sortHeader(.date)
+                .frame(width: Metrics.date, alignment: .leading)
+            sortHeader(.size)
+                .frame(width: Metrics.size, alignment: .trailing)
+        }
+        .font(.mcControlLabel)
+        .foregroundStyle(Token.Text.tertiary)
+        .padding(.horizontal, Metrics.sidePadding)
+    }
+
+    private func sortHeader(_ order: TrashSortOrder) -> some View {
+        SortableColumnHeader(
+            title: order.rawValue,
+            isActive: sortOrder == order,
+            ascending: ascending,
+            alignment: order == .size ? .trailing : .leading,
+            action: { adopt(order) }
+        )
     }
 
     // MARK: Summary header
@@ -224,18 +264,17 @@ private struct TrashRow: View {
     var body: some View {
         HStack(spacing: Metrics.gap) {
             Text(item.name)
-                .font(.mcBody)
+                .font(.mcRowTitle)
                 .foregroundStyle(Token.Text.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(item.url.path)
 
-            Text(deletedText)
-                .font(.mcSubtitle)
-                .foregroundStyle(Token.Text.quaternary)
-                .lineLimit(1)
-                .frame(width: Metrics.deleted, alignment: .leading)
+            putBack
+                .frame(width: Metrics.action, alignment: .leading)
+
+            deletionDate
 
             Text(ByteFormatting.string(item.bytes))
                 .font(.mcRowValue)
@@ -243,16 +282,32 @@ private struct TrashRow: View {
                 .lineLimit(1)
                 .fixedSize()
                 .frame(width: Metrics.size, alignment: .trailing)
-
-            putBack
         }
         .padding(.horizontal, Metrics.sidePadding)
-        .frame(height: Token.Size.trashRow)
+        .frame(minHeight: 56)
         .contentShape(Rectangle())
         .background(isSelected ? Token.color(.accent).opacity(0.14) : Color.clear)
         .onTapGesture(perform: onSelect)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .hoverHighlight()
+    }
+
+    private var deletionDate: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let date = item.deletedAt {
+                Text(date, format: .dateTime.day().month(.abbreviated).year())
+                    .foregroundStyle(Token.Text.secondary)
+                Text(date, format: .dateTime.hour().minute())
+                    .foregroundStyle(Token.Text.tertiary)
+            } else {
+                Text("—")
+                    .foregroundStyle(Token.Text.tertiary)
+            }
+        }
+        .font(.mcSubtitle)
+        .lineLimit(1)
+        .frame(width: Metrics.date, alignment: .leading)
+        .help(deletedText)
     }
 
     /// The tooltip hangs on the wrapper rather than the button: a disabled control is
@@ -289,10 +344,11 @@ private struct TrashRow: View {
 // MARK: - Shared parts
 
 private enum Metrics {
-    static let sidePadding: CGFloat = 15
+    static let sidePadding: CGFloat = 18
     static let gap: CGFloat = 11
-    /// Fixed, so the dates and figures hold their columns and growth goes to the name.
-    static let deleted: CGFloat = 140
+    /// Match the History table column widths.
+    static let action: CGFloat = 160
+    static let date: CGFloat = 110
     static let size: CGFloat = 78
 }
 
