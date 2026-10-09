@@ -3,7 +3,8 @@ import MoppoCore
 
 /// Shows a read-only record of Moppo removal results.
 struct CleanupHistoryView: View {
-    @Bindable var model: AppModel
+    @Bindable var model: RecoveryModel
+    var findRequest = 0
     @Environment(\.scenePhase) private var scenePhase
 
     /// Filters the rows and their size total.
@@ -79,7 +80,7 @@ struct CleanupHistoryView: View {
                         .help(summaryText(summary))
                 }
                 Spacer(minLength: 12)
-                FindField(text: $searchText, findRequest: model.findRequest)
+                FindField(text: $searchText, findRequest: findRequest)
                     .frame(width: 180)
                     .disabled(items.isEmpty)
             }

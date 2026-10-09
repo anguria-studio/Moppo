@@ -130,7 +130,7 @@ struct SidebarView: View {
     /// Shows storage information below navigation without a separate card.
     private var capacityFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(model.volume.map { "\(ByteFormatting.string($0.freeBytes)) free" } ?? "—")
+            Text(model.dashboard.volume.map { "\(ByteFormatting.string($0.freeBytes)) free" } ?? "—")
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.Text.primary)
                 .lineLimit(1)
@@ -160,7 +160,7 @@ struct SidebarView: View {
     }
 
     private var usedFraction: Double {
-        guard let volume = model.volume, volume.capacityBytes > 0 else { return 0 }
+        guard let volume = model.dashboard.volume, volume.capacityBytes > 0 else { return 0 }
         return Double(volume.usedBytes) / Double(volume.capacityBytes)
     }
 
@@ -168,7 +168,7 @@ struct SidebarView: View {
     /// in it, which on any real startup volume they do; a pair that somehow split
     /// units keeps both, since dropping one would then be a lie about the smaller.
     private var usedSummary: String? {
-        guard let volume = model.volume else { return nil }
+        guard let volume = model.dashboard.volume else { return nil }
         let used = ByteFormatting.string(volume.usedBytes)
         let capacity = ByteFormatting.string(volume.capacityBytes)
         guard let usedUnit = used.split(separator: " ").last,
@@ -182,7 +182,7 @@ struct SidebarView: View {
     private func count(for view: AppModel.View) -> Int? {
         switch view {
         case .trash:
-            let items = model.trashSummary?.itemCount ?? 0
+            let items = model.recovery.trashSummary?.itemCount ?? 0
             return items > 0 ? items : nil
         default:
             return nil
