@@ -59,6 +59,7 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | Duplicate files | Compare files in selected folders by size, hashes, and exact file contents. |
 | Duplicate photos | Find identical or similar photos with PhotoKit and Vision. Keep one copy in each group. |
 | App Uninstaller | Review an application and its associated files before removal. |
+| Homebrew applications | Review the package, then let Homebrew remove it and update its installation record. |
 | Finder action | Open an uninstall review with **Services > Review Uninstall with Moppo**. |
 
 <a name="everyday-controls"></a>
@@ -75,6 +76,14 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 
 APFS clones can share storage. Reported cleanup sizes are upper bounds, not promises of recovered space.
 Put Back needs a saved receipt and an item still in the Trash.
+Put Back cannot restore applications that Homebrew removes.
+After Homebrew removes the package, Moppo moves its verified related data to the Trash, including profiles and settings.
+Related data moved to the Trash supports Put Back.
+Moppo does not use `--zap`.
+If Homebrew needs administrator access, Moppo shows a password dialog.
+The password helper sends your login password directly to `sudo`.
+Moppo does not save the password or run Homebrew as root.
+If removal fails, review the application to try again or copy the command to Terminal.
 The [development notes](docs/README.md#deliberate-limitations) explain the current limits.
 
 ## Install on a Mac

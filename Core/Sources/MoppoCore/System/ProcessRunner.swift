@@ -6,9 +6,7 @@ public enum ProcessError: Error, Equatable {
     case failed(command: String, status: Int32, stderr: String)
 }
 
-/// Runs external tools. The only executables Moppo shells out to are
-/// `diskutil`, `docker`, and a read-only Homebrew ownership query — everything
-/// else uses Foundation APIs.
+/// Runs external tools with explicit executable paths.
 ///
 /// Executable paths are absolute and explicit. A GUI app does not inherit the
 /// shell's `PATH`, so resolving by name works in a terminal and then fails once the
@@ -22,8 +20,11 @@ public struct ProcessRunner: Sendable {
     public func run(
         _ executable: String,
         _ arguments: [String],
-        timeout: Duration = .seconds(60)
+        timeout: Duration = .seconds(60),
+        environment: [String: String] = [:],
+        allowsInput: Bool = true
     ) async throws -> Data {
+        try Task.checkCancellation()
         guard FileManager.default.isExecutableFile(atPath: executable) else {
             throw ProcessError.executableMissing(executable)
         }
@@ -31,6 +32,8 @@ public struct ProcessRunner: Sendable {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, value in value }
+        if !allowsInput { process.standardInput = FileHandle.nullDevice }
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()

@@ -272,7 +272,7 @@ struct MainWindow: View {
         .help(model.view == .scanner
               ? "Moves selected items from all filters to the Trash."
               : model.view == .uninstaller && model.uninstallerTab == .installed
-                ? "Moves selected apps and their related files to the Trash."
+                ? "Reviews the removal path for each selected application."
                 : model.removeLabel)
     }
 

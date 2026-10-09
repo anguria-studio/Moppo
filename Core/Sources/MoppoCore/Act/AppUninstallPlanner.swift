@@ -204,7 +204,7 @@ public struct AppUninstallPlanner: Sendable {
     let darwinCache: URL?
     let darwinTemp: URL?
     private let homebrewExecutable: String?
-    private let processRunner: ProcessRunner
+    private let loadHomebrewCatalog: @Sendable (String) async throws -> Data
     /// Nil in fixture tests, which must not read this machine's receipts.
     private let installerReceipts: InstallerReceipts?
     let protectedBundleIdentifiers: Set<String>
@@ -240,6 +240,7 @@ public struct AppUninstallPlanner: Sendable {
         darwinTemp: URL?,
         homebrewExecutable: String? = nil,
         processRunner: ProcessRunner = ProcessRunner(),
+        loadHomebrewCatalog: (@Sendable (String) async throws -> Data)? = nil,
         protectedBundleIdentifiers: Set<String> = ["com.tommasolaterza.Moppo"],
         installerReceipts: InstallerReceipts? = nil
     ) {
@@ -251,7 +252,9 @@ public struct AppUninstallPlanner: Sendable {
         self.darwinCache = darwinCache?.standardizedFileURL
         self.darwinTemp = darwinTemp?.standardizedFileURL
         self.homebrewExecutable = homebrewExecutable
-        self.processRunner = processRunner
+        self.loadHomebrewCatalog = loadHomebrewCatalog ?? { executable in
+            try await processRunner.run(executable, ["info", "--json=v2", "--installed"], timeout: .seconds(20))
+        }
         self.protectedBundleIdentifiers = protectedBundleIdentifiers
         self.installerReceipts = installerReceipts
     }
@@ -263,7 +266,9 @@ public struct AppUninstallPlanner: Sendable {
         var plan = try await planWithoutReceipts(applicationURL: applicationURL, context: context)
         // Asked last, and only of an application the plan has accepted. It never
         // refuses one: a receipt that cannot be read is a note that is not shown.
-        plan.installerPackage = await installerReceipts?.package(owning: plan.applicationURL)
+        if plan.managedPackage == nil {
+            plan.installerPackage = await installerReceipts?.package(owning: plan.applicationURL)
+        }
         return plan
     }
 
@@ -318,9 +323,7 @@ public struct AppUninstallPlanner: Sendable {
             ownerBundleIdentifier: nil
         )
 
-        // A missing identifier prevents safe related-file attribution, and so does
-        // one that no single application owns — see `UninstallScope`. The reviewed
-        // application can still move to the Trash by itself.
+        // Every removal path uses the same related-file ownership checks.
         guard let bundleIdentifier, scope != .applicationOnly else {
             return AppUninstallPlan(
                 applicationURL: applicationURL,
@@ -544,11 +547,7 @@ public struct AppUninstallPlanner: Sendable {
         managing applicationURL: URL
     ) async throws -> AppUninstallPlan.ManagedPackage? {
         guard let homebrewExecutable else { return nil }
-        let data = try await processRunner.run(
-            homebrewExecutable,
-            ["info", "--json=v2", "--installed"],
-            timeout: .seconds(20)
-        )
+        let data = try await loadHomebrewCatalog(homebrewExecutable)
         return try Self.homebrewPackage(
             in: data, managing: applicationURL, executable: homebrewExecutable
         )
@@ -564,21 +563,33 @@ public struct AppUninstallPlanner: Sendable {
             let token: String
             let artifacts: [Artifact]
         }
-        struct Artifact: Decodable { let target: String? }
+        struct Artifact: Decodable {
+            let isApplication: Bool
+            let target: String?
+
+            enum CodingKeys: String, CodingKey { case app, target }
+
+            init(from decoder: Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                isApplication = values.contains(.app)
+                target = try values.decodeIfPresent(String.self, forKey: .target)
+            }
+        }
 
         let catalog = try JSONDecoder().decode(Catalog.self, from: data)
         let selectedPath = applicationURL.standardizedFileURL.path
         let matches = catalog.casks.filter { cask in
             Self.validHomebrewToken(cask.token)
                 && cask.artifacts.contains { artifact in
-                    guard let target = artifact.target else { return false }
+                    guard artifact.isApplication, let target = artifact.target else { return false }
                     return Self.expandedHomePath(target).standardizedFileURL.path == selectedPath
                 }
         }
-        guard matches.count == 1 else { return nil }
+        guard matches.count <= 1 else { throw AppUninstallPlanningError.packageOwnershipUnavailable }
+        guard let match = matches.first else { return nil }
         return AppUninstallPlan.ManagedPackage(
             manager: .homebrew,
-            name: matches[0].token,
+            name: match.token,
             executable: executable
         )
     }
