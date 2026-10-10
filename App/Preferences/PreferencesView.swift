@@ -45,6 +45,9 @@ struct PreferencesView: View {
             )
             .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
         }
+        .containerBackground(Token.pageBackground, for: .window)
+        .toolbarBackground(Token.pageBackground, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
     }
 }
 
@@ -105,6 +108,7 @@ struct PrefPane<Content: View>: View {
             height: PrefMetrics.paneHeight,
             alignment: .topLeading
         )
+        .background(Token.pageBackground)
     }
 }
 
