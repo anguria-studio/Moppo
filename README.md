@@ -174,6 +174,7 @@ Run the tests and writing checks from the repository root:
 
 ```sh
 swift test --package-path Core
+xcodegen generate
 xcodebuild -project Moppo.xcodeproj -scheme MoppoAppTests -destination 'platform=macOS' test
 vale README.md AGENTS.md WRITING_STYLE.md
 ```
@@ -185,6 +186,23 @@ GitHub Actions runs these tests and writing checks for pull requests and changes
 CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
 CI does not build or launch the signed Moppo app.
 Pull request checks also validate branch names and Conventional Commit titles.
+
+When billing or quota limits prevent Actions jobs from starting, run the checks above locally before merging.
+Run the branch and title check with the final pull request title:
+
+```sh
+PR_BRANCH="$(git branch --show-current)" \
+PR_TITLE='feat: describe the change' \
+python3 .github/scripts/check-conventions.py
+```
+
+Record the tested commit SHA, commands, results, and blocked jobs in the pull request.
+Before merging, confirm that the pull request still points to the tested commit.
+If the commit changes, repeat the local checks.
+Code, test, build, and writing failures still block merging.
+Local checks do not consume GitHub Actions minutes.
+When Actions can run again, require its checks to pass.
+See the [project instructions](AGENTS.md#local-validation-during-actions-billing-limits) for the complete fallback rules.
 
 Use the **Moppo Onboarding** scheme to show the welcome guide on every Debug launch.
 This scheme keeps saved settings and system permissions.
