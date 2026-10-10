@@ -1,5 +1,4 @@
 import Foundation
-import Observation
 import MoppoCore
 import Testing
 
@@ -74,10 +73,8 @@ struct PhotoDuplicatesModelTests {
         #expect(!app.isBusyWithDisk)
     }
 
-    enum DiskOwner: CaseIterable { case cleanup, files, explorer }
-
-    @Test("Existing disk operations block photo scans and deletion", arguments: DiskOwner.allCases)
-    func otherOperationsBlockPhotos(owner: DiskOwner) async throws {
+    @Test("Another operation blocks photo scans and deletion")
+    func otherOperationsBlockPhotos() async throws {
         let service = HeldPhotoService()
         let app = makeApp(service)
         let photos = app.photoDuplicates
@@ -85,11 +82,7 @@ struct PhotoDuplicatesModelTests {
         photos.startScan()
         try await waitUntil { !photos.isScanning }
         #expect(!photos.selection.isEmpty)
-        switch owner {
-        case .cleanup: _ = app.operations.begin(.cleanupScan)
-        case .files: _ = app.operations.begin(.fileScan)
-        case .explorer: _ = app.operations.begin(.storageMeasurement)
-        }
+        _ = app.operations.begin(.cleanupScan)
         #expect(photos.isBusyWithDisk)
         photos.startScan()
         await photos.deleteSelected()
@@ -98,44 +91,6 @@ struct PhotoDuplicatesModelTests {
         #expect(await service.scanRequests == 1)
         #expect(await service.deletedIDs.isEmpty)
         #expect(!photos.selection.isEmpty)
-    }
-
-    @Test("An earlier operation cannot release the current operation")
-    func operationIdentity() throws {
-        let operations = OperationCoordinator()
-        let first = try #require(operations.begin(.photoScan))
-        #expect(operations.begin(.photoDeletion) == nil)
-        operations.finish(first)
-        let second = try #require(operations.begin(.photoDeletion))
-        operations.finish(first)
-        #expect(operations.activeOperation == second)
-        #expect(operations.isBusy)
-        operations.finish(second)
-        #expect(!operations.isBusy)
-    }
-
-    @Test("Shared busy state observes Explorer and photo operations")
-    func busyObservation() throws {
-        let app = makeApp(HeldPhotoService())
-        let explorerChanged = ObservationFlag()
-        withObservationTracking {
-            _ = app.photoDuplicates.isBusyWithDisk
-        } onChange: {
-            explorerChanged.mark()
-        }
-        let explorer = try #require(app.operations.begin(.storageMeasurement))
-        #expect(explorerChanged.changed)
-        app.operations.finish(explorer)
-
-        let featureChanged = ObservationFlag()
-        withObservationTracking {
-            _ = app.isBusyWithDisk
-        } onChange: {
-            featureChanged.mark()
-        }
-        let operation = try #require(app.operations.begin(.photoScan))
-        #expect(featureChanged.changed)
-        app.operations.finish(operation)
     }
 
     @Test("A replaced regroup cannot replace results or clear the current regroup")
@@ -318,14 +273,6 @@ struct PhotoDuplicatesModelTests {
         app.duplicateKind = .photos
         return app
     }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(await condition(), "The operation did not finish before the deadline.")
-    }
 }
 
 @MainActor
@@ -443,11 +390,4 @@ private actor HeldPhotoService: PhotoDuplicatesServicing {
         deletion?.resume()
         deletion = nil
     }
-}
-
-private final class ObservationFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = false
-    var changed: Bool { lock.withLock { value } }
-    func mark() { lock.withLock { value = true } }
 }

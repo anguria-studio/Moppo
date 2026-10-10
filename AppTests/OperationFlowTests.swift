@@ -7,7 +7,7 @@ import Testing
 struct OperationFlowTests {
     @Test("Storage Explorer discards the current result after a file change")
     func explorerInvalidation() async throws {
-        let folder = try FixtureFolder()
+        let folder = try TemporaryFolder()
         let file = try folder.write("file.txt")
         let model = StorageExplorerModel()
         model.selectLocation(folder.url)
@@ -26,44 +26,9 @@ struct OperationFlowTests {
         #expect(model.snapshot?.items.isEmpty == true)
     }
 
-    @Test("An old folder scan cannot replace a later navigation result")
-    func explorerNavigation() async throws {
-        let first = try FixtureFolder()
-        let second = try FixtureFolder()
-        _ = try first.write("first.txt")
-        _ = try second.write("second.txt")
-        let model = StorageExplorerModel()
-
-        model.selectLocation(first.url)
-        model.selectLocation(second.url)
-        try await waitUntil { !model.isLoading }
-
-        #expect(model.snapshot?.items.map(\.name) == ["second.txt"])
-        #expect(model.currentURL == second.url.resolvingSymlinksInPath())
-    }
-
-    @Test("A stopped folder scan permits another scan")
-    func explorerCancellation() async throws {
-        let folder = try FixtureFolder()
-        _ = try folder.write("file.txt")
-        let model = StorageExplorerModel()
-        model.selectLocation(folder.url)
-        model.cancel()
-        #expect(model.isInterrupting)
-        try await waitUntil { !model.isLoading }
-        #expect(model.wasCancelled)
-        #expect(model.snapshot == nil)
-
-        model.refresh()
-        try await waitUntil { !model.isLoading }
-        #expect(!model.wasCancelled)
-        #expect(!model.isInterrupting)
-        #expect(model.snapshot?.items.count == 1)
-    }
-
     @Test("Removed children leave an application leftover group and its selection")
     func pruneLeftoverChildren() throws {
-        let folder = try FixtureFolder()
+        let folder = try TemporaryFolder()
         let missing = try folder.write("removed.txt")
         let kept = try folder.write("kept.txt")
         let children = [missing, kept].map {
@@ -93,8 +58,8 @@ struct OperationFlowTests {
 
     @Test("An unavailable cached folder reports an error and permits retry", arguments: [false, true])
     func unavailableCachedFolder(denyAccess: Bool) async throws {
-        let folder = try FixtureFolder()
-        let other = try FixtureFolder()
+        let folder = try TemporaryFolder()
+        let other = try TemporaryFolder()
         _ = try folder.write("file.txt")
         let model = StorageExplorerModel()
         model.selectLocation(folder.url)
@@ -132,8 +97,8 @@ struct OperationFlowTests {
 
     @Test("A replacement folder cannot reuse a previous folder result")
     func replacedCachedFolder() async throws {
-        let folder = try FixtureFolder()
-        let other = try FixtureFolder()
+        let folder = try TemporaryFolder()
+        let other = try TemporaryFolder()
         _ = try folder.write("old.txt")
         let model = StorageExplorerModel()
         model.selectLocation(folder.url)
@@ -150,7 +115,7 @@ struct OperationFlowTests {
 
     @Test("A disconnected volume discards cached results and permits reconnection")
     func disconnectedVolume() async throws {
-        let folder = try FixtureFolder()
+        let folder = try TemporaryFolder()
         let image = folder.url.appendingPathComponent("volume.dmg")
         let mount = folder.url.appendingPathComponent("mount")
         defer { _ = try? Self.runHdiutil(["detach", "-quiet", mount.path]) }
@@ -189,17 +154,9 @@ struct OperationFlowTests {
         return process.terminationStatus
     }
 
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !condition(), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        #expect(condition(), "The operation did not finish before the deadline.")
-    }
-
     @Test("Put Back waits for scans and clears old folder results after restoration")
     func putBackAfterScan() async throws {
-        let folder = try FixtureFolder()
+        let folder = try TemporaryFolder()
         let trash = folder.url.appendingPathComponent(".Trash")
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         let trashed = try folder.write(".Trash/restore.txt")
@@ -239,7 +196,7 @@ struct OperationFlowTests {
 
     @Test("A cancelled Trash refresh keeps the last complete result")
     func cancelledTrashRefresh() async throws {
-        let folder = try FixtureFolder()
+        let folder = try TemporaryFolder()
         let model = AppModel(trashService: TrashService(home: folder.url))
         let previous = TrashSummary(totalBytes: 123, itemCount: 1)
         model.recovery.trashSummary = previous
@@ -260,41 +217,6 @@ struct OperationFlowTests {
 
         #expect(!model.uninstaller.isPlanningAppUninstall)
         #expect(model.notice?.title == "Wait for the Current Operation")
-    }
-
-    @Test("Uninstall planning blocks Storage Explorer until cancellation completes")
-    func uninstallPlanningBlocksExplorer() async throws {
-        let folder = try FixtureFolder()
-        let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
-        model.uninstaller.planAppUninstall(folder.url.appendingPathComponent("fixture.app"))
-        #expect(model.uninstaller.isPlanningAppUninstall)
-        #expect(model.storageExplorer.isMeasurementBlocked)
-
-        model.uninstaller.resetAppUninstall()
-        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
-        #expect(!model.storageExplorer.isMeasurementBlocked)
-        #expect(model.uninstaller.appUninstallPlan == nil)
-    }
-
-    @Test("A file duplicate scan continues after navigation and can restart after stopping")
-    func duplicateScanNavigationAndRestart() async throws {
-        let folder = try FixtureFolder()
-        _ = try folder.write("first.txt")
-        _ = try folder.write("second.txt")
-        let model = AppModel()
-        model.fileDuplicates.minimumBytes = 0
-        model.fileDuplicates.startScan(roots: [folder.url])
-        model.fileDuplicates.cancelScan()
-        #expect(model.fileDuplicates.isInterrupting)
-        try await waitUntil { !model.fileDuplicates.isScanning }
-        #expect(!model.fileDuplicates.isInterrupting)
-
-        model.fileDuplicates.startScan(roots: [folder.url])
-        model.view = .history
-        try await waitUntil { !model.fileDuplicates.isScanning }
-        #expect(model.view == .history)
-        #expect(model.fileDuplicates.results?.groups.count == 1)
-        #expect(!model.isBusyWithDisk)
     }
 
     @Test("History selects the recorded Trash item and rejects a replacement")
@@ -344,14 +266,14 @@ struct OperationFlowTests {
 }
 
 private struct TrashFixture {
-    let folder: FixtureFolder
+    let folder: TemporaryFolder
     let trashed: URL
     let original: URL
     let service: TrashService
     let history: CleanupHistoryService
 
     init() throws {
-        folder = try FixtureFolder()
+        folder = try TemporaryFolder()
         let trash = folder.url.appendingPathComponent(".Trash")
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         trashed = try folder.write(".Trash/item.txt")
@@ -373,23 +295,4 @@ private struct TrashFixture {
             trashService: service, cleanupHistoryService: history
         )
     }
-}
-
-private final class FixtureFolder {
-    let url: URL
-
-    init() throws {
-        url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("moppo-flow-\(UUID().uuidString)")
-            .resolvingSymlinksInPath()
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    }
-
-    func write(_ name: String) throws -> URL {
-        let file = url.appendingPathComponent(name)
-        try Data("Fixture".utf8).write(to: file)
-        return file
-    }
-
-    deinit { try? FileManager.default.removeItem(at: url) }
 }

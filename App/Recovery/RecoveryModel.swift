@@ -24,7 +24,6 @@ final class RecoveryModel {
     @ObservationIgnored private var trashLoadID: UUID?
     @ObservationIgnored private var historyTask: Task<Void, Never>?
     @ObservationIgnored private var historyLoadID: UUID?
-    @ObservationIgnored private var mutationTask: Task<Void, Never>?
     @ObservationIgnored private var pendingTrashReveal: CleanupHistoryItem?
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterMutation: (Mutation) async -> Void = { _ in }
@@ -144,7 +143,6 @@ final class RecoveryModel {
             finish(operation)
             await refreshAfterMutation(.emptyTrash)
         }
-        mutationTask = task
         await task.value
     }
 
@@ -172,7 +170,6 @@ final class RecoveryModel {
             finish(operation)
             if restored { await refreshAfterMutation(.putBack) }
         }
-        mutationTask = task
         await task.value
     }
 
@@ -185,7 +182,6 @@ final class RecoveryModel {
 
     private func finish(_ operation: OperationCoordinator.Operation) {
         isMutating = false
-        mutationTask = nil
         onEvent(.operationFinished)
         operations.finish(operation)
     }

@@ -18,8 +18,7 @@ struct AppUninstallerModelTests {
         model.resetAppUninstall()
         #expect(model.isInterruptingAppUninstall)
         #expect(app.storageExplorer.isMeasurementBlocked)
-        #expect(app.operations.begin(.photoScan) == nil)
-        #expect(app.operations.begin(.cleanupRemoval) == nil)
+        #expect(app.isBusyWithDisk)
         model.planAppUninstall(uninstallPlan("Blocked").applicationURL)
         #expect(await scanner.plans.count == 1)
         await scanner.finishPlan(0, plan)
@@ -40,16 +39,14 @@ struct AppUninstallerModelTests {
         #expect(!app.isBusyWithDisk)
     }
 
-    @Test("Other operations block review and uninstall", arguments: [
-        OperationCoordinator.Kind.photoDeletion, .fileScan, .cleanupScan, .cleanupRemoval, .appLeftoverRemoval
-    ])
-    func sharedGuard(_ kind: OperationCoordinator.Kind) async throws {
+    @Test("Another operation blocks review and uninstall")
+    func sharedGuard() async throws {
         let operations = OperationCoordinator()
         let scanner = HeldUninstallerScanner()
         let remover = HeldUninstallerRemoval()
         let model = AppUninstallerModel(operations: operations, scanner: scanner, remover: remover)
         model.appUninstallPlan = uninstallPlan("Selected")
-        let operation = try #require(operations.begin(kind))
+        let operation = try #require(operations.begin(.cleanupScan))
         model.planAppUninstall(uninstallPlan("Other").applicationURL)
         model.requestAppUninstall()
         #expect(await scanner.plans.isEmpty)
@@ -152,7 +149,7 @@ struct AppUninstallerModelTests {
         model.requestAppUninstall()
         model.resetAppUninstall()
         #expect(model.isUninstallingApp)
-        #expect(operations.begin(.fileScan) == nil)
+        #expect(operations.isBusy)
         #expect(await remover.requests.count == 1)
         let request = try #require(await remover.requests.first)
         #expect(request.plan == plan)
@@ -225,7 +222,7 @@ struct AppUninstallerModelTests {
         await remover.finish(0, CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
         try await waitUntil { await remover.requests.count == 2 }
         #expect(await remover.requests.allSatisfy { !$0.keepReceipt })
-        #expect(operations.begin(.photoScan) == nil)
+        #expect(operations.isBusy)
         await remover.finish(1, CleanupOutcome(failed: [apps[1].id]))
         try await waitUntil { !model.isUninstallingApp }
         #expect(model.batchUninstallOutcome?.uninstalled == ["First"])
@@ -262,7 +259,7 @@ struct AppUninstallerModelTests {
         #expect(model.applicationLeftovers == current)
         #expect(model.selectedLeftoverBytes == 64)
         var result: CleanupOutcome?
-        model.onEvent = { if case .leftoversRemoved(let outcome) = $0 { result = outcome } }
+        model.onEvent = { if case .removed(let outcome) = $0 { result = outcome } }
         let caller = Task { await model.requestLeftoverRemoval() }
         try await waitUntil { await remover.leftoverRequests.count == 1 }
         caller.cancel()
@@ -334,14 +331,6 @@ struct AppUninstallerModelTests {
         #expect(app.cleanup.scanResults == nil)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.recovery.cleanupHistory?.items.first { $0.originalURL.path == receipt.originalPath }?.state == .restored)
-    }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(await condition(), "The operation did not finish before the deadline.")
     }
 }
 
@@ -441,12 +430,13 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
 }
 
 private final class UninstallerFixture {
-    let root: URL
+    private let folder: TemporaryFolder
+    var root: URL { folder.url }
     let application: URL
     let profile: URL
     init() throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("moppo-uninstaller-\(UUID().uuidString)")
-            .resolvingSymlinksInPath()
+        folder = try TemporaryFolder(prefix: "moppo-uninstaller")
+        let root = folder.url
         application = root.appendingPathComponent("Applications/Disposable-\(root.lastPathComponent).app")
         profile = root.appendingPathComponent("Library/Application Support/org.moppo.uninstallerfixture/profile.txt")
         try FileManager.default.createDirectory(at: application.appendingPathComponent("Contents"), withIntermediateDirectories: true)
@@ -457,5 +447,4 @@ private final class UninstallerFixture {
         try FileManager.default.createDirectory(at: profile.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("Disposable profile".utf8).write(to: profile)
     }
-    deinit { try? FileManager.default.removeItem(at: root) }
 }

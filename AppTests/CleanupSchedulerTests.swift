@@ -43,7 +43,7 @@ struct CleanupSchedulerTests {
     @Test("Concurrent checks share no duplicate refresh or scan")
     func overlappingChecks() async throws {
         let scheduler = CleanupScheduler()
-        let gate = SchedulerGate()
+        let gate = TestGate()
         var starts = 0
         scheduler.canCheck = { true }
         scheduler.conditions = { AutomaticScanPolicy.Conditions(cadence: .daily) }
@@ -65,7 +65,7 @@ struct CleanupSchedulerTests {
     @Test("Stopping the timer during refresh prevents a scheduled scan")
     func stoppedTimer() async throws {
         let scheduler = CleanupScheduler(interval: .milliseconds(1))
-        let gate = SchedulerGate()
+        let gate = TestGate()
         var starts = 0
         scheduler.canCheck = { true }
         scheduler.conditions = { AutomaticScanPolicy.Conditions(cadence: .daily) }
@@ -80,23 +80,4 @@ struct CleanupSchedulerTests {
         await Task.yield()
         #expect(starts == 0)
     }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(await condition(), "The scheduler did not reach the expected state.")
-    }
-}
-
-private actor SchedulerGate {
-    private var continuation: CheckedContinuation<Void, Never>?
-    private(set) var count = 0
-    var isPending: Bool { continuation != nil }
-    func wait() async {
-        count += 1
-        await withCheckedContinuation { continuation = $0 }
-    }
-    func finish() { continuation?.resume(); continuation = nil }
 }

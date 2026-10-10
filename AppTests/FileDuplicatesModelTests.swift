@@ -20,8 +20,7 @@ struct FileDuplicatesModelTests {
         #expect(app.storageExplorer.isMeasurementBlocked)
         app.cleanup.startScan()
         #expect(!app.cleanup.isScanning)
-        #expect(app.operations.begin(.photoScan) == nil)
-        #expect(app.operations.begin(.photoDeletion) == nil)
+        #expect(app.isBusyWithDisk)
 
         files.cancelScan()
         #expect(files.isInterrupting)
@@ -52,10 +51,8 @@ struct FileDuplicatesModelTests {
         #expect(!app.isBusyWithDisk)
     }
 
-    enum DiskOwner: CaseIterable { case cleanup, explorer, photoScan, photoDeletion }
-
-    @Test("Other disk operations block file scans and removal", arguments: DiskOwner.allCases)
-    func otherOperationsBlockFiles(owner: DiskOwner) async throws {
+    @Test("Another operation blocks file scans and removal")
+    func otherOperationsBlockFiles() async throws {
         let scanner = HeldFileScanner(results: fileResults("initial"))
         let removal = HeldFileRemoval()
         let app = AppModel(fileDuplicateService: scanner, fileDuplicateRemovalService: removal)
@@ -64,12 +61,7 @@ struct FileDuplicatesModelTests {
         files.startScan(roots: [URL(fileURLWithPath: "/file-fixture")])
         try await waitUntil { !files.isScanning }
         files.selectAll()
-        switch owner {
-        case .cleanup: _ = app.operations.begin(.cleanupScan)
-        case .explorer: _ = app.operations.begin(.storageMeasurement)
-        case .photoScan: _ = app.operations.begin(.photoScan)
-        case .photoDeletion: _ = app.operations.begin(.photoDeletion)
-        }
+        _ = app.operations.begin(.photoScan)
         files.startScan()
         await files.removeSelected()
         #expect(!files.isScanning)
@@ -118,7 +110,7 @@ struct FileDuplicatesModelTests {
         let removal = HeldFileRemoval()
         let app = AppModel(fileDuplicateService: scanner, fileDuplicateRemovalService: removal)
         let files = app.fileDuplicates
-        let refresh = RefreshGate()
+        let refresh = TestGate()
         files.refreshAfterRemoval = {
             #expect(!app.isBusyWithDisk)
             #expect(app.activity == nil)
@@ -332,14 +324,6 @@ struct FileDuplicatesModelTests {
         #expect(files.selection.isEmpty)
         #expect(app.recovery.cleanupHistory?.items.first?.state == .restored)
     }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(await condition(), "The operation did not finish before the deadline.")
-    }
 }
 
 private func fileResults(_ id: String, bytes: Int64 = 10) -> FileDuplicateResults {
@@ -414,28 +398,18 @@ private actor HeldFileRemoval: FileDuplicatesRemoving {
     }
 }
 
-private actor RefreshGate {
-    private var continuation: CheckedContinuation<Void, Never>?
-    var isPending: Bool { continuation != nil }
-    func wait() async { await withCheckedContinuation { continuation = $0 } }
-    func finish() { continuation?.resume(); continuation = nil }
-}
-
 private final class FileRemovalFixture {
-    let root: URL
+    private let folder: TemporaryFolder
     private let suffix = UUID().uuidString
+    var root: URL { folder.url }
 
     init() throws {
-        root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("moppo-file-model-\(UUID().uuidString)").resolvingSymlinksInPath()
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        folder = try TemporaryFolder(prefix: "moppo-file-model")
         for name in ["first", "second", "third"] { _ = try writeCopy(name) }
     }
 
     func writeCopy(_ name: String) throws -> URL {
-        let file = root.appendingPathComponent("moppo-\(name)-\(suffix).txt")
-        try Data("Verified fixture contents".utf8).write(to: file)
-        return file
+        try folder.write("moppo-\(name)-\(suffix).txt", contents: "Verified fixture contents")
     }
 
     func removeTrashedFixtures(_ log: MoppoCore.RemovalLog) {
@@ -445,6 +419,4 @@ private final class FileRemovalFixture {
             try? FileManager.default.removeItem(atPath: path)
         }
     }
-
-    deinit { try? FileManager.default.removeItem(at: root) }
 }

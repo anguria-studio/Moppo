@@ -16,14 +16,10 @@ struct StorageExplorerLocation: Identifiable, Hashable {
 @MainActor
 @Observable
 final class StorageExplorerModel {
-    struct Preferences {
-        var excludedPaths: [String] = []
-        var excludedPatterns: [String] = []
-        var keepReceipt = true
-    }
+    typealias Preferences = RemovalPreferences
     enum Event {
         case reviewing(count: Int)
-        case removing(count: Int, bytes: Int64)
+        case removalStarted(count: Int, bytes: Int64)
         case removed(CleanupOutcome)
         case operationFinished
         case failure(title: String, message: String)
@@ -33,7 +29,6 @@ final class StorageExplorerModel {
     @ObservationIgnored private let preferences: () -> Preferences
     @ObservationIgnored private let service: any StorageExplorerScanning
     @ObservationIgnored private let removalService: any StorageExplorerRemoving
-    @ObservationIgnored private var removalTask: Task<Void, Never>?
     @ObservationIgnored private var scanOperation: OperationCoordinator.Operation?
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
@@ -238,12 +233,10 @@ final class StorageExplorerModel {
             )
             if attemptedRemoval { invalidateCache() }
             isRemoving = false
-            removalTask = nil
             onEvent(.operationFinished)
             operations.finish(operation)
             if attemptedRemoval { await refreshAfterRemoval() }
         }
-        removalTask = task
         await task.value
     }
 
@@ -293,7 +286,7 @@ final class StorageExplorerModel {
             return false
         }
         let bytes = review.items.reduce(0) { $0 + $1.allocatedBytes }
-        onEvent(.removing(count: review.items.count, bytes: bytes))
+        onEvent(.removalStarted(count: review.items.count, bytes: bytes))
         presentation.extend(toShow: .deletion(bytes: bytes))
         do {
             let outcome = try await removalService.remove(

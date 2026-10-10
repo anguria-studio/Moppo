@@ -57,10 +57,16 @@ Core/                         Swift package
   Sources/moppo-cli/         Command-line tools
   Tests/MoppoCoreTests/      Engine tests
 App/                          SwiftUI app
+  Cleanup/                   Cleanup model, services, and scheduler
+  Dashboard/                 Dashboard model and measurement services
   DesignSystem/              Shared controls, colors, and text styles
+  Duplicates/                File duplicate model
   MainWindow/                Main views, sidebar, and sheets
-  Photos/                    PhotoKit access and thumbnails
+  Photos/                    Photo model, PhotoKit access, and thumbnails
   Preferences/               Four panes and the settings store
+  Recovery/                  History, Trash, and Put Back model
+  StorageExplorer/           Storage Explorer model and services
+  Uninstaller/               App Uninstaller model and services
 design/                       Archived design handoff, kept locally
 ```
 
