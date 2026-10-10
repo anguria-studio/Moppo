@@ -409,9 +409,9 @@ struct StorageExplorerView: View {
             }
 
             if item.cloudState != .none {
-                Image(systemName: cloudSymbol(item.cloudState))
+                Image(systemName: item.cloudState.symbol)
                     .foregroundStyle(.secondary)
-                    .help(cloudDescription(item.cloudState))
+                    .help(item.cloudState.explanation)
             }
 
             if item.kind == .symbolicLink {
@@ -525,9 +525,11 @@ struct StorageExplorerView: View {
             "Moppo cannot verify this item."
         }
     }
+}
 
-    private func cloudDescription(_ state: StorageExplorerItem.CloudState) -> String {
-        switch state {
+private extension StorageExplorerItem.CloudState {
+    var explanation: String {
+        switch self {
         case .none:
             ""
         case .downloaded:
@@ -539,13 +541,45 @@ struct StorageExplorerView: View {
         }
     }
 
-    private func cloudSymbol(_ state: StorageExplorerItem.CloudState) -> String {
-        switch state {
+    var symbol: String {
+        switch self {
         case .none, .downloaded:
             "icloud"
         case .cloudOnly, .containsCloudOnlyItems:
             "icloud.and.arrow.down"
         }
+    }
+}
+
+/// Shows the cloud explanation in a popover anchored to the icon.
+private struct StorageCloudIndicator: View {
+    let state: StorageExplorerItem.CloudState
+    let onSelect: () -> Void
+    let onActivate: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            Image(systemName: state.symbol)
+                .font(.system(size: 11))
+                .foregroundStyle(isHovered ? Token.Text.secondary : Token.Text.tertiary)
+                .frame(width: 20, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onActivate() })
+        .onHover { isHovered = $0 }
+        .popover(isPresented: $isHovered, arrowEdge: .top) {
+            Text(state.explanation)
+                .font(.mcSubtitle)
+                .foregroundStyle(Token.Text.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+                .frame(width: 280)
+                .presentationBackground(Token.chrome)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -711,12 +745,16 @@ private struct StorageTreemapView: View {
         .simultaneousGesture(
             TapGesture(count: 2).onEnded { activate(item) }
         )
-        .overlay {
-            shape.strokeBorder(
-                isSelected ? Token.color(.accent) : Token.Fill.boxBorder,
-                lineWidth: isSelected ? 1.5 : Token.hairline
-            )
-            .allowsHitTesting(false)
+        .accessibilityLabel(item.name)
+        .accessibilityValue(accessibilityValue(item))
+        .accessibilityHint(
+            item.opensAsDirectory
+                ? "Double-click to open this folder."
+                : "Double-click to preview this file."
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityAction(named: item.opensAsDirectory ? "Open" : "Quick Look") {
+            activate(item)
         }
         .overlay(alignment: .topLeading) {
             if isFullCard {
@@ -724,20 +762,32 @@ private struct StorageTreemapView: View {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 16))
                         .foregroundStyle(isSelected ? Token.color(.accent) : Token.Text.disabled)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                     if !item.isRemovable {
                         Image(systemName: "lock.fill")
                             .font(.system(size: 10))
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
                     }
                     if item.cloudState != .none {
-                        Image(systemName: cloudSymbol(item.cloudState))
-                            .font(.system(size: 11))
+                        StorageCloudIndicator(
+                            state: item.cloudState,
+                            onSelect: { select(item) },
+                            onActivate: { activate(item) }
+                        )
                     }
                 }
                 .foregroundStyle(Token.Text.tertiary)
                 .padding(10)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
             }
+        }
+        .overlay {
+            shape.strokeBorder(
+                isSelected ? Token.color(.accent) : Token.Fill.boxBorder,
+                lineWidth: isSelected ? 1.5 : Token.hairline
+            )
+            .allowsHitTesting(false)
         }
         .overlay(alignment: .topTrailing) {
             if isFullCard {
@@ -784,17 +834,6 @@ private struct StorageTreemapView: View {
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
             }
-        }
-        .accessibilityLabel(item.name)
-        .accessibilityValue(accessibilityValue(item))
-        .accessibilityHint(
-            item.opensAsDirectory
-                ? "Double-click to open this folder."
-                : "Double-click to preview this file."
-        )
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityAction(named: item.opensAsDirectory ? "Open" : "Quick Look") {
-            activate(item)
         }
     }
 
@@ -949,15 +988,6 @@ private struct StorageTreemapView: View {
         onOpen(item)
     }
 
-    private func cloudSymbol(_ state: StorageExplorerItem.CloudState) -> String {
-        switch state {
-        case .none, .downloaded:
-            "icloud"
-        case .cloudOnly, .containsCloudOnlyItems:
-            "icloud.and.arrow.down"
-        }
-    }
-
     private func treemapDetail(_ item: StorageExplorerItem) -> String {
         let protection = item.protectionReason.map { " · " + protectionTitle($0) } ?? ""
         return "\(ByteFormatting.string(item.allocatedBytes)) · \(item.kindTitle)" + protection
@@ -983,7 +1013,8 @@ private struct StorageTreemapView: View {
 
     private func accessibilityValue(_ item: StorageExplorerItem) -> String {
         let protection = item.isRemovable ? "" : ", protected"
-        return "\(ByteFormatting.string(item.allocatedBytes)), \(item.kindTitle)" + protection
+        let cloud = item.cloudState == .none ? "" : ". " + item.cloudState.explanation
+        return "\(ByteFormatting.string(item.allocatedBytes)), \(item.kindTitle)" + protection + cloud
     }
 }
 
