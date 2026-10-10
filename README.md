@@ -182,7 +182,8 @@ vale README.md AGENTS.md WRITING_STYLE.md
 The app state tests use temporary files and a separate test process.
 They do not launch Moppo or delete personal photos.
 
-GitHub Actions runs these tests and writing checks for pull requests and changes to `main`.
+GitHub Actions runs these tests and writing checks for pull requests that target `main`.
+Merging a pull request does not start another CI run.
 CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
 CI does not build or launch the signed Moppo app.
 Pull request checks also validate branch names and Conventional Commit titles.

@@ -50,6 +50,7 @@ Read field identifiers with `gh project field-list` before you update a field.
 - Use one of these types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `revert`.
 - Open a pull request for each change to `main`.
 - Do not push directly to `main`.
+- Use only `pull_request` events to start GitHub Actions checks.
 - Require all CI checks to pass before a merge, except for the billing fallback below.
 - Use a squash merge with the pull request title as the commit title.
 - Merge only after an explicit instruction from the user.
