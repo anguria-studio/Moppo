@@ -102,6 +102,11 @@ final class PhotoDuplicatesModel {
         await task.value
     }
 
+    /// Refreshes system status without an authorization request.
+    func refreshAccess(_ access: PhotoLibraryAccess) {
+        applyAccess(access)
+    }
+
     private func applyAccess(_ access: PhotoLibraryAccess) {
         accessRevision = UUID()
         libraryAccess = access

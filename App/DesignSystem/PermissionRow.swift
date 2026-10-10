@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Opens permission settings from a shared status row.
+/// Uses the whole card to enable access or review permission settings.
 struct PermissionRow: View {
     let title: String
     let detail: String
@@ -8,6 +8,7 @@ struct PermissionRow: View {
     let status: String
     let isEnabled: Bool
     let settingsHint: String
+    var accessibilityStatus: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -15,7 +16,7 @@ struct PermissionRow: View {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .font(.system(size: 18))
-                    .foregroundStyle(Token.textColor(.accent))
+                    .foregroundStyle(Token.Text.primary)
                     .frame(width: 20)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
@@ -33,8 +34,9 @@ struct PermissionRow: View {
                     .foregroundStyle(isEnabled ? Token.Text.secondary : Token.textColor(.accent))
                     .fixedSize()
             }
+            .frame(minHeight: 40)
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
             .background(Token.Fill.well, in: RoundedRectangle(cornerRadius: Token.Radius.card))
             .overlay(RoundedRectangle(cornerRadius: Token.Radius.card)
                 .strokeBorder(Token.Fill.boxBorder, lineWidth: 1))
@@ -42,7 +44,7 @@ struct PermissionRow: View {
         }
         .buttonStyle(CardPressButtonStyle(cornerRadius: Token.Radius.card))
         .accessibilityLabel(title)
-        .accessibilityValue(status)
+        .accessibilityValue(accessibilityStatus ?? status)
         .accessibilityHint(settingsHint)
         .help(settingsHint)
     }

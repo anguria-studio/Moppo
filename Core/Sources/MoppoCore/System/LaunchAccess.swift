@@ -9,7 +9,7 @@ public enum LaunchAccess: Sendable, Equatable {
         if forceWelcome || !hasCompletedOnboarding {
             self = .welcome
         } else {
-            self = hasFullDiskAccess ? .ready : .diskAccess
+            self = hasFullDiskAccess ? .ready : .limited
         }
     }
 

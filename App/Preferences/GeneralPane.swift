@@ -2,28 +2,18 @@ import Combine
 import SwiftUI
 import MoppoCore
 
-/// Preferences → General: startup, scanning schedule, and the Full Disk Access status.
+/// Shows startup, scan, alert, and iCloud settings.
 struct GeneralPane: View {
 
     @Bindable var settings: SettingsStore
-
-    /// Probed rather than stored. TCC can be changed while the app is running — that
-    /// is the whole point of the button in this pane — so the row re-reads it every
-    /// time the app comes forward instead of trusting a value from launch.
-    @State private var hasFullDiskAccess = FullDiskAccess.isGranted
 
     var body: some View {
         PrefPane {
             startup
             scanning
             iCloud
-            permissions
         }
-        .onReceive(
-            NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
-        ) { _ in
-            hasFullDiskAccess = FullDiskAccess.isGranted
-        }
+
     }
 
     // MARK: - Startup
@@ -51,6 +41,8 @@ struct GeneralPane: View {
             )
             PrefDivider()
             PrefToggleRow(title: "Only when plugged in and idle", isOn: $settings.idleOnly)
+            PrefDivider()
+            PrefToggleRow(title: "Low-space alerts", isOn: $settings.lowSpaceAlertsEnabled)
             PrefDivider()
             PrefRow(
                 title: "Warn me below",
@@ -114,39 +106,7 @@ struct GeneralPane: View {
         }
     }
 
-    // MARK: - Permissions
 
-    /// A status row, not a setting: nothing here can be switched, because the grant
-    /// belongs to System Settings. The row's job is to say which way it currently sits
-    /// and open the right pane.
-    private var permissions: some View {
-        PrefSection("Permissions") {
-            HStack(spacing: PrefMetrics.controlGap) {
-                Circle()
-                    .fill(Token.color(hasFullDiskAccess ? .green : .orange))
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
-
-                PrefLabel(
-                    title: hasFullDiskAccess
-                        ? "Full Disk Access granted"
-                        : "Full Disk Access is off",
-                    description: "Enable access for automatic scans and protected folders."
-                )
-
-                Spacer(minLength: PrefMetrics.controlGap)
-
-                Button("Open System Settings") {
-                    FullDiskAccess.openSystemSettings()
-                }
-                .buttonStyle(SecondaryButtonStyle())
-            }
-            .padding(.horizontal, PrefMetrics.rowPaddingH)
-            .padding(.vertical, PrefMetrics.rowPaddingV)
-            .frame(maxWidth: .infinity, minHeight: PrefMetrics.rowHeight)
-            .accessibilityElement(children: .contain)
-        }
-    }
 }
 
 // MARK: - Preview

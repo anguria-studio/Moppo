@@ -24,11 +24,13 @@ final class AppModel {
     let fileDuplicates: FileDuplicatesModel
     let storageExplorer: StorageExplorerModel
     private(set) var launchAccess: LaunchAccess
+    let onboardingProgress: OnboardingProgress?
     var isShowingWelcome: Bool { launchAccess.requiresOnboarding }
 
     init(
         settings: SettingsStore? = nil,
         launchAccess: LaunchAccess = .ready,
+        onboardingProgress: OnboardingProgress? = nil,
         hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
         trashService: any TrashServicing = TrashService(),
         historyReader: (any CleanupHistoryReading)? = nil,
@@ -55,6 +57,8 @@ final class AppModel {
     ) {
         self.settings = settings
         self.launchAccess = launchAccess
+        self.onboardingProgress = onboardingProgress
+        if launchAccess.requiresOnboarding { onboardingProgress?.begin() }
         self.hasFullDiskAccess = hasFullDiskAccess
         let operations = OperationCoordinator()
         self.operations = operations
@@ -111,7 +115,7 @@ final class AppModel {
         dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
         dashboard.hasLimitedAccess = { [weak self] in self?.launchAccess == .limited }
         dashboard.onVolumeChanged = { [weak self] volume in
-            guard let self, let settings = self.settings else { return }
+            guard let self, let settings = self.settings, settings.lowSpaceAlertsEnabled else { return }
             await self.lowDiskNotifications.observe(
                 freeBytes: volume.freeBytes, volumeName: volume.name, thresholdGB: settings.warnBelowGB
             )
@@ -168,16 +172,26 @@ final class AppModel {
     }
 
     func showWelcomeGuide() {
+        onboardingProgress?.save(.welcome)
         launchAccess = .welcome
     }
 
-    func finishWelcomeGuide() {
+    func finishWelcomeGuide(folder: URL? = nil) {
+        onboardingProgress?.finish()
         launchAccess.finishOnboarding(hasFullDiskAccess: hasFullDiskAccess())
+        if let folder {
+            view = .storageExplorer
+            storageExplorer.selectLocation(folder)
+        } else if launchAccess == .limited {
+            view = .storageExplorer
+        }
     }
 
     /// Keeps automatic scans off when the user continues with limited access.
     func checkDiskAccess(automatic: Bool = false) -> Bool {
-        launchAccess.authorizeScan(hasFullDiskAccess: hasFullDiskAccess(), automatic: automatic)
+        let isAuthorized = launchAccess.authorizeScan(hasFullDiskAccess: hasFullDiskAccess(), automatic: automatic)
+        if launchAccess.requiresOnboarding { onboardingProgress?.begin() }
+        return isAuthorized
     }
 
     enum View: String, CaseIterable, Identifiable {
@@ -354,9 +368,9 @@ final class AppModel {
         view = .dashboard
     }
 
-    /// Starts the first Cleanup scan with the access the user chose.
+    /// Starts a broad initial scan only with Full Disk Access.
     func startInitialCleanupScan() {
-        guard checkDiskAccess() else { return }
+        guard hasFullDiskAccess(), checkDiskAccess() else { return }
         guard view == .scanner, cleanup.scanResults == nil, !cleanup.hasStartedInitialScan,
               cleanupCompletion == nil, !isBusyWithDisk else { return }
         cleanup.startScan(refreshOverview: false)

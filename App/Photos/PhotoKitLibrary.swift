@@ -40,6 +40,15 @@ final class PhotoKitLibrary: PhotoLibraryProviding, @unchecked Sendable {
 
     // MARK: - Access
 
+    static var currentAccess: PhotoLibraryAccess {
+        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+        case .authorized: .authorized
+        case .limited: .limited
+        case .restricted: .restricted
+        default: .denied
+        }
+    }
+
     func authorize() async -> PhotoLibraryAccess {
         let current = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         let status: PHAuthorizationStatus

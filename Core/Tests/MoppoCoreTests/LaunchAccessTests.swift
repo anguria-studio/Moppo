@@ -18,17 +18,14 @@ struct LaunchAccessTests {
         #expect(automaticScan == hasAccess)
     }
 
-    @Test("A returning user can continue without access")
+    @Test("Completed setup keeps optional disk access skipped")
     func completedGuideWithoutAccess() {
         var access = LaunchAccess(hasCompletedOnboarding: true, hasFullDiskAccess: false)
 
-        #expect(access == .diskAccess)
-        #expect(access.requiresOnboarding)
-        let scanBeforeGuide = access.authorizeScan(hasFullDiskAccess: false)
-        #expect(!scanBeforeGuide)
-        access.finishOnboarding(hasFullDiskAccess: false)
         #expect(access == .limited)
         #expect(!access.requiresOnboarding)
+        let automaticScan = access.authorizeScan(hasFullDiskAccess: false, automatic: true)
+        #expect(!automaticScan)
         let manualScan = access.authorizeScan(hasFullDiskAccess: false)
         #expect(manualScan)
     }
@@ -54,7 +51,7 @@ struct LaunchAccessTests {
 
     @Test("Granting access still waits for the user to leave the guide")
     func grantDuringGuide() {
-        var access = LaunchAccess(hasCompletedOnboarding: true, hasFullDiskAccess: false)
+        var access = LaunchAccess.diskAccess
 
         let scanBeforeConfirmation = access.authorizeScan(hasFullDiskAccess: true)
         #expect(!scanBeforeConfirmation)
@@ -103,15 +100,15 @@ struct LaunchAccessTests {
         #expect(!canScan)
     }
 
-    @Test("A new launch without access shows the access step again")
+    @Test("A new launch preserves the choice to skip disk access")
     func relaunchAfterLimitedAccess() {
         var firstSession = LaunchAccess(hasCompletedOnboarding: false, hasFullDiskAccess: false)
         firstSession.finishOnboarding(hasFullDiskAccess: false)
         #expect(firstSession == .limited)
 
         let nextSession = LaunchAccess(hasCompletedOnboarding: true, hasFullDiskAccess: false)
-        #expect(nextSession == .diskAccess)
-        #expect(nextSession.requiresOnboarding)
+        #expect(nextSession == .limited)
+        #expect(!nextSession.requiresOnboarding)
     }
 
     @Test("The onboarding scheme suspends scans for an existing installation")

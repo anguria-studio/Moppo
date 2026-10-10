@@ -1,4 +1,5 @@
 import AppKit
+import Photos
 import SwiftUI
 import MoppoCore
 
@@ -12,6 +13,7 @@ import MoppoCore
 struct PhotoDuplicatesView: View {
     @Bindable var model: PhotoDuplicatesModel
     @Environment(\.scenePhase) private var scenePhase
+    @State private var requiresAuthorization = false
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     private var thumbnails: PhotoThumbnailLoader { model.thumbnails }
@@ -19,7 +21,21 @@ struct PhotoDuplicatesView: View {
     var body: some View {
         Group {
             // Keep known content visible while a repeat access check runs.
-            if model.libraryAccess == nil {
+            if requiresAuthorization {
+                PageState(
+                    title: "Allow Photos Access",
+                    symbol: "photo",
+                    detail: "Allow access to find duplicate and similar photos. This does not start a scan."
+                ) {
+                    Button("Allow") {
+                        Task {
+                            await model.requestAccess()
+                            requiresAuthorization = PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined
+                        }
+                    }
+                    .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+                }
+            } else if model.libraryAccess == nil {
                 PageProgressView(title: "Checking Photos access")
             } else if let reason = model.libraryAccess?.unavailableReason {
                 unavailable(reason, canRetryScan: false)
@@ -40,7 +56,8 @@ struct PhotoDuplicatesView: View {
         .operationResultAnimation(isRunning: model.isScanning)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
-            await model.requestAccess()
+            requiresAuthorization = PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined
+            model.refreshAccess(PhotoKitLibrary.currentAccess)
         }
         .onChange(of: model.isScanning, initial: true) { wasRunning, isRunning in
             if isRunning {
