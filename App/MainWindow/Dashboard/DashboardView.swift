@@ -20,7 +20,7 @@ struct DashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: Token.Size.pageGutter) {
                 if let volume = model.volume, isLowOnSpace(volume), !model.isLowSpaceWarningDismissed {
                     lowSpaceBanner(volume)
                         .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -6)))
@@ -84,9 +84,7 @@ struct DashboardView: View {
             // against the sidebar. The Scan button is inset to match this figure, so
             // the trailing edges still line up; the leading chevron group cannot be
             // moved (see MainWindow) and is left slightly proud.
-            .padding(.horizontal, Token.Size.pageGutter)
-            .padding(.top, Token.Size.pageGutter)
-            .padding(.bottom, 22)
+            .padding(Token.Size.pageGutter)
         }
         .task(id: settings?.iCloudPlan) {
             model.iCloudPlanBytes = settings?.iCloudPlan.bytes
@@ -133,12 +131,12 @@ struct DashboardView: View {
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
         .background(
-            Token.color(.orange).opacity(0.10),
+            Token.Fill.warning,
             in: RoundedRectangle(cornerRadius: Token.Radius.well)
         )
         .overlay(
             RoundedRectangle(cornerRadius: Token.Radius.well)
-                .strokeBorder(Token.color(.orange).opacity(0.26), lineWidth: Token.hairline)
+                .strokeBorder(Token.Fill.warningBorder, lineWidth: Token.hairline)
         )
     }
 

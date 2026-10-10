@@ -51,8 +51,8 @@ struct StatTiles: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 0) {
+        VStack(alignment: .leading, spacing: Token.Size.pageGutter) {
+            Grid(alignment: .topLeading, horizontalSpacing: Token.Size.pageGutter, verticalSpacing: 0) {
                 GridRow {
                     linkedTile(
                         label: "Safe to Remove",
@@ -139,7 +139,7 @@ private struct StatTile: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 0) {
                     Text(label)
-                        .font(.mcRowTitle)
+                        .font(.mcSectionHeader)
                         .foregroundStyle(Token.Text.secondary)
                     if showsChevron {
                         Spacer(minLength: 8)
@@ -151,7 +151,7 @@ private struct StatTile: View {
 
                 Text(value ?? emptyValue ?? "—")
                     .animatedTotal(value)
-                    .font(.mcSecondaryHero)
+                    .font(.mcStatValue)
                     // A bare placeholder is disabled. A named empty value is an
                     // instruction, and it stays readable as the tile's action.
                     .foregroundStyle(
@@ -163,23 +163,16 @@ private struct StatTile: View {
                     // A narrow window must not truncate the figure to "5.6…".
                     .minimumScaleFactor(0.7)
                     .accessibilityLabel(value ?? emptyValue ?? "Not measured yet")
-                    .padding(.top, 8)
-
-                Text(description)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.tertiary)
-                    .lineSpacing(2.5)   // the design's 1.4 line-height at 11.5pt
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 7)
+                    .padding(.top, 4)
             }
-            .padding(.top, 18)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 18)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
             // Flexible in both axes: the grid has already sized the cell to the widest
             // column and the tallest tile, and this fills it so the box matches.
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityHint(description)
     }
 }
 

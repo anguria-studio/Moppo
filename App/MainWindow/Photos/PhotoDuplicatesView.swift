@@ -158,7 +158,7 @@ struct PhotoDuplicatesView: View {
         let selectable = Set(model.groups.flatMap(\.removable).map(\.id))
         return VStack(spacing: 0) {
             HStack {
-                MonochromeCheckbox(
+                SelectionCheckbox(
                     title: "Select All",
                     detail: "\(selectable.count) items",
                     state: !selectable.isEmpty && selectable.isSubset(of: model.selection) ? .on : .off,
@@ -191,7 +191,7 @@ struct PhotoDuplicatesView: View {
 
     private func groupCard(_ group: DuplicateGroup) -> some View {
         GroupedBox {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {
                     Badge(text: kindLabel(group.kind), style: group.kind == .similar ? .neutral : .safe)
                         // The badge names how the group was decided, not how sure
@@ -226,7 +226,19 @@ struct PhotoDuplicatesView: View {
                     Button(model.isGroupSelected(group.id) ? "Deselect" : "Select \(group.removable.count)") {
                         model.toggleGroup(group.id)
                     }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnTint))
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+                .background {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: Token.Radius.box,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: Token.Radius.box
+                    )
+                    .fill(Token.Fill.duplicateGroupHeader)
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -237,8 +249,10 @@ struct PhotoDuplicatesView: View {
                     }
                     .padding(.vertical, 2)
                 }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
-            .padding(12)
+            .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
         }
     }
 

@@ -168,7 +168,7 @@ struct ScannerView: View {
         let visible = categories(of: results, for: model.scanFilter)
         let count = visible.reduce(0) { $0 + $1.entries.count }
         return HStack(spacing: 12) {
-            MonochromeCheckbox(
+            SelectionCheckbox(
                 title: "Select All",
                 detail: "\(count) \(count == 1 ? "item" : "items")",
                 state: model.hasSelectableItemsInCurrentView && !model.canSelectAllInCurrentView
@@ -224,10 +224,15 @@ struct ScannerView: View {
         case .needsReview: "questionmark.circle"
         }
         let size = ByteFormatting.string(bytes(in: filter, results: results))
+        let palette: PageTabPill.LightPalette = switch filter {
+        case .all: Token.CleanupTabs.all
+        case .safeToRemove: Token.CleanupTabs.safe
+        case .needsReview: Token.CleanupTabs.review
+        }
 
         return PageTabPill(
             title: filter.title, symbol: symbol, detail: size,
-            isSelected: isSelected, tint: tint
+            isSelected: isSelected, tint: tint, lightPalette: palette
         ) { model.scanFilter = filter }
     }
 

@@ -41,7 +41,7 @@ struct HeaderRemovalButtonStyle: ButtonStyle {
 }
 
 /// Keeps native checkbox behavior with colors that follow the current theme.
-struct MonochromeCheckbox: NSViewRepresentable {
+struct SelectionCheckbox: NSViewRepresentable {
     var title: String
     var detail: String? = nil
     var state: NSControl.StateValue
@@ -55,7 +55,7 @@ struct MonochromeCheckbox: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSButton {
         let button = NSButton()
-        button.cell = MonochromeCheckboxCell(textCell: "")
+        button.cell = SelectionCheckboxCell(textCell: "")
         button.setButtonType(.switch)
         button.allowsMixedState = true
         button.target = context.coordinator
@@ -95,7 +95,7 @@ struct MonochromeCheckbox: NSViewRepresentable {
     }
 }
 
-private final class MonochromeCheckboxCell: NSButtonCell {
+private final class SelectionCheckboxCell: NSButtonCell {
     override func drawImage(_ image: NSImage, withFrame frame: NSRect, in controlView: NSView) {
         let dark = controlView.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         let ink: NSColor = dark ? .white : .black
@@ -106,13 +106,14 @@ private final class MonochromeCheckboxCell: NSButtonCell {
                          width: side, height: side)
         let shape = NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4)
         if state == .off {
-            ink.withAlphaComponent(0.06 * alpha).setFill()
+            (dark ? ink.withAlphaComponent(0.06 * alpha) : NSColor.white.withAlphaComponent(alpha)).setFill()
             shape.fill()
-            ink.withAlphaComponent(0.45 * alpha).setStroke()
+            ink.withAlphaComponent((dark ? 0.45 : 0.5) * alpha).setStroke()
             shape.lineWidth = 1
             shape.stroke()
         } else {
-            ink.withAlphaComponent(alpha).setFill()
+            let selectedFill = dark ? ink : NSColor(srgbRed: 0.145, green: 0.388, blue: 0.922, alpha: 1)
+            selectedFill.withAlphaComponent(alpha).setFill()
             shape.fill()
             let mark = NSBezierPath()
             func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
@@ -216,7 +217,7 @@ struct Badge: View {
     private var background: Color {
         switch style {
         case .neutral: Token.Fill.control
-        case .safe: Token.color(.green).opacity(0.16)
+        case .safe: Token.Fill.safeBadge
         case .danger: Token.color(.red).opacity(0.16)
         case .positiveOutline: .clear
         }
@@ -242,6 +243,7 @@ struct SidebarRowButtonStyle: ButtonStyle {
 
 /// A compact action for controls inside cards and rows.
 struct SecondaryButtonStyle: ButtonStyle {
+    var fill: Color = Token.Fill.button
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
@@ -253,9 +255,12 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .frame(minHeight: 28)
             .background(
-                isEnabled ? (isHovering ? Token.Fill.controlHover : Token.Fill.control) : Token.Fill.controlDisabled,
+                isEnabled ? (isHovering ? Token.Fill.buttonHover : fill) : Token.Fill.controlDisabled,
                 in: Capsule()
             )
+            .overlay {
+                Capsule().strokeBorder(isEnabled ? Token.Fill.buttonBorder : .clear, lineWidth: Token.hairline)
+            }
             .contentShape(Capsule())
             .opacity(isEnabled && configuration.isPressed ? 0.8 : 1)
             .onHover { isHovering = isEnabled && $0 }
@@ -434,12 +439,14 @@ struct SortableColumnHeader: View {
 /// Applies the design's hover fill to a list row.
 struct HoverHighlight: ViewModifier {
     var radius: CGFloat = 0
+    var fill: Color = Token.Fill.rowHover
+    var restingFill: Color = .clear
     @State private var isHovering = false
 
     func body(content: Content) -> some View {
         content
             .background(
-                isHovering ? Token.Fill.rowHover : .clear,
+                isHovering ? fill : restingFill,
                 in: RoundedRectangle(cornerRadius: radius)
             )
             .onHover { isHovering = $0 }
@@ -447,8 +454,12 @@ struct HoverHighlight: ViewModifier {
 }
 
 extension View {
-    func hoverHighlight(radius: CGFloat = 0) -> some View {
-        modifier(HoverHighlight(radius: radius))
+    func hoverHighlight(
+        radius: CGFloat = 0,
+        fill: Color = Token.Fill.rowHover,
+        restingFill: Color = .clear
+    ) -> some View {
+        modifier(HoverHighlight(radius: radius, fill: fill, restingFill: restingFill))
     }
 
     /// Uppercased, tracked, quaternary — eyebrows and column headers.
@@ -652,7 +663,13 @@ struct PageActionSurface: ViewModifier {
             .padding(.horizontal, compact ? 12 : 20)
             .frame(minHeight: compact ? 28 : 38)
             .foregroundStyle(isEnabled ? (foreground ?? (tint == nil ? Token.Text.primary : Color.white)) : Token.Text.disabled)
-            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.controlHover : Token.Fill.control)) : Token.Fill.controlDisabled, in: Capsule())
+            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.buttonHover : Token.Fill.button)) : Token.Fill.controlDisabled, in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(
+                    isEnabled && tint == nil ? Token.Fill.buttonBorder : .clear,
+                    lineWidth: Token.hairline
+                )
+            }
             .contentShape(Capsule())
             .opacity(isEnabled && isPressed ? 0.8 : 1)
             .onHover { isHovering = isEnabled && $0 }
@@ -664,12 +681,20 @@ struct PageActionSurface: ViewModifier {
 
 /// A separate pill for each page filter or presentation.
 struct PageTabPill: View {
+    struct LightPalette {
+        let foreground: Color
+        let selectedBackground: Color
+        let border: Color
+    }
+
     let title: String
     let symbol: String
     var detail: String? = nil
     let isSelected: Bool
     var tint: Color = Token.textColor(.accent)
+    var lightPalette: LightPalette? = nil
     let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
 
@@ -683,13 +708,14 @@ struct PageTabPill: View {
                 }
             }
             .font(.mcRowTitle)
-            .foregroundStyle(isSelected ? tint : Token.Text.secondary)
+            .foregroundStyle(isSelected ? (palette?.foreground ?? tint) : Token.Text.secondary)
             .padding(.horizontal, 13)
             .padding(.vertical, 8)
-            .background(isSelected ? tint.opacity(0.12) : Token.Fill.control, in: Capsule())
+            .background(background, in: Capsule())
             .overlay {
                 Capsule().strokeBorder(
-                    isSelected ? tint.opacity(0.3) : Token.Fill.controlBorder,
+                    isSelected ? (palette?.border ?? tint.opacity(0.3))
+                        : (colorScheme == .light ? Token.Fill.boxBorder : Token.Fill.controlBorder),
                     lineWidth: Token.hairline
                 )
             }
@@ -701,6 +727,13 @@ struct PageTabPill: View {
         .accessibilityValue(detail ?? "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isSelected)
+    }
+
+    private var palette: LightPalette? { colorScheme == .light ? lightPalette : nil }
+
+    private var background: Color {
+        if isSelected { return palette?.selectedBackground ?? tint.opacity(0.12) }
+        return colorScheme == .light ? Token.Fill.box : Token.Fill.control
     }
 }
 

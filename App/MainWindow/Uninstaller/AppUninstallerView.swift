@@ -159,7 +159,7 @@ struct AppUninstallerView: View {
         let identifiers = Set(model.applicationLeftovers?.groups.map(\.bundleIdentifier) ?? [])
         let selected = identifiers.intersection(model.selectedLeftoverIdentifiers)
         return HStack(spacing: 12) {
-            MonochromeCheckbox(
+            SelectionCheckbox(
                 title: "Select All",
                 detail: "\(identifiers.count) \(identifiers.count == 1 ? "application" : "applications")",
                 state: !identifiers.isEmpty && identifiers.isSubset(of: selected) ? .on : .off,
@@ -241,7 +241,7 @@ struct AppUninstallerView: View {
             .buttonStyle(.plain)
             .help("\(group.items.count) files")
 
-            MonochromeCheckbox(
+            SelectionCheckbox(
                 title: "Select \(group.displayName ?? group.bundleIdentifier)",
                 state: isSelected ? .on : .off,
                 isEnabled: !model.isBusyWithDisk && !model.isLoadingApplicationLeftovers,

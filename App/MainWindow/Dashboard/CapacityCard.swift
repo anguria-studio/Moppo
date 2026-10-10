@@ -118,7 +118,7 @@ struct CapacityCard: View {
                     .animatedTotal(freeBytes)
                     .font(.mcSecondaryHero)
                     .mcTracked(-0.26)   // -0.01em
-                    .foregroundStyle(Token.textColor(.green))
+                    .foregroundStyle(Token.Text.availableStorage)
                     .lineLimit(1)
             }
             // Sit the free figure on the used figure's baseline — not the eyebrow

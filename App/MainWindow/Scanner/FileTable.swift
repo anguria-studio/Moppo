@@ -2,8 +2,7 @@ import SwiftUI
 import AppKit
 import MoppoCore
 
-/// The expanded body of a Scanner category: a recessed well holding a column header
-/// and one row per removable thing.
+/// The expanded category has a light gray column header and near-white file rows in light mode.
 ///
 /// Deliberately not `Table`. The design's row is a two-line name cell, a checkbox that
 /// is the only selection affordance, and an action button that stays dim until the
@@ -84,8 +83,10 @@ struct FileTable: View {
         Well(radius: 0) {
             VStack(spacing: 0) {
                 columnHeader
+                    .background(Token.Fill.cleanupTableHeader)
                 Hairline()
                 rows
+                    .background(Token.Fill.box)
             }
         }
         .overlay(alignment: .top) { Hairline() }
@@ -373,7 +374,7 @@ private struct FileRow: View {
         .padding(.horizontal, Metrics.sidePadding)
         .frame(minHeight: 52)
         .contentShape(Rectangle())
-        .hoverHighlight()
+        .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.cleanupRow)
         .onHover { isRowHovered = $0 }
         .task(id: entry.url) {
             guard entry.kind == .folder else { return }
@@ -607,7 +608,7 @@ private struct ChildRow: View {
         .padding(.horizontal, Metrics.sidePadding)
         .frame(minHeight: 46)
         .contentShape(Rectangle())
-        .hoverHighlight()
+        .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.cleanupRow)
         .onHover { isRowHovered = $0 }
         .onTapGesture {
             if isReadOnly {
@@ -671,7 +672,7 @@ struct ProtectedSelectionControl: View {
     var body: some View {
         Group {
             if !entry.isRemovalLocked || hasUserDataOverride {
-                MonochromeCheckbox(
+                SelectionCheckbox(
                     title: entry.displayName,
                     state: isSelected ? .on : .off,
                     showsTitle: false,
@@ -986,7 +987,7 @@ private struct FileEntryIcon: View {
                     Text("JS")
                         .font(.system(size: 7, weight: .bold))
                 }
-                .foregroundStyle(Token.textColor(.green))
+                .foregroundStyle(Token.color(.green))
             } else {
                 Image(systemName: symbol)
                     .font(.system(size: 17))
@@ -1018,11 +1019,11 @@ private struct FileEntryIcon: View {
 
     private var color: Color {
         switch presentation.icon {
-        case .node: Token.textColor(.green)
-        case .react, .folder: Token.textColor(.teal)
-        case .photo, .package: Token.textColor(.orange)
-        case .video, .music: Token.textColor(.pink)
-        case .code, .cache: Token.textColor(.purple)
+        case .node: Token.color(.green)
+        case .react, .folder: Token.color(.teal)
+        case .photo, .package: Token.color(.orange)
+        case .video, .music: Token.color(.pink)
+        case .code, .cache: Token.color(.purple)
         default: Token.Text.secondary
         }
     }

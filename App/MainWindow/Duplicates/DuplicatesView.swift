@@ -33,7 +33,7 @@ struct DuplicatesView: View {
                 }
                 Spacer(minLength: 0)
                 if model.duplicateKind == .files, model.fileDuplicates.results != nil {
-                    Button("Choose Other Folders") { model.fileDuplicates.chooseFolders() }
+                    Button("Choose Other Folders", systemImage: "folder") { model.fileDuplicates.chooseFolders() }
                         .buttonStyle(PageActionButtonStyle())
                         .disabled(model.isBusyWithDisk)
                 }

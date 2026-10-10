@@ -24,20 +24,16 @@ struct ICloudCard: View {
                     header
                     Text(ByteFormatting.binaryString(storage.usedBytes))
                         .animatedTotal(storage.usedBytes)
-                        .font(.mcSecondaryHero)
+                        .font(.mcStatValue)
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                        .padding(.top, 8)
-                    Text("of \(ByteFormatting.binaryString(storage.totalBytes)) used")
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.tertiary)
-                        .padding(.top, 7)
+                        .padding(.top, 4)
                     ICloudBar(segments: storage.segments)
-                        .padding(.top, 10)
+                        .padding(.top, 6)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 18)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             .contentShape(RoundedRectangle(cornerRadius: Token.Radius.card))
@@ -53,7 +49,7 @@ struct ICloudCard: View {
     private var header: some View {
         HStack(spacing: 6) {
             Text("iCloud")
-                .font(.mcRowTitle)
+                .font(.mcSectionHeader)
                 .foregroundStyle(Token.Text.secondary)
 
             if storage.planWasInferred {

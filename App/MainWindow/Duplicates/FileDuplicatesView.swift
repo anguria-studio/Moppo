@@ -100,7 +100,7 @@ struct FileDuplicatesView: View {
         let selectable = Set(model.groups.flatMap(\.removable).map(\.id))
         return VStack(spacing: 0) {
             HStack {
-                MonochromeCheckbox(
+                SelectionCheckbox(
                     title: "Select All",
                     detail: "\(selectable.count) \(selectable.count == 1 ? "item" : "items")",
                     state: !selectable.isEmpty && selectable.isSubset(of: model.selection) ? .on : .off,
@@ -156,21 +156,25 @@ struct FileDuplicatesView: View {
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text("Up to \(ByteFormatting.string(group.reclaimableBytes)) available")
-                            .font(.mcRowValue.weight(.medium))
-                            .foregroundStyle(Token.Text.primary)
-                        Text("APFS clones can share storage")
-                            .font(.mcCaption)
-                            .foregroundStyle(Token.Text.tertiary)
-                    }
+                    Text("Up to \(ByteFormatting.string(group.reclaimableBytes)) available")
+                        .font(.mcRowValue.weight(.medium))
+                        .foregroundStyle(Token.Text.duplicateAvailableStorage)
                     Button(model.isGroupSelected(group.id) ? "Deselect" : "Select Copies") {
                         model.toggleGroup(group.id)
                     }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnTint))
                     .disabled(model.isBusyWithDisk)
                 }
                 .padding(12)
+                .background {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: Token.Radius.box,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 0,
+                        topTrailingRadius: Token.Radius.box
+                    )
+                    .fill(Token.Fill.duplicateGroupHeader)
+                }
 
                 Divider()
 
@@ -179,6 +183,7 @@ struct FileDuplicatesView: View {
                     if index < group.files.count - 1 { Divider().padding(.leading, 48) }
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
         }
     }
 
@@ -189,11 +194,11 @@ struct FileDuplicatesView: View {
         return HStack(spacing: 10) {
             if isKeeper {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Token.textColor(.green))
+                    .foregroundStyle(Token.Fill.keepIndicator)
                     .frame(width: 28, height: 28)
                     .help("This copy will remain")
             } else {
-                MonochromeCheckbox(
+                SelectionCheckbox(
                     title: "Select \(file.url.lastPathComponent)",
                     state: selected ? .on : .off,
                     isEnabled: !model.isBusyWithDisk,

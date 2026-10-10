@@ -226,7 +226,16 @@ final class DashboardModel {
     }
 
     private func recomputeGrowth() {
-        hasCleanupGrowthBaseline = storageHistory.contains { $0.trigger == .removal }
-        growth = StorageGrowth.comparison(growthBaseline, in: storageHistory)
+        var comparisonHistory = storageHistory
+        #if DEBUG
+        // Temporary for #96: use older measurements during Dashboard design work.
+        // Remove this override when the design work is complete.
+        let olderHistory = storageHistory.filter { $0.contract.version == 1 }
+        if olderHistory.count >= 2 {
+            comparisonHistory = olderHistory
+        }
+        #endif
+        hasCleanupGrowthBaseline = comparisonHistory.contains { $0.trigger == .removal }
+        growth = StorageGrowth.comparison(growthBaseline, in: comparisonHistory)
     }
 }

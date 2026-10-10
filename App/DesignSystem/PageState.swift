@@ -62,6 +62,8 @@ struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
             actions()
                 .buttonStyle(PageStateButtonStyle())
                 .controlSize(.large)
+                // ContentUnavailableView adds bottom space. Move actions closer to the message.
+                .padding(.top, -16)
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(PageStateMetrics.padding)

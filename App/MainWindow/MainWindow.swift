@@ -6,6 +6,7 @@ struct MainWindow: View {
     @Bindable var model: AppModel
     var settings: SettingsStore?
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -368,9 +369,12 @@ struct MainWindow: View {
         .padding(.leading, 14)
         .padding(.trailing, isInterrupting ? 14 : 6)
         .frame(height: 38)
-        .background(Token.Fill.control, in: Capsule())
+        .background(colorScheme == .light ? Token.Fill.box : Token.Fill.control, in: Capsule())
         .overlay {
-            Capsule().strokeBorder(Token.Fill.controlBorder, lineWidth: Token.hairline)
+            Capsule().strokeBorder(
+                colorScheme == .light ? Token.Fill.boxBorder : Token.Fill.controlBorder,
+                lineWidth: Token.hairline
+            )
         }
         .help(isInterrupting ? ScanInterruptionView.title
               : "\(title): \(detail). Finish or stop this operation to start another scan.")
