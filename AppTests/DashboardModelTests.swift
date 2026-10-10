@@ -195,6 +195,32 @@ struct DashboardModelTests {
         #expect(model.growthBaseline == .sevenDays)
     }
 
+    @Test("Dismissal lasts through navigation and volume reads until the next dashboard measurement")
+    func lowSpaceWarningDismissal() async throws {
+        let service = HeldDashboardMeasurements()
+        let app = AppModel(
+            hasFullDiskAccess: { true }, dashboardService: service,
+            dashboardPersistence: HeldDashboardPersistence()
+        )
+        await app.dashboard.refreshVolumeInfo(notifyLowSpace: false)
+        #expect(!app.dashboard.isLowSpaceWarningDismissed)
+        app.dashboard.dismissLowSpaceWarning()
+        app.view = .history
+        app.view = .dashboard
+        await app.dashboard.refreshVolumeInfo(notifyLowSpace: false)
+        #expect(app.dashboard.isLowSpaceWarningDismissed)
+
+        let caller = Task { await app.dashboard.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        #expect(app.dashboard.isLowSpaceWarningDismissed)
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await caller.value
+        #expect(!app.dashboard.isLowSpaceWarningDismissed)
+        #expect(app.dashboard.volume == dashboardVolume())
+        app.dashboard.dismissLowSpaceWarning()
+        #expect(app.dashboard.isLowSpaceWarningDismissed)
+    }
+
     @Test("A failed measurement keeps cached figures and permits a retry")
     func measurementFailure() async throws {
         let service = HeldDashboardMeasurements()
@@ -205,6 +231,7 @@ struct DashboardModelTests {
         model.canMeasure = { _ in false }
         await model.loadDashboard()
         #expect(model.breakdownIsStale)
+        model.dismissLowSpaceWarning()
         model.canMeasure = { _ in true }
         let caller = Task { await model.measureStorage() }
         try await waitUntil { await service.measurementCount == 1 }
@@ -213,6 +240,7 @@ struct DashboardModelTests {
         #expect(model.breakdown == cache.breakdown)
         #expect(model.measuredAt == cache.measuredAt)
         #expect(!model.isLoadingBreakdown)
+        #expect(model.isLowSpaceWarningDismissed)
         #expect(await persistence.records.isEmpty)
         let retry = Task { await model.rebuildSizeIndex() }
         try await waitUntil { await service.measurementCount == 2 }
@@ -220,6 +248,7 @@ struct DashboardModelTests {
         await retry.value
         #expect(await persistence.cacheClears == 1)
         #expect(!model.breakdownIsStale)
+        #expect(!model.isLowSpaceWarningDismissed)
         #expect(await persistence.records == [.manual])
     }
 
