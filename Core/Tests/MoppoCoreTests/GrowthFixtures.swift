@@ -43,6 +43,7 @@ enum GrowthFixture {
         named: [StorageSegmentID: Int64] = [:],
         nodes: [SnapshotNode] = [],
         contract: MeasurementContract = GrowthFixture.contract(),
+        appleIntelligence: AppleIntelligenceStorage? = nil,
         id: UUID = UUID()
     ) -> StorageSnapshot {
         var raw = named
@@ -66,7 +67,8 @@ enum GrowthFixture {
             breakdown: StorageBreakdown.make(
                 capacityBytes: contract.capacityBytes,
                 rawSegments: raw,
-                unreadableCount: 0
+                unreadableCount: 0,
+                appleIntelligence: appleIntelligence
             ),
             nodes: nodes
         )

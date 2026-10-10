@@ -139,11 +139,13 @@ struct CapacityCard: View {
             legendColumn(
                 Array(entries.prefix(leftCount)),
                 unreadableCount: breakdown.unreadableCount,
+                appleIntelligence: breakdown.appleIntelligence,
                 valuesAreBones: valuesAreBones
             )
             legendColumn(
                 Array(entries.dropFirst(leftCount)),
                 unreadableCount: breakdown.unreadableCount,
+                appleIntelligence: breakdown.appleIntelligence,
                 valuesAreBones: valuesAreBones
             )
         }
@@ -152,6 +154,7 @@ struct CapacityCard: View {
     private func legendColumn(
         _ entries: [StorageSegment],
         unreadableCount: Int,
+        appleIntelligence: AppleIntelligenceStorage?,
         valuesAreBones: Bool
     ) -> some View {
         VStack(spacing: 0) {
@@ -159,6 +162,7 @@ struct CapacityCard: View {
                 LegendRow(
                     entry: entry,
                     unreadableCount: unreadableCount,
+                    appleIntelligence: appleIntelligence,
                     valueIsBone: valuesAreBones
                 )
             }
@@ -171,6 +175,7 @@ struct CapacityCard: View {
 private struct LegendRow: View {
     let entry: StorageSegment
     let unreadableCount: Int
+    let appleIntelligence: AppleIntelligenceStorage?
     /// A measurement is running: the name stands, the figure is not yet a fact.
     var valueIsBone = false
 
@@ -194,7 +199,8 @@ private struct LegendRow: View {
             // appears instantly and can never be clipped by the card.
             if let explanation = Self.explanation(
                 for: entry.id,
-                unreadableCount: unreadableCount
+                unreadableCount: unreadableCount,
+                appleIntelligence: appleIntelligence
             ) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 10))
@@ -220,7 +226,9 @@ private struct LegendRow: View {
                 SkeletonBone(width: 52, height: 10)
                     .skeletonPulse()
             } else {
-                Text(ByteFormatting.string(entry.bytes))
+                Text(entry.id == .appleIntelligence
+                     ? appleIntelligence?.sizeLabel ?? ByteFormatting.string(entry.bytes)
+                     : ByteFormatting.string(entry.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize()   // the name truncates first; the figure never does
@@ -232,9 +240,12 @@ private struct LegendRow: View {
 
     private static func explanation(
         for id: StorageSegmentID,
-        unreadableCount: Int
+        unreadableCount: Int,
+        appleIntelligence: AppleIntelligenceStorage?
     ) -> String? {
         switch id {
+        case .appleIntelligence:
+            return appleIntelligence?.explanation
         case .systemData:
             return "Machine-wide files outside your home folder: /Library (support "
                 + "files for all apps and users), Homebrew in /opt, and service data "
@@ -325,7 +336,7 @@ private struct CapacityBar: View {
                         else if hovered == slice.id { hovered = nil }
                     }
                     .accessibilityLabel(slice.segment.displayName)
-                    .accessibilityValue(ByteFormatting.string(slice.segment.bytes))
+                    .accessibilityValue(breakdown.sizeLabel(for: slice.segment))
                 }
             }
             .overlay(alignment: .topLeading) { tooltip(for: slices, in: proxy.size.width) }
@@ -355,7 +366,7 @@ private struct CapacityBar: View {
                 Text(slice.segment.displayName)
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
-                Text(ByteFormatting.string(slice.segment.bytes))
+                Text(breakdown.sizeLabel(for: slice.segment))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
             }

@@ -4,12 +4,12 @@ import Foundation
 /// to `NSColor`/`Color`, preferring the platform's semantic colours so the app
 /// follows the user's accent choice and Increase Contrast setting.
 public enum ColorToken: String, Sendable, Equatable, Codable {
-    case accent, green, orange, red, yellow, purple, teal, pink, brown
+    case accent, green, orange, red, yellow, purple, teal, pink, brown, indigo
     case gray, warmGray, darkGray, freeSpace
 }
 
 public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
-    case macOSSystem, systemData
+    case macOSSystem, systemData, appleIntelligence
     case documentsDesktop, downloads, photos, music, movies, developer
     case appDataCaches, packageBuildCaches, otherFilesInHome
     case applications
@@ -21,6 +21,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     public var displayName: String {
         switch self {
         case .macOSSystem:        "macOS System"
+        case .appleIntelligence:  "Apple Intelligence"
         case .systemData:         "System Data"
         case .documentsDesktop:   "Documents & Desktop"
         case .downloads:          "Downloads"
@@ -41,6 +42,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     public var color: ColorToken {
         switch self {
         case .macOSSystem:        .gray
+        case .appleIntelligence:  .indigo
         case .systemData:         .warmGray
         case .documentsDesktop:   .orange
         case .downloads:          .green
@@ -68,7 +70,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     /// the honest residual and it stays visible.
     var isMergeable: Bool {
         switch self {
-        case .unmeasured, .free, .other: false
+        case .unmeasured, .free, .other, .appleIntelligence: false
         default: true
         }
     }
@@ -104,6 +106,19 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
     public let segments: [StorageSegment]
     /// Entries an unprivileged scan could not read, summed across the run.
     public let unreadableCount: Int
+    public let appleIntelligence: AppleIntelligenceStorage?
+
+    public init(
+        capacityBytes: Int64,
+        segments: [StorageSegment],
+        unreadableCount: Int,
+        appleIntelligence: AppleIntelligenceStorage? = nil
+    ) {
+        self.capacityBytes = capacityBytes
+        self.segments = segments
+        self.unreadableCount = unreadableCount
+        self.appleIntelligence = appleIntelligence
+    }
 
     public var usedBytes: Int64 { capacityBytes - freeBytes }
     public var freeBytes: Int64 { segments.first { $0.id == .free }?.bytes ?? 0 }
@@ -123,6 +138,13 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
     /// figures add up to the disk capacity.
     public var legendEntries: [StorageSegment] {
         segments.filter { $0.bytes > 0 }
+    }
+
+    public func sizeLabel(for segment: StorageSegment) -> String {
+        if segment.id == .appleIntelligence, let appleIntelligence {
+            return appleIntelligence.sizeLabel
+        }
+        return ByteFormatting.string(segment.bytes)
     }
 
     public func percent(of segment: StorageSegment) -> Double {
@@ -160,7 +182,8 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
             capacityBytes: capacity,
             rawSegments: rawSegments,
             unreadableCount: unreadableCount,
-            mergeThresholdPercent: 0
+            mergeThresholdPercent: 0,
+            appleIntelligence: appleIntelligence
         )
     }
 
@@ -172,7 +195,8 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         capacityBytes: Int64,
         rawSegments: [StorageSegmentID: Int64],
         unreadableCount: Int,
-        mergeThresholdPercent: Double = 0.5
+        mergeThresholdPercent: Double = 0.5,
+        appleIntelligence: AppleIntelligenceStorage? = nil
     ) -> StorageBreakdown {
         let threshold = Int64(Double(capacityBytes) * mergeThresholdPercent / 100)
 
@@ -201,7 +225,8 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         return StorageBreakdown(
             capacityBytes: capacityBytes,
             segments: kept,
-            unreadableCount: unreadableCount
+            unreadableCount: unreadableCount,
+            appleIntelligence: appleIntelligence
         )
     }
 }
