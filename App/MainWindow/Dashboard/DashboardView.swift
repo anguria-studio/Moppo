@@ -9,6 +9,7 @@ import MoppoCore
 /// there is no manual top inset here; the platform provides it.
 struct DashboardView: View {
     @Bindable var model: DashboardModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var scanResults: ScanResults?
     var lastScanAt: Date?
     var onShowScanner: (CleanupModel.ScanFilter) -> Void = { _ in }
@@ -20,8 +21,9 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if let volume = model.volume, isLowOnSpace(volume) {
+                if let volume = model.volume, isLowOnSpace(volume), !model.isLowSpaceWarningDismissed {
                     lowSpaceBanner(volume)
+                        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -6)))
                 }
 
                 if let volume = model.volume, model.isDashboardLoading {
@@ -113,6 +115,20 @@ struct DashboardView: View {
                 .font(.mcSubtitle)
                 .foregroundStyle(Token.Text.primary)
             Spacer(minLength: 8)
+            Button {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                    model.dismissLowSpaceWarning()
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.mcSubtitle)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Token.Text.secondary)
+            .accessibilityLabel("Dismiss low-space warning")
+            .help("Dismiss until the next dashboard measurement.")
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
@@ -150,7 +166,7 @@ struct DashboardView: View {
                 Text("Storage has not been measured")
                     .font(.mcControlLabel)
                     .foregroundStyle(Token.Text.secondary)
-                Text("Use Refresh Overview to measure storage.")
+                Text("Use Refresh Dashboard to measure storage.")
                     .font(.mcSubtitle)
                     .foregroundStyle(Token.Text.tertiary)
                     .multilineTextAlignment(.center)

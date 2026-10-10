@@ -399,7 +399,7 @@ struct MainWindow: View {
             .disabled(model.cleanup.isInterruptingScan || (!model.cleanup.isScanning && model.isBusyWithDisk))
         case .dashboard:
             Button { Task { await model.dashboard.measureStorage() } } label: {
-                Label("Refresh Overview", systemImage: "arrow.clockwise")
+                Label("Refresh Dashboard", systemImage: "arrow.clockwise")
             }
                 .buttonStyle(PageActionButtonStyle())
                 .disabled(model.isBusyWithDisk || model.dashboard.isLoadingBreakdown)

@@ -44,6 +44,7 @@ final class DashboardModel {
     private(set) var breakdown: StorageBreakdown?
     private(set) var snapshots: [SnapshotInfo] = []
     private(set) var isLoadingBreakdown = false
+    private(set) var isLowSpaceWarningDismissed = false
     private(set) var hasCompletedInitialDashboardLoad = false
     var isDashboardLoading: Bool { !hasCompletedInitialDashboardLoad || isLoadingBreakdown }
     var snapshotsExpanded = false
@@ -70,6 +71,10 @@ final class DashboardModel {
             defaults.set(newValue.rawValue, forKey: "growthBaseline")
             recomputeGrowth()
         }
+    }
+
+    func dismissLowSpaceWarning() {
+        isLowSpaceWarningDismissed = true
     }
 
     /// Keep launch loading active until the complete refresh finishes.
@@ -143,6 +148,7 @@ final class DashboardModel {
         breakdown = measured.breakdown
         await refreshVolumeInfo()
         measuredAt = now()
+        isLowSpaceWarningDismissed = false
         if let volume, let breakdown, let measuredAt {
             await persistence.saveCache(BreakdownCache(volume: volume, breakdown: breakdown, measuredAt: measuredAt))
         }
