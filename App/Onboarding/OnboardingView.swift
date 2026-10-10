@@ -3,17 +3,28 @@ import SwiftUI
 import MoppoCore
 
 struct OnboardingView: View {
-    private enum Step { case welcome, access }
-    @State private var step = Step.welcome
+    typealias Step = OnboardingProgress.Step
+    @State private var step: Step
+    @State private var visitedSteps: Set<Step> = []
+    @State private var isChoosingFolder = false
+    @Bindable var settings: SettingsStore
+    let access: AccessModel
+    let progress: OnboardingProgress?
+    let onFinish: (URL?) -> Void
 
-    init(startsAtAccess: Bool = false, onFinish: @escaping () -> Void) {
-        _step = State(initialValue: startsAtAccess ? .access : .welcome)
+    init(
+        settings: SettingsStore, access: AccessModel, step: Step = .welcome,
+        progress: OnboardingProgress? = nil, onFinish: @escaping (URL?) -> Void
+    ) {
+        self.settings = settings
+        self.access = access
+        self.progress = progress
+        _step = State(initialValue: progress?.pendingStep ?? step)
         self.onFinish = onFinish
     }
 
     static var launchAccess: LaunchAccess {
-        LaunchAccess(
-            hasCompletedOnboarding: UserDefaults.standard.bool(forKey: "onboarding.completed"),
+        OnboardingProgress(defaults: .standard).launchAccess(
             hasFullDiskAccess: FullDiskAccess.isGranted,
             forceWelcome: isRequestedAtLaunch
         )
@@ -27,180 +38,244 @@ struct OnboardingView: View {
         #endif
     }
 
-    let onFinish: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hasFullDiskAccess = FullDiskAccess.isGranted
-
     private var isWelcome: Bool { step == .welcome }
+    private var animateEntrance: Bool { !visitedSteps.contains(step) }
 
     var body: some View {
         VStack(spacing: 0) {
-            WindowDragHandle()
-                .frame(height: Token.Size.headerBand)
-
+            WindowDragHandle().frame(height: Token.Size.headerBand)
             ScrollView {
                 VStack(spacing: 24) {
-                    illustration
-                    VStack(spacing: 10) {
-                        Text(isWelcome ? "Welcome to Moppo" : "Enable Full Disk Access")
-                            .font(.mcSecondaryHero)
-                            .foregroundStyle(Token.Text.primary)
-                            .accessibilityAddTraits(.isHeader)
-                        Text(isWelcome
-                             ? "Find unused files, review your storage, and choose what to remove."
-                             : "Enable access to scan protected folders, or continue with limited access.")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Token.Text.secondary)
-                            .multilineTextAlignment(.center)
+                    heading
+                    Group {
+                        if isWelcome {
+                            AccessList(access: access, animateEntrance: animateEntrance)
+                        } else {
+                            preferences
+                        }
                     }
-
-                    if isWelcome {
-                        welcomeDetails
-                    } else {
-                        accessDetails
-                    }
+                    .frame(maxWidth: 540)
                 }
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 620)
                 .padding(.horizontal, 32)
                 .padding(.vertical, 24)
                 .frame(maxWidth: .infinity, minHeight: 470)
                 .id(step)
-                .transition(.opacity)
+                .transition(.identity)
             }
             .defaultScrollAnchor(.center, for: .alignment)
-
             footer
         }
         .background(Token.chrome.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
-        .background(WindowChrome(headerBand: Token.Size.headerBand))
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            hasFullDiskAccess = FullDiskAccess.isGranted
+        .background {
+            if !access.isPreview { WindowChrome(headerBand: Token.Size.headerBand) }
         }
-        .task(id: step) {
-            guard !isWelcome else { return }
-            while !Task.isCancelled {
-                hasFullDiskAccess = FullDiskAccess.isGranted
-                do { try await Task.sleep(for: .seconds(2)) }
-                catch { return }
-            }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await access.refresh() }
         }
     }
 
-    private var illustration: some View {
-        Group {
+    private var heading: some View {
+        VStack(spacing: 12) {
             if isWelcome {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
+                    .resizable().interpolation(.high).scaledToFit()
+                    .frame(width: 96, height: 96)
+                    .accessibilityHidden(true)
+                    .modifier(OnboardingEntrance(index: 0, enabled: animateEntrance))
             } else {
-                Image(systemName: "externaldrive.badge.checkmark")
-                    .font(.system(size: 42, weight: .light))
-                    .foregroundStyle(Token.textColor(hasFullDiskAccess ? .green : .accent))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 52, weight: .light))
+                    .foregroundStyle(Token.Text.primary)
+                    .frame(width: 96, height: 96)
+                    .accessibilityHidden(true)
+                    .modifier(OnboardingEntrance(index: 0, enabled: animateEntrance))
+            }
+            Text(isWelcome ? "Welcome to Moppo" : "Set Your Preferences")
+                .font(.mcSecondaryHero)
+                .foregroundStyle(Token.Text.primary)
+                .accessibilityAddTraits(.isHeader)
+                .modifier(OnboardingEntrance(index: 1, enabled: animateEntrance))
+            Text(isWelcome
+                 ? "Make room for what matters.\nFiles go to Trash first, so you can always restore them."
+                 : "You can change these settings at any time in Settings.")
+                .font(.system(size: 15))
+                .foregroundStyle(Token.Text.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 36)
+                .modifier(OnboardingEntrance(index: 2, enabled: animateEntrance))
+        }
+    }
+
+    private var preferences: some View {
+        VStack(spacing: 10) {
+            preferenceRow("Scan automatically", detail: scanDetail, symbol: "calendar", index: 3) {
+                Picker("Scan automatically", selection: $settings.scanSchedule) {
+                    ForEach(ScanSchedule.allCases) { schedule in
+                        Text(schedule.displayName).tag(schedule)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 238)
+                .disabled(access.disk != .allowed)
+            }
+            preferenceRow(
+                "Low-space alerts",
+                detail: access.notifications.permitsAccess
+                    ? "Notify me below \(settings.warnBelowGB) GB free."
+                    : "Enable notifications on Welcome to receive alerts.",
+                symbol: "bell", index: 4
+            ) {
+                Toggle("Low-space alerts", isOn: $settings.lowSpaceAlertsEnabled)
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            preferenceRow("Show in menu bar", detail: "See free space at a glance.", symbol: "menubar.rectangle", index: 5) {
+                Toggle("Show in menu bar", isOn: $settings.showInMenuBar)
+                    .toggleStyle(.switch).labelsHidden()
             }
         }
-        .frame(width: 80, height: 80)
-        .accessibilityHidden(true)
     }
 
-    private var welcomeDetails: some View {
-        VStack(spacing: 0) {
-            feature("Review before removal", symbol: "checklist",
-                    detail: "Moppo groups files by type and identifies items that need your review.")
-            Rectangle().fill(Token.Fill.boxBorder).frame(height: 1).padding(.leading, 48)
-            feature("Keep control", symbol: "hand.raised",
-                    detail: "You choose what to remove. Scans do not delete files.")
-            Rectangle().fill(Token.Fill.boxBorder).frame(height: 1).padding(.leading, 48)
-            feature("Recover files from Trash", symbol: "trash",
-                    detail: "Cleanup moves files to Trash so you can restore them.")
-        }
-        .background(Token.Fill.well, in: RoundedRectangle(cornerRadius: Token.Radius.card))
-        .overlay(RoundedRectangle(cornerRadius: Token.Radius.card).strokeBorder(Token.Fill.boxBorder, lineWidth: 1))
+    private var scanDetail: String {
+        if access.disk != .allowed { return "Requires Full Disk Access. Manual folder scans remain available." }
+        return settings.idleOnly ? "When plugged in and idle." : "Uses your saved scan schedule."
     }
 
-    private func feature(_ title: String, symbol: String, detail: String) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+    private func preferenceRow<Control: View>(
+        _ title: String, detail: String, symbol: String, index: Int, @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.system(size: 18))
-                .foregroundStyle(Token.textColor(.accent))
+                .foregroundStyle(Token.Text.primary)
                 .frame(width: 20)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 14, weight: .semibold))
-                Text(detail)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Token.Text.secondary)
+                Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Token.Text.primary)
+                Text(detail).font(.system(size: 13)).foregroundStyle(Token.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            control()
         }
+        .frame(minHeight: 40)
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    private var accessDetails: some View {
-        PermissionRow(
-            title: "Full Disk Access",
-            detail: "Allow disk scans without separate requests for common folders",
-            symbol: "externaldrive.badge.checkmark",
-            status: hasFullDiskAccess ? "On" : "Enable",
-            isEnabled: hasFullDiskAccess,
-            settingsHint: "Open Full Disk Access in System Settings",
-            action: FullDiskAccess.openSystemSettings
-        )
+        .padding(.vertical, 14)
+        .background(Token.Fill.well, in: RoundedRectangle(cornerRadius: Token.Radius.card))
+        .overlay(RoundedRectangle(cornerRadius: Token.Radius.card)
+            .strokeBorder(Token.Fill.boxBorder, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .modifier(OnboardingEntrance(index: index, enabled: animateEntrance))
     }
 
     private var footer: some View {
         VStack(spacing: 0) {
             Divider()
-            ZStack {
-                HStack(spacing: 16) {
-                    stepIndicator(1, title: "Welcome", active: isWelcome)
-                    Rectangle().fill(Token.separator).frame(width: 24, height: 1)
-                    stepIndicator(2, title: "Access", active: !isWelcome)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(isWelcome ? "Step 1 of 2: Welcome" : "Step 2 of 2: Access")
-
+            HStack {
                 HStack {
                     if !isWelcome {
-                        Button("Back") {
-                            changeStep(to: .welcome)
-                        }
-                        .buttonStyle(PageActionButtonStyle())
+                        Button("Back") { changeStep(to: .welcome) }
+                            .buttonStyle(PageActionButtonStyle())
                     }
-                    Spacer()
-                    Button(isWelcome ? "Continue" : (hasFullDiskAccess ? "Start Scan" : "Continue with Limited Access")) {
-                        if isWelcome { changeStep(to: .access) }
-                        else { onFinish() }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 12) {
+                    stepButton(1, title: "Welcome", destination: .welcome)
+                    Rectangle().fill(Token.separator).frame(width: 24, height: 1)
+                    stepButton(2, title: "Preferences", destination: .preferences)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Setup steps")
+                HStack(spacing: 12) {
+                    if !isWelcome, access.disk != .allowed {
+                        Button("Skip for Now") { onFinish(nil) }
+                            .buttonStyle(PageActionButtonStyle())
+                    }
+                    Button(isWelcome ? "Continue" : (access.disk == .allowed ? "Get Started" : "Choose Folder")) {
+                        if isWelcome { changeStep(to: .preferences) }
+                        else if access.disk == .allowed { onFinish(nil) }
+                        else { chooseFolder() }
                     }
                     .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
                     .keyboardShortcut(.defaultAction)
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.vertical, 22)
+            .disabled(isChoosingFolder)
+            .padding(.vertical, 20)
         }
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 32)
     }
 
-    private func stepIndicator(_ number: Int, title: String, active: Bool) -> some View {
-        HStack(spacing: 9) {
-            Text("\(number)")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(active ? Color.white : Token.Text.secondary)
-                .frame(width: 28, height: 28)
-                .background(active ? Token.color(.accent) : Token.Fill.control, in: Circle())
-            Text(title)
-                .font(.system(size: 13, weight: active ? .semibold : .regular))
-                .foregroundStyle(active ? Token.Text.primary : Token.Text.secondary)
+    private func chooseFolder() {
+        guard !access.isPreview else { return }
+        isChoosingFolder = true
+        let panel = NSOpenPanel()
+        panel.title = "Choose a Folder"
+        panel.message = "Moppo will measure only the folder you select."
+        panel.prompt = "Choose Folder"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        Task { @MainActor in
+            defer { isChoosingFolder = false }
+            guard await panel.presentAsSheet() == .OK, let url = panel.url else { return }
+            onFinish(url)
         }
+    }
+
+    private func stepButton(_ number: Int, title: String, destination: Step) -> some View {
+        let active = step == destination
+        return Button {
+            changeStep(to: destination)
+        } label: {
+            HStack(spacing: 8) {
+                Text("\(number)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(active ? Color.white : Token.Text.secondary)
+                    .frame(width: 26, height: 26)
+                    .background(active ? Token.color(.accent) : Token.Fill.control, in: Circle())
+                Text(title)
+                    .font(.system(size: 13, weight: active ? .semibold : .regular))
+                    .foregroundStyle(active ? Token.Text.primary : Token.Text.secondary)
+            }
+            .fixedSize()
+            .frame(minHeight: 38)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Step \(number) of 2: \(title)")
+        .accessibilityValue(active ? "Current step" : "")
+        .help("Show \(title)")
     }
 
     private func changeStep(to step: Step) {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-            self.step = step
-        }
+        guard self.step != step else { return }
+        progress?.save(step)
+        visitedSteps.insert(self.step)
+        self.step = step
     }
+}
+
+#Preview("Welcome light") {
+    OnboardingView(settings: .preview(), access: .preview()) { _ in }
+        .frame(width: 1000, height: 640).preferredColorScheme(.light)
+}
+
+#Preview("Welcome dark") {
+    OnboardingView(settings: .preview(), access: .preview(disk: true)) { _ in }
+        .frame(width: 1000, height: 640).preferredColorScheme(.dark)
+}
+
+#Preview("Preferences light") {
+    OnboardingView(settings: .preview(), access: .preview(disk: true, notifications: .allowed), step: .preferences) { _ in }
+        .frame(width: 1000, height: 640).preferredColorScheme(.light)
+}
+
+#Preview("Preferences dark") {
+    OnboardingView(settings: .preview(), access: .preview(), step: .preferences) { _ in }
+        .frame(width: 1000, height: 640).preferredColorScheme(.dark)
 }

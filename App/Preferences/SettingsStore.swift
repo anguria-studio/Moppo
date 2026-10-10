@@ -137,6 +137,7 @@ final class SettingsStore {
         static let scanSchedule = ScanSchedule.weekly
         static let idleOnly = true
         static let warnBelowGB = 20
+        static let lowSpaceAlertsEnabled = true
         static let confirmBeforeCleanup = false
         static let keepReceipt = true
         static let allowPhotoDownloads = true
@@ -194,6 +195,7 @@ final class SettingsStore {
         static let scanSchedule = "settings.scanSchedule"
         static let idleOnly = "settings.idleOnly"
         static let warnBelowGB = "settings.warnBelowGB"
+        static let lowSpaceAlertsEnabled = "settings.lowSpaceAlertsEnabled"
         static let iCloudPlan = "settings.iCloudPlan"
         static let categoryEnabled = "settings.categoryEnabled"
         static let confirmBeforeCleanup = "settings.confirmBeforeCleanup"
@@ -225,6 +227,10 @@ final class SettingsStore {
 
     var idleOnly: Bool {
         didSet { defaults.set(idleOnly, forKey: Key.idleOnly) }
+    }
+
+    var lowSpaceAlertsEnabled: Bool {
+        didSet { defaults.set(lowSpaceAlertsEnabled, forKey: Key.lowSpaceAlertsEnabled) }
     }
 
     var warnBelowGB: Int {
@@ -356,6 +362,7 @@ final class SettingsStore {
             bool(Key.launchAtLogin, or: Defaults.launchAtLogin)
         }
 
+        self.lowSpaceAlertsEnabled = bool(Key.lowSpaceAlertsEnabled, or: Defaults.lowSpaceAlertsEnabled)
         self.showInMenuBar = bool(Key.showInMenuBar, or: Defaults.showInMenuBar)
         self.scanSchedule = (defaults.string(forKey: Key.scanSchedule)
             .flatMap(ScanSchedule.init(rawValue:))) ?? Defaults.scanSchedule
@@ -407,6 +414,7 @@ final class SettingsStore {
         scanSchedule = Defaults.scanSchedule
         idleOnly = Defaults.idleOnly
         warnBelowGB = Defaults.warnBelowGB
+        lowSpaceAlertsEnabled = Defaults.lowSpaceAlertsEnabled
         iCloudPlan = .automatic
         categoryEnabled = Dictionary(
             uniqueKeysWithValues: CategoryID.allCases.map { ($0, Defaults.categoryEnabled($0)) }

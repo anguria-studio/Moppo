@@ -15,6 +15,7 @@ import MoppoCore
 struct PreferencesView: View {
 
     let settings: SettingsStore
+    let access: AccessModel
 
     /// Per-category sizes from the last scan. A category the caller has no figure for
     /// renders an em dash: `0 B` would claim it was measured and found clean.
@@ -30,6 +31,9 @@ struct PreferencesView: View {
         TabView {
             GeneralPane(settings: settings)
                 .tabItem { Label("General", systemImage: "gearshape") }
+
+            AccessPane(access: access)
+                .tabItem { Label("Access", systemImage: "hand.raised") }
 
             CategoriesPane(settings: settings, sizes: categorySizes)
                 .tabItem { Label("Categories", systemImage: "square.grid.2x2") }
@@ -253,6 +257,7 @@ where Choice: CaseIterable & Hashable & Identifiable, Choice.AllCases: RandomAcc
 #Preview("Preferences") {
     PreferencesView(
         settings: .preview(),
+        access: .preview(),
         categorySizes: [
             .systemCaches: 1_750_199_173,
             .packageManagers: 516_726_784,

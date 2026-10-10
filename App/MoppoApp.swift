@@ -10,15 +10,31 @@ struct MoppoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model: AppModel
     @State private var settings: SettingsStore
+    @State private var access: AccessModel
+
+    static var isRunningPreview: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
 
     init() {
+        if Self.isRunningPreview {
+            let settings = SettingsStore.preview { $0.showInMenuBar = false }
+            _settings = State(initialValue: settings)
+            _model = State(initialValue: AppModel(launchAccess: .welcome, hasFullDiskAccess: { false }))
+            _access = State(initialValue: .preview())
+            return
+        }
         AppIdentity.migratePreferences()
         // One store, handed to the model so the engine actually receives the
         // preferences the panes edit.
         let settings = SettingsStore()
-        let model = AppModel(settings: settings, launchAccess: OnboardingView.launchAccess)
+        let model = AppModel(
+            settings: settings, launchAccess: OnboardingView.launchAccess,
+            onboardingProgress: OnboardingProgress(defaults: .standard)
+        )
         _settings = State(initialValue: settings)
         _model = State(initialValue: model)
+        _access = State(initialValue: AccessModel())
         FinderUninstallRequestCenter.shared.install { [weak model] applicationURL in
             model?.uninstaller.planAppUninstall(applicationURL)
         }
@@ -31,7 +47,7 @@ struct MoppoApp: App {
 
     var body: some Scene {
         Window("Moppo", id: "main") {
-            WelcomeRoot(model: model, settings: settings)
+            WelcomeRoot(model: model, settings: settings, access: access)
                 .frame(
                     minWidth: 1000, idealWidth: Token.Size.windowWidth,
                     minHeight: 640, idealHeight: Token.Size.windowHeight
@@ -45,6 +61,7 @@ struct MoppoApp: App {
         Settings {
             PreferencesView(
                 settings: settings,
+                access: access,
                 categorySizes: model.categorySizes,
                 onRebuildIndex: {
                     Task { await model.dashboard.rebuildSizeIndex() }
@@ -95,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !MoppoApp.isRunningPreview else { return }
         // Low-space readings often finish while the Dashboard is the active window.
         // Foreground notifications are silent unless the app supplies a delegate.
         UNUserNotificationCenter.current().delegate = self
@@ -251,13 +269,13 @@ private struct MoppoCommands: Commands {
 private struct WelcomeRoot: View {
     @Bindable var model: AppModel
     let settings: SettingsStore
+    let access: AccessModel
 
     var body: some View {
         Group {
             if model.isShowingWelcome {
-                OnboardingView(startsAtAccess: model.launchAccess == .diskAccess) {
-                    model.finishWelcomeGuide()
-                    UserDefaults.standard.set(true, forKey: "onboarding.completed")
+                OnboardingView(settings: settings, access: access, progress: model.onboardingProgress) { folder in
+                    model.finishWelcomeGuide(folder: folder)
                 }
             } else {
                 MainWindow(model: model, settings: settings)

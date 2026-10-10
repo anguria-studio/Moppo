@@ -4,9 +4,7 @@ import MoppoCore
 
 /// Bridges the pure threshold policy to Notification Center.
 ///
-/// The service requests authorization only after a real low-space crossing. A user
-/// with enough space does not receive an unnecessary prompt. The service also does
-/// not ask again after a denial.
+/// Permission requests belong to the Access screen. Background observations do not request access.
 @MainActor
 final class LowDiskNotificationService {
     nonisolated static let notificationIdentifier = "com.tommasolaterza.Moppo.low-disk"
@@ -40,11 +38,7 @@ final class LowDiskNotificationService {
             state: loadState()
         )
 
-        // Two facts, saved at two moments. The crossing is saved now, so a
-        // relaunch during the permission prompt does not read as a fresh crossing.
-        // The delivery timestamp is saved only after delivery: recording it here
-        // meant a declined prompt, or a failed `add`, still started the 24-hour
-        // cooldown for a warning nobody ever saw.
+        // Save the crossing before delivery. Save the delivery time only after delivery succeeds.
         let previous = loadState()
         var crossingOnly = decision.state
         crossingOnly.lastNotificationAt = previous.lastNotificationAt
@@ -65,12 +59,7 @@ final class LowDiskNotificationService {
         )
         do {
             try await center.add(request)
-            // Both awaits above suspend the main actor, and another observation can
-            // run in the gap — recording, say, that free space recovered. Saving the
-            // decision captured *before* the prompt would put that older state back
-            // and swallow the next real crossing. So: reload, keep whatever the
-            // crossing flag says now, and stamp the moment delivery actually
-            // happened rather than the moment the decision was made.
+            // Reload the state because free space can change during notification delivery.
             var delivered = loadState()
             delivered.lastNotificationAt = Date()
             saveState(delivered)
@@ -85,9 +74,7 @@ final class LowDiskNotificationService {
         switch status {
         case .authorized, .provisional, .ephemeral:
             return true
-        case .notDetermined:
-            return (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-        case .denied:
+        case .notDetermined, .denied:
             return false
         @unknown default:
             return false
