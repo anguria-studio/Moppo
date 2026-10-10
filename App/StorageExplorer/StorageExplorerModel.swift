@@ -99,7 +99,8 @@ final class StorageExplorerModel {
     }
 
     var canRemoveSelection: Bool {
-        !selectedItems.isEmpty && selectedItems.allSatisfy(\.isRemovable)
+        !isLoading && snapshot?.isComplete == true
+            && !selectedItems.isEmpty && selectedItems.allSatisfy(\.isRemovable)
     }
 
     /// Highlight tiles immediately. Delay only the first activation of the header action.
@@ -310,9 +311,7 @@ final class StorageExplorerModel {
         useCache: Bool = true,
         revealing item: URL? = nil
     ) {
-        guard !isMeasurementBlocked,
-              let operation = scanOperation ?? operations.begin(.storageMeasurement) else { return }
-        scanOperation = operation
+        guard !isMeasurementBlocked else { return }
         let previous = scanTask
         previous?.cancel()
         scanGeneration += 1
@@ -325,7 +324,16 @@ final class StorageExplorerModel {
         wasCancelled = false
         isInterrupting = false
         currentURL = url
-        snapshot = nil
+        let cached = useCache ? cachedSnapshot(for: url) : nil
+        snapshot = cached
+        if let cached, previous == nil {
+            currentURL = cached.directory
+            isLoading = false
+            applyPendingSelection()
+            return
+        }
+        guard let operation = scanOperation ?? operations.begin(.storageMeasurement) else { return }
+        scanOperation = operation
         isLoading = true
         let capturedPreferences = preferences()
 
@@ -337,16 +345,19 @@ final class StorageExplorerModel {
                     isInterrupting = false
                     scanTask = nil
                     scanOperation = nil
-                    if Task.isCancelled { wasCancelled = !needsRefresh }
+                    if Task.isCancelled {
+                        wasCancelled = !needsRefresh
+                        snapshot = nil
+                        selection.removeAll()
+                    }
                     operations.finish(operation)
                 }
             }
             // Retain the guard until every replaced measurement has returned.
             await previous?.value
-            let presentation = OperationPresentationDuration()
             do {
                 try Task.checkCancellation()
-                if useCache, let cached = cachedSnapshot(for: url) {
+                if let cached = useCache ? cachedSnapshot(for: url) : nil {
                     currentURL = cached.directory
                     snapshot = cached
                     applyPendingSelection()
@@ -356,14 +367,20 @@ final class StorageExplorerModel {
                     directory: url,
                     excludedPaths: capturedPreferences.excludedPaths,
                     excludedPatterns: capturedPreferences.excludedPatterns,
-                    progress: { measurement in
+                    progress: { partial in
                         Task { @MainActor in
-                            guard self.scanGeneration == generation, !self.isInterrupting else { return }
-                            self.progress = measurement
+                            guard self.scanGeneration == generation, !self.isInterrupting,
+                                  self.snapshot?.isComplete != true,
+                                  partial.fileCount >= self.progress.fileCount,
+                                  partial.allocatedBytes >= self.progress.allocatedBytes else { return }
+                            self.snapshot = partial
+                            self.progress = SizeMeasurement(
+                                allocatedBytes: partial.allocatedBytes, fileCount: partial.fileCount,
+                                unreadableCount: partial.unreadableCount
+                            )
                         }
                     }
                 )
-                try await presentation.wait()
                 try Task.checkCancellation()
                 guard scanGeneration == generation else { return }
                 snapshot = measured
@@ -371,13 +388,11 @@ final class StorageExplorerModel {
                 currentURL = measured.directory
                 applyPendingSelection()
             } catch is CancellationError {
-                // Keep the guard until the service and presentation have stopped.
+                // Keep the guard until the service has stopped.
             } catch let explorerError as StorageExplorerError {
-                try? await presentation.wait()
                 guard scanGeneration == generation, !Task.isCancelled else { return }
                 error = explorerError
             } catch {
-                try? await presentation.wait()
                 guard scanGeneration == generation, !Task.isCancelled else { return }
                 self.error = .unavailable(url.path)
             }
@@ -414,6 +429,7 @@ final class StorageExplorerModel {
     }
 
     private func store(_ snapshot: StorageExplorerSnapshot) {
+        guard snapshot.isComplete else { return }
         let key = Self.cacheKey(for: snapshot.directory)
         cachedSnapshots[key] = snapshot
         cachedDirectoryIdentities[key] = FileIdentity.of(snapshot.directory)

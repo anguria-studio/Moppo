@@ -5,6 +5,110 @@ import Testing
 @Suite("Storage Explorer operation ownership")
 @MainActor
 struct StorageExplorerModelTests {
+    @Test("Cached breadcrumbs and history display results without entering loading")
+    func cachedNavigation() async throws {
+        let parent = try TemporaryFolder()
+        let child = parent.url.appendingPathComponent("Child")
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        let service = HeldExplorerScanner()
+        let operations = OperationCoordinator()
+        let model = StorageExplorerModel(operations: operations, service: service)
+        let parentSnapshot = explorerSnapshot(parent.url)
+        let childSnapshot = explorerSnapshot(child)
+        model.selectLocation(parent.url)
+        try await waitUntil { await service.scans.count == 1 }
+        await service.finishScan(0, parentSnapshot)
+        try await waitUntil { !model.isLoading }
+        model.navigate(to: child)
+        try await waitUntil { await service.scans.count == 2 }
+        await service.finishScan(1, childSnapshot)
+        try await waitUntil { !model.isLoading }
+
+        model.navigate(to: parent.url)
+        #expect(model.snapshot == parentSnapshot)
+        #expect(!model.isLoading)
+        #expect(!operations.isBusy)
+        model.goBack()
+        #expect(model.snapshot == childSnapshot)
+        #expect(!model.isLoading)
+        model.goForward()
+        #expect(model.snapshot == parentSnapshot)
+        #expect(!model.isLoading)
+        #expect(await service.scans.count == 2)
+
+        model.refresh()
+        try await waitUntil { await service.scans.count == 3 }
+        await service.finishScan(2, explorerSnapshot(parent.url))
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot?.measuredAt != parentSnapshot.measuredAt)
+    }
+
+    @Test("Folder sizes update across page changes and partial rows cannot be removed")
+    func partialMeasurements() async throws {
+        let service = HeldExplorerScanner()
+        let app = AppModel(storageExplorerService: service)
+        let model = app.storageExplorer
+        let folder = URL(fileURLWithPath: "/explorer-fixture")
+        model.selectLocation(folder)
+        try await waitUntil { await service.scans.count == 1 }
+        await service.report(0, bytes: 32)
+        try await waitUntil { model.snapshot?.allocatedBytes == 32 }
+        app.view = .history
+        await service.report(0, bytes: 64)
+        try await waitUntil { model.snapshot?.allocatedBytes == 64 }
+        #expect(model.progress.allocatedBytes == 64)
+        #expect(model.snapshot?.isComplete == false)
+        #expect(model.isLoading)
+        #expect(app.isBusyWithDisk)
+        model.selection = Set(try #require(model.snapshot).items.map(\.id))
+        #expect(!model.canRemoveSelection)
+        await model.requestRemoval()
+        #expect(await service.reviews.isEmpty)
+        app.view = .storageExplorer
+        #expect(model.snapshot?.items.first?.allocatedBytes == 64)
+        let complete = explorerSnapshot(folder)
+        await service.finishScan(0, complete)
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot == complete)
+        #expect(model.canRemoveSelection)
+        await service.report(0, bytes: 999)
+        await Task.yield()
+        #expect(model.snapshot == complete)
+    }
+
+    @Test("Cached results appear while an interrupted child returns without caching partial rows")
+    func cachedNavigationDuringMeasurement() async throws {
+        let parent = try TemporaryFolder()
+        let child = parent.url.appendingPathComponent("Child")
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        let service = HeldExplorerScanner()
+        let operations = OperationCoordinator()
+        let model = StorageExplorerModel(operations: operations, service: service)
+        let complete = explorerSnapshot(parent.url)
+        model.selectLocation(parent.url)
+        try await waitUntil { await service.scans.count == 1 }
+        await service.finishScan(0, complete)
+        try await waitUntil { !model.isLoading }
+        model.navigate(to: child)
+        try await waitUntil { await service.scans.count == 2 }
+        await service.report(1, bytes: 32)
+        try await waitUntil { model.snapshot?.isComplete == false }
+        model.navigate(to: parent.url)
+        #expect(model.snapshot == complete)
+        #expect(operations.isBusy)
+        await service.report(1, bytes: 99)
+        await service.finishScan(1, explorerSnapshot(child))
+        try await waitUntil { !model.isLoading }
+        #expect(model.snapshot == complete)
+        #expect(await service.scans.count == 2)
+        #expect(!operations.isBusy)
+        model.navigate(to: child)
+        #expect(model.snapshot == nil)
+        try await waitUntil { await service.scans.count == 3 }
+        await service.finishScan(2, explorerSnapshot(child))
+        try await waitUntil { !model.isLoading }
+    }
+
     @Test("Cancellation holds the shared guard until measurement returns")
     func scanCancellation() async throws {
         let service = HeldExplorerScanner()
@@ -13,6 +117,8 @@ struct StorageExplorerModelTests {
         let folder = URL(fileURLWithPath: "/explorer-fixture/first")
         model.selectLocation(folder)
         try await waitUntil { await service.scans.count == 1 }
+        await service.report(0, bytes: 32)
+        try await waitUntil { model.snapshot?.allocatedBytes == 32 }
         app.view = .history
         model.cancel()
         #expect(model.isInterrupting)
@@ -22,7 +128,7 @@ struct StorageExplorerModelTests {
         try await waitUntil { !model.isLoading }
         #expect(model.wasCancelled)
         #expect(model.snapshot == nil)
-        #expect(model.progress.allocatedBytes == 0)
+        #expect(model.progress.allocatedBytes == 32)
         #expect(!app.isBusyWithDisk)
         #expect(app.view == .history)
         model.refresh()
@@ -316,6 +422,68 @@ struct StorageExplorerModelTests {
     }
 }
 
+@Suite("Storage Explorer row updates")
+struct StorageExplorerRowOrderTests {
+    private let sizeOrder = [KeyPathComparator(\StorageExplorerItem.allocatedBytes, order: .reverse)]
+
+    @Test("Live sizes keep their rows until completion or a column sort")
+    func liveRowOrder() {
+        let directory = URL(fileURLWithPath: "/explorer-fixture")
+        var snapshot = StorageExplorerSnapshot(
+            directory: directory,
+            items: [
+                StorageExplorerItem(url: directory.appendingPathComponent("A"), kind: .folder, allocatedBytes: 10),
+                StorageExplorerItem(url: directory.appendingPathComponent("B"), kind: .folder, allocatedBytes: 0)
+            ],
+            allocatedBytes: 10, fileCount: 0, unreadableCount: 0, isComplete: false
+        )
+        var rows = StorageExplorerRowOrder()
+        var didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        snapshot.items[1].allocatedBytes = 20
+        didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        #expect(rows.items(in: snapshot, sortOrder: sizeOrder).map(\.name) == ["A", "B"])
+        #expect(rows.items(in: snapshot, sortOrder: sizeOrder).map(\.allocatedBytes) == [10, 20])
+
+        didReorder = rows.update(snapshot, sortOrder: sizeOrder, forceSort: true)
+        #expect(didReorder)
+        #expect(rows.items(in: snapshot, sortOrder: sizeOrder).map(\.name) == ["B", "A"])
+        snapshot.items[0].allocatedBytes = 30
+        didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        #expect(rows.items(in: snapshot, sortOrder: sizeOrder).map(\.allocatedBytes) == [20, 30])
+        snapshot.isComplete = true
+        didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(didReorder)
+        #expect(rows.items(in: snapshot, sortOrder: sizeOrder).map(\.name) == ["A", "B"])
+        didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(!didReorder)
+    }
+
+    @Test("Completed folders appear sorted without a navigation animation")
+    func completedNavigation() {
+        let directory = URL(fileURLWithPath: "/explorer-fixture")
+        var snapshot = explorerSnapshot(directory)
+        snapshot.items.append(StorageExplorerItem(
+            url: directory.appendingPathComponent("larger"), kind: .file, allocatedBytes: 128
+        ))
+        var rows = StorageExplorerRowOrder()
+        var didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        #expect(rows.items(in: snapshot, sortOrder: sizeOrder).map(\.allocatedBytes) == [128, 64])
+        didReorder = rows.update(nil, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        #expect(rows.items(in: nil, sortOrder: sizeOrder).isEmpty)
+        didReorder = rows.update(snapshot, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        let child = explorerSnapshot(directory.appendingPathComponent("child"))
+        didReorder = rows.update(child, sortOrder: sizeOrder)
+        #expect(!didReorder)
+        #expect(rows.items(in: child, sortOrder: sizeOrder) == child.items)
+    }
+}
+
 private func explorerSnapshot(_ directory: URL) -> StorageExplorerSnapshot {
     let item = StorageExplorerItem(url: directory.appendingPathComponent("item"), kind: .file, allocatedBytes: 64, identity: "fixture")
     return StorageExplorerSnapshot(directory: directory, items: [item], allocatedBytes: 64, fileCount: 1, unreadableCount: 0)
@@ -337,11 +505,11 @@ private actor HeldExplorerScanner: StorageExplorerScanning {
     private(set) var reviewCancelled: [Bool] = []
     private var scansPending: [Int: CheckedContinuation<StorageExplorerSnapshot, Error>] = [:]
     private var reviewsPending: [Int: CheckedContinuation<StorageExplorerSelectionReview, Error>] = [:]
-    private var progress: [Int: @Sendable (SizeMeasurement) -> Void] = [:]
+    private var progress: [Int: @Sendable (StorageExplorerSnapshot) -> Void] = [:]
 
     func scan(
         directory: URL, excludedPaths: [String], excludedPatterns: [String],
-        progress: (@Sendable (SizeMeasurement) -> Void)?
+        progress: (@Sendable (StorageExplorerSnapshot) -> Void)?
     ) async throws -> StorageExplorerSnapshot {
         let index = scans.count
         scans.append(Request(directory: directory, excludedPaths: excludedPaths, excludedPatterns: excludedPatterns))
@@ -362,7 +530,13 @@ private actor HeldExplorerScanner: StorageExplorerScanning {
     func finishScan(_ index: Int, _ snapshot: StorageExplorerSnapshot) { scansPending.removeValue(forKey: index)?.resume(returning: snapshot) }
     func finishReview(_ index: Int, _ review: StorageExplorerSelectionReview) { reviewsPending.removeValue(forKey: index)?.resume(returning: review) }
     func failReview(_ index: Int) { reviewsPending.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadNoPermission)) }
-    func report(_ index: Int, bytes: Int64) { progress[index]?(SizeMeasurement(allocatedBytes: bytes, fileCount: 1)) }
+    func report(_ index: Int, bytes: Int64) {
+        var snapshot = explorerSnapshot(scans[index].directory)
+        snapshot.allocatedBytes = bytes
+        snapshot.items[0].allocatedBytes = bytes
+        snapshot.isComplete = false
+        progress[index]?(snapshot)
+    }
 }
 
 private actor HeldExplorerRemover: StorageExplorerRemoving {
