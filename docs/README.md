@@ -227,7 +227,33 @@ label.
 
 **Measure the Data volume at its own mount point.** The `/System` path through `/`
 refers to the read-only System volume. The Data volume has a different `/System`
-tree. This tree contains about 13 GB of Apple Intelligence assets.
+tree. This tree contains shared Apple assets, including Apple Intelligence models.
+
+**Identify Apple Intelligence separately.** The Dashboard separates measured model bytes from macOS System.
+The overall storage total does not change.
+Moppo recognizes these stores under `/System/Volumes/Data/System/Library/AssetsV2`:
+
+- `com_apple_MobileAsset_UAF_FM_GenerativeModels`
+- `com_apple_MobileAsset_UAF_FM_Visual`
+
+Apple asset manifests identify language models and image diffusion models in these stores.
+The location rules cover macOS 15.1 and later releases of macOS 15, macOS 26, and macOS 27.
+Other macOS versions do not show this category.
+Fonts, dictionaries, CodeLM, Siri assets, shared staging folders, and unknown model stores remain in their existing categories.
+These rules identify known stores. They do not establish the complete storage cost of every Apple Intelligence feature.
+
+The category appears only when Moppo measures model bytes.
+Partial measurements show At least with the measured size.
+Empty, missing, and fully unreadable model stores do not add a category or size.
+Moppo retains the difference between empty and unreadable stores for storage comparisons.
+Measurement uses file access and does not load Apple Intelligence frameworks.
+Missing model folders do not prevent the Dashboard measurement on older Macs.
+Moppo does not offer these models for removal.
+The category does not indicate whether Apple Intelligence features are on.
+
+Storage Changes includes model changes of at least 100 MB among the largest changes.
+Both measurements must cover all identified stores on the same major macOS version.
+Older history cannot provide model changes because it did not record the separate category.
 
 **Categories must be disjoint.** `DisjointCategoriesTests` asserts that no two
 scanners claim the same path. Adding a cache root to one scanner fails the build

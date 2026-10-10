@@ -13,7 +13,7 @@ public struct MeasurementContract: Codable, Sendable, Equatable {
     /// deduplication, the symlink policy, the root tables, the node depth, or the
     /// node threshold. Snapshots written before the change then read as what they
     /// are — a different measurement — instead of being subtracted from a new one.
-    public static let currentVersion = 1
+    public static let currentVersion = 2
 
     public let version: Int
     public let homePath: String

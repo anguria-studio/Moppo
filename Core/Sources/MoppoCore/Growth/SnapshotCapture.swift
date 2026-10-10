@@ -47,12 +47,15 @@ public enum SnapshotCapture {
         // Machine-wide roots first. Each is one measured tree owned by one segment,
         // and each sits at depth 0 because none of them is below home.
         for (url, size) in measurement.rootMeasurements {
-            guard size.allocatedBytes >= minimumNodeBytes,
-                  let segment = StorageBreakdownService.segment(forRoot: url) else { continue }
+            guard let segment = StorageBreakdownService.segment(forRoot: url) else { continue }
+            let modelBytes = url == AppleIntelligenceStorage.systemRoot
+                ? measurement.breakdown.appleIntelligence?.allocatedBytes ?? 0 : 0
+            let bytes = size.allocatedBytes - modelBytes
+            guard bytes >= minimumNodeBytes else { continue }
             nodes.append(SnapshotNode(
                 path: url.standardizedFileURL.path,
                 identity: identity(url),
-                allocatedBytes: size.allocatedBytes,
+                allocatedBytes: bytes,
                 fileCount: size.fileCount,
                 depth: 0,
                 segment: segment

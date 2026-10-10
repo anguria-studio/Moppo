@@ -51,6 +51,7 @@ enum Token {
         case .red:       Color(nsColor: .systemRed)
         case .yellow:    Color(nsColor: .systemYellow)
         case .purple:    Color(nsColor: .systemPurple)
+        case .indigo:    Color(nsColor: .systemIndigo)
         case .teal:      Color(nsColor: .systemTeal)
         case .pink:      Color(nsColor: .systemPink)
         case .brown:     Color(nsColor: .systemBrown)

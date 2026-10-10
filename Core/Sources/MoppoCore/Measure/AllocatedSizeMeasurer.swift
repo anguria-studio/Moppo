@@ -210,6 +210,7 @@ public struct AllocatedSizeMeasurer: Sendable {
     public func measureSubtrees(
         of root: URL,
         depth: Int,
+        reportSkippedEntries: Bool = false,
         progress: (@Sendable (SizeMeasurement) -> Void)? = nil
     ) async throws -> [URL: SizeMeasurement] {
         precondition(depth >= 1, "depth must be at least 1")
@@ -227,7 +228,8 @@ public struct AllocatedSizeMeasurer: Sendable {
                     protectedPatterns: protectedPatterns,
                     cancelled: cancelled,
                     keys: keys,
-                    progress: progress
+                    progress: progress,
+                    reportSkippedEntries: reportSkippedEntries
                 )
                 if Self.isCloudOnly(rootValues) { walker.markCloudOnly(standardRoot) }
                 walker.enqueue(
@@ -390,6 +392,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
     private let cancelled: CancellationFlag
     private let keys: [URLResourceKey]
     private let progress: (@Sendable (SizeMeasurement) -> Void)?
+    private let reportSkippedEntries: Bool
 
     private let condition = NSCondition()
     private var stack: [WorkItem] = []
@@ -423,13 +426,15 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         protectedPatterns: [String] = [],
         cancelled: CancellationFlag,
         keys: [URLResourceKey],
-        progress: (@Sendable (SizeMeasurement) -> Void)?
+        progress: (@Sendable (SizeMeasurement) -> Void)?,
+        reportSkippedEntries: Bool = false
     ) {
         self.followSymlinks = followSymlinks
         self.protectedPatterns = protectedPatterns
         self.cancelled = cancelled
         self.keys = keys
         self.progress = progress
+        self.reportSkippedEntries = reportSkippedEntries
     }
 
     func enqueue(
@@ -439,6 +444,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         volume: NSObject?
     ) {
         condition.lock()
+        for key in attribution where totals[key] == nil { totals[key] = .zero }
         if followSymlinks {
             // Every directory funnels through here, so this one check is the whole
             // cycle- and double-count guard.
@@ -488,6 +494,10 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         condition.lock()
         unreadable[key, default: 0] += 1
         condition.unlock()
+    }
+
+    private func recordUnreadable(at keys: [URL]) {
+        for key in keys { recordUnreadable(at: key) }
     }
 
     /// A direct file child in `measureChildren` — no directory to walk.
@@ -579,13 +589,16 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         ) else {
             // A permission-denied directory costs one entry — never a subtree,
             // and never the whole total.
-            recordUnreadable(at: item.attribution[0])
+            recordUnreadable(at: item.attribution)
             return
         }
 
         var localFiles: [Int64] = []
 
         for entry in entries {
+            let childKey = item.attribution[item.attribution.count - 1]
+                .appendingPathComponent(entry.lastPathComponent)
+            let childAttribution = item.grow > 0 ? item.attribution + [childKey] : item.attribution
             // Name check first: it needs no attributes, so a protected bundle is
             // recognised even where the entry itself cannot be read.
             if matchesProtectedPattern(entry.lastPathComponent) {
@@ -594,7 +607,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             guard let values = try? entry.resourceValues(
                 forKeys: Set(keys)
             ) else {
-                recordUnreadable(at: item.attribution[0])
+                recordUnreadable(at: childAttribution)
                 continue
             }
             // Never leave the starting volume — a mounted disk under the scan
@@ -602,13 +615,17 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             if let volume = item.volume,
                let entryVolume = values.volumeIdentifier as? NSObject,
                !entryVolume.isEqual(volume) {
+                if reportSkippedEntries { recordUnreadable(at: childAttribution) }
                 continue
             }
             if AllocatedSizeMeasurer.isCloudOnly(values) {
                 for key in item.attribution { markCloudOnly(key) }
             }
             if values.isSymbolicLink == true {
-                guard followSymlinks else { continue }
+                guard followSymlinks else {
+                    if reportSkippedEntries { recordUnreadable(at: childAttribution) }
+                    continue
+                }
                 // The setting is on: measure the target as if it lived here. The
                 // visited set breaks cycles and stops a target that is walked
                 // anyway from counting twice; Advanced warns this can double-count
@@ -619,12 +636,13 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                 guard let target = try? resolved.resourceValues(
                     forKeys: Set(keys)
                 ) else {
-                    recordUnreadable(at: item.attribution[0])
+                    recordUnreadable(at: childAttribution)
                     continue
                 }
                 if let volume = item.volume,
                    let targetVolume = target.volumeIdentifier as? NSObject,
                    !targetVolume.isEqual(volume) {
+                    if reportSkippedEntries { recordUnreadable(at: childAttribution) }
                     continue
                 }
                 if AllocatedSizeMeasurer.isCloudOnly(target) {

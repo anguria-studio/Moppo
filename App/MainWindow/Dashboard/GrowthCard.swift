@@ -245,22 +245,13 @@ private struct AttributionRow: View {
     let onReveal: (GrowthAttribution) -> Void
 
     var body: some View {
-        if isRevealable {
+        if attribution.isRevealable {
             Button { onReveal(attribution) } label: { line }
                 .buttonStyle(.plain)
                 .hoverHighlight(radius: Token.Radius.row)
                 .help("Open this folder in the Storage Explorer")
         } else {
             line
-        }
-    }
-
-    /// A folder that is not there any more cannot be opened. Those rows state the
-    /// change and stop, rather than offering a click that lands on an empty parent.
-    private var isRevealable: Bool {
-        switch attribution.kind {
-        case .disappeared, .movedOut: false
-        default:                      true
         }
     }
 
@@ -273,11 +264,13 @@ private struct AttributionRow: View {
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
                     .fixedSize()
-                Text(FileEntry.abbreviate(attribution.path))
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                if attribution.segment != .appleIntelligence {
+                    Text(FileEntry.abbreviate(attribution.path))
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 if let badge = Self.badge(for: attribution.kind) {
                     Badge(text: badge.text)
                         .lineLimit(1)
