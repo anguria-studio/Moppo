@@ -50,9 +50,27 @@ Read field identifiers with `gh project field-list` before you update a field.
 - Use one of these types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `revert`.
 - Open a pull request for each change to `main`.
 - Do not push directly to `main`.
-- Require all CI checks to pass before a merge.
+- Require all CI checks to pass before a merge, except for the billing fallback below.
 - Use a squash merge with the pull request title as the commit title.
 - Merge only after an explicit instruction from the user.
+
+## Local validation during Actions billing limits
+
+When billing or quota limits prevent GitHub Actions jobs from starting, equivalent local checks can replace those blocked jobs.
+
+- Confirm that the failed jobs did not start because of billing or quota limits.
+- Run the core tests, app state tests, writing checks, and branch and title checks locally.
+- Use the commands in `README.md` and the tools required by the current workflows.
+- Record the tested commit SHA, commands, results, and blocked jobs in the pull request.
+- Before merging, confirm that the pull request still points to the tested commit.
+- If the commit changes, repeat the local checks.
+- Keep code, test, build, and writing failures as merge blockers.
+- Report local results separately from GitHub Actions results.
+- Do not mark a blocked Actions job as successful.
+- When Actions can run again, require its checks to pass.
+
+This fallback does not authorize payments or changes to repository access.
+Commit, push, and merge still require the user instructions specified above.
 
 ## Writing
 
