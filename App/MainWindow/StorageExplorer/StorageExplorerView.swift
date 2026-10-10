@@ -8,13 +8,15 @@ import UniformTypeIdentifiers
 /// Browses measured folders with native macOS table and path controls.
 struct StorageExplorerView: View {
     @Bindable var model: StorageExplorerModel
-    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     private var isMeasurementBlocked: Bool { model.isMeasurementBlocked }
     @State private var previewURL: URL?
     @State private var previewNavigation = StoragePreviewNavigation()
     @State private var presentation = StorageExplorerPresentation.list
+    @State private var rowOrder = StorageExplorerRowOrder()
+    @State private var partialResultsDirectory: URL?
     @State private var sortOrder = [
         KeyPathComparator(\StorageExplorerItem.allocatedBytes, order: .reverse)
     ]
@@ -27,7 +29,6 @@ struct StorageExplorerView: View {
             }
 
             content
-                .operationResultAnimation(isRunning: model.isLoading)
         }
         .task {
             model.prepareLocations()
@@ -35,13 +36,9 @@ struct StorageExplorerView: View {
         }
         .onChange(of: model.needsRefresh) { _, _ in refreshIfNeeded() }
         .onChange(of: isMeasurementBlocked) { _, _ in refreshIfNeeded() }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, !model.isLoading, !model.isRemoving else { return }
-            model.invalidateCache()
-            refreshIfNeeded()
-        }
         .onChange(of: model.isLoading, initial: true) { wasRunning, isRunning in
             if isRunning {
+                partialResultsDirectory = nil
                 resultBeforeScan = model.snapshot?.measuredAt
                 animateEmptyResult = false
             } else if wasRunning {
@@ -51,6 +48,16 @@ struct StorageExplorerView: View {
             }
         }
         .onChange(of: model.currentURL) { _, _ in animateEmptyResult = false }
+        .task(id: pendingDirectory) {
+            partialResultsDirectory = nil
+            guard let directory = pendingDirectory else { return }
+            do { try await Task.sleep(for: .milliseconds(200)) }
+            catch { return }
+            guard !Task.isCancelled, pendingDirectory == directory else { return }
+            partialResultsDirectory = directory
+        }
+        .onChange(of: displayedSnapshot, initial: true) { _, _ in updateRowOrder() }
+        .onChange(of: sortOrder) { _, _ in updateRowOrder(forceSort: true) }
         .onDisappear { animateEmptyResult = false }
         .onChange(of: presentation) { _, _ in model.finishMapSelection() }
         .onDisappear {
@@ -122,8 +129,6 @@ struct StorageExplorerView: View {
     private var content: some View {
         if model.currentURL == nil {
             startView
-        } else if model.isLoading {
-            loadingView
         } else if model.needsRefresh {
             PageState(
                 title: "Waiting for the Current Operation", symbol: "hourglass",
@@ -133,7 +138,7 @@ struct StorageExplorerView: View {
             cancelledView
         } else if let error = model.error {
             errorView(error)
-        } else if model.snapshot?.items.isEmpty == true {
+        } else if !model.isLoading, model.snapshot?.items.isEmpty == true {
             emptyView
         } else if presentation == .map {
             treemap
@@ -180,11 +185,13 @@ struct StorageExplorerView: View {
 
     private var summaryText: String {
         guard let snapshot = model.snapshot else {
-            return model.currentURL?.lastPathComponent.nonEmpty ?? "This Mac"
+            return model.isLoading ? "Reading folder contents…"
+                : model.currentURL?.lastPathComponent.nonEmpty ?? "This Mac"
         }
         let count = snapshot.items.count
         let noun = count == 1 ? "item" : "items"
-        return "\(count) \(noun) · \(ByteFormatting.string(snapshot.allocatedBytes))"
+        let prefix = snapshot.isComplete ? "" : "Measuring · "
+        return "\(prefix)\(count) \(noun) · \(ByteFormatting.string(snapshot.allocatedBytes))"
     }
 
     /// Where you are, and the two ways back — a row of its own, because both are
@@ -209,9 +216,9 @@ struct StorageExplorerView: View {
 
             NativePathControl(url: url, onSelect: model.navigate)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 26, maxHeight: 26)
-                .disabled(isMeasurementBlocked || model.isLoading)
+                .disabled(isMeasurementBlocked)
 
-            if model.snapshot != nil {
+            if model.snapshot != nil || model.isLoading {
                 Text(summaryText)
                     .pageHeaderSummary()
                     .monospacedDigit()
@@ -237,21 +244,6 @@ struct StorageExplorerView: View {
             locationMenu
                 .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
         }
-    }
-
-    private var loadingView: some View {
-        PageProgressView(
-            title: "Measuring \(model.currentURL?.lastPathComponent.nonEmpty ?? "the selected folder")",
-            detail: progressText,
-            isInterrupting: model.isInterrupting,
-            onStop: { model.cancel() }
-        )
-    }
-
-    private var progressText: String {
-        guard model.progress.fileCount > 0 else { return "Reading folder contents…" }
-        return "Measured \(ByteFormatting.string(model.progress.allocatedBytes)) in "
-            + "\(model.progress.fileCount.formatted()) files."
     }
 
     private func errorView(_ error: StorageExplorerError) -> some View {
@@ -337,7 +329,8 @@ struct StorageExplorerView: View {
                 "Size",
                 sortUsing: KeyPathComparator(\StorageExplorerItem.allocatedBytes)
             ) { item in
-                Text(ByteFormatting.string(item.allocatedBytes))
+                Text(model.snapshot?.isComplete == false && item.allocatedBytes == 0
+                     ? "Measuring…" : ByteFormatting.string(item.allocatedBytes))
                     .monospacedDigit()
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -380,19 +373,40 @@ struct StorageExplorerView: View {
 
     private var treemap: some View {
         StorageTreemapView(
-            items: model.snapshot?.items ?? [],
+            items: displayedSnapshot?.items ?? [],
             selection: Binding(
                 get: { model.selection },
                 set: { model.selectMapItems($0) }
             ),
+            isMeasuring: model.isLoading,
             isNavigationDisabled: isMeasurementBlocked,
             onOpen: { model.open($0) },
             onPreview: { showPreview($0) }
         )
     }
 
+    private var pendingDirectory: URL? {
+        model.isLoading && model.snapshot?.isComplete != true ? model.currentURL : nil
+    }
+
+    private var displayedSnapshot: StorageExplorerSnapshot? {
+        guard let snapshot = model.snapshot else { return nil }
+        // Fast scans show completed results without an intermediate row order.
+        // Breadcrumb URLs can differ from the resolved measurement URL.
+        guard snapshot.isComplete || partialResultsDirectory == model.currentURL else { return nil }
+        return snapshot
+    }
+
     private var sortedItems: [StorageExplorerItem] {
-        (model.snapshot?.items ?? []).sorted(using: sortOrder)
+        rowOrder.items(in: displayedSnapshot, sortOrder: sortOrder)
+    }
+
+    private func updateRowOrder(forceSort: Bool = false) {
+        var next = rowOrder
+        let didReorder = next.update(displayedSnapshot, sortOrder: sortOrder, forceSort: forceSort)
+        withAnimation(didReorder && !reduceMotion ? .easeInOut(duration: 0.3) : nil) {
+            rowOrder = next
+        }
     }
 
     private func nameCell(_ item: StorageExplorerItem) -> some View {
@@ -551,6 +565,48 @@ private extension StorageExplorerItem.CloudState {
     }
 }
 
+/// Keeps rows in place while their measured sizes increase.
+struct StorageExplorerRowOrder {
+    private(set) var directory: URL?
+    private var ids: [StorageExplorerItem.ID] = []
+
+    /// Returns true when existing rows change order within the same folder.
+    mutating func update(
+        _ snapshot: StorageExplorerSnapshot?,
+        sortOrder: [KeyPathComparator<StorageExplorerItem>],
+        forceSort: Bool = false
+    ) -> Bool {
+        let sameDirectory = directory != nil && directory == snapshot?.directory
+        guard !sameDirectory || snapshot?.isComplete != false || forceSort else { return false }
+        let previousIDs = ids
+        ids = Self.sorted(snapshot?.items ?? [], using: sortOrder).map(\.id)
+        directory = snapshot?.directory
+        return sameDirectory && previousIDs != ids && Set(previousIDs) == Set(ids)
+    }
+
+    func items(
+        in snapshot: StorageExplorerSnapshot?, sortOrder: [KeyPathComparator<StorageExplorerItem>]
+    ) -> [StorageExplorerItem] {
+        let incoming = snapshot?.items ?? []
+        guard directory == snapshot?.directory, !ids.isEmpty else {
+            return Self.sorted(incoming, using: sortOrder)
+        }
+        let byID = Dictionary(uniqueKeysWithValues: incoming.map { ($0.id, $0) })
+        let knownIDs = Set(ids)
+        return ids.compactMap { byID[$0] }
+            + Self.sorted(incoming.filter { !knownIDs.contains($0.id) }, using: sortOrder)
+    }
+
+    private static func sorted(
+        _ items: [StorageExplorerItem], using sortOrder: [KeyPathComparator<StorageExplorerItem>]
+    ) -> [StorageExplorerItem] {
+        items.sorted(using: sortOrder + [
+            KeyPathComparator(\StorageExplorerItem.name),
+            KeyPathComparator(\StorageExplorerItem.id)
+        ])
+    }
+}
+
 /// Shows the cloud explanation in a popover anchored to the icon.
 private struct StorageCloudIndicator: View {
     let state: StorageExplorerItem.CloudState
@@ -665,6 +721,7 @@ private struct StorageItemIcon: View {
 private struct StorageTreemapView: View {
     let items: [StorageExplorerItem]
     @Binding var selection: Set<StorageExplorerItem.ID>
+    let isMeasuring: Bool
     let isNavigationDisabled: Bool
     let onOpen: (StorageExplorerItem) -> Void
     let onPreview: (StorageExplorerItem) -> Void
@@ -679,7 +736,7 @@ private struct StorageTreemapView: View {
 
     @ViewBuilder
     var body: some View {
-        if items.contains(where: { $0.allocatedBytes > 0 }) {
+        if isMeasuring || items.contains(where: { $0.allocatedBytes > 0 }) {
             GeometryReader { proxy in
                 let cells = StorageTreemapLayout.cells(for: items.map {
                     .init(id: $0.id, bytes: $0.allocatedBytes)
@@ -703,7 +760,7 @@ private struct StorageTreemapView: View {
                     tooltip(itemsByID: itemsByID)
                 }
                 .overlay(alignment: .bottomLeading) {
-                    zeroSizeNote
+                    if !isMeasuring { zeroSizeNote }
                 }
             }
         } else {

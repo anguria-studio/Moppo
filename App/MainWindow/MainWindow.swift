@@ -298,7 +298,7 @@ struct MainWindow: View {
                 isInterrupting: model.cleanup.isInterruptingScan,
                 onStop: { model.cleanup.cancelScan() }
             )
-        } else if model.storageExplorer.isLoading, model.view != .storageExplorer {
+        } else if model.storageExplorer.isLoading {
             backgroundWorkStatus(
                 title: "Storage Explorer scan",
                 detail: "\(model.storageExplorer.progress.fileCount.formatted()) files · "

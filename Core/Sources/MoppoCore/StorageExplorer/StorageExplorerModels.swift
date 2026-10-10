@@ -108,7 +108,7 @@ public struct StorageExplorerSelectionReview: Sendable, Equatable {
     }
 }
 
-/// One complete level in the Storage Explorer hierarchy.
+/// One complete or partial level in the Storage Explorer hierarchy.
 public struct StorageExplorerSnapshot: Sendable, Equatable {
     public var directory: URL
     public var items: [StorageExplorerItem]
@@ -116,6 +116,8 @@ public struct StorageExplorerSnapshot: Sendable, Equatable {
     public var fileCount: Int
     public var unreadableCount: Int
     public var measuredAt: Date
+    /// Partial measurements are for display and must not enter the completed cache.
+    public var isComplete: Bool
 
     public init(
         directory: URL,
@@ -123,7 +125,8 @@ public struct StorageExplorerSnapshot: Sendable, Equatable {
         allocatedBytes: Int64,
         fileCount: Int,
         unreadableCount: Int,
-        measuredAt: Date = Date()
+        measuredAt: Date = Date(),
+        isComplete: Bool = true
     ) {
         self.directory = directory
         self.items = items
@@ -131,6 +134,7 @@ public struct StorageExplorerSnapshot: Sendable, Equatable {
         self.fileCount = fileCount
         self.unreadableCount = unreadableCount
         self.measuredAt = measuredAt
+        self.isComplete = isComplete
     }
 }
 

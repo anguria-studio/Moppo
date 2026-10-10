@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import MoppoCore
 
@@ -41,6 +42,35 @@ struct StorageExplorerServiceTests {
         #expect(snapshot.allocatedBytes == snapshot.items.reduce(0) { $0 + $1.allocatedBytes })
         #expect(snapshot.fileCount == 3)
         #expect(snapshot.items.first(where: { $0.name == "Alpha" })?.fileCount == 1)
+    }
+
+    @Test("Partial folder sizes arrive before completion", arguments: [false, true])
+    func partialSizes(nested: Bool) async throws {
+        let box = try Sandbox()
+        for index in 0..<1_200 {
+            _ = try box.write("\(nested ? "Folder/" : "")file-\(index).bin", bytes: 4_096)
+        }
+        let updates = Mutex<[StorageExplorerSnapshot]>([])
+        let result = try await StorageExplorerService(home: box.root).scan(
+            directory: box.root,
+            progress: { snapshot in updates.withLock { $0.append(snapshot) } }
+        )
+        let snapshots = updates.withLock { $0 }
+        let initial = try #require(snapshots.first)
+        #expect(initial.fileCount == 0)
+        #expect(initial.items.count == (nested ? 1 : 1_200))
+        #expect(snapshots.contains { $0.fileCount > 0 && $0.fileCount < result.fileCount })
+        #expect(snapshots.allSatisfy { !$0.isComplete })
+        for partial in snapshots {
+            #expect(partial.allocatedBytes == partial.items.reduce(0) { $0 + $1.allocatedBytes })
+            #expect(partial.allocatedBytes <= result.allocatedBytes)
+        }
+        for (earlier, later) in zip(snapshots, snapshots.dropFirst()) {
+            #expect(later.allocatedBytes >= earlier.allocatedBytes)
+            #expect(later.fileCount >= earlier.fileCount)
+        }
+        #expect(result.isComplete)
+        #expect(result.fileCount == 1_200)
     }
 
     @Test("hard links do not make sibling totals exceed the parent")

@@ -253,7 +253,8 @@ public struct AllocatedSizeMeasurer: Sendable {
     /// inode first, so the children sum to the parent rather than exceeding it.
     public func measureChildren(
         of url: URL,
-        progress: (@Sendable (SizeMeasurement) -> Void)? = nil
+        progress: (@Sendable (SizeMeasurement) -> Void)? = nil,
+        childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)? = nil
     ) async throws -> [URL: SizeMeasurement] {
         let followSymlinks = self.followSymlinks
         let protectedPatterns = self.protectedPatterns
@@ -275,9 +276,11 @@ public struct AllocatedSizeMeasurer: Sendable {
                     protectedPatterns: protectedPatterns,
                     cancelled: cancelled,
                     keys: keys,
-                    progress: progress
+                    progress: progress,
+                    childrenProgress: childrenProgress
                 )
                 for child in children {
+                    if cancelled.isCancelled { throw CancellationError() }
                     walker.prefill(child)
                     // A child that is itself a protected bundle: the listing loop
                     // inside the walker never sees it, because this level was
@@ -392,6 +395,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
     private let cancelled: CancellationFlag
     private let keys: [URLResourceKey]
     private let progress: (@Sendable (SizeMeasurement) -> Void)?
+    private let childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)?
     private let reportSkippedEntries: Bool
 
     private let condition = NSCondition()
@@ -415,8 +419,13 @@ private final class ParallelTreeWalker: @unchecked Sendable {
     /// what the progress callback reports.
     private var grandTotal = SizeMeasurement.zero
     private var entriesSinceReport = 0
-    private var pendingProgress: [SizeMeasurement] = []
+    private struct ProgressUpdate {
+        let total: SizeMeasurement
+        let children: [URL: SizeMeasurement]?
+    }
+    private var pendingProgress: [ProgressUpdate] = []
     private var isReportingProgress = false
+    private var nextChildrenReport = ContinuousClock.now
 
     /// How often to surface progress and poll cancellation, in entries.
     private static let reportInterval = 512
@@ -427,6 +436,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         cancelled: CancellationFlag,
         keys: [URLResourceKey],
         progress: (@Sendable (SizeMeasurement) -> Void)?,
+        childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)? = nil,
         reportSkippedEntries: Bool = false
     ) {
         self.followSymlinks = followSymlinks
@@ -434,6 +444,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         self.cancelled = cancelled
         self.keys = keys
         self.progress = progress
+        self.childrenProgress = childrenProgress
         self.reportSkippedEntries = reportSkippedEntries
     }
 
@@ -511,16 +522,17 @@ private final class ParallelTreeWalker: @unchecked Sendable {
            !entryVolume.isEqual(volume) { return }
         guard values.isRegularFile == true else { return }
         condition.lock()
-        defer { condition.unlock() }
         if (values.linkCount ?? 1) > 1 {
             guard let id = values.fileResourceIdentifier as? NSObject,
-                  claimedInodes.insert(id).inserted else { return }
+                  claimedInodes.insert(id).inserted else {
+                condition.unlock()
+                return
+            }
         }
+        condition.unlock()
         guard let bytes = AllocatedSizeMeasurer.allocatedSize(of: values) else { return }
-        totals[key, default: .zero].allocatedBytes += bytes
-        totals[key, default: .zero].fileCount += 1
-        grandTotal.allocatedBytes += bytes
-        grandTotal.fileCount += 1
+        var sizes = [bytes]
+        if flush(&sizes, attribution: [key]) { drainProgress() }
     }
 
     /// Runs this measurement to exhaustion and returns the totals, unreadable counts folded
@@ -732,11 +744,22 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         entriesSinceReport += count
         sizes.removeAll(keepingCapacity: true)
 
-        guard progress != nil, entriesSinceReport >= Self.reportInterval else {
+        guard progress != nil || childrenProgress != nil,
+              entriesSinceReport >= Self.reportInterval else {
             return false
         }
         entriesSinceReport = 0
-        pendingProgress.append(grandTotal)
+        // Limit folder updates without reducing cancellation checks or total progress.
+        let reportChildren = childrenProgress != nil && ContinuousClock.now >= nextChildrenReport
+        if reportChildren { nextChildrenReport = .now + .milliseconds(150) }
+        guard progress != nil || reportChildren else { return false }
+        let update = ProgressUpdate(total: grandTotal, children: reportChildren ? totals : nil)
+        if progress == nil {
+            // Keep only the latest folder totals if the display cannot keep up.
+            pendingProgress = [update]
+        } else {
+            pendingProgress.append(update)
+        }
         guard !isReportingProgress else { return false }
         isReportingProgress = true
         return true
@@ -745,7 +768,6 @@ private final class ParallelTreeWalker: @unchecked Sendable {
     /// One worker delivers every queued callback. Snapshots remain ordered, and a
     /// caller never receives concurrent progress calls from separate workers.
     private func drainProgress() {
-        guard let progress else { return }
         while true {
             condition.lock()
             guard !pendingProgress.isEmpty else {
@@ -755,7 +777,8 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             }
             let snapshot = pendingProgress.removeFirst()
             condition.unlock()
-            progress(snapshot)
+            progress?(snapshot.total)
+            if let children = snapshot.children { childrenProgress?(children) }
         }
     }
 }

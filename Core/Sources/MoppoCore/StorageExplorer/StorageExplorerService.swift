@@ -34,66 +34,97 @@ public struct StorageExplorerService: Sendable {
         directory input: URL,
         excludedPaths: [String] = [],
         excludedPatterns: [String] = [],
-        progress: (@Sendable (SizeMeasurement) -> Void)? = nil
+        progress: (@Sendable (StorageExplorerSnapshot) -> Void)? = nil
     ) async throws -> StorageExplorerSnapshot {
+        try Task.checkCancellation()
         let directory = input.resolvingSymlinksInPath().standardizedFileURL
         let children = try await readChildren(of: directory)
+        let exclusions = excludedPaths.map {
+            URL(fileURLWithPath: $0).resolvingSymlinksInPath().standardizedFileURL.path
+        }
+        let home = home
+        var childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)?
+        if let progress {
+            let initial = await Self.readItems(children)
+            try Task.checkCancellation()
+            childrenProgress = { measurements in
+                progress(Self.snapshot(
+                    directory: directory, items: initial, measurements: measurements,
+                    exclusions: exclusions, home: home, isComplete: false
+                ))
+            }
+            childrenProgress?([:])
+        }
 
         var configuredMeasurer = measurer
         configuredMeasurer.protectedPatterns = excludedPatterns
         configuredMeasurer.detectCloudOnlyItems = true
         let measurements = try await configuredMeasurer.measureChildren(
             of: directory,
-            progress: progress
+            childrenProgress: childrenProgress
         )
+        try Task.checkCancellation()
+        let items = await Self.readItems(children)
+        try Task.checkCancellation()
+        return Self.snapshot(
+            directory: directory, items: items, measurements: measurements,
+            exclusions: exclusions, home: home, isComplete: true
+        )
+    }
 
-        let exclusions = excludedPaths.map {
-            URL(fileURLWithPath: $0).resolvingSymlinksInPath().standardizedFileURL.path
-        }
-        let home = home
-        let items = await Task.detached(priority: .utility) {
+    private static func readItems(_ children: [URL]) async -> [StorageExplorerItem] {
+        await Task.detached(priority: .utility) {
             children.map { child -> StorageExplorerItem in
                 let values = try? child.resourceValues(forKeys: Self.metadataKeys)
-                let measurement = measurements[child] ?? .zero
                 let kind = values.map(Self.kind(for:)) ?? .file
-                let identity = FileIdentity.of(child)
                 let cloudState = Self.cloudState(
                     isUbiquitousItem: values?.isUbiquitousItem == true,
                     isDownloaded: values?.ubiquitousItemDownloadingStatus == .current,
-                    containsCloudOnlyItems: measurement.containsCloudOnlyItem
-                )
-                let protection = Self.protectionReason(
-                    for: child,
-                    in: directory,
-                    kind: kind,
-                    measurement: measurement,
-                    cloudState: cloudState,
-                    identity: identity,
-                    exclusions: exclusions,
-                    home: home
+                    containsCloudOnlyItems: false
                 )
                 return StorageExplorerItem(
                     url: child,
                     name: values?.localizedName ?? child.lastPathComponent,
                     kind: kind,
-                    allocatedBytes: measurement.allocatedBytes,
-                    fileCount: measurement.fileCount,
-                    unreadableCount: measurement.unreadableCount,
+                    allocatedBytes: 0,
                     modificationDate: values?.contentModificationDate,
-                    identity: identity,
+                    identity: FileIdentity.of(child),
                     isHidden: values?.isHidden ?? child.lastPathComponent.hasPrefix("."),
                     cloudState: cloudState,
-                    protectionReason: values == nil ? protection ?? .unavailable : protection
+                    protectionReason: values == nil ? .unavailable : nil
                 )
             }
         }.value
+    }
 
+    private static func snapshot(
+        directory: URL, items: [StorageExplorerItem], measurements: [URL: SizeMeasurement],
+        exclusions: [String], home: URL, isComplete: Bool
+    ) -> StorageExplorerSnapshot {
+        let items = items.map { original in
+            var item = original
+            let measurement = measurements[item.url] ?? .zero
+            item.allocatedBytes = measurement.allocatedBytes
+            item.fileCount = measurement.fileCount
+            item.unreadableCount = measurement.unreadableCount
+            item.cloudState = cloudState(
+                isUbiquitousItem: original.cloudState != .none,
+                isDownloaded: original.cloudState == .downloaded,
+                containsCloudOnlyItems: measurement.containsCloudOnlyItem
+            )
+            item.protectionReason = protectionReason(
+                for: item.url, in: directory, kind: item.kind, measurement: measurement,
+                cloudState: item.cloudState, identity: item.identity, exclusions: exclusions, home: home
+            ) ?? original.protectionReason
+            return item
+        }
         return StorageExplorerSnapshot(
             directory: directory,
             items: items,
             allocatedBytes: items.reduce(0) { $0 + $1.allocatedBytes },
             fileCount: items.reduce(0) { $0 + $1.fileCount },
-            unreadableCount: items.reduce(0) { $0 + $1.unreadableCount }
+            unreadableCount: items.reduce(0) { $0 + $1.unreadableCount },
+            isComplete: isComplete
         )
     }
 

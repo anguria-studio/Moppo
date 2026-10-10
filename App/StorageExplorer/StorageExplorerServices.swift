@@ -4,7 +4,7 @@ import MoppoCore
 protocol StorageExplorerScanning: Sendable {
     func scan(
         directory: URL, excludedPaths: [String], excludedPatterns: [String],
-        progress: (@Sendable (SizeMeasurement) -> Void)?
+        progress: (@Sendable (StorageExplorerSnapshot) -> Void)?
     ) async throws -> StorageExplorerSnapshot
     func reviewSelection(
         _ items: [StorageExplorerItem], in directory: URL,
