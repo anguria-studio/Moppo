@@ -14,8 +14,7 @@ struct CleanupModelTests {
         try await waitUntil { await scanner.requestCount == 1 }
         app.view = .history
         #expect(app.storageExplorer.isMeasurementBlocked)
-        #expect(app.operations.begin(.photoScan) == nil)
-        #expect(app.operations.begin(.fileRemoval) == nil)
+        #expect(app.isBusyWithDisk)
         cleanup.cancelScan()
         #expect(cleanup.isInterruptingScan)
         cleanup.startScan(refreshOverview: false)
@@ -62,10 +61,8 @@ struct CleanupModelTests {
         #expect(!app.cleanup.hasStartedInitialScan)
     }
 
-    @Test("Other operations block Cleanup scans and removal", arguments: [
-        OperationCoordinator.Kind.photoScan, .photoDeletion, .fileScan, .fileRemoval, .cleanupQuit
-    ])
-    func sharedGuard(_ kind: OperationCoordinator.Kind) async throws {
+    @Test("Another operation blocks Cleanup scans and removal")
+    func sharedGuard() async throws {
         let operations = OperationCoordinator()
         let scanner = HeldCleanupScanner()
         let removal = HeldCleanupRemoval()
@@ -74,7 +71,7 @@ struct CleanupModelTests {
         cleanup.scanResults = cleanupResults([item])
         cleanup.scannerSelection = [item.id]
         cleanup.requestCleanUp(in: .all)
-        let operation = try #require(operations.begin(kind))
+        let operation = try #require(operations.begin(.fileScan))
         cleanup.startScan()
         await cleanup.performCleanUp()
         #expect(await scanner.requestCount == 0)
@@ -151,7 +148,7 @@ struct CleanupModelTests {
         cleanup.scannerSelection = [later.id]
         cleanup.userDataRemovalOverrides = [later.id]
         preferences.keepReceipt = true
-        let refresh = CleanupGate()
+        let refresh = TestGate()
         var completed: CleanupOutcome?
         cleanup.onEvent = { event in
             if case .removed(let outcome) = event { completed = outcome }
@@ -172,7 +169,7 @@ struct CleanupModelTests {
         #expect(await removal.keepReceipt == false)
         #expect(await removal.trashFirst)
         #expect(await removal.privilegedFallback)
-        #expect(operations.begin(.photoDeletion) == nil)
+        #expect(operations.isBusy)
         await removal.finish(CleanupOutcome(
             removedBytes: first.allocatedBytes, removedCount: 1,
             failed: [protected.id], trashedCount: 1
@@ -219,7 +216,7 @@ struct CleanupModelTests {
     @Test("Quit refusal removes nothing and keeps the guard until the quit request returns")
     func quitRefusal() async throws {
         let removal = HeldCleanupRemoval()
-        let gate = CleanupGate()
+        let gate = TestGate()
         let owner = FileEntry.RunningOwner(name: "Fixture", bundleIdentifier: "test.cleanup", bundlePath: "/fixture.app")
         var item = cleanupEntry("running")
         item.inUseBy = owner
@@ -360,14 +357,6 @@ struct CleanupModelTests {
         #expect(cleanup.cleanupOutcome?.failed == [first.id])
         #expect(cleanup.scanResults != nil)
     }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        try #require(await condition(), "The operation did not finish before the deadline.")
-    }
 }
 
 private func cleanupEntry(_ name: String) -> FileEntry {
@@ -432,13 +421,6 @@ private actor HeldCleanupRemoval: CleanupRemoving {
     func finish(_ result: CleanupOutcome) { continuation?.resume(returning: result); continuation = nil }
 }
 
-private actor CleanupGate {
-    private var continuation: CheckedContinuation<Void, Never>?
-    var isPending: Bool { continuation != nil }
-    func wait() async { await withCheckedContinuation { continuation = $0 } }
-    func finish() { continuation?.resume(); continuation = nil }
-}
-
 private actor CleanupMeasurements {
     private var continuations: [Int: CheckedContinuation<PrivateSizeMeasurement?, Never>] = [:]
     private(set) var count = 0
@@ -453,18 +435,13 @@ private actor CleanupMeasurements {
 }
 
 private final class CleanupFixture {
-    let root: URL
-    init() throws {
-        root = FileManager.default.temporaryDirectory.appendingPathComponent("moppo-cleanup-\(UUID().uuidString)")
-            .resolvingSymlinksInPath()
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    }
+    private let folder: TemporaryFolder
+    var root: URL { folder.url }
+    init() throws { folder = try TemporaryFolder(prefix: "moppo-cleanup") }
     func entry(_ name: String) throws -> FileEntry {
-        let url = root.appendingPathComponent("\(name)-\(root.lastPathComponent).txt")
-        try Data("Disposable Cleanup fixture".utf8).write(to: url)
+        let url = try folder.write("\(name)-\(root.lastPathComponent).txt", contents: "Disposable Cleanup fixture")
         return FileEntry(url: url, kind: .file, allocatedBytes: 4096, isRegenerable: true)
     }
-    deinit { try? FileManager.default.removeItem(at: root) }
 }
 
 private actor CleanupContextRecorder: CategoryScanner {

@@ -251,12 +251,6 @@ struct DashboardModelTests {
         #expect(!model.isLowSpaceWarningDismissed)
         #expect(await persistence.records == [.manual])
     }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        try #require(await condition(), "The operation did not finish before the deadline.")
-    }
 }
 
 private func dashboardVolume(free: Int64 = 200) -> VolumeInfo {

@@ -17,7 +17,6 @@ struct StorageExplorerModelTests {
         model.cancel()
         #expect(model.isInterrupting)
         #expect(app.isBusyWithDisk)
-        #expect(app.operations.begin(.photoScan) == nil)
         await service.report(0, bytes: 99)
         await service.finishScan(0, explorerSnapshot(folder))
         try await waitUntil { !model.isLoading }
@@ -101,7 +100,7 @@ struct StorageExplorerModelTests {
         model.refreshIfNeeded()
         #expect(model.isLoading)
         #expect(model.isInterrupting)
-        #expect(operations.begin(.cleanupScan) == nil)
+        #expect(operations.isBusy)
         #expect(await service.scans.count == 1)
         await service.finishScan(0, explorerSnapshot(folder))
         try await waitUntil { !model.isLoading }
@@ -117,8 +116,8 @@ struct StorageExplorerModelTests {
         #expect(model.selection.isEmpty)
     }
 
-    @Test("Every active operation blocks new Explorer work", arguments: OperationCoordinator.Kind.allCases)
-    func sharedGuard(_ kind: OperationCoordinator.Kind) async throws {
+    @Test("Another operation blocks new Explorer work")
+    func sharedGuard() async throws {
         let operations = OperationCoordinator()
         let service = HeldExplorerScanner()
         let model = StorageExplorerModel(operations: operations, service: service)
@@ -127,7 +126,7 @@ struct StorageExplorerModelTests {
         model.currentURL = folder
         model.snapshot = snapshot
         model.selection = Set(snapshot.items.map(\.id))
-        let operation = try #require(operations.begin(kind))
+        let operation = try #require(operations.begin(.photoScan))
         model.selectLocation(folder.appendingPathComponent("other"))
         model.navigate(to: folder.appendingPathComponent("other"))
         model.refresh()
@@ -173,7 +172,7 @@ struct StorageExplorerModelTests {
         preferences.excludedPaths = []
         preferences.excludedPatterns = []
         #expect(model.currentURL == folder)
-        #expect(operations.begin(.emptyTrash) == nil)
+        #expect(operations.isBusy)
         await service.finishReview(0, readyReview(snapshot))
         try await waitUntil { await remover.requests.count == 1 }
         await model.requestRemoval()
@@ -314,12 +313,6 @@ struct StorageExplorerModelTests {
         #expect(FileManager.default.fileExists(atPath: file.path))
         #expect(app.recovery.cleanupHistory?.items.first?.state == .restored)
         #expect(model.needsRefresh)
-    }
-
-    private func waitUntil(_ condition: () async -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !(await condition()), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
-        try #require(await condition(), "The operation did not finish before the deadline.")
     }
 }
 

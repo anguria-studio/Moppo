@@ -45,9 +45,7 @@ final class PhotoDuplicatesModel {
     @ObservationIgnored private var scanID: UUID?
     @ObservationIgnored private var regroupTask: Task<Void, Never>?
     @ObservationIgnored private var regroupID: UUID?
-    @ObservationIgnored private var accessTask: Task<Void, Never>?
     @ObservationIgnored private var accessRevision = UUID()
-    @ObservationIgnored private var deletionTask: Task<Void, Never>?
 
     @ObservationIgnored var canRequestAccess: () -> Bool = { true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
@@ -95,16 +93,12 @@ final class PhotoDuplicatesModel {
         isRequestingAccess = true
         let revision = accessRevision
         let task = Task { [self] in
-            defer {
-                isRequestingAccess = false
-                accessTask = nil
-            }
+            defer { isRequestingAccess = false }
             let access = await service.requestAccess()
             // A scan or deletion can report newer access while this request waits.
             guard accessRevision == revision else { return }
             applyAccess(access)
         }
-        accessTask = task
         await task.value
     }
 
@@ -331,12 +325,10 @@ final class PhotoDuplicatesModel {
         let task = Task { [self] in
             defer {
                 isDeleting = false
-                deletionTask = nil
                 operations.finish(operation)
             }
             await performDeletion(ids)
         }
-        deletionTask = task
         await task.value
     }
 

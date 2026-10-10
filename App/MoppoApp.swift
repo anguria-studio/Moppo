@@ -239,7 +239,7 @@ private struct MoppoCommands: Commands {
                 model.showWelcomeGuide()
                 MainWindowPresenter.present { openWindow(id: "main") }
             }
-            .disabled(model.isBusyWithDisk || model.photoDuplicates.isDeleting)
+            .disabled(model.isBusyWithDisk)
             Button("Grant Full Disk Access") {
                 let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
                 NSWorkspace.shared.open(url)

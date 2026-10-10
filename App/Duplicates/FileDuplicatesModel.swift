@@ -28,17 +28,13 @@ extension FileDuplicateRemovalService: FileDuplicatesRemoving {}
 @MainActor
 @Observable
 final class FileDuplicatesModel {
-    struct Preferences {
-        var excludedPaths: [String] = []
-        var excludedPatterns: [String] = []
-        var keepReceipt = true
-    }
+    typealias Preferences = RemovalPreferences
 
     enum Event {
         case scanStarted
         case removalStarted(count: Int, bytes: Int64)
         case removed(CleanupOutcome, extraFailures: Int)
-        case removalFinished
+        case operationFinished
         case failure(title: String, message: String)
     }
 
@@ -49,7 +45,6 @@ final class FileDuplicatesModel {
     @ObservationIgnored private var folderTask: Task<Void, Never>?
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanID: UUID?
-    @ObservationIgnored private var removalTask: Task<Void, Never>?
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
 
@@ -242,13 +237,11 @@ final class FileDuplicatesModel {
         let task = Task { [self] in
             await performRemoval(selected, groups: groups, bytes: bytes, keepReceipt: keepReceipt)
             // Publish completion before the progress surface and shared guard close.
-            onEvent(.removalFinished)
+            onEvent(.operationFinished)
             isRemoving = false
-            removalTask = nil
             operations.finish(operation)
             await refreshAfterRemoval()
         }
-        removalTask = task
         await task.value
     }
 

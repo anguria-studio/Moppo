@@ -63,14 +63,15 @@ final class AppModel {
             scanner: cleanupScanner,
             remover: cleanupRemover ?? cleanupService,
             preferences: { [weak settings] in
-                CleanupModel.Preferences(
+                let removal = RemovalPreferences(settings: settings)
+                return CleanupModel.Preferences(
                     enabledCategories: settings.map { store in
                         Set(CategoryID.allCases.filter { store.isEnabled($0) })
                     },
-                    excludedPaths: settings?.excludedFolderPaths ?? [],
-                    excludedPatterns: settings?.excludedPatterns ?? [],
+                    excludedPaths: removal.excludedPaths,
+                    excludedPatterns: removal.excludedPatterns,
                     confirmBeforeCleanup: settings?.confirmBeforeCleanup ?? SettingsStore.Defaults.confirmBeforeCleanup,
-                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
+                    keepReceipt: removal.keepReceipt
                 )
             }
         )
@@ -85,13 +86,7 @@ final class AppModel {
             operations: operations,
             service: fileDuplicateService,
             removalService: fileDuplicateRemovalService,
-            preferences: { [weak settings] in
-                FileDuplicatesModel.Preferences(
-                    excludedPaths: settings?.excludedFolderPaths ?? [],
-                    excludedPatterns: settings?.excludedPatterns ?? [],
-                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
-                )
-            }
+            preferences: { [weak settings] in RemovalPreferences(settings: settings) }
         )
         self.dashboard = DashboardModel(service: dashboardService, persistence: dashboardPersistence)
         self.recovery = RecoveryModel(
@@ -103,23 +98,11 @@ final class AppModel {
             scanner: uninstallerScanner ?? AppUninstallerScanService(planner: appUninstallPlanner),
             remover: uninstallerRemover ?? cleanupService,
             homebrewRemover: homebrewUninstallService,
-            preferences: { [weak settings] in
-                AppUninstallerModel.Preferences(
-                    excludedPaths: settings?.excludedFolderPaths ?? [],
-                    excludedPatterns: settings?.excludedPatterns ?? [],
-                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
-                )
-            }
+            preferences: { [weak settings] in RemovalPreferences(settings: settings) }
         )
         self.storageExplorer = StorageExplorerModel(
             operations: operations, service: storageExplorerService, removalService: storageExplorerRemover,
-            preferences: { [weak settings] in
-                StorageExplorerModel.Preferences(
-                    excludedPaths: settings?.excludedFolderPaths ?? [],
-                    excludedPatterns: settings?.excludedPatterns ?? [],
-                    keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
-                )
-            }
+            preferences: { [weak settings] in RemovalPreferences(settings: settings) }
         )
         storageExplorer.onEvent = { [weak self] event in self?.handleStorageExplorerEvent(event) }
         storageExplorer.refreshAfterRemoval = { [weak self] in await self?.refreshAfterRemoval() }
@@ -579,11 +562,17 @@ final class AppModel {
         )
     }
 
-    private static func isAppDataPath(_ path: String) -> Bool {
+    /// macOS controls access to the data of other apps separately from Full Disk Access.
+    /// Returns true when the outcome needs the app data access alert.
+    @discardableResult
+    private func showAppDataAccessAlertIfNeeded(_ outcome: CleanupOutcome) -> Bool {
         let library = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library", isDirectory: true).path
-        return path.hasPrefix(library + "/Containers/")
-            || path.hasPrefix(library + "/Group Containers/")
+        let deniedAppData = outcome.permissionDenied.contains {
+            $0.hasPrefix(library + "/Containers/") || $0.hasPrefix(library + "/Group Containers/")
+        }
+        if deniedAppData { isShowingAppDataAccessAlert = true }
+        return deniedAppData
     }
 
     /// Last measured size per category, for the Preferences › Categories rows.
@@ -625,7 +614,7 @@ final class AppModel {
         case .reviewing(let count):
             removalCompletion = nil
             activity = .reviewingStorageItems(itemCount: count)
-        case .removing(let count, let bytes):
+        case .removalStarted(let count, let bytes):
             activity = .removingStorageItems(itemCount: count, totalBytes: bytes)
         case .removed(let outcome):
             completeTrashRemoval(outcome, in: .storageExplorer)
@@ -692,9 +681,8 @@ final class AppModel {
             activity = .cleaningUp(itemCount: count, totalBytes: bytes)
         case .removed(let outcome):
             let destination = cleanupDestination ?? view
-            if outcome.permissionDenied.contains(where: Self.isAppDataPath) {
-                isShowingAppDataAccessAlert = true
-            } else if destination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
+            if !showAppDataAccessAlertIfNeeded(outcome),
+               destination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
                 notice = unfinished
             }
             if destination != .scanner { completeTrashRemoval(outcome, in: destination) }
@@ -724,12 +712,10 @@ final class AppModel {
                 applicationName: name, applicationOnly: applicationOnly,
                 waitingToQuit: waiting, usingHomebrew: homebrew
             )
-        case .leftoverRemovalStarted(let count, let bytes):
+        case .removalStarted(let count, let bytes):
             activity = .cleaningUp(itemCount: count, totalBytes: bytes)
-        case .leftoversRemoved(let outcome):
-            if outcome.permissionDenied.contains(where: Self.isAppDataPath) {
-                isShowingAppDataAccessAlert = true
-            }
+        case .removed(let outcome):
+            showAppDataAccessAlertIfNeeded(outcome)
             completeTrashRemoval(outcome, in: .uninstaller)
         case .operationFinished:
             activity = nil
@@ -751,10 +737,8 @@ final class AppModel {
             activity = .removingDuplicateFiles(itemCount: count, totalBytes: bytes)
         case .removed(let outcome, let extraFailures):
             completeTrashRemoval(outcome, in: .duplicates, extraFailures: extraFailures)
-            if outcome.permissionDenied.contains(where: Self.isAppDataPath) {
-                isShowingAppDataAccessAlert = true
-            }
-        case .removalFinished:
+            showAppDataAccessAlertIfNeeded(outcome)
+        case .operationFinished:
             activity = nil
         case .failure(let title, let message):
             report(title, message)
@@ -781,5 +765,4 @@ final class AppModel {
             report(title, message)
         }
     }
-
 }

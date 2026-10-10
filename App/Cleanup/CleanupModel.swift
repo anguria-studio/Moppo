@@ -35,8 +35,6 @@ final class CleanupModel {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanID: UUID?
-    @ObservationIgnored private var removalTask: Task<Void, Never>?
-    @ObservationIgnored private var quitTask: Task<Void, Never>?
     @ObservationIgnored private var cleanUpSavingTask: Task<Void, Never>?
     @ObservationIgnored var canScan: (Bool) -> Bool = { _ in true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
@@ -124,24 +122,13 @@ final class CleanupModel {
             .entries.filter { selected.contains($0.id) } ?? []
     }
 
-    var selectedBytes: Int64 {
-        selectedEntries.reduce(0) { $0 + plannedBytes(for: $1) }
-            + selectedOrphanApplicationEntries.reduce(0) { $0 + $1.displayBytes }
+    /// Cleanup never removes protected app data without a separate authorization.
+    nonisolated private static func plannedTargets(for entry: FileEntry) -> [FileEntry] {
+        CleanupService.removalTargets(for: entry, removeProtectedAppData: false)
     }
 
-    private func plannedTargets(for entry: FileEntry) -> [FileEntry] {
-        CleanupService.removalTargets(
-            for: entry,
-            removeProtectedAppData: false
-        )
-    }
-
-    private func plannedBytes(for entry: FileEntry) -> Int64 {
+    nonisolated private static func plannedBytes(for entry: FileEntry) -> Int64 {
         plannedTargets(for: entry).reduce(0) { $0 + $1.allocatedBytes }
-    }
-
-    var hasSelection: Bool {
-        !selectedEntries.isEmpty || !selectedOrphanApplicationEntries.isEmpty
     }
 
     func selectedBytes(in category: CategoryID, filter: ScanFilter = .all) -> Int64 {
@@ -157,11 +144,11 @@ final class CleanupModel {
         }
         return entries.reduce(Int64(0)) { total, entry in
             if selected.contains(entry.id) {
-                let targets = plannedTargets(for: entry)
+                let targets = Self.plannedTargets(for: entry)
                 let covered = Set(targets.map(\.id))
                 let extraChildren = entry.children
                     .filter { selected.contains($0.id) && !covered.contains($0.id) }
-                    .reduce(0) { $0 + plannedBytes(for: $1) }
+                    .reduce(0) { $0 + Self.plannedBytes(for: $1) }
                 return total + targets.reduce(0) { $0 + $1.allocatedBytes } + extraChildren
             }
             return total + entry.children
@@ -261,7 +248,7 @@ final class CleanupModel {
     func cleanupSelectionBytes(in filter: ScanFilter) -> Int64 {
         let ids = cleanupSelection(in: filter)
         return selectedEntries.filter { ids.contains($0.id) }
-            .reduce(0) { $0 + plannedBytes(for: $1) }
+            .reduce(0) { $0 + Self.plannedBytes(for: $1) }
             + selectedOrphanApplicationEntries.filter { ids.contains($0.id) }
                 .reduce(0) { $0 + $1.displayBytes }
     }
@@ -295,22 +282,21 @@ final class CleanupModel {
         else { return }
         safeSelectionSeededAt = finishedAt
 
-        let selectable = tileEntries(safeToRemove: true).filter {
+        select(tileEntries(safeToRemove: true).filter {
             !$0.isRemovalLocked && $0.kind != .appBundle && $0.removalAction == nil
-        }
-        guard !selectable.isEmpty else { return }
-        scannerSelection.formUnion(selectable.map(\.id))
-        let childIDs = Set(selectable.flatMap(\.children).map(\.id))
-        scannerSelection.subtract(childIDs)
-        userDataRemovalOverrides.subtract(childIDs)
+        })
     }
 
     func selectAllInCurrentView() {
         guard !isBusyWithDisk else { return }
-        let selectable = selectableInCurrentView
-        guard !selectable.isEmpty else { return }
-        scannerSelection.formUnion(selectable.map(\.id))
-        let childIDs = Set(selectable.flatMap(\.children).map(\.id))
+        select(selectableInCurrentView)
+    }
+
+    /// A selected row covers its children, so the children leave the selection.
+    private func select(_ entries: [FileEntry]) {
+        guard !entries.isEmpty else { return }
+        scannerSelection.formUnion(entries.map(\.id))
+        let childIDs = Set(entries.flatMap(\.children).map(\.id))
         scannerSelection.subtract(childIDs)
         userDataRemovalOverrides.subtract(childIDs)
     }
@@ -320,7 +306,6 @@ final class CleanupModel {
         scannerSelection.removeAll()
         userDataRemovalOverrides.removeAll()
     }
-
 
     struct CleanupPlan {
         let id = UUID()
@@ -346,12 +331,7 @@ final class CleanupModel {
             entries.count + orphanedApplicationItems.count
         }
         var totalBytes: Int64 {
-            let ordinary = entries.reduce(0) { total, entry in
-                total + CleanupService.removalTargets(
-                    for: entry,
-                    removeProtectedAppData: false
-                ).reduce(0) { $0 + $1.allocatedBytes }
-            }
+            let ordinary = entries.reduce(0) { $0 + CleanupModel.plannedBytes(for: $1) }
             return ordinary + orphanedApplicationItems.reduce(0) { $0 + $1.allocatedBytes }
         }
         var protectedDataCount: Int {
@@ -378,37 +358,32 @@ final class CleanupModel {
         let orphanedPlan = scanResults?.categories
             .first(where: { $0.categoryID == .applicationLeftovers })?
             .applicationLeftoverPlan
+        guard !entries.isEmpty || !orphanedIdentifiers.isEmpty else { return }
+        let preferences = preferences()
         let plan = CleanupPlan(
+            keepReceipt: preferences.keepReceipt,
             entries: entries,
             userDataRemovalOverrides: userDataRemovalOverrides.intersection(selectedIDs),
             applicationLeftoverPlan: orphanedPlan,
             orphanedApplicationBundleIdentifiers: orphanedIdentifiers,
-            orphanedApplicationItemPaths: orphanedItemPaths
+            orphanedApplicationItemPaths: orphanedItemPaths,
+            runningOwners: applications.stillRunning(
+                entries.flatMap(Self.plannedTargets).compactMap(\.inUseBy)
+            )
         )
-        guard !plan.entries.isEmpty || !plan.orphanedApplicationBundleIdentifiers.isEmpty
-        else { return }
-        var captured = plan
-        captured.keepReceipt = preferences().keepReceipt
-        captured.runningOwners = applications.stillRunning(
-            entries.flatMap {
-                CleanupService.removalTargets(for: $0, removeProtectedAppData: false)
-            }.compactMap(\.inUseBy)
-        )
-        pendingCleanUp = captured
+        pendingCleanUp = plan
 
-        if preferences().confirmBeforeCleanup
-            || !captured.runningOwners.isEmpty {
+        if preferences.confirmBeforeCleanup || !plan.runningOwners.isEmpty {
             onEvent(.confirmationRequested)
-            measureCleanUpSaving(for: captured)
+            measureCleanUpSaving(for: plan)
         } else {
             beginRemoval(quittingOwners: false)
         }
     }
 
     private func measureCleanUpSaving(for plan: CleanupPlan) {
-        let urls = plan.entries.flatMap {
-            CleanupService.removalTargets(for: $0, removeProtectedAppData: false).map(\.url)
-        } + plan.orphanedApplicationItems.map(\.url)
+        let urls = plan.entries.flatMap(Self.plannedTargets).map(\.url)
+            + plan.orphanedApplicationItems.map(\.url)
         guard !urls.isEmpty else { return }
 
         cleanUpSavingTask?.cancel()
@@ -455,7 +430,6 @@ final class CleanupModel {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         cleanupRunningOwners = live
     }
-
 
     private func clearInUse(of owners: [FileEntry.RunningOwner]) {
         guard var results = scanResults else { return }
@@ -554,16 +528,13 @@ final class CleanupModel {
         isRemoving = true
         onEvent(.operationStarted)
         cancelCleanUp()
-        let task = Task { [self] in
+        return Task { [self] in
             let attempted = await execute(plan, quittingOwners: quittingOwners)
             onEvent(.operationFinished)
             isRemoving = false
-            removalTask = nil
             operations.finish(operation)
             if attempted { await refreshAfterRemoval() }
         }
-        removalTask = task
-        return task
     }
 
     private func execute(_ plan: CleanupPlan, quittingOwners: Bool) async -> Bool {
@@ -656,10 +627,8 @@ final class CleanupModel {
                 ))
             }
             onEvent(.operationFinished)
-            quitTask = nil
             operations.finish(operation)
         }
-        quitTask = task
         await task.value
     }
 

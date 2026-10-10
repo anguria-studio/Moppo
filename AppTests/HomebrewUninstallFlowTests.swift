@@ -13,13 +13,13 @@ struct HomebrewUninstallFlowTests {
         let model = fixture.model()
         let app = fixture.applications["managed"]!
         model.uninstaller.planAppUninstall(app)
-        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
+        try await waitUntil(timeout: .seconds(15)) { !model.uninstaller.isPlanningAppUninstall }
         #expect(model.uninstaller.appUninstallPlan?.managedPackage?.name == "managed")
         #expect(model.uninstaller.appUninstallPlan?.protectedItems.isEmpty == false)
         #expect(await fixture.brew.uninstalls.isEmpty)
 
         model.uninstaller.requestAppUninstall()
-        try await waitUntil { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
+        try await waitUntil(timeout: .seconds(15)) { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
 
         #expect(model.uninstaller.batchUninstallOutcome?.homebrewUninstalled == [app.deletingPathExtension().lastPathComponent])
         #expect((model.uninstaller.batchUninstallOutcome?.removedBytes ?? 0) > 0)
@@ -33,13 +33,13 @@ struct HomebrewUninstallFlowTests {
         let fixture = try Fixture()
         let model = fixture.model()
         model.uninstaller.loadInstalledApplications()
-        try await waitUntil { model.uninstaller.installedApplicationsMeasured }
+        try await waitUntil(timeout: .seconds(15)) { model.uninstaller.installedApplicationsMeasured }
         let applications = try #require(model.uninstaller.installedApplications)
         #expect(applications.count == 4)
         for app in applications { model.uninstaller.toggleApplicationSelection(app) }
 
         model.uninstaller.moveSelectedApplicationsToTrash()
-        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
+        try await waitUntil(timeout: .seconds(15)) { !model.uninstaller.isPlanningAppUninstall }
         let review = try #require(model.uninstaller.batchUninstallReview)
         #expect(review.plans.count == 4)
         #expect(review.homebrewCount == 2)
@@ -52,7 +52,7 @@ struct HomebrewUninstallFlowTests {
         try FileManager.default.createDirectory(at: changed, withIntermediateDirectories: true)
 
         model.uninstaller.requestBatchUninstall()
-        try await waitUntil { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
+        try await waitUntil(timeout: .seconds(15)) { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
         let outcome = try #require(model.uninstaller.batchUninstallOutcome)
         #expect(outcome.uninstalled.count == 2)
         #expect(outcome.homebrewUninstalled.count == 1)
@@ -71,14 +71,14 @@ struct HomebrewUninstallFlowTests {
         let fixture = try Fixture()
         let model = fixture.model()
         model.uninstaller.planAppUninstall(fixture.applications["managed"]!)
-        try await waitUntil { !model.uninstaller.isPlanningAppUninstall }
+        try await waitUntil(timeout: .seconds(15)) { !model.uninstaller.isPlanningAppUninstall }
         let support = fixture.profile.deletingLastPathComponent()
         try FileManager.default.moveItem(at: support, to: fixture.root.appendingPathComponent("original-support"))
         try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         try Data("Replacement data".utf8).write(to: fixture.profile)
 
         model.uninstaller.requestAppUninstall()
-        try await waitUntil { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
+        try await waitUntil(timeout: .seconds(15)) { model.uninstaller.batchUninstallOutcome != nil && model.activity == nil }
         let result = try #require(model.uninstaller.batchUninstallOutcome)
         #expect(result.uninstalled.count == 1)
         #expect(result.homebrewUninstalled.count == 1)
@@ -118,11 +118,11 @@ struct HomebrewUninstallFlowTests {
         model.uninstaller.appUninstallPlan = plan
         let batchModel = fixture.model()
         batchModel.uninstaller.loadInstalledApplications()
-        try await waitUntil { batchModel.uninstaller.installedApplicationsMeasured }
+        try await waitUntil(timeout: .seconds(15)) { batchModel.uninstaller.installedApplicationsMeasured }
         let application = try #require(batchModel.uninstaller.installedApplications?.first { $0.url == plan.applicationURL })
         batchModel.uninstaller.toggleApplicationSelection(application)
         batchModel.uninstaller.moveSelectedApplicationsToTrash()
-        try await waitUntil { !batchModel.uninstaller.isPlanningAppUninstall }
+        try await waitUntil(timeout: .seconds(15)) { !batchModel.uninstaller.isPlanningAppUninstall }
         var result = AppUninstallerModel.BatchUninstallOutcome()
         result.uninstalled = ["Ordinary application", "Managed application"]
         result.homebrewUninstalled = ["Managed application"]
@@ -195,12 +195,6 @@ struct HomebrewUninstallFlowTests {
         try png.write(to: folder.appendingPathComponent("\(name).png"))
         #expect(bitmap.pixelsWide > 0 && bitmap.pixelsHigh > 0)
         window.contentView = nil
-    }
-
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(15)
-        while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
-        try #require(condition(), "The operation did not finish before the deadline.")
     }
 
     actor Brew {

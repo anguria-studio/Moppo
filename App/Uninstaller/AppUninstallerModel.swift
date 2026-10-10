@@ -6,18 +6,14 @@ import MoppoCore
 @MainActor
 @Observable
 final class AppUninstallerModel {
-    struct Preferences {
-        var excludedPaths: [String] = []
-        var excludedPatterns: [String] = []
-        var keepReceipt = true
-    }
+    typealias Preferences = RemovalPreferences
 
     enum Event {
         case planningStarted
         case operationStarted
         case uninstalling(name: String, applicationOnly: Bool, waiting: Bool, homebrew: Bool)
-        case leftoverRemovalStarted(count: Int, bytes: Int64)
-        case leftoversRemoved(CleanupOutcome)
+        case removalStarted(count: Int, bytes: Int64)
+        case removed(CleanupOutcome)
         case operationFinished
         case failure(title: String, message: String)
     }
@@ -30,7 +26,6 @@ final class AppUninstallerModel {
     @ObservationIgnored private let applications: AppUninstallApplications
     @ObservationIgnored private var installedID: UUID?
     @ObservationIgnored private var leftoversID: UUID?
-    @ObservationIgnored private var removalTask: Task<Void, Never>?
     @ObservationIgnored var canPlan: () -> Bool = { true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
@@ -74,19 +69,41 @@ final class AppUninstallerModel {
     ) -> Task<Void, Never> {
         isUninstallingApp = true
         onEvent(.operationStarted)
-        let task = Task { [self] in
+        return Task { [self] in
             let attempted = await execute()
             isUninstallingApp = false
-            removalTask = nil
             onEvent(.operationFinished)
             operations.finish(operation)
             if attempted { await refreshAfterRemoval() }
         }
-        removalTask = task
-        return task
     }
 
-    // MARK: - App uninstaller
+    /// Keep the guard until the planner returns. A reset requested during planning applies after that.
+    private func startPlanning(
+        _ operation: OperationCoordinator.Operation,
+        plan: @escaping @MainActor (_ planningID: UUID) async -> Void
+    ) {
+        let planningID = UUID()
+        appUninstallPlanningID = planningID
+        isPlanningAppUninstall = true
+        isInterruptingAppUninstall = false
+        appUninstallTask = Task { [self] in
+            defer {
+                if appUninstallPlanningID == planningID {
+                    isPlanningAppUninstall = false
+                    appUninstallPlanningURL = nil
+                    appUninstallPlanningDetail = nil
+                    appUninstallTask = nil
+                    appUninstallPlanningID = nil
+                    if isInterruptingAppUninstall { resetAppUninstall() }
+                    operations.finish(operation)
+                }
+            }
+            await plan(planningID)
+        }
+    }
+
+    // MARK: - Uninstall review
 
     var uninstallerRemoveLabel: String {
         switch uninstallerTab {
@@ -121,51 +138,26 @@ final class AppUninstallerModel {
             return
         }
         guard canPlan(), let operation = operations.begin(.appUninstallPlanning) else { return }
-        appUninstallTask?.cancel()
-        appUninstallPlan = nil
-        appUninstallOutcome = nil
-        lastUninstalledApplicationName = nil
-        appUninstallError = nil
-        appUninstallPlanningDetail = nil
-        batchUninstallReview = nil
-        batchUninstallOutcome = nil
-        isPlanningAppUninstall = true
-        isInterruptingAppUninstall = false
+        resetAppUninstall()
         appUninstallPlanningURL = applicationURL.standardizedFileURL
-        onEvent(.planningStarted)
-        let planningID = UUID()
-        appUninstallPlanningID = planningID
-
         let context = makeContext()
-        let planner = scanner
-        appUninstallTask = Task { [self] in
+        startPlanning(operation) { [self] planningID in
             let presentation = OperationPresentationDuration()
-            defer {
-                if self.appUninstallPlanningID == planningID {
-                    self.isPlanningAppUninstall = false
-                    self.appUninstallPlanningURL = nil
-                    self.appUninstallTask = nil
-                    self.appUninstallPlanningID = nil
-                    if self.isInterruptingAppUninstall { self.resetAppUninstall() }
-                    self.operations.finish(operation)
-                }
-            }
             do {
-                let plan = try await planner.plan(
-                    applicationURL: applicationURL, context: context
-                )
+                let plan = try await scanner.plan(applicationURL: applicationURL, context: context)
                 try Task.checkCancellation()
-                guard self.appUninstallPlanningID == planningID else { return }
-                self.appUninstallPlan = plan
+                guard appUninstallPlanningID == planningID else { return }
+                appUninstallPlan = plan
             } catch is CancellationError {
                 return
             } catch {
-                guard !Task.isCancelled, self.appUninstallPlanningID == planningID else { return }
+                guard !Task.isCancelled, appUninstallPlanningID == planningID else { return }
                 // Shown on the review page itself, where the user is waiting.
-                self.appUninstallError = error.localizedDescription
+                appUninstallError = error.localizedDescription
             }
             try? await presentation.wait()
         }
+        onEvent(.planningStarted)
     }
 
     func resetAppUninstall() {
@@ -270,10 +262,11 @@ final class AppUninstallerModel {
         guard !items.isEmpty, let operation = operations.begin(.appLeftoverRemoval) else { return }
         let keepReceipt = preferences().keepReceipt
         let paths = Set(items.map(\.id))
-        onEvent(.leftoverRemovalStarted(count: items.count, bytes: items.reduce(0) { $0 + $1.allocatedBytes }))
+        let bytes = items.reduce(0) { $0 + $1.allocatedBytes }
+        onEvent(.removalStarted(count: items.count, bytes: bytes))
         let task = startRemoval(operation) { [self] in
             var presentation = OperationPresentationDuration()
-            presentation.extend(toShow: .deletion(bytes: items.reduce(0) { $0 + $1.allocatedBytes }))
+            presentation.extend(toShow: .deletion(bytes: bytes))
             let registered = applications.registeredIdentifiers(identifiers)
             let outcome = (try? await remover.removeOrphanedAppLeftovers(
                 leftovers, bundleIdentifiers: identifiers, itemPaths: paths,
@@ -282,7 +275,7 @@ final class AppUninstallerModel {
             )) ?? CleanupOutcome(failed: Array(paths).sorted())
             await refreshLeftovers(afterRemoving: identifiers, wait: true)
             try? await presentation.wait()
-            onEvent(.leftoversRemoved(outcome))
+            onEvent(.removed(outcome))
             return true
         }
         await task.value
@@ -511,30 +504,15 @@ final class AppUninstallerModel {
 
         guard canPlan(), let operation = operations.begin(.appUninstallPlanning) else { return }
         resetAppUninstall()
-        isPlanningAppUninstall = true
-        let planningID = UUID()
-        appUninstallPlanningID = planningID
         let context = makeContext()
-        let planner = scanner
-        appUninstallTask = Task { [self] in
-            defer {
-                if self.appUninstallPlanningID == planningID {
-                    self.isPlanningAppUninstall = false
-                    self.appUninstallPlanningDetail = nil
-                    self.appUninstallTask = nil
-                    self.appUninstallPlanningID = nil
-                    if self.isInterruptingAppUninstall { self.resetAppUninstall() }
-                    self.operations.finish(operation)
-                }
-            }
+        startPlanning(operation) { [self] planningID in
             var plans: [AppUninstallPlan] = []
             var setAside: [SetAsideApplication] = []
             for (index, application) in selected.enumerated() {
                 guard !Task.isCancelled else { return }
-                self.appUninstallPlanningDetail =
-                    "\(application.name) · \(index + 1) of \(selected.count)"
+                appUninstallPlanningDetail = "\(application.name) · \(index + 1) of \(selected.count)"
                 do {
-                    let plan = try await planner.plan(
+                    let plan = try await scanner.plan(
                         applicationURL: application.url, context: context
                     )
                     plans.append(plan)
@@ -547,8 +525,8 @@ final class AppUninstallerModel {
                     ))
                 }
             }
-            guard !Task.isCancelled, self.appUninstallPlanningID == planningID else { return }
-            self.batchUninstallReview = BatchUninstallReview(plans: plans, setAside: setAside)
+            guard !Task.isCancelled, appUninstallPlanningID == planningID else { return }
+            batchUninstallReview = BatchUninstallReview(plans: plans, setAside: setAside)
         }
     }
 
@@ -606,5 +584,4 @@ final class AppUninstallerModel {
         try? await presentation.wait()
         return true
     }
-
 }
