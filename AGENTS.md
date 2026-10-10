@@ -13,6 +13,7 @@ The [Moppo project](https://github.com/orgs/anguria-studio/projects/1) holds sta
 - Link the pull request to its issue.
 - Set `Done` after the required checks and merge.
 - Keep incomplete checks visible in the pull request and final report.
+- If manual checks remain incomplete when you close a ticket, add them to an open ticket.
 - Keep `BACKLOG.local.md` as a historical record.
 - Do not keep a second active ticket list in local files.
 
@@ -25,6 +26,17 @@ gh project item-list 1 --owner anguria-studio --limit 200 --format json
 Check `totalCount` against the number of returned items.
 If some items are missing, increase the limit or use API pagination.
 Read field identifiers with `gh project field-list` before you update a field.
+
+## Code and tests
+
+- Before you add a helper, search the code and tests for an equivalent helper.
+- Put helpers that more than one test file uses in `AppTests/TestSupport.swift`.
+- Remove properties, methods, and stored tasks that no code reads.
+- Give the same name to the same event or state in each feature model.
+- Use test arguments only when each argument can change the result.
+- Before you add a test, make sure that no other test covers the same behavior.
+- When you move or add a feature folder, update the layout in `docs/README.md`.
+- After a multi-part refactor, review the complete change for repeated code and repeated tests.
 
 ## Branches and pull requests
 
