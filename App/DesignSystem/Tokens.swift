@@ -125,10 +125,6 @@ enum Token {
         static let emphasis = Token.dynamic(
             light: NSColor(srgbRed: 0.059, green: 0.090, blue: 0.165, alpha: 1), dark: .white.withAlphaComponent(0.96)
         )
-        /// The large available-storage total uses a brighter green.
-        static let availableStorage = Token.dynamic(
-            light: NSColor(srgbRed: 0.129, green: 0.588, blue: 0.239, alpha: 1), dark: .systemGreen
-        )
         static let duplicateAvailableStorage = Token.dynamic(
             light: NSColor(srgbRed: 0.839, green: 0.373, blue: 0, alpha: 1), dark: .labelColor
         )
@@ -172,9 +168,9 @@ enum Token {
     //
     // Light keeps its own scheme. These three values are authored for dark.
 
-    /// The neutral light canvas separates white cards from the page.
+    /// The white light canvas separates gray cards from the page.
     static let pageBackground = Token.dynamic(
-        light: NSColor(white: 240 / 255, alpha: 1),  // #F0F0F0
+        light: .white,  // #FFFFFF
         dark: NSColor(white: 14 / 255, alpha: 1)  // #0E0E0E
     )
 
@@ -188,7 +184,7 @@ enum Token {
 
     /// The opaque sidebar stays slightly lighter than the page in dark mode.
     static let sidebar = Token.dynamic(
-        light: NSColor(white: 250 / 255, alpha: 1),  // #FAFAFA
+        light: NSColor(white: 236 / 255, alpha: 1),  // #ECECEC
         dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
     )
 
@@ -208,9 +204,16 @@ enum Token {
     // it whichever way round the window is.
 
     enum Fill {
-        static let duplicateGroupHeader = Token.dynamic(
-            light: NSColor(srgbRed: 0.969, green: 0.961, blue: 0.988, alpha: 1),
+        static let previewBackdrop = Token.dynamic(
+            light: .black.withAlphaComponent(0.12),
+            dark: .black.withAlphaComponent(0.28)
+        )
+        static let groupHeader = Token.dynamic(
+            light: NSColor(white: 244 / 255, alpha: 1),
             dark: .clear
+        )
+        static let cardContent = Token.dynamic(
+            light: .white, dark: NSColor(white: 23 / 255, alpha: 1)
         )
         static let safeBadge = Token.dynamic(
             light: NSColor(srgbRed: 0.784, green: 0.937, blue: 0.800, alpha: 1),
@@ -222,26 +225,24 @@ enum Token {
         )
         /// Shared card color. Dark mode matches the expanded Cleanup file lists.
         static let box = Token.dynamic(
-            light: .white,
+            light: NSColor(white: 246 / 255, alpha: 1),
             dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
         )
         static let warning = Token.dynamic(
             light: NSColor(srgbRed: 1.000, green: 0.890, blue: 0.627, alpha: 1),  // #FFE3A0
             dark: .systemOrange.withAlphaComponent(0.10)
         )
-        static let warningBorder = Token.dynamic(
-            light: NSColor(srgbRed: 0.941, green: 0.816, blue: 0.518, alpha: 1),  // #F0D084
-            dark: .systemOrange.withAlphaComponent(0.26)
-        )
-        /// Card borders and table rules use a faint neutral line.
+        /// Table rules use a faint neutral line.
         static let boxBorder = Token.ink(light: 0.06, dark: 0.07)
+        /// Card outlines are slightly stronger than the table rules in light mode.
+        static let cardBorder = Token.ink(light: 0.12, dark: 0.07)
         /// The specular top edge on a secondary button. In light there is no specular
         /// edge to draw, so it becomes the outline that makes the control look raised,
         /// and it needs more weight than the box hairline to do that.
         static let controlBorder = Token.ink(light: 0.13, dark: 0.10)
         /// An inset surface for file lists, callouts, and exclusions.
         static let well = Token.dynamic(
-            light: NSColor(white: 247 / 255, alpha: 1),
+            light: NSColor(white: 242 / 255, alpha: 1),
             dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
         )
         static let control = Token.dynamic(
@@ -249,11 +250,13 @@ enum Token {
         )
         /// Neutral action buttons stay distinct from the page background.
         static let button = Token.dynamic(
-            light: NSColor(white: 229 / 255, alpha: 1), dark: .white.withAlphaComponent(0.09)
+            light: NSColor(white: 244 / 255, alpha: 1), dark: .white.withAlphaComponent(0.09)
         )
-        static let buttonOnTint = Token.dynamic(light: .white, dark: .white.withAlphaComponent(0.09))
+        static let buttonOnCard = Token.dynamic(
+            light: .white, dark: .white.withAlphaComponent(0.09)
+        )
         static let buttonHover = Token.dynamic(
-            light: NSColor(white: 218 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
+            light: NSColor(white: 234 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
         )
         static let buttonBorder = Token.dynamic(light: .black.withAlphaComponent(0.07), dark: .clear)
         /// Disabled controls have less contrast than active controls.
@@ -262,22 +265,20 @@ enum Token {
         static let controlHover = Token.dynamic(
             light: NSColor(white: 230 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
         )
+        static let rowSelection = Token.ink(light: 0.14, dark: 0.12)
         static let rowHover = Token.dynamic(
-            light: NSColor(white: 247 / 255, alpha: 1), dark: .white.withAlphaComponent(0.03)
+            light: NSColor(white: 249 / 255, alpha: 1), dark: .white.withAlphaComponent(0.03)
         )
-        /// Cleanup rows brighten to white under the pointer.
+        /// Cleanup content is white in light mode.
         static let cleanupRow = Token.dynamic(
-            light: NSColor(white: 252 / 255, alpha: 1), dark: .clear
+            light: .white, dark: .clear
         )
         static let cleanupRowHover = Token.dynamic(
-            light: .white, dark: .white.withAlphaComponent(0.03)
-        )
-        static let cleanupTableHeader = Token.dynamic(
-            light: NSColor(white: 250 / 255, alpha: 1), dark: NSColor(white: 23 / 255, alpha: 1)
+            light: NSColor(white: 249 / 255, alpha: 1), dark: .white.withAlphaComponent(0.03)
         )
         /// The selected sidebar row uses neutral gray in light mode.
         static let sidebarSelection = Token.dynamic(
-            light: NSColor(white: 234 / 255, alpha: 1), dark: .white.withAlphaComponent(0.12)
+            light: NSColor(white: 218 / 255, alpha: 1), dark: .white.withAlphaComponent(0.12)
         )
 
         /// The fill under the pointer in the menu bar popover — the same blue a
@@ -335,6 +336,7 @@ enum Token {
         static let toolbar: CGFloat = 52
         static let sidebarRow: CGFloat = 36
         static let control: CGFloat = 24
+        static let tabControl: CGFloat = 32
         /// The side inset every page uses, header and content alike. The headers
         /// had drifted to 18, 16 and 14 while the rows beneath them stayed at 14,
         /// so each title sat out of line with what it described.

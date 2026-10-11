@@ -21,14 +21,17 @@ struct CapacityCard: View {
     private let freeBytes: Int64
     private let breakdown: StorageBreakdown?
     private let isMeasuring: Bool
+    private let spaceState: DashboardSpaceState
 
-    init(volume: VolumeInfo, breakdown: StorageBreakdown?, isMeasuring: Bool = false) {
+    init(volume: VolumeInfo, breakdown: StorageBreakdown?, isMeasuring: Bool = false,
+         warnBelowGB: Int = SettingsStore.Defaults.warnBelowGB) {
         self.init(
             capacityBytes: volume.capacityBytes,
             usedBytes: volume.usedBytes,
             freeBytes: volume.freeBytes,
             breakdown: breakdown,
-            isMeasuring: isMeasuring
+            isMeasuring: isMeasuring,
+            warnBelowGB: warnBelowGB
         )
     }
 
@@ -39,13 +42,15 @@ struct CapacityCard: View {
         usedBytes: Int64,
         freeBytes: Int64,
         breakdown: StorageBreakdown?,
-        isMeasuring: Bool = false
+        isMeasuring: Bool = false,
+        warnBelowGB: Int = SettingsStore.Defaults.warnBelowGB
     ) {
         self.capacityBytes = capacityBytes
         self.usedBytes = usedBytes
         self.freeBytes = freeBytes
         self.breakdown = breakdown
         self.isMeasuring = isMeasuring
+        self.spaceState = DashboardSpaceState(freeBytes: freeBytes, warnBelowGB: warnBelowGB)
     }
 
     var body: some View {
@@ -92,38 +97,31 @@ struct CapacityCard: View {
 
     private var hero: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(ByteFormatting.string(usedBytes))
-                    .animatedTotal(usedBytes)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(ByteFormatting.string(freeBytes))
+                    .animatedTotal(freeBytes)
                     .font(.mcHero)
-                    .mcTracked(-0.68)   // -0.02em
-                    .foregroundStyle(Token.Text.emphasis)
-                    // A cramped window truncates the clause beside it, never the figure.
-                    .layoutPriority(1)
-
-                Text("of \(ByteFormatting.string(capacityBytes)) used")
-                    .font(.capacityHeroUnit)
-                    .foregroundStyle(Token.Text.tertiary)
+                    .mcTracked(-0.68)
+                Text("free")
+                    .font(.mcControlLabel)
+                    .fontWeight(.semibold)
             }
+            .foregroundStyle(Token.color(spaceState.color))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
+            .layoutPriority(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(ByteFormatting.string(freeBytes)) free")
+            .accessibilityValue(spaceState == .critical ? "Almost out of space" : (spaceState == .low ? "Running low on space" : "Above warning threshold"))
 
             Spacer(minLength: 12)
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Available")
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.tertiary)
-                Text(ByteFormatting.string(freeBytes))
-                    .animatedTotal(freeBytes)
-                    .font(.mcSecondaryHero)
-                    .mcTracked(-0.26)   // -0.01em
-                    .foregroundStyle(Token.Text.availableStorage)
-                    .lineLimit(1)
-            }
-            // Sit the free figure on the used figure's baseline — not the eyebrow
-            // above it, which is what a plain first-baseline alignment would take.
-            .alignmentGuide(.firstTextBaseline) { $0[.lastTextBaseline] }
+            Text("\(ByteFormatting.string(usedBytes)) of \(ByteFormatting.string(capacityBytes)) used")
+                .font(.mcControlLabel)
+                .fontWeight(.semibold)
+                .foregroundStyle(Token.Text.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 
@@ -440,12 +438,6 @@ private struct CapacityBar: View {
 
         return zip(visible, final).map { Slice(segment: $0, width: $1) }
     }
-}
-
-/// The hero row's trailing clause. 16pt belongs to this card alone, so it is not in
-/// the shared ramp — but it carries a figure, so it carries tabular digits.
-private extension Font {
-    static let capacityHeroUnit = Font.system(size: 16).monospacedDigit()
 }
 
 #Preview("Capacity card") {

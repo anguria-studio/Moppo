@@ -47,6 +47,17 @@ public actor FileDuplicateService {
             self.completed = completed
             self.total = total
         }
+
+        /// Estimates overall progress. The final portion covers byte comparison and result preparation.
+        public var fractionCompleted: Double? {
+            let fraction = total > 0 ? min(1, max(0, Double(completed) / Double(total))) : 0
+            switch stage {
+            case .enumerating: return nil
+            case .sampling: return 0.4 * fraction
+            case .verifying: return 0.4 + 0.55 * fraction
+            case .done: return 1
+            }
+        }
     }
 
     private var running: Task<FileDuplicateResults, Error>?

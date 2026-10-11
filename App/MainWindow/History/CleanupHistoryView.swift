@@ -96,9 +96,10 @@ struct CleanupHistoryView: View {
     /// and alternating stripes where the rest of the app has a grouped box.
     private var historyTable: some View {
         ScrollView {
-            GroupedBox {
+            GroupedBox(fill: Token.Fill.cardContent) {
                 VStack(spacing: 0) {
                     columnHeader
+                        .background(Token.Fill.cardContent, in: Rectangle())
                     Hairline()
                     // Lazy: the log is read 5,000 records deep.
                     LazyVStack(spacing: 0) {

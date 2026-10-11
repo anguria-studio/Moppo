@@ -281,7 +281,7 @@ struct ScannerView: View {
     private func outline(_ categories: [ScanCategoryResult]) -> some View {
         VStack(spacing: 10) {
             ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
-                GroupedBox {
+                GroupedBox(fill: Token.Fill.cardContent) {
                     categorySection(category)
                         .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
                 }

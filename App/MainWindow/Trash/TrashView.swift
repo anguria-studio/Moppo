@@ -121,9 +121,10 @@ private struct TrashContent: View {
                                         .foregroundStyle(Token.Text.tertiary)
                                         .padding(.horizontal, 2)
                                 }
-                                GroupedBox {
+                                GroupedBox(fill: Token.Fill.cardContent) {
                                     VStack(spacing: 0) {
                                         columnHeader
+                                            .background(Token.Fill.cardContent, in: Rectangle())
                                         Hairline()
                                         // Create rows as they enter the visible area.
                                         LazyVStack(spacing: 0) {

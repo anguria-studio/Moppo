@@ -7,6 +7,88 @@ import Testing
 @Suite("Photo review recovery")
 @MainActor
 struct PhotoRecoveryTests {
+    @Test("Scrolling retains visible thumbnails and bounds the recent image cache")
+    func thumbnailCache() async throws {
+        let fetcher = ThumbnailRequests()
+        let loader = PhotoThumbnailLoader(fetchImage: { id, _ in await fetcher.fetch(id) })
+        loader.retain("visible")
+        try await waitUntil { loader.image(for: "visible") != nil }
+        for index in 0..<200 {
+            let id = String(index)
+            loader.retain(id)
+            try await waitUntil { loader.image(for: id) != nil }
+            loader.release(id)
+        }
+        #expect(loader.image(for: "visible") != nil)
+        #expect(loader.image(for: "0") == nil)
+        #expect(loader.image(for: "199") != nil)
+        let retained = (0..<200).filter { loader.image(for: String($0)) != nil }.count
+        #expect(retained == 159)
+        loader.retain("199")
+        #expect(await fetcher.requests["199"] == 1)
+        loader.release("199")
+        loader.retain("0")
+        try await waitUntil { loader.image(for: "0") != nil }
+        #expect(await fetcher.requests["0"] == 2)
+        loader.release("0")
+        loader.release("visible")
+    }
+
+    @Test("Thumbnail loading limits requests and cancels photos after their last view disappears")
+    func thumbnailVisibility() async throws {
+        let fetcher = ThumbnailRequests(held: true)
+        let loader = PhotoThumbnailLoader(fetchImage: { id, _ in await fetcher.fetch(id) })
+        for index in 0..<12 { loader.retain(String(index)) }
+        loader.retain("0")
+        try await waitUntil { await fetcher.requests.count == 6 }
+        loader.release("0")
+        #expect(await fetcher.requests.count == 6)
+        await fetcher.finish("0")
+        try await waitUntil { loader.image(for: "0") != nil }
+        try await waitUntil { await fetcher.requests.count == 7 }
+
+        loader.release("11")
+        loader.release("1")
+        try await waitUntil { await fetcher.requests.count == 8 }
+        await fetcher.finish("1")
+        try await waitUntil { await fetcher.returned.contains("1") }
+        #expect(loader.image(for: "1") == nil)
+        loader.retain("1")
+        await fetcher.finishAll()
+        try await waitUntil { loader.image(for: "1") != nil && loader.image(for: "10") != nil }
+        #expect(await fetcher.requests["1"] == 2)
+        #expect(await fetcher.requests["11"] == nil)
+        for index in 0..<11 { loader.release(String(index)) }
+    }
+
+    @Test("Photo zoom preserves the view for a sharper image and resets for another photo")
+    func previewZoom() {
+        let view = PhotoZoomScrollView()
+        view.frame = NSRect(x: 0, y: 0, width: 640, height: 480)
+        view.show(NSImage(size: NSSize(width: 120, height: 160)), assetID: "first")
+        view.layoutSubtreeIfNeeded()
+        #expect(view.allowsMagnification)
+        #expect(view.magnification == 1)
+        #expect(view.documentView?.frame.size == view.contentSize)
+
+        view.setMagnification(2, centeredAt: NSPoint(x: 320, y: 240))
+        let zoomedOrigin = view.contentView.bounds.origin
+        view.show(NSImage(size: NSSize(width: 1200, height: 1600)), assetID: "first")
+        view.layoutSubtreeIfNeeded()
+        #expect(view.magnification == 2)
+        #expect(view.contentView.bounds.origin == zoomedOrigin)
+
+        view.frame.size = NSSize(width: 800, height: 600)
+        view.layoutSubtreeIfNeeded()
+        #expect(view.magnification == 2)
+        #expect(view.documentView?.frame.size == view.contentSize)
+
+        view.show(NSImage(size: NSSize(width: 1600, height: 1200)), assetID: "second")
+        view.layoutSubtreeIfNeeded()
+        #expect(view.magnification == 1)
+        #expect(view.contentView.bounds.origin == .zero)
+    }
+
     @Test("A failed preview stops loading and permits retry", arguments: [false, true])
     func previewRetry(allowsNetwork: Bool) async throws {
         let fetcher = PreviewFetcher()
@@ -231,5 +313,30 @@ private actor TestPhotoLibrary: PhotoLibraryProviding {
     func delete(assetIDs: [String]) async throws {
         if missing { throw PhotoDeletionUnavailable.missingAssets }
         deletions += 1
+    }
+}
+
+private actor ThumbnailRequests {
+    var requests: [String: Int] = [:]
+    var returned: Set<String> = []
+    private var held: Bool
+    private var pending: [String: CheckedContinuation<Void, Never>] = [:]
+
+    init(held: Bool = false) { self.held = held }
+
+    func fetch(_ id: String) async -> NSImage {
+        requests[id, default: 0] += 1
+        if held { await withCheckedContinuation { pending[id] = $0 } }
+        returned.insert(id)
+        return NSImage(size: NSSize(width: 10, height: 10))
+    }
+
+    func finish(_ id: String) { pending.removeValue(forKey: id)?.resume() }
+
+    func finishAll() {
+        held = false
+        let waiting = pending.values
+        pending.removeAll()
+        waiting.forEach { $0.resume() }
     }
 }

@@ -148,6 +148,8 @@ final class FileDuplicatesModel {
                     onProgress: { [weak self] progress in
                         Task { @MainActor in
                             guard let self, self.scanID == scanID, !self.isInterrupting else { return }
+                            guard (progress.fractionCompleted ?? -1)
+                                >= (self.progress?.fractionCompleted ?? -1) else { return }
                             self.progress = progress
                         }
                     }

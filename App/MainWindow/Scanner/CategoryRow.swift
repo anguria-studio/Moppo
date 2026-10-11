@@ -18,11 +18,12 @@ struct CategoryRow: View {
         if isActionable {
             Button(action: onToggle) { rowContent }
                 .buttonStyle(.plain)
-                .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.cleanupRow)
+                .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.groupHeader)
                 .accessibilityLabel(accessibilityDescription)
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
         } else {
             rowContent
+                .background(Token.Fill.groupHeader, in: Rectangle())
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(accessibilityDescription)
         }

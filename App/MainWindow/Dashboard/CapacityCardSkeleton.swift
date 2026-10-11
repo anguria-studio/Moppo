@@ -13,7 +13,7 @@ struct CapacityCardSkeleton: View {
                 HStack(alignment: .bottom) {
                     bone(width: 220, height: 34)
                     Spacer(minLength: 12)
-                    bone(width: 120, height: 26)
+                    bone(width: 190, height: 13)
                 }
 
                 SkeletonTrack()
@@ -23,7 +23,7 @@ struct CapacityCardSkeleton: View {
                     .padding(.top, 16)
             }
             .padding(.vertical, 20)
-            .padding(.horizontal, 22)
+            .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .skeletonPulse()

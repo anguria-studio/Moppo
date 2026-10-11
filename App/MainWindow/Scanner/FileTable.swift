@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import MoppoCore
 
-/// The expanded category has a light gray column header and near-white file rows in light mode.
+/// The expanded category has a white column header and white file rows in light mode.
 ///
 /// Deliberately not `Table`. The design's row is a two-line name cell, a checkbox that
 /// is the only selection affordance, and an action button that stays dim until the
@@ -83,10 +83,10 @@ struct FileTable: View {
         Well(radius: 0) {
             VStack(spacing: 0) {
                 columnHeader
-                    .background(Token.Fill.cleanupTableHeader)
+                    .background(Token.Fill.cardContent, in: Rectangle())
                 Hairline()
                 rows
-                    .background(Token.Fill.box)
+                    .background(Token.Fill.cardContent)
             }
         }
         .overlay(alignment: .top) { Hairline() }

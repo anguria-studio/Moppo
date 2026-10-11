@@ -5,6 +5,44 @@ import Testing
 @Suite("Photo feature ownership")
 @MainActor
 struct PhotoDuplicatesModelTests {
+    @Test("Photo highlight follows grid rows without changing keeper order")
+    func gridNavigation() throws {
+        let first = DuplicateGroup(
+            id: "first", kind: .similar, keeper: PhotoAsset(id: "a"),
+            removable: [PhotoAsset(id: "b"), PhotoAsset(id: "c"), PhotoAsset(id: "d")]
+        )
+        let second = DuplicateGroup(
+            id: "second", kind: .exact, keeper: PhotoAsset(id: "e"), removable: [PhotoAsset(id: "f")]
+        )
+        var review = PhotoReviewState()
+        let groups = [first, second]
+        review.moveHighlight(.right, groups: groups, columns: 3)
+        #expect(review.highlightedID == "a")
+        review.moveHighlight(.right, groups: groups, columns: 3)
+        #expect(review.highlightedID == "b")
+        review.moveHighlight(.down, groups: groups, columns: 3)
+        #expect(review.highlightedID == "d")
+        review.moveHighlight(.down, groups: groups, columns: 3)
+        #expect(review.highlightedID == "e")
+        review.moveHighlight(.right, groups: groups, columns: 3)
+        #expect(review.highlightedID == "f")
+        review.moveHighlight(.down, groups: groups, columns: 3)
+        #expect(review.highlightedID == "f")
+        review.moveHighlight(.up, groups: groups, columns: 2)
+        #expect(review.highlightedID == "d")
+        let promoted = try #require(first.promoting("d"))
+        review.update(groups: [promoted, second])
+        #expect(review.highlightedID == "d")
+        #expect(promoted.assets.map(\.id) == first.assets.map(\.id))
+        #expect(promoted.reviewTitle == "4 similar photos · keeping your choice")
+        review.update(groups: [second])
+        #expect(review.highlightedID == nil)
+        review.moveHighlight(.left, groups: [second], columns: 2)
+        #expect(review.highlightedID == "f")
+        review.moveHighlight(.right, groups: [], columns: 2)
+        #expect(review.highlightedID == nil)
+    }
+
     @Test("Photos access requires the photo page and completed onboarding")
     func accessContext() async {
         let service = HeldPhotoService()
@@ -215,7 +253,14 @@ struct PhotoDuplicatesModelTests {
         photos.toggleGroup("initial")
         #expect(photos.isGroupSelected("initial"))
         #expect(photos.selection == ["initial-copy"])
+        var review = PhotoReviewState(highlightedID: "initial-copy")
+        let order = photos.groups.first?.assets.map(\.id)
+        photos.preview = .init(groupID: "initial", asset: try #require(photos.groups.first?.removable.first))
         photos.keepInstead(groupID: "initial", assetID: "initial-copy")
+        review.update(groups: photos.groups)
+        #expect(review.highlightedID == "initial-copy")
+        #expect(photos.preview?.id == "initial-copy")
+        #expect(photos.groups.first?.assets.map(\.id) == order)
         #expect(photos.groups.first?.keeper.id == "initial-copy")
         #expect(!photos.selection.contains("initial-copy"))
         photos.selectAll()

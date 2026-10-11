@@ -56,7 +56,7 @@ struct SnapshotsDisclosureRow: View {
     }
 
     var body: some View {
-        GroupedBox {
+        GroupedBox(fill: Token.Fill.cardContent) {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 if isExpanded { expandedBody }
@@ -110,7 +110,7 @@ struct SnapshotsDisclosureRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverHighlight()
+        .hoverHighlight(restingFill: Token.Fill.groupHeader)
     }
 
     private var statusLine: String {

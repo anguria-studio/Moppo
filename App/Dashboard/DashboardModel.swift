@@ -45,6 +45,12 @@ final class DashboardModel {
     private(set) var snapshots: [SnapshotInfo] = []
     private(set) var isLoadingBreakdown = false
     private(set) var isLowSpaceWarningDismissed = false
+    struct TrashNotice: Identifiable {
+        let id = UUID()
+        let count: Int
+        let bytes: Int64?
+    }
+    private(set) var trashNotice: TrashNotice?
     private(set) var hasCompletedInitialDashboardLoad = false
     var isDashboardLoading: Bool { !hasCompletedInitialDashboardLoad || isLoadingBreakdown }
     var snapshotsExpanded = false
@@ -75,6 +81,31 @@ final class DashboardModel {
 
     func dismissLowSpaceWarning() {
         isLowSpaceWarningDismissed = true
+    }
+
+    func spaceState(warnBelowGB: Int) -> DashboardSpaceState? {
+        volume.map { DashboardSpaceState(freeBytes: $0.freeBytes, warnBelowGB: warnBelowGB) }
+    }
+
+    func showsSpaceWarning(warnBelowGB: Int) -> Bool {
+        switch spaceState(warnBelowGB: warnBelowGB) {
+        case .critical: true
+        case .low: !isLowSpaceWarningDismissed && trashNotice == nil
+        case .healthy, nil: false
+        }
+    }
+
+    func recordTrashRemoval(_ outcome: CleanupOutcome) {
+        guard outcome.trashedCount > 0 else { return }
+        trashNotice = TrashNotice(
+            count: outcome.trashedCount,
+            bytes: outcome.deletedCount == 0 ? outcome.removedBytes : nil
+        )
+    }
+
+    func dismissTrashNotice(_ id: UUID) {
+        guard trashNotice?.id == id else { return }
+        trashNotice = nil
     }
 
     /// Keep launch loading active until the complete refresh finishes.
@@ -237,5 +268,28 @@ final class DashboardModel {
         #endif
         hasCleanupGrowthBaseline = comparisonHistory.contains { $0.trigger == .removal }
         growth = StorageGrowth.comparison(growthBaseline, in: comparisonHistory)
+    }
+}
+
+/// Uses the warning preference and a fixed critical limit of 5 GB.
+enum DashboardSpaceState: Equatable {
+    case healthy, low, critical
+
+    init(freeBytes: Int64, warnBelowGB: Int) {
+        if freeBytes < 5 * ByteFormatting.bytesPerGB {
+            self = .critical
+        } else if freeBytes < Int64(warnBelowGB) * ByteFormatting.bytesPerGB {
+            self = .low
+        } else {
+            self = .healthy
+        }
+    }
+
+    var color: ColorToken {
+        switch self {
+        case .healthy: .green
+        case .low: .orange
+        case .critical: .red
+        }
     }
 }

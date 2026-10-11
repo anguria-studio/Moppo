@@ -114,7 +114,7 @@ struct GrowthCard: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(PageActionButtonStyle(compact: true))
+        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
         // The label already carries a chevron, drawn at the size the design's
         // controls use rather than the one AppKit picks.
         .menuIndicator(.hidden)

@@ -21,9 +21,13 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Token.Size.pageGutter) {
-                if let volume = model.volume, isLowOnSpace(volume), !model.isLowSpaceWarningDismissed {
+                if let volume = model.volume, model.showsSpaceWarning(warnBelowGB: warnBelowGB) {
                     lowSpaceBanner(volume)
                         .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -6)))
+                }
+
+                if let notice = model.trashNotice {
+                    trashBanner(notice)
                 }
 
                 if let volume = model.volume, model.isDashboardLoading {
@@ -32,12 +36,12 @@ struct DashboardView: View {
                     // produces go to bones. The previous breakdown supplies the
                     // category names, which are stable; its figures are withheld:
                     // stale numbers under a pulse read as current.
-                    CapacityCard(volume: volume, breakdown: model.breakdown, isMeasuring: true)
+                    CapacityCard(volume: volume, breakdown: model.breakdown, isMeasuring: true, warnBelowGB: warnBelowGB)
                 } else if model.isDashboardLoading {
                     // Not even the totals yet: the moment before `diskutil` returns.
                     CapacityCardSkeleton()
                 } else if let volume = model.volume, let breakdown = model.breakdown {
-                    CapacityCard(volume: volume, breakdown: breakdown)
+                    CapacityCard(volume: volume, breakdown: breakdown, warnBelowGB: warnBelowGB)
                     if model.breakdownIsStale {
                         staleNote
                     }
@@ -92,52 +96,89 @@ struct DashboardView: View {
         }
     }
 
-    /// Acts on Preferences › General › "Warn me below".
-    ///
-    /// Shown in the window rather than as a system notification: a notification would
-    /// need its own permission prompt, and this app already asks the user for more
-    /// access than most. The banner appears where the number it refers to lives.
-    private func isLowOnSpace(_ volume: VolumeInfo) -> Bool {
-        guard let settings else { return false }
-        return volume.freeBytes < Int64(settings.warnBelowGB) * ByteFormatting.bytesPerGB
-    }
+    private var warnBelowGB: Int { settings?.warnBelowGB ?? SettingsStore.Defaults.warnBelowGB }
+    private var safeBytes: Int64 { scanResults?.safeToRemoveBytes ?? 0 }
 
     private func lowSpaceBanner(_ volume: VolumeInfo) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: "exclamationmark.triangle")
-                // The readable orange, not the fill one: on the light banner the
-                // system colour all but disappears into its own tint.
-                .foregroundStyle(Token.textColor(.orange))
-            Text("\(ByteFormatting.string(volume.freeBytes)) free. This is below your "
-                 + "\(settings?.warnBelowGB ?? 0) GB warning threshold.")
-                .font(.mcSubtitle)
-                .foregroundStyle(Token.Text.primary)
-            Spacer(minLength: 8)
-            Button {
+        let critical = DashboardSpaceState(freeBytes: volume.freeBytes, warnBelowGB: warnBelowGB) == .critical
+        let detail: String
+        if critical {
+            detail = "Only \(ByteFormatting.string(volume.freeBytes)) left. Apps may fail to save. "
+                + (safeBytes > 0 ? "Clean safe items, then review large items." : "Review large items to make space.")
+        } else {
+            detail = "Below your \(warnBelowGB) GB threshold. "
+                + (safeBytes > 0
+                   ? "\(ByteFormatting.string(safeBytes)) is safe to move to Trash."
+                   : "Review large items to make space.")
+        }
+        return statusBanner(
+            title: critical ? "Almost out of space" : "Running low on space",
+            detail: detail,
+            symbol: "exclamationmark.triangle",
+            color: critical ? .red : .orange,
+            dismiss: critical ? nil : {
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
                     model.dismissLowSpaceWarning()
                 }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.mcSubtitle)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(Token.Text.secondary)
-            .accessibilityLabel("Dismiss low-space warning")
-            .help("Dismiss until the next dashboard measurement.")
+        )
+    }
+
+    private func trashBanner(_ notice: DashboardModel.TrashNotice) -> some View {
+        statusBanner(
+            title: notice.bytes.map { "Moved \(ByteFormatting.string($0)) to Trash" }
+                ?? "Moved \(notice.count) \(notice.count == 1 ? "item" : "items") to Trash",
+            detail: "Emptying the Trash permanently deletes its contents and can recover space.",
+            symbol: "checkmark",
+            color: .green,
+            dismiss: { model.dismissTrashNotice(notice.id) }
+        )
+        .task(id: notice.id) {
+            do { try await Task.sleep(for: .seconds(8)) }
+            catch { return }
+            model.dismissTrashNotice(notice.id)
         }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 10)
-        .background(
-            Token.Fill.warning,
-            in: RoundedRectangle(cornerRadius: Token.Radius.well)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Token.Radius.well)
-                .strokeBorder(Token.Fill.warningBorder, lineWidth: Token.hairline)
-        )
+    }
+
+    private func statusBanner(
+        title: String, detail: String, symbol: String, color: ColorToken,
+        dismiss: (() -> Void)?
+    ) -> some View {
+        GroupedBox(radius: Token.Radius.well) {
+            HStack(spacing: 12) {
+                Image(systemName: symbol)
+                    .font(.mcControlLabel)
+                    .foregroundStyle(Token.textColor(color))
+                    .frame(width: 30, height: 30)
+                    .background(
+                        color == .orange ? Token.Fill.warning : (color == .green ? Token.Fill.safeBadge : Token.color(.red).opacity(0.15)),
+                        in: RoundedRectangle(cornerRadius: Token.Radius.control)
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.mcControlLabel)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Token.Text.primary)
+                    Text(detail)
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                if let dismiss {
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark")
+                            .font(.mcSubtitle)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Token.Text.secondary)
+                    .accessibilityLabel("Dismiss \(title)")
+                }
+            }
+            .padding(14)
+        }
     }
 
     /// Says plainly that the figures are remembered rather than fresh. Showing a

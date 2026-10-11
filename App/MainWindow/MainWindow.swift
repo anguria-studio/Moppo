@@ -21,12 +21,18 @@ struct MainWindow: View {
         // Traffic-light geometry, and the window's drag turned off — see
         // `WindowChrome`, which explains why a nested opt-out cannot do it.
         .background(WindowChrome(headerBand: Token.Size.headerBand))
-        .disabled(model.activity != nil || model.photoDuplicates.isDeleting)
+        .disabled(model.activity != nil || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil)
+        .accessibilityHidden(model.photoDuplicates.preview != nil)
+        .overlay {
+            if model.photoDuplicates.preview != nil {
+                Token.Fill.previewBackdrop
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
+            }
+        }
         .background(PhotoPreviewWindowPresenter(item: model.photoDuplicates.preview, model: model.photoDuplicates))
         .onChange(of: model.duplicateKind) { _, _ in model.photoDuplicates.preview = nil }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            model.photoDuplicates.preview = nil
-        }
         .task {
             if scenePhase == .active { model.startInitialCleanupScan() }
             await model.dashboard.loadDashboard()
@@ -314,7 +320,7 @@ struct MainWindow: View {
                 title: "Duplicate file scan",
                 detail: progress.map { "\($0.completed.formatted()) of \($0.total.formatted()) files" }
                     ?? "Preparing scan",
-                progress: progress.flatMap { $0.total > 0 ? Double($0.completed) / Double($0.total) : nil },
+                progress: progress?.fractionCompleted,
                 isInterrupting: model.fileDuplicates.isInterrupting,
                 onStop: { model.fileDuplicates.cancelScan() }
             )
@@ -369,7 +375,7 @@ struct MainWindow: View {
         .padding(.leading, 14)
         .padding(.trailing, isInterrupting ? 14 : 6)
         .frame(height: 38)
-        .background(colorScheme == .light ? Token.Fill.box : Token.Fill.control, in: Capsule())
+        .background(Token.Fill.control, in: Capsule())
         .overlay {
             Capsule().strokeBorder(
                 colorScheme == .light ? Token.Fill.boxBorder : Token.Fill.controlBorder,

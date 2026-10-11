@@ -145,14 +145,15 @@ private final class SelectionCheckboxCell: NSButtonCell {
 /// padding, which fights every layout here; the design's box is a plain surface.
 struct GroupedBox<Content: View>: View {
     var radius: CGFloat = Token.Radius.box
+    var fill: Color = Token.Fill.box
     @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .background(Token.Fill.box, in: RoundedRectangle(cornerRadius: radius))
+            .background(fill, in: RoundedRectangle(cornerRadius: radius))
             .overlay(
                 RoundedRectangle(cornerRadius: radius)
-                    .strokeBorder(Token.Fill.boxBorder, lineWidth: Token.hairline)
+                    .strokeBorder(Token.Fill.cardBorder, lineWidth: Token.hairline)
             )
     }
 }
@@ -243,7 +244,6 @@ struct SidebarRowButtonStyle: ButtonStyle {
 
 /// A compact action for controls inside cards and rows.
 struct SecondaryButtonStyle: ButtonStyle {
-    var fill: Color = Token.Fill.button
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
@@ -255,7 +255,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .frame(minHeight: 28)
             .background(
-                isEnabled ? (isHovering ? Token.Fill.buttonHover : fill) : Token.Fill.controlDisabled,
+                isEnabled ? (isHovering ? Token.Fill.buttonHover : Token.Fill.button) : Token.Fill.controlDisabled,
                 in: Capsule()
             )
             .overlay {
@@ -636,13 +636,43 @@ struct WindowDragHandle: NSViewRepresentable {
 
 /// Uses the same action size and response across pages.
 struct PageActionButtonStyle: ButtonStyle {
+    enum Size {
+        case regular, small, compact
+
+        var fontSize: CGFloat {
+            switch self {
+            case .regular: 14
+            case .small: 13
+            case .compact: 12
+            }
+        }
+
+        var horizontalPadding: CGFloat {
+            switch self {
+            case .regular: 20
+            case .small: 13
+            case .compact: 12
+            }
+        }
+
+        var height: CGFloat {
+            switch self {
+            case .regular: 38
+            case .small: Token.Size.tabControl
+            case .compact: 28
+            }
+        }
+    }
+
     var tint: Color? = nil
-    var compact = false
+    var size: Size = .regular
     var foreground: Color? = nil
+    var fill: Color = Token.Fill.button
+    var border: Color = Token.Fill.buttonBorder
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.modifier(PageActionSurface(
-            tint: tint, compact: compact, isPressed: configuration.isPressed,
-            foreground: foreground
+            tint: tint, size: size, isPressed: configuration.isPressed,
+            foreground: foreground, fill: fill, border: border
         ))
     }
 }
@@ -650,23 +680,25 @@ struct PageActionButtonStyle: ButtonStyle {
 /// Gives buttons and menus the same size, colors, and hover response.
 struct PageActionSurface: ViewModifier {
     var tint: Color? = nil
-    var compact = false
+    var size: PageActionButtonStyle.Size = .regular
     var isPressed = false
     var foreground: Color? = nil
+    var fill: Color = Token.Fill.button
+    var border: Color = Token.Fill.buttonBorder
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     func body(content: Content) -> some View {
         content
-            .font(.system(size: compact ? 12 : 14, weight: .medium))
-            .padding(.horizontal, compact ? 12 : 20)
-            .frame(minHeight: compact ? 28 : 38)
+            .font(.system(size: size.fontSize, weight: .medium))
+            .padding(.horizontal, size.horizontalPadding)
+            .frame(minHeight: size.height)
             .foregroundStyle(isEnabled ? (foreground ?? (tint == nil ? Token.Text.primary : Color.white)) : Token.Text.disabled)
-            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.buttonHover : Token.Fill.button)) : Token.Fill.controlDisabled, in: Capsule())
+            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.buttonHover : fill)) : Token.Fill.controlDisabled, in: Capsule())
             .overlay {
                 Capsule().strokeBorder(
-                    isEnabled && tint == nil ? Token.Fill.buttonBorder : .clear,
+                    isEnabled && tint == nil ? border : .clear,
                     lineWidth: Token.hairline
                 )
             }
@@ -710,7 +742,7 @@ struct PageTabPill: View {
             .font(.mcRowTitle)
             .foregroundStyle(isSelected ? (palette?.foreground ?? tint) : Token.Text.secondary)
             .padding(.horizontal, 13)
-            .padding(.vertical, 8)
+            .frame(minHeight: Token.Size.tabControl)
             .background(background, in: Capsule())
             .overlay {
                 Capsule().strokeBorder(
@@ -733,7 +765,7 @@ struct PageTabPill: View {
 
     private var background: Color {
         if isSelected { return palette?.selectedBackground ?? tint.opacity(0.12) }
-        return colorScheme == .light ? Token.Fill.box : Token.Fill.control
+        return Token.Fill.control
     }
 }
 

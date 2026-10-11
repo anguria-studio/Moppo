@@ -1,7 +1,6 @@
 import AppKit
 import MoppoCore
 import QuickLook
-import QuickLookUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -13,7 +12,7 @@ struct StorageExplorerView: View {
     @State private var resultBeforeScan: Date?
     private var isMeasurementBlocked: Bool { model.isMeasurementBlocked }
     @State private var previewURL: URL?
-    @State private var previewNavigation = StoragePreviewNavigation()
+    @State private var previewNavigation = FilePreviewNavigation()
     @State private var presentation = StorageExplorerPresentation.list
     @State private var rowOrder = StorageExplorerRowOrder()
     @State private var partialResultsDirectory: URL?
@@ -173,12 +172,12 @@ struct StorageExplorerView: View {
             } label: {
                 Label("Measure Again", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(PageActionButtonStyle())
+            .buttonStyle(PageActionButtonStyle(size: .small))
             .fixedSize()
             .disabled(isMeasurementBlocked || model.isLoading)
 
             locationMenu
-                .buttonStyle(PageActionButtonStyle())
+                .buttonStyle(PageActionButtonStyle(size: .small))
                 .fixedSize()
         }
     }
@@ -1145,50 +1144,6 @@ extension StorageExplorerItem {
     }
     var modificationSortValue: TimeInterval {
         modificationDate?.timeIntervalSinceReferenceDate ?? -.greatestFiniteMagnitude
-    }
-}
-
-/// Keeps Quick Look navigation aligned with the displayed table order.
-@MainActor
-private final class StoragePreviewNavigation {
-    private var keyMonitor: Any?
-    private weak var sourceTable: NSTableView?
-
-    func start(onMove: @escaping @MainActor (Int) -> Void) {
-        if let table = NSApp.keyWindow?.firstResponder as? NSTableView {
-            sourceTable = table
-        }
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let handled = MainActor.assumeIsolated {
-                guard event.window is QLPreviewPanel,
-                      event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty
-                else { return false }
-                // Read-only text previews must still allow navigation between files.
-                if let textView = event.window?.firstResponder as? NSTextView,
-                   textView.isEditable || textView.isFieldEditor {
-                    return false
-                }
-                switch event.keyCode {
-                case 125: onMove(1)
-                case 126: onMove(-1)
-                default: return false
-                }
-                return true
-            }
-            return handled ? nil : event
-        }
-    }
-
-    func scrollToRow(_ index: Int) {
-        guard let sourceTable, index >= 0, index < sourceTable.numberOfRows else { return }
-        sourceTable.scrollRowToVisible(index)
-    }
-
-    func stop() {
-        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
-        keyMonitor = nil
-        sourceTable = nil
     }
 }
 

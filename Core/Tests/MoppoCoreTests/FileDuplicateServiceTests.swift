@@ -363,11 +363,11 @@ struct FileDuplicateServiceTests {
         #expect(datedGroup.keeper.url == b)
     }
 
-    @Test("Progress is throttled, never runs backwards, and ends done")
-    func progressIsOrdered() async throws {
+    @Test("Progress is throttled, never runs backwards, and ends done", arguments: [0, 1, 200])
+    func progressIsOrdered(fileCount: Int) async throws {
         let box = try Sandbox()
         let data = Data(repeating: 3, count: 256)
-        for index in 0..<200 {
+        for index in 0..<fileCount {
             _ = try box.write("copy-\(index).bin", data: data)
         }
         final class Log: @unchecked Sendable {
@@ -388,6 +388,11 @@ struct FileDuplicateServiceTests {
 
         let entries = log.all
         #expect(entries.last?.stage == .done)
+        #expect(entries.first?.fractionCompleted == nil)
+        let fractions = entries.compactMap(\.fractionCompleted)
+        #expect(fractions == fractions.sorted())
+        #expect(fractions.dropLast().allSatisfy { $0 >= 0 && $0 < 1 })
+        #expect(fractions.last == 1)
         // Far fewer reports than files: 200 sampled + 200 verified would have
         // been 400 per-file reports before the throttle.
         #expect(entries.count < 60)
@@ -395,7 +400,7 @@ struct FileDuplicateServiceTests {
             let steps = entries.filter { $0.stage == stage }.map(\.completed)
             #expect(steps == steps.sorted())
             #expect(steps.first == 0)
-            #expect(steps.last == 200)
+            #expect(steps.last == (fileCount > 1 ? fileCount : 0))
         }
     }
 
