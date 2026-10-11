@@ -105,6 +105,19 @@ enum Token {
 
     /// Blue-gray text in light mode and neutral text in dark mode.
     enum Text {
+        /// Table names stay distinct from the softer metadata columns.
+        static let tableName = Token.dynamic(
+            light: NSColor(white: 0.20, alpha: 1), dark: .labelColor
+        )
+        static let tableDetail = Token.dynamic(
+            light: NSColor(white: 0.50, alpha: 1), dark: .white.withAlphaComponent(0.62)
+        )
+        static let tablePath = Token.dynamic(
+            light: NSColor(white: 0.50, alpha: 1), dark: .white.withAlphaComponent(0.52)
+        )
+        static let tableSize = Token.dynamic(
+            light: NSColor(white: 0.50, alpha: 1), dark: .labelColor
+        )
         static let primary = Token.dynamic(
             light: NSColor(srgbRed: 0.090, green: 0.125, blue: 0.200, alpha: 1), dark: .labelColor
         )

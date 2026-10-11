@@ -303,13 +303,19 @@ struct ScannerView: View {
             )
 
             if isExpanded, !category.entries.isEmpty {
+                let selectableIDs = model.selectableIDs(in: category)
+                let selectedIDs = model.selectedIDs(in: category)
                 FileTable(
                     entries: category.entries,
                     isSafeToRemove: category.isCountedSafe,
                     showsSafeToRemoveBadges: model.scanFilter != .safeToRemove,
                     selection: $model.scannerSelection,
                     userDataRemovalOverrides: $model.userDataRemovalOverrides,
-                    onUninstallApplication: onUninstallApplication
+                    onUninstallApplication: onUninstallApplication,
+                    selectAllState: selectedIDs.isEmpty ? .off
+                        : selectableIDs.isSubset(of: selectedIDs) ? .on : .mixed,
+                    canToggleAll: !selectableIDs.isEmpty || !selectedIDs.isEmpty,
+                    onToggleAll: { model.setSelected($0, in: category) }
                 )
                 .id(model.scanFilter)
                 .disabled(model.isBusyWithDisk)

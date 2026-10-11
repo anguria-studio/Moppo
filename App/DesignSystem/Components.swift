@@ -720,7 +720,7 @@ struct PageTabPill: View {
     }
 
     let title: String
-    let symbol: String
+    var symbol: String? = nil
     var detail: String? = nil
     let isSelected: Bool
     var tint: Color = Token.textColor(.accent)
@@ -733,7 +733,7 @@ struct PageTabPill: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: symbol).accessibilityHidden(true)
+                if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
                 Text(title)
                 if let detail {
                     Text(detail).monospacedDigit().opacity(isSelected ? 1 : 0.75)

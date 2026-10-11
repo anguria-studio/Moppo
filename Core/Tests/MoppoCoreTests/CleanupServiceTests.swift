@@ -509,6 +509,7 @@ struct TrashServiceTests {
         #expect(item.bytes >= Int64(2 * oneMB))
         // Finder owns this one: nothing records where it came from.
         #expect(item.canPutBack == false)
+        #expect(item.originalURL == nil)
 
         await #expect(throws: TrashError.putBackUnavailable(item.id)) {
             try await trash.putBack(item)
@@ -536,6 +537,7 @@ struct TrashServiceTests {
         let trash = service(sandbox, log: log)
         let item = try #require(try await trash.summary().items.first)
         #expect(item.canPutBack)
+        #expect(item.originalURL == original)
 
         try await trash.putBack(item)
         #expect(FileManager.default.fileExists(atPath: original.path))

@@ -112,7 +112,7 @@ struct StorageExplorerView: View {
     }
 
     private func showPreview(_ item: StorageExplorerItem) {
-        previewNavigation.start { direction in
+        previewNavigation.start(onClose: { previewURL = nil }) { direction in
             let items = sortedItems
             guard let index = items.firstIndex(where: { $0.url == previewURL }) else { return }
             let next = index + direction
@@ -161,7 +161,6 @@ struct StorageExplorerView: View {
                 ForEach(StorageExplorerPresentation.allCases) { option in
                     PageTabPill(
                         title: option.rawValue,
-                        symbol: option == .list ? "list.bullet" : "square.grid.2x2",
                         isSelected: presentation == option
                     ) { presentation = option }
                 }
@@ -287,87 +286,55 @@ struct StorageExplorerView: View {
     }
 
     private var table: some View {
-        Table(sortedItems, selection: $model.selection, sortOrder: $sortOrder) {
-            TableColumn(
-                "Name",
-                sortUsing: KeyPathComparator(\StorageExplorerItem.name)
-            ) { item in
-                nameCell(item)
-            }
-            .width(min: 260, ideal: 420)
-
-            TableColumn(
-                "Kind",
-                sortUsing: KeyPathComparator(\StorageExplorerItem.kindSortName)
-            ) { item in
-                Text(item.kindTitle)
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 90, ideal: 120, max: 160)
-
-            TableColumn(
-                "Files",
-                sortUsing: KeyPathComparator(\StorageExplorerItem.fileCount)
-            ) { item in
-                Text(item.fileCountLabel)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 64, ideal: 78, max: 96)
-
-            TableColumn(
-                "Modified",
-                sortUsing: KeyPathComparator(\StorageExplorerItem.modificationSortValue)
-            ) { item in
-                Text(item.modificationDate?.formatted(date: .abbreviated, time: .omitted) ?? "—")
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 98, ideal: 120, max: 150)
-
-            TableColumn(
-                "Size",
-                sortUsing: KeyPathComparator(\StorageExplorerItem.allocatedBytes)
-            ) { item in
-                Text(model.snapshot?.isComplete == false && item.allocatedBytes == 0
-                     ? "Measuring…" : ByteFormatting.string(item.allocatedBytes))
-                    .monospacedDigit()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .width(min: 86, ideal: 104, max: 124)
-        }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
-        // A native `Table` paints its own backdrop, and that backdrop is the window
-        // material — translucent, so it takes a wash of whatever wallpaper is behind
-        // the window. This page stood visibly brown against the Scanner's opaque
-        // #242125, and because the table scrolls under the toolbar, the toolbar
-        // blurred the same material and went brown with it. Hidden, the page colour
-        // behind shows through and the two views match.
-        //
-        // This is the same fault History had on 20 Sep. That one was rewritten away
-        // from `Table` altogether, which also cost it column resizing; one modifier
-        // would have done, and does here.
-        .scrollContentBackground(.hidden)
-        .contextMenu(forSelectionType: StorageExplorerItem.ID.self) { selection in
-            if selection.count == 1, let item = firstItem(in: selection), item.opensAsDirectory {
-                Button("Open") { model.open(item) }
-                    .disabled(isMeasurementBlocked)
-            }
-            if selection.count == 1, let item = firstItem(in: selection) {
-                Button("Quick Look") { showPreview(item) }
-            }
-            if !selection.isEmpty {
-                Button("Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting(urls(in: selection))
+        CompactTable(
+            items: sortedItems, selection: $model.selection, sortOrder: $sortOrder,
+            columns: [
+                CompactTableColumn("Name", width: 340, min: 200, sort: KeyPathComparator(\StorageExplorerItem.name)) { item, selected in
+                    nameCell(item).foregroundStyle(selected ? Color.white : Token.Text.tableName)
+                },
+                CompactTableColumn("Kind", width: 90, min: 75, max: 160, sort: KeyPathComparator(\StorageExplorerItem.kindSortName)) { item, selected in
+                    Text(item.kindTitle).foregroundStyle(selected ? Color.white : Token.Text.tableDetail)
+                },
+                CompactTableColumn("Files", width: 64, min: 50, max: 96, sort: KeyPathComparator(\StorageExplorerItem.fileCount)) { item, selected in
+                    Text(item.fileCountLabel).monospacedDigit()
+                        .foregroundStyle(selected ? Color.white : Token.Text.tableDetail)
+                },
+                CompactTableColumn("Modified", width: 110, min: 98, max: 150, sort: KeyPathComparator(\StorageExplorerItem.modificationSortValue)) { item, selected in
+                    Text(item.modificationDate?.formatted(date: .abbreviated, time: .omitted) ?? "—")
+                        .foregroundStyle(selected ? Color.white : Token.Text.tableDetail)
+                },
+                CompactTableColumn("Size", width: 90, min: 86, max: 124, sort: KeyPathComparator(\StorageExplorerItem.allocatedBytes)) { item, selected in
+                    Text(model.snapshot?.isComplete == false && item.allocatedBytes == 0
+                         ? "Measuring…" : ByteFormatting.string(item.allocatedBytes))
+                        .monospacedDigit()
+                        .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+            ],
+            itemName: { $0.name },
+            allowsMultipleSelection: true,
+            onOpen: { selection in
+                guard selection.count == 1, let item = firstItem(in: selection) else { return }
+                if item.opensAsDirectory {
+                    if !isMeasurementBlocked { model.open(item) }
+                } else { showPreview(item) }
+            },
+            menuActions: { selection in
+                var actions: [CompactTableMenuAction] = []
+                if selection.count == 1, let item = firstItem(in: selection) {
+                    if item.opensAsDirectory {
+                        actions.append(CompactTableMenuAction(title: "Open", isEnabled: !isMeasurementBlocked) { model.open(item) })
+                    }
+                    actions.append(CompactTableMenuAction(title: "Quick Look") { showPreview(item) })
+                }
+                if !selection.isEmpty {
+                    actions.append(CompactTableMenuAction(title: "Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting(urls(in: selection))
+                    })
+                }
+                return actions
             }
-        } primaryAction: { selection in
-            guard selection.count == 1, let item = firstItem(in: selection) else { return }
-            if item.opensAsDirectory {
-                if !isMeasurementBlocked { model.open(item) }
-            } else {
-                showPreview(item)
-            }
-        }
+        )
     }
 
     private var treemap: some View {
@@ -410,7 +377,7 @@ struct StorageExplorerView: View {
 
     private func nameCell(_ item: StorageExplorerItem) -> some View {
         HStack(spacing: 8) {
-            StorageItemIcon(item: item, size: 18)
+            StorageItemIcon(item: item, size: 16)
 
             Text(item.name)
                 .lineLimit(1)
@@ -645,74 +612,17 @@ private enum StorageExplorerPresentation: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
-/// Gives known file types the same icon in the list and map.
 private struct StorageItemIcon: View {
     let item: StorageExplorerItem
     let size: CGFloat
 
     var body: some View {
-        Group {
-            if let appearance {
-                Image(systemName: appearance.symbol)
-                    .font(.system(size: size >= 32 ? size * 0.62 : size * 0.9, weight: .regular))
-                    .foregroundStyle(appearance.color)
-                    .frame(width: size, height: size)
-                    .background {
-                        if size >= 32 {
-                            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
-                                .fill(appearance.color.opacity(0.10))
-                        }
-                    }
-            } else {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size, height: size)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    private var appearance: (symbol: String, color: Color)? {
-        guard item.kind == .file || item.kind == .package else { return nil }
-        let ext = item.url.pathExtension.lowercased()
-        let type = UTType(filenameExtension: ext)
-        if type?.conforms(to: .movie) == true || type?.conforms(to: .video) == true
-            || ["mkv", "webm", "avi", "imovielibrary", "fcpbundle"].contains(ext) {
-            return ("play.rectangle.fill", Token.textColor(.pink))
-        }
-        if type?.conforms(to: .image) == true || ["photoslibrary", "photolibrary", "raw"].contains(ext) {
-            return ("photo.fill", Token.textColor(.orange))
-        }
-        if type?.conforms(to: .audio) == true || ["flac", "ogg", "opus"].contains(ext) {
-            return ("waveform", Token.textColor(.pink))
-        }
-        if type?.conforms(to: .pdf) == true {
-            return ("doc.richtext.fill", Token.textColor(.red))
-        }
-        if type?.conforms(to: .sourceCode) == true
-            || ["js", "jsx", "ts", "tsx", "py", "rs", "go", "css", "json", "yaml", "yml"].contains(ext) {
-            return ("chevron.left.forwardslash.chevron.right", Token.textColor(.purple))
-        }
-        if type?.conforms(to: .spreadsheet) == true || ["csv", "numbers", "xlsx", "xls"].contains(ext) {
-            return ("tablecells.fill", Token.textColor(.green))
-        }
-        if type?.conforms(to: .presentation) == true || ["key", "pptx", "ppt"].contains(ext) {
-            return ("rectangle.on.rectangle", Token.textColor(.orange))
-        }
-        if type?.conforms(to: .text) == true || ["pages", "doc", "docx", "odt"].contains(ext) {
-            return ("doc.text.fill", Token.textColor(.accent))
-        }
-        if type?.conforms(to: .archive) == true || ["7z", "rar", "gz", "bz2", "xz"].contains(ext) {
-            return ("doc.zipper", Token.textColor(.orange))
-        }
-        if type?.conforms(to: .diskImage) == true || ["dmg", "iso", "sparsebundle"].contains(ext) {
-            return ("externaldrive.fill", Token.Text.secondary)
-        }
-        if ext == "pkg" {
-            return ("shippingbox.fill", Token.textColor(.orange))
-        }
-        return nil
+        FileKindIcon(
+            url: item.url,
+            isDirectory: item.kind == .folder,
+            usesFileType: item.kind == .file || item.kind == .package,
+            size: size
+        )
     }
 }
 
@@ -918,7 +828,7 @@ private struct StorageTreemapView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 5) {
                     if size.width >= 100 {
-                        StorageItemIcon(item: item, size: 18)
+                        StorageItemIcon(item: item, size: 16)
                     }
                     Text(item.name)
                         .font(.mcRowTitle)

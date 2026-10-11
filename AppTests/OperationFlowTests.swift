@@ -228,9 +228,10 @@ struct OperationFlowTests {
         await model.recovery.loadTrash()
         #expect(model.view == .trash)
         let selected = try #require(model.recovery.trashSummary?.items.first {
-            $0.id == model.recovery.selectedTrashItemID
+            model.recovery.selectedTrashItemIDs.contains($0.id)
         })
         #expect(FileIdentity.of(selected.url) == FileIdentity.of(fixture.trashed))
+        #expect(selected.originalURL == fixture.original)
 
         try FileManager.default.moveItem(
             at: fixture.trashed, to: fixture.folder.url.appendingPathComponent("moved.txt")
@@ -238,7 +239,7 @@ struct OperationFlowTests {
         _ = try fixture.folder.write(".Trash/item.txt")
         model.recovery.showInTrash(receipt)
         await model.recovery.loadTrash()
-        #expect(model.recovery.selectedTrashItemID == nil)
+        #expect(model.recovery.selectedTrashItemIDs.isEmpty)
         #expect(model.notice?.title == "Item Not Found")
     }
 

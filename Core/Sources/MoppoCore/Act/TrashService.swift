@@ -12,6 +12,7 @@ public struct TrashItem: Sendable, Identifiable, Equatable {
     public var deletedAt: Date?
     /// Whether the Put Back button is enabled — see the policy note on ``TrashService``.
     public var canPutBack: Bool
+    public var originalURL: URL?
 
     /// Public so views can build preview fixtures without a Trash on disk.
     public init(
@@ -19,7 +20,8 @@ public struct TrashItem: Sendable, Identifiable, Equatable {
         name: String? = nil,
         bytes: Int64,
         deletedAt: Date? = nil,
-        canPutBack: Bool = false
+        canPutBack: Bool = false,
+        originalURL: URL? = nil
     ) {
         self.id = url.path
         self.url = url
@@ -27,6 +29,7 @@ public struct TrashItem: Sendable, Identifiable, Equatable {
         self.bytes = bytes
         self.deletedAt = deletedAt
         self.canPutBack = canPutBack
+        self.originalURL = originalURL
     }
 }
 
@@ -205,13 +208,13 @@ public struct TrashService: Sendable {
             let bytes = try await measurer.measure(url).allocatedBytes
             totalBytes += bytes
             let values = try? url.resourceValues(forKeys: [.addedToDirectoryDateKey])
+            let receipt = Self.match(restorable[url.resolvingSymlinksInPath().path], at: url)
             items.append(TrashItem(
                 url: url,
                 bytes: bytes,
                 deletedAt: values?.addedToDirectoryDate,
-                canPutBack: Self.match(
-                    restorable[url.resolvingSymlinksInPath().path], at: url
-                ) != nil
+                canPutBack: receipt != nil,
+                originalURL: receipt.map { URL(fileURLWithPath: $0.originalPath) }
             ))
         }
 

@@ -19,6 +19,9 @@ struct FileTable: View {
     @Binding var selection: Set<FileEntry.ID>
     @Binding var userDataRemovalOverrides: Set<FileEntry.ID>
     var onUninstallApplication: ((FileEntry) -> Void)? = nil
+    var selectAllState: NSControl.StateValue = .off
+    var canToggleAll = false
+    var onToggleAll: (Bool) -> Void = { _ in }
 
     /// Anchor for shift-click: the row whose checkbox was clicked last, `nil` until
     /// the first click. Indices into `entries`, so it is the visible row order the
@@ -112,6 +115,17 @@ struct FileTable: View {
 
     private var columnHeader: some View {
         HStack(spacing: Metrics.gap) {
+            Color.clear.frame(width: Metrics.disclosureSlot, height: 0)
+            SelectionCheckbox(
+                title: "Select all items in this table",
+                state: selectAllState,
+                isEnabled: canToggleAll,
+                showsTitle: false,
+                onChange: onToggleAll
+            )
+            .fixedSize()
+            .frame(width: Metrics.checkbox)
+            Color.clear.frame(width: Metrics.icon, height: 0)
             SortableColumnHeader(
                 title: "Name",
                 isActive: sortKey == .name,
@@ -153,7 +167,7 @@ struct FileTable: View {
         }
         .font(.mcControlLabel)
         .foregroundStyle(Token.Text.secondary)
-        .padding(.leading, Metrics.headerInset)
+        .padding(.leading, Metrics.sidePadding)
         .padding(.trailing, Metrics.sidePadding)
     }
 
@@ -1045,8 +1059,6 @@ private enum Metrics {
     /// buttons use this directly while their SF Symbols remain visually compact.
     static let action: CGFloat = 28
 
-    /// The Name header aligns with the file names.
-    static var headerInset: CGFloat { sidePadding + disclosureSlot + checkbox + icon + 3 * gap }
 }
 
 /// One physical pixel. `NSColor.separatorColor` is several times stronger than the

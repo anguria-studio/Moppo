@@ -39,7 +39,7 @@ final class RecoveryModel {
     }
 
     var trashSummary: TrashSummary?
-    var selectedTrashItemID: TrashItem.ID?
+    var selectedTrashItemIDs: Set<TrashItem.ID> = []
     private(set) var hasLoadedTrash = false
     private(set) var isLoadingTrash = false
     private(set) var cleanupHistory: CleanupHistorySummary?
@@ -77,7 +77,7 @@ final class RecoveryModel {
         isLoadingTrash = false
         hasLoadedTrash = false
         pendingTrashReveal = item
-        selectedTrashItemID = nil
+        selectedTrashItemIDs = []
         trashSummary = nil
         onEvent(.showTrash)
     }
@@ -106,15 +106,12 @@ final class RecoveryModel {
                 if let item = summary.items.first(where: {
                     $0.url.standardizedFileURL == url.standardizedFileURL
                 }), let identity = request.trashedIdentity, FileIdentity.of(item.url) == identity {
-                    selectedTrashItemID = item.id
+                    selectedTrashItemIDs = [item.id]
                 } else {
                     onEvent(.failure(title: "Item Not Found", message: "This item is no longer available in the Trash."))
                 }
             }
-            if let selectedTrashItemID,
-               summary?.items.contains(where: { $0.id == selectedTrashItemID }) != true {
-                self.selectedTrashItemID = nil
-            }
+            selectedTrashItemIDs.formIntersection(Set(summary?.items.map(\.id) ?? []))
         }
         trashTask = task
         await task.value
@@ -146,25 +143,40 @@ final class RecoveryModel {
         await task.value
     }
 
-    /// Own restoration independently of the requesting view task.
     func putBack(_ item: TrashItem) async {
-        guard !Task.isCancelled, let operation = operations.begin(.trashRestoration) else { return }
+        await putBack([item])
+    }
+
+    /// Restore the requested items under one operation, then refresh the lists once.
+    func putBack(_ items: [TrashItem]) async {
+        let items = items.filter(\.canPutBack)
+        guard !items.isEmpty, !Task.isCancelled,
+              let operation = operations.begin(.trashRestoration) else { return }
         isMutating = true
-        onEvent(.restoringTrashItem(name: item.name))
         let task = Task { [self] in
             var restored = false
-            do {
-                try await trashService.putBack(item)
-                restored = true
-                onEvent(.restored)
-            } catch TrashError.destinationOccupied {
+            var failures: [(name: String, message: String)] = []
+            for item in items {
+                onEvent(.restoringTrashItem(name: item.name))
+                do {
+                    try await trashService.putBack(item)
+                    restored = true
+                } catch TrashError.destinationOccupied {
+                    failures.append((item.name,
+                        "Something is already at the place it came from. "
+                            + "Move that aside, or drag this out of the Trash yourself."))
+                } catch {
+                    failures.append((item.name, "It is still in the Trash."))
+                }
+            }
+            if restored { onEvent(.restored) }
+            if failures.count == 1, let failure = failures.first {
+                onEvent(.failure(title: "\(failure.name) Was Not Put Back", message: failure.message))
+            } else if !failures.isEmpty {
                 onEvent(.failure(
-                    title: "\(item.name) Was Not Put Back",
-                    message: "Something is already at the place it came from. "
-                        + "Move that aside, or drag this out of the Trash yourself."
+                    title: "\(failures.count) Items Were Not Put Back",
+                    message: failures.map { "\($0.name): \($0.message)" }.joined(separator: "\n\n")
                 ))
-            } catch {
-                onEvent(.failure(title: "\(item.name) Was Not Put Back", message: "It is still in the Trash."))
             }
             await refreshListsAfterMutation()
             finish(operation)

@@ -127,6 +127,49 @@ struct CleanupModelTests {
         #expect(!cleanup.scannerSelection.contains(child.id))
     }
 
+    @Test("A category checkbox selects only its removable rows and clears only its own selection")
+    func categorySelection() throws {
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(operations: operations)
+        let child = cleanupEntry("child")
+        var parent = cleanupEntry("parent")
+        parent.children = [child]
+        var locked = cleanupEntry("locked")
+        locked.protectionReason = .userData
+        let appCache = cleanupEntry("app-cache")
+        var app = cleanupEntry("Application.app")
+        app.kind = .appBundle
+        app.isRegenerable = false
+        app.children = [appCache]
+        let unrelated = cleanupEntry("other-category")
+        let category = ScanCategoryResult(
+            categoryID: .systemCaches, totalBytes: 300, entries: [parent, locked, app]
+        )
+        cleanup.scanFilter = .all
+        cleanup.scannerSelection = [unrelated.id, child.id]
+        cleanup.userDataRemovalOverrides = [child.id]
+        #expect(cleanup.selectedIDs(in: category) == [child.id])
+        #expect(cleanup.selectableIDs(in: category) == [parent.id, appCache.id])
+
+        cleanup.setSelected(true, in: category)
+        #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
+        #expect(cleanup.userDataRemovalOverrides.isEmpty)
+        cleanup.scannerSelection.insert(locked.id)
+        cleanup.userDataRemovalOverrides = [locked.id, unrelated.id]
+        cleanup.setSelected(false, in: category)
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        #expect(cleanup.userDataRemovalOverrides == [unrelated.id])
+
+        cleanup.scanFilter = .safeToRemove
+        let filtered = category.filtered(safeToRemove: true)
+        cleanup.setSelected(true, in: filtered)
+        #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
+        let operation = try #require(operations.begin(.appUninstall))
+        cleanup.setSelected(false, in: filtered)
+        #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
+        operations.finish(operation)
+    }
+
     @Test("Removal uses the captured plan and survives caller cancellation")
     func capturedPlanAndRemovalLifetime() async throws {
         let fixture = try CleanupFixture()
