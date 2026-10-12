@@ -47,7 +47,7 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | Dashboard | See disk capacity, measured categories, unreadable data, and changes since an earlier measurement. |
 | Cleanup | Review system caches, package caches, Xcode data, application leftovers, and other files. |
 | Storage Explorer | Browse a folder or volume with a table and treemap. Review selected items before removal. |
-| Developer folders | Inspect project files and Git worktrees, with badges for local changes and unpushed commits. |
+| Developer folders | Inspect project files and Git worktrees. Review local files, commits, and removal checks. |
 | Local AI models | Review Ollama, Hugging Face, and LM Studio models with shared storage information. |
 
 <a name="duplicates-and-applications"></a>

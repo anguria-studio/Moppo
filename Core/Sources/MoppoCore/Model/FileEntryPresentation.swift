@@ -21,7 +21,10 @@ public struct FileEntryPresentation: Sendable, Equatable {
         let type: String
         let symbol: Icon
 
-        if entry.removalAction != nil {
+        if entry.isGitWorktree {
+            type = entry.gitWorktreeReview?.branch ?? "Branch unknown"
+            symbol = .folder
+        } else if entry.removalAction != nil {
             type = "Files left by a removed app"
             symbol = .application
         } else if entry.kind == .appBundle || entry.kind == .downloadedApp {

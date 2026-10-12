@@ -20,6 +20,7 @@ struct FileTable: View {
     @Binding var userDataRemovalOverrides: Set<FileEntry.ID>
     var confirmBeforeCleanup = false
     var onUninstallApplication: ((FileEntry) -> Void)? = nil
+    var onReviewWorktree: ((FileEntry) -> Void)? = nil
     var selectAllState: NSControl.StateValue = .off
     var canToggleAll = false
     var onToggleAll: (Bool) -> Void = { _ in }
@@ -184,6 +185,8 @@ struct FileTable: View {
                     entry: entry,
                     isSafeToRemove: showsSafeToRemoveBadges && isSafeToRemove(entry),
                     isSelected: selection.contains(entry.id),
+                    selectionState: selection.contains(entry.id) ? .on
+                        : entry.children.contains(where: { selection.contains($0.id) }) ? .mixed : .off,
                     hasUserDataOverride: userDataRemovalOverrides.contains(entry.id),
                     isExpanded: expandedRows.contains(entry.id),
                     onToggle: { isOn in setSelected(isOn, at: index) },
@@ -191,7 +194,8 @@ struct FileTable: View {
                     onDisclose: { toggleDisclosure(entry.id) },
                     onUninstallApplication: onUninstallApplication.map { action in
                         { action(entry) }
-                    }
+                    },
+                    onReviewWorktree: onReviewWorktree.map { action in { action(entry) } }
                 )
                 // A parent discloses targets that can be removed separately. An app
                 // still uses the complete uninstall review for its parent action.
@@ -215,7 +219,8 @@ struct FileTable: View {
                                     userDataRemovalOverrides.remove(child.id)
                                 }
                             },
-                            onRequestUserDataOverride: { requestUserDataOverride(child) }
+                            onRequestUserDataOverride: { requestUserDataOverride(child) },
+                            onReviewWorktree: onReviewWorktree.map { action in { action(child) } }
                         )
                     }
                 }
@@ -309,12 +314,15 @@ private struct FileRow: View {
     let entry: FileEntry
     var isSafeToRemove = false
     let isSelected: Bool
+    var selectionState: NSControl.StateValue? = nil
     let hasUserDataOverride: Bool
     var isExpanded = false
     let onToggle: (Bool) -> Void
     let onRequestUserDataOverride: () -> Void
     var onDisclose: (() -> Void)?
     var onUninstallApplication: (() -> Void)? = nil
+    var onReviewWorktree: (() -> Void)? = nil
+    @FocusState private var isFocused: Bool
 
     @State private var isRowHovered = false
     @State private var isShowingManualInfo = false
@@ -356,6 +364,7 @@ private struct FileRow: View {
                     ProtectedSelectionControl(
                         entry: entry,
                         isSelected: isSelected,
+                        selectionState: selectionState,
                         hasUserDataOverride: hasUserDataOverride,
                         help: parentHelp,
                         onToggle: onToggle,
@@ -398,8 +407,19 @@ private struct FileRow: View {
         .padding(.horizontal, Metrics.sidePadding)
         .frame(minHeight: 52)
         .contentShape(Rectangle())
-        .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.cleanupRow)
+        .hoverHighlight(
+            fill: isFocused ? Token.color(.accent).opacity(0.12) : Token.Fill.cleanupRowHover,
+            restingFill: isFocused ? Token.color(.accent).opacity(0.12) : Token.Fill.cleanupRow
+        )
         .onHover { isRowHovered = $0 }
+        .focusable(entry.isGitWorktree)
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.space) {
+            guard entry.isGitWorktree, let onReviewWorktree else { return .ignored }
+            onReviewWorktree()
+            return .handled
+        }
         .task(id: entry.url) {
             guard entry.kind == .folder else { return }
             let url = entry.url
@@ -413,8 +433,13 @@ private struct FileRow: View {
         // disclose discloses, and a plain row toggles its checkbox. The checkbox and
         // reveal button keep their own clicks — SwiftUI gives embedded controls
         // precedence over the row's gesture.
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            onReviewWorktree?()
+        }, including: entry.isGitWorktree ? .all : .none)
         .onTapGesture {
-            if !entry.children.isEmpty, let onDisclose {
+            if entry.isGitWorktree {
+                isFocused = true
+            } else if !entry.children.isEmpty, let onDisclose {
                 onDisclose()
             } else if entry.manualRemoval != nil {
                 isShowingManualInfo = true
@@ -479,52 +504,55 @@ private struct FileRow: View {
         }
     }
 
-    private var nameBlock: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(entry.displayName)
-                    .font(.mcRowTitle)
-                    .foregroundStyle(Token.Text.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if let manual = entry.manualRemoval {
-                    // A badge that answers itself: click for the explanation and the
-                    // command, with the command one click from the clipboard.
-                    Button { isShowingManualInfo = true } label: {
-                        Badge(text: "terminal").fixedSize()
+    @ViewBuilder private var nameBlock: some View {
+        if let review = entry.gitWorktreeReview {
+            WorktreeNameBlock(entry: entry, review: review, onReview: { onReviewWorktree?() })
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(entry.displayName)
+                        .font(.mcRowTitle)
+                        .foregroundStyle(Token.Text.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let manual = entry.manualRemoval {
+                        // A badge that answers itself: click for the explanation and the
+                        // command, with the command one click from the clipboard.
+                        Button { isShowingManualInfo = true } label: {
+                            Badge(text: "terminal").fixedSize()
+                        }
+                        .buttonStyle(.plain)
+                        .popover(isPresented: $isShowingManualInfo, arrowEdge: .bottom) {
+                            ManualRemovalPopover(manual: manual)
+                                .presentationBackground(Token.chrome)
+                        }
+                    } else if let reason = entry.protectionReason {
+                        // Says *why* the checkbox is locked without hovering anything,
+                        // and says the true thing: "in use" on an app that was merely
+                        // opened last week reads as a lie.
+                        Badge(text: Self.badgeText(for: reason)).fixedSize()
+                    } else if let owner = entry.inUseBy {
+                        // Names the owner: "in use" alone sends the user hunting for
+                        // which of their open apps is meant.
+                        Badge(text: "\(owner.name) is open").fixedSize()
+                    } else if isSafeToRemove {
+                        // On the row, where the claim is made. It was one badge on the
+                        // category, which could only say "everything in here" and so
+                        // said nothing at all once a single row needed review.
+                        Badge(text: "safe to remove", style: .safe).fixedSize()
                     }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $isShowingManualInfo, arrowEdge: .bottom) {
-                        ManualRemovalPopover(manual: manual)
-                            .presentationBackground(Token.chrome)
-                    }
-                } else if let reason = entry.protectionReason {
-                    // Says *why* the checkbox is locked without hovering anything,
-                    // and says the true thing: "in use" on an app that was merely
-                    // opened last week reads as a lie.
-                    Badge(text: Self.badgeText(for: reason)).fixedSize()
-                } else if let owner = entry.inUseBy {
-                    // Names the owner: "in use" alone sends the user hunting for
-                    // which of their open apps is meant.
-                    Badge(text: "\(owner.name) is open").fixedSize()
-                } else if isSafeToRemove {
-                    // On the row, where the claim is made. It was one badge on the
-                    // category, which could only say "everything in here" and so
-                    // said nothing at all once a single row needed review.
-                    Badge(text: "safe to remove", style: .safe).fixedSize()
                 }
-                WorktreeStatusBadge(status: entry.gitWorktreeStatus, pushStatus: entry.gitWorktreePushStatus)
-            }
 
-            Text(presentation.summary)
-                .font(.mcBody)
-                .foregroundStyle(Token.Text.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .help(entry.url.path)
+                Text(presentation.summary)
+                    .font(.mcBody)
+                    .foregroundStyle(Token.Text.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(entry.url.path)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(entry.url.path)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .help(entry.url.path)
     }
 
     /// `nil` is genuinely rare — the scanner falls back through several date sources
@@ -559,6 +587,8 @@ private struct ChildRow: View {
     var isReadOnly = false
     let onToggle: (Bool) -> Void
     let onRequestUserDataOverride: () -> Void
+    var onReviewWorktree: (() -> Void)? = nil
+    @FocusState private var isFocused: Bool
     @State private var isRowHovered = false
 
     var body: some View {
@@ -589,6 +619,9 @@ private struct ChildRow: View {
             FileEntryIcon(entry: entry, presentation: FileEntryPresentation(entry: entry))
                 .frame(width: Metrics.icon)
 
+            if let review = entry.gitWorktreeReview {
+                WorktreeNameBlock(entry: entry, review: review, onReview: { onReviewWorktree?() })
+            } else {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
                     Text(entry.displayName)
@@ -608,7 +641,6 @@ private struct ChildRow: View {
                     } else if let caveat = entry.safetyCaveat {
                         Badge(text: caveat).fixedSize()
                     }
-                    WorktreeStatusBadge(status: entry.gitWorktreeStatus, pushStatus: entry.gitWorktreePushStatus)
                 }
                 Text(FileEntryPresentation(entry: entry, showsSafetyCaveat: false).summary)
                     .font(.mcSubtitle)
@@ -617,12 +649,13 @@ private struct ChildRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help("\(childHelp)\n\(entry.url.path)")
+            }
 
             RegenerableTag(isRegenerable: entry.isRegenerable)
             Color.clear.frame(width: Metrics.lastOpened, height: 0)
 
             Text(ByteFormatting.string(entry.allocatedBytes))
-                .font(.mcMonoPath)
+                .font(.mcRowValue)
                 .foregroundStyle(Token.Text.secondary)
                 .fixedSize()
                 .frame(width: Metrics.size, alignment: .trailing)
@@ -632,10 +665,26 @@ private struct ChildRow: View {
         .padding(.horizontal, Metrics.sidePadding)
         .frame(minHeight: 46)
         .contentShape(Rectangle())
-        .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.cleanupRow)
+        .hoverHighlight(
+            fill: isFocused ? Token.color(.accent).opacity(0.12) : Token.Fill.cleanupRowHover,
+            restingFill: isFocused ? Token.color(.accent).opacity(0.12) : Token.Fill.cleanupRow
+        )
         .onHover { isRowHovered = $0 }
+        .focusable(entry.isGitWorktree)
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.space) {
+            guard entry.isGitWorktree, let onReviewWorktree else { return .ignored }
+            onReviewWorktree()
+            return .handled
+        }
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            onReviewWorktree?()
+        }, including: entry.isGitWorktree ? .all : .none)
         .onTapGesture {
-            if isReadOnly {
+            if entry.isGitWorktree {
+                isFocused = true
+            } else if isReadOnly {
                 return
             } else if entry.protectionReason == .userData, !hasUserDataOverride {
                 onRequestUserDataOverride()
@@ -684,6 +733,7 @@ private struct ChildRow: View {
 struct ProtectedSelectionControl: View {
     let entry: FileEntry
     let isSelected: Bool
+    var selectionState: NSControl.StateValue? = nil
     let hasUserDataOverride: Bool
     var isCompact = false
     let help: String
@@ -698,7 +748,7 @@ struct ProtectedSelectionControl: View {
             if !entry.isRemovalLocked || hasUserDataOverride {
                 SelectionCheckbox(
                     title: entry.displayName,
-                    state: isSelected ? .on : .off,
+                    state: selectionState ?? (isSelected ? .on : .off),
                     showsTitle: false,
                     isCompact: isCompact,
                     onChange: onToggle
@@ -992,9 +1042,10 @@ private struct RegenerableTag: View {
     }
 }
 
-private struct FileEntryIcon: View {
+struct FileEntryIcon: View {
     let entry: FileEntry
     let presentation: FileEntryPresentation
+    var symbolSize: CGFloat = 17
 
     var body: some View {
         Group {
@@ -1014,7 +1065,7 @@ private struct FileEntryIcon: View {
                 .foregroundStyle(Token.color(.green))
             } else {
                 Image(systemName: symbol)
-                    .font(.system(size: 17))
+                    .font(.system(size: symbolSize))
                     .foregroundStyle(color)
             }
         }
@@ -1163,43 +1214,35 @@ private enum PreviewEntries {
     static let all = [archive, folder, designArchive, longName, cache]
 }
 
-/// Shows the result of the most recent worktree status check.
-private struct WorktreeStatusBadge: View {
-    let status: FileEntry.GitWorktreeStatus?
-    let pushStatus: FileEntry.GitWorktreePushStatus?
+/// Uses one status and one review action inside the name column.
+private struct WorktreeNameBlock: View {
+    let entry: FileEntry
+    let review: GitWorktreeReview
+    let onReview: () -> Void
+
+    private var badgeStyle: Badge.Style {
+        if review.isSafeToRemove { return .safe }
+        return review.outcome.isProblem ? .review : .neutral
+    }
 
     var body: some View {
-        if status == .clean, pushStatus == .noUnpushedCommits {
-            Badge(text: "No unpushed commits", style: .positiveOutline)
-                .fixedSize()
-                .help("Git found no uncommitted changes or unpushed commits during the scan. "
-                    + "Ignored files were not checked. Local remote data can be out of date. "
-                    + "Review this worktree before removal.")
-        }
-        switch status {
-        case .uncommittedChanges:
-            Badge(text: "Uncommitted changes", style: .danger)
-                .fixedSize()
-                .help("Git found staged changes, unstaged changes, or untracked files during the scan.")
-        case .unavailable:
-            Badge(text: "Status unavailable")
-                .fixedSize()
-                .help("Moppo could not check Git status. Review this worktree before removal.")
-        case .clean, nil:
-            EmptyView()
-        }
-        switch pushStatus {
-        case .unpushedCommits(let count):
-            Badge(text: "Unpushed commits", style: .danger)
-                .fixedSize()
-                .help("\(count) commits are absent from the compared remote-tracking branches. "
-                    + "Detached worktrees use all remote-tracking branches. Local remote data can be out of date.")
-        case .unknown:
-            Badge(text: "Push status unknown")
-                .fixedSize()
-                .help("Moppo could not compare commits with a remote branch. No network check was made.")
-        case .noUnpushedCommits, nil:
-            EmptyView()
-        }
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(entry.displayName).font(.mcRowTitle)
+                        .foregroundStyle(Token.Text.primary).lineLimit(1).truncationMode(.middle)
+                    Button(action: onReview) {
+                        Badge(text: review.statusLabel, style: badgeStyle)
+                            .fixedSize()
+                    }.buttonStyle(.plain).help("Review worktree checks")
+                }
+                Label(review.branch, systemImage: "arrow.triangle.branch")
+                    .font(.mcSubtitle).foregroundStyle(Token.Text.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            Spacer(minLength: 4)
+            Button(action: onReview) { Image(systemName: "info.circle").font(.mcBody) }
+                .buttonStyle(.plain).foregroundStyle(Token.Text.secondary)
+                .help("Review worktree").accessibilityLabel("Review worktree " + entry.displayName)
+        }.frame(maxWidth: .infinity, alignment: .leading).help(entry.url.path)
     }
 }

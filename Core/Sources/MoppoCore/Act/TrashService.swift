@@ -334,7 +334,9 @@ public struct TrashService: Sendable {
         try fileManager.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        try fileManager.moveItem(at: item.url, to: destination)
+        if try await !GitWorktreeDetector.move(item.url, to: destination) {
+            try fileManager.moveItem(at: item.url, to: destination)
+        }
         // Retire the record: its Trash path is vacant now, and whoever occupies it
         // next is a stranger.
         try? log.append([RemovalRecord(

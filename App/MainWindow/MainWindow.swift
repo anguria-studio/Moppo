@@ -200,6 +200,7 @@ struct MainWindow: View {
                     ),
                     runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
                     includesSoundLibrary: model.cleanup.pendingCleanUp?.includesSoundLibrary ?? false,
+                    worktreeWarning: model.cleanup.pendingCleanUp?.worktreeWarning,
                     onConfirm: { Task { await model.cleanup.performCleanUp() } },
                     onQuitAndConfirm: {
                         Task { await model.cleanup.performCleanUp(quittingOwners: true) }

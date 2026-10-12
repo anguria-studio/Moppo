@@ -49,6 +49,7 @@ struct ConfirmationSheet: View {
     /// quitting, and leaves the choice where it belongs.
     var runningOwnerNames: [String] = []
     var includesSoundLibrary = false
+    var worktreeWarning: String? = nil
     let onConfirm: () -> Void
     /// Quit `runningOwnerNames`, then run the same plan. Required for the
     /// quit-first button to appear at all.
@@ -71,6 +72,14 @@ struct ConfirmationSheet: View {
                         .foregroundStyle(Token.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            if let worktreeWarning {
+                Label(worktreeWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.textColor(.orange))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 14)
             }
 
             if let runningOwnersNote {

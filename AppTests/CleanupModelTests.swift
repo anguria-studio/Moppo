@@ -5,6 +5,46 @@ import Testing
 @Suite("Cleanup feature ownership")
 @MainActor
 struct CleanupModelTests {
+    @Test("Worktrees seed only safe rows and warn before explicit unsafe selection")
+    func worktreeSelectionAndReview() {
+        var safe = GitWorktreeReview()
+        safe.status = .clean
+        safe.pushStatus = .noUnpushedCommits
+        safe.filesChecked = true
+        safe.locks = .clear
+        safe.activity = .clear
+        var local = safe
+        local.status = .uncommittedChanges
+        local.localFiles = [.init(path: "notes.txt", status: .untracked)]
+        var safeEntry = cleanupEntry("safe-worktree")
+        safeEntry.gitWorktreeReview = safe
+        var localEntry = cleanupEntry("local-worktree")
+        localEntry.gitWorktreeReview = local
+        var unknownEntry = cleanupEntry("unknown-worktree")
+        unknownEntry.gitWorktreeReview = GitWorktreeReview()
+        var parent = cleanupEntry("worktree-parent")
+        parent.isRegenerable = false
+        parent.children = [safeEntry, localEntry, unknownEntry]
+        let cleanup = CleanupModel(operations: OperationCoordinator(),
+            preferences: { .init(confirmBeforeCleanup: false) }, measureSaving: { _ in nil })
+        cleanup.scanResults = cleanupResults([parent])
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection == [safeEntry.id])
+        cleanup.updateWorktreeReview(local, for: safeEntry.id)
+        #expect(cleanup.scannerSelection.isEmpty)
+        cleanup.scannerSelection = [parent.id]
+        cleanup.selectWorktree(localEntry.id)
+        #expect(cleanup.scannerSelection == [localEntry.id])
+        cleanup.selectWorktree(unknownEntry.id)
+        var requested = false
+        cleanup.onEvent = { if case .confirmationRequested = $0 { requested = true } }
+        cleanup.requestCleanUp(in: .all)
+        #expect(requested)
+        #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree has uncommitted changes.") == true)
+        #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree needs further review.") == true)
+        cleanup.cancelCleanUp()
+    }
+
     @Test("Cancellation retains the guard and rejects old callbacks after a restart")
     func scanLifetime() async throws {
         let scanner = HeldCleanupScanner()

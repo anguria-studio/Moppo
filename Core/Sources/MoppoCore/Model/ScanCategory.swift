@@ -217,6 +217,8 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
     /// seeded from the safe list. See `FileEntry.inUseBy`.
     private func countsAsSafe(_ entry: FileEntry) -> Bool {
         guard entry.inUseBy == nil else { return false }
+        guard entry.children.filter(\.isGitWorktree).allSatisfy(\.regeneratesSafely) else { return false }
+        if entry.isGitWorktree { return entry.regeneratesSafely }
         return categoryID.isSafe && entry.isRegenerable
     }
 

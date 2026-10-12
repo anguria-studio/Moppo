@@ -176,8 +176,6 @@ private struct LegendRow: View {
     /// A measurement is running: the name stands, the figure is not yet a fact.
     var valueIsBone = false
 
-    @State private var isInfoHovered = false
-
     var body: some View {
         HStack(spacing: 8) {
             CategoryDot(color: entry.color, size: 8)
@@ -190,30 +188,13 @@ private struct LegendRow: View {
 
             // The names that explain nothing by themselves get an info glyph.
             // The rest are left alone — eleven info icons would be noise.
-            //
-            // A hover-driven popover, not `.help()`: the native tooltip's dwell delay
-            // reads as the icon doing nothing. The popover is its own window, so it
-            // appears instantly and can never be clipped by the card.
             if let explanation = Self.explanation(
                 for: entry.id,
                 unreadableCount: unreadableCount
             ) {
-                Image(systemName: "info.circle")
+                HoverHelpIcon(systemName: "info.circle", text: explanation,
+                    hoverColor: Token.Text.secondary)
                     .font(.system(size: 10))
-                    .foregroundStyle(isInfoHovered ? Token.Text.secondary : Token.Text.quaternary)
-                    .contentShape(Rectangle())
-                    .onHover { isInfoHovered = $0 }
-                    .popover(isPresented: $isInfoHovered, arrowEdge: .top) {
-                        Text(explanation)
-                            .font(.mcSubtitle)
-                            .foregroundStyle(Token.Text.primary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(12)
-                            .frame(width: 280)
-                            // The app's panel colour, like every other thing that
-                            // floats above the page.
-                            .presentationBackground(Token.chrome)
-                    }
             }
 
             Spacer(minLength: 12)

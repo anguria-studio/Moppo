@@ -12,6 +12,7 @@ struct ScannerView: View {
     @State private var resultBeforeScan: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var resultsVisible = true
+    @State private var worktreeReviewEntry: FileEntry?
 
     var body: some View {
         Group {
@@ -74,6 +75,12 @@ struct ScannerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(item: $worktreeReviewEntry) { entry in
+            WorktreeReviewSheet(entry: entry, onReview: { model.updateWorktreeReview($0, for: entry.id) }, onSelect: {
+                model.selectWorktree(entry.id)
+                worktreeReviewEntry = nil
+            }, onClose: { worktreeReviewEntry = nil })
+        }
         .onChange(of: model.isScanning, initial: true) { wasRunning, isRunning in
             if isRunning {
                 resultBeforeScan = model.scanResults?.finishedAt
@@ -292,6 +299,7 @@ struct ScannerView: View {
                     userDataRemovalOverrides: $model.userDataRemovalOverrides,
                     confirmBeforeCleanup: model.confirmBeforeCleanup,
                     onUninstallApplication: onUninstallApplication,
+                    onReviewWorktree: { worktreeReviewEntry = $0 },
                     selectAllState: selectedIDs.isEmpty ? .off
                         : selectableIDs.isSubset(of: selectedIDs) ? .on : .mixed,
                     canToggleAll: !selectableIDs.isEmpty || !selectedIDs.isEmpty,

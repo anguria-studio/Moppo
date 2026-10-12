@@ -94,7 +94,7 @@ final class CleanupModel {
             case .all:
                 nil
             case .safeToRemove:
-                "Caches and package files. They regenerate on demand, so removing them costs nothing."
+                "Caches, package files, and checked worktrees. Review worktree checks before removal."
             case .needsReview:
                 "Large files, unused apps and what removed apps left behind. Look before you remove."
             }
@@ -113,6 +113,34 @@ final class CleanupModel {
                 && $0.kind != .appBundle
                 && $0.removalAction == nil
         }
+    }
+
+    func updateWorktreeReview(_ review: GitWorktreeReview, for id: FileEntry.ID) {
+        guard var results = scanResults else { return }
+        let wasSafe = allEntries.first(where: { $0.id == id })?.gitWorktreeReview?.isSafeToRemove == true
+        for categoryIndex in results.categories.indices {
+            for entryIndex in results.categories[categoryIndex].entries.indices {
+                if results.categories[categoryIndex].entries[entryIndex].id == id {
+                    results.categories[categoryIndex].entries[entryIndex].gitWorktreeReview = review
+                }
+                for childIndex in results.categories[categoryIndex].entries[entryIndex].children.indices {
+                    if results.categories[categoryIndex].entries[entryIndex].children[childIndex].id == id {
+                        results.categories[categoryIndex].entries[entryIndex].children[childIndex].gitWorktreeReview = review
+                    }
+                }
+            }
+        }
+        scanResults = results
+        if wasSafe && !review.isSafeToRemove { scannerSelection.remove(id) }
+    }
+
+    func selectWorktree(_ id: FileEntry.ID) {
+        guard !isBusyWithDisk, let entry = allEntries.first(where: { $0.id == id }),
+              entry.isGitWorktree, !entry.isRemovalLocked else { return }
+        for parent in scanResults?.categories.flatMap(\.entries) ?? [] where parent.children.contains(where: { $0.id == id }) {
+            scannerSelection.remove(parent.id)
+        }
+        select([entry])
     }
 
     private var selectedOrphanApplicationEntries: [FileEntry] {
@@ -349,6 +377,24 @@ final class CleanupModel {
 
         var freed: PrivateSizeMeasurement?
 
+        var worktreeWarning: String? {
+            let worktrees = Dictionary(entries.flatMap(CleanupModel.plannedTargets)
+                .filter(\.isGitWorktree).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }).values
+            let local = worktrees.filter { $0.gitWorktreeReview?.status == .uncommittedChanges }.count
+            let commits = worktrees.filter {
+                $0.gitWorktreeReview?.status != .uncommittedChanges && ($0.gitWorktreeReview?.unpushedCommitCount ?? 0) > 0
+            }.count
+            let other = worktrees.filter {
+                $0.gitWorktreeReview?.status != .uncommittedChanges && ($0.gitWorktreeReview?.unpushedCommitCount ?? 0) == 0
+                    && $0.gitWorktreeReview?.isSafeToRemove != true
+            }.count
+            var messages: [String] = []
+            if local > 0 { messages.append("\(local) \(local == 1 ? "worktree has" : "worktrees have") uncommitted changes.") }
+            if commits > 0 { messages.append("\(commits) \(commits == 1 ? "worktree has" : "worktrees have") unpushed commits.") }
+            if other > 0 { messages.append("\(other) \(other == 1 ? "worktree needs" : "worktrees need") further review.") }
+            return messages.isEmpty ? nil : messages.joined(separator: " ") + " These worktrees will move to the Trash."
+        }
+
         var orphanedApplicationItems: [AppUninstallPlan.Item] {
             applicationLeftoverPlan?.groups.filter {
                 orphanedApplicationBundleIdentifiers.contains($0.bundleIdentifier)
@@ -407,7 +453,7 @@ final class CleanupModel {
         )
         pendingCleanUp = plan
 
-        if preferences.confirmBeforeCleanup {
+        if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil {
             onEvent(.confirmationRequested)
             measureCleanUpSaving(for: plan)
         } else {
@@ -581,6 +627,14 @@ final class CleanupModel {
 
     private func execute(_ plan: CleanupPlan, quittingOwners: Bool) async -> Bool {
         var presentation = OperationPresentationDuration()
+        for entry in plan.entries.flatMap(Self.plannedTargets) where entry.gitWorktreeReview?.isSafeToRemove == true {
+            let current = try? await GitWorktreeReviewService().review(entry.url)
+            guard current?.isSafeToRemove == true else {
+                if let current { updateWorktreeReview(current, for: entry.id) }
+                onEvent(.failure(title: "Review Worktree Again", message: "The worktree checks changed. Review the worktree before removal."))
+                return false
+            }
+        }
         if quittingOwners, !plan.runningOwners.isEmpty {
             onEvent(.waitingForApplications(names: plan.runningOwners.map(\.name)))
             let stragglers = await applications.quit(plan.runningOwners)
