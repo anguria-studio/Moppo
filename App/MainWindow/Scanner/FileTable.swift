@@ -150,8 +150,10 @@ struct FileTable: View {
             // null for almost everything on this macOS, so most rows fall back to a
             // modification date — and a folder's own date only changes when its
             // direct children do, not its contents.
-            .help("Spotlight's last-opened date when it exists; otherwise the last "
-                  + "modification date. Treat it as an approximation, not a promise.")
+            .help(entries.contains { $0.url.scheme == "docker" }
+                ? "Docker does not report when these images were last used."
+                : "Spotlight's last-opened date when it exists; otherwise the last "
+                    + "modification date. Treat it as an approximation, not a promise.")
 
             SortableColumnHeader(
                 title: "Size",
@@ -383,7 +385,7 @@ private struct FileRow: View {
 
             Text(lastOpenedDisplay)
                 .font(.mcRowValue)
-                .foregroundStyle(entry.lastOpened == nil && entry.removalAction == nil
+                .foregroundStyle(entry.lastOpened == nil && entry.removalAction == nil && entry.url.scheme != "docker"
                     ? Token.textColor(.orange) : Token.Text.secondary)
                 .lineLimit(1)
                 .frame(width: Metrics.lastOpened, alignment: .leading)
@@ -398,11 +400,11 @@ private struct FileRow: View {
                 .fixedSize()
                 .frame(width: Metrics.size, alignment: .trailing)
 
-            RevealButton(
-                url: entry.url,
-                name: entry.displayName,
-                isRowHovered: isRowHovered
-            )
+            if entry.url.isFileURL {
+                RevealButton(url: entry.url, name: entry.displayName, isRowHovered: isRowHovered)
+            } else {
+                Color.clear.frame(width: Metrics.action)
+            }
         }
         .padding(.horizontal, Metrics.sidePadding)
         .frame(minHeight: 52)
@@ -456,13 +458,24 @@ private struct FileRow: View {
                 }
                 Divider()
             }
-            Button("Reveal in Finder", systemImage: "arrow.up.forward.app") {
-                NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+            if entry.url.isFileURL {
+                Button("Reveal in Finder", systemImage: "arrow.up.forward.app") {
+                    NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+                }
             }
         }
     }
 
     private var parentHelp: String {
+        if let image = entry.dockerImage {
+            if let count = image.containerCount, count > 0 {
+                return "\(count) \(count == 1 ? "container uses" : "containers use") this image. Remove those containers first."
+            }
+            if image.containerCount == nil { return "Container use is unavailable. Try scanning again." }
+            return "Docker permanently removes this image and all its listed tags. It does not move to the Trash. "
+                + "Image sizes include shared layers, so removal can recover less space. "
+                + "Docker context: \(image.context). " + entry.displayName
+        }
         if entry.removalAction != nil {
             return "Select this application group to move all listed files to the Trash."
         }
@@ -526,6 +539,8 @@ private struct FileRow: View {
                             ManualRemovalPopover(manual: manual)
                                 .presentationBackground(Token.chrome)
                         }
+                    } else if let image = entry.dockerImage {
+                        Badge(text: image.containerCount == nil ? "unavailable" : image.isRemovalLocked ? "in use" : "permanent removal").fixedSize()
                     } else if let reason = entry.protectionReason {
                         // Says *why* the checkbox is locked without hovering anything,
                         // and says the true thing: "in use" on an app that was merely
@@ -568,7 +583,8 @@ private struct FileRow: View {
 
     @MainActor
     private var lastOpenedDisplay: String {
-        entry.removalAction == nil ? lastOpenedText : "App removed"
+        if entry.url.scheme == "docker" { return "Unknown" }
+        return entry.removalAction == nil ? lastOpenedText : "App removed"
     }
 }
 
@@ -785,6 +801,9 @@ struct ProtectedSelectionControl: View {
     }
 
     private var tooltipTitle: String {
+        if let image = entry.dockerImage {
+            return image.containerCount == nil ? "Container use unavailable" : "Image used by containers"
+        }
         if entry.protectionReason == .userData { return "Protected user data" }
         if entry.protectionReason == .running { return "Application is running" }
         if entry.manualRemoval != nil { return "Manual removal required" }
@@ -792,6 +811,7 @@ struct ProtectedSelectionControl: View {
     }
 
     private var tooltipMessage: String {
+        if entry.dockerImage != nil { return help }
         if entry.protectionReason == .userData {
             return "This item can contain profiles, logins, history, and settings. "
                 + "Click the lock to review and select it for removal."

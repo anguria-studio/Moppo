@@ -46,6 +46,7 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | --- | --- |
 | Dashboard | See disk capacity, measured categories, unreadable data, and changes since an earlier measurement. |
 | Cleanup | Review system caches, package caches, Xcode data, application leftovers, and other files. |
+| Docker images | Select unused images and remove them through Docker. |
 | Storage Explorer | Browse a folder or volume with a table and treemap. Review selected items before removal. |
 | Developer folders | Inspect project files and Git worktrees. Review local files, commits, and removal checks. |
 | Local AI models | Review Ollama, Hugging Face, and LM Studio models with shared storage information. |
@@ -89,6 +90,9 @@ If Homebrew needs administrator access, Moppo shows a password dialog.
 The password helper sends your login password directly to `sudo`.
 Moppo does not save the password or run Homebrew as root.
 If removal fails, review the application to try again or copy the command to Terminal.
+Docker removes selected images permanently, including their listed tags. Put Back cannot restore them.
+Images used by containers remain locked. Image sizes include shared layers, so removal can recover less space.
+**Confirm before every clean-up** also controls the Docker image review.
 The [development notes](docs/README.md#deliberate-limitations) explain the current limits.
 
 ## Install on a Mac

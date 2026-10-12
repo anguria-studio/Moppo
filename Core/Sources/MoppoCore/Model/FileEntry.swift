@@ -44,9 +44,10 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         }
     }
 
-    /// The absolute path, except for a synthetic application-leftover group.
+    /// The file path, application group identifier, or Docker image URL.
     public var id: String {
-        switch removalAction {
+        if dockerImage != nil { return url.absoluteString }
+        return switch removalAction {
         case .orphanedApplication(let identifier):
             "orphaned-application:\(identifier)"
         case nil:
@@ -60,8 +61,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var parentDisplay: String
     public var kind: Kind
     public var allocatedBytes: Int64
-    /// `nil` renders as the orange **Never opened** — the design's strongest signal
-    /// that something is safe to remove.
+    /// A known usage date. Docker images show "Unknown" when this value is absent.
     public var lastOpened: Date?
     /// Regenerates on demand; shown as `· regenerable` after the path.
     public var isRegenerable: Bool
@@ -106,6 +106,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     }
 
     public var manualRemoval: ManualRemoval?
+    /// Docker handles permanent removal of this image.
+    public var dockerImage: DockerImage?
 
     /// The running application that has this row's files open.
     ///
@@ -183,7 +185,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// row-specific or app-uninstall authorization).
     public var isRemovalLocked: Bool {
         protectionReason == .running || protectionReason == .userData
-            || manualRemoval != nil
+            || manualRemoval != nil || dockerImage?.isRemovalLocked == true
     }
     /// Item count for folders, shown as `· 1,204 items`.
     public var childCount: Int?
@@ -201,6 +203,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         isRegenerable: Bool = false,
         protectionReason: ProtectionReason? = nil,
         manualRemoval: ManualRemoval? = nil,
+        dockerImage: DockerImage? = nil,
         inUseBy: RunningOwner? = nil,
         safetyCaveat: String? = nil,
         gitWorktreeReview: GitWorktreeReview? = nil,
@@ -219,6 +222,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.isRegenerable = isRegenerable
         self.protectionReason = protectionReason
         self.manualRemoval = manualRemoval
+        self.dockerImage = dockerImage
         self.inUseBy = inUseBy
         self.safetyCaveat = safetyCaveat
         self.gitWorktreeReview = gitWorktreeReview
@@ -257,6 +261,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// `reclaimableBytes` instead made Docker's 5 GB appear as "0 B" over a list of
     /// gigabyte rows.
     public var displayBytes: Int64 {
+        if dockerImage != nil { return allocatedBytes }
         if removalAction != nil { return reclaimableBytes }
         return manualRemoval != nil ? totalBytesIncludingChildren : reclaimableBytes
     }

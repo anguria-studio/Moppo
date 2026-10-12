@@ -26,7 +26,7 @@ struct CleanupOperationView: View {
             }
         } else {
             PageProgressView(
-                title: "Moving items to Trash",
+                title: "Removing selected items",
                 detail: summary,
                 icon: .deletion(bytes: totalBytes)
             )

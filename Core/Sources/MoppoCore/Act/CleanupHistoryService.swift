@@ -21,12 +21,19 @@ public struct CleanupHistoryItem: Sendable, Identifiable, Equatable {
     public let state: CleanupHistoryState
 
     public var name: String {
-        originalURL.lastPathComponent
+        if originalURL.scheme == "docker",
+           let name = URLComponents(url: originalURL, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "name" })?.value { return name }
+        return originalURL.lastPathComponent
     }
 
     init(record: RemovalRecord, state: CleanupHistoryState, occurrence: Int) {
         timestamp = record.timestamp
-        originalURL = URL(fileURLWithPath: record.originalPath)
+        if let url = URL(string: record.originalPath), url.scheme == "docker" {
+            originalURL = url
+        } else {
+            originalURL = URL(fileURLWithPath: record.originalPath)
+        }
         trashedURL = record.trashedPath.map { URL(fileURLWithPath: $0) }
         trashedIdentity = record.trashedIdentity
         bytes = record.bytes

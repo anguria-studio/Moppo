@@ -201,6 +201,8 @@ struct MainWindow: View {
                     runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
                     includesSoundLibrary: model.cleanup.pendingCleanUp?.includesSoundLibrary ?? false,
                     worktreeWarning: model.cleanup.pendingCleanUp?.worktreeWarning,
+                    dockerImageCount: model.cleanup.pendingCleanUp?.dockerImageCount ?? 0,
+                    dockerImageBytes: model.cleanup.pendingCleanUp?.dockerImageBytes ?? 0,
                     onConfirm: { Task { await model.cleanup.performCleanUp() } },
                     onQuitAndConfirm: {
                         Task { await model.cleanup.performCleanUp(quittingOwners: true) }
@@ -309,7 +311,9 @@ struct MainWindow: View {
         .disabled(!canRemove)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.removeLabel)
         .help(model.view == .scanner
-              ? "Moves selected items from all filters to the Trash."
+              ? model.cleanup.hasSelectedDockerImages
+                ? "Docker permanently removes selected images. Other selected items move to the Trash."
+                : "Moves selected items from all filters to the Trash."
               : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
                 ? "Checks each selected application before uninstall."
                 : model.removeLabel)

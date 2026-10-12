@@ -99,7 +99,8 @@ struct CleanupHistoryView: View {
                 CompactTableColumn("Item", width: 280, min: 150, sort: KeyPathComparator(\CleanupHistoryItem.name)) { item, selected in
                     CompactTableItem(
                         name: item.name,
-                        path: FileEntry.abbreviate(item.originalURL.deletingLastPathComponent().path),
+                        path: item.originalURL.scheme == "docker" ? "Docker"
+                            : FileEntry.abbreviate(item.originalURL.deletingLastPathComponent().path),
                         iconURL: item.trashedURL ?? item.originalURL,
                         isSelected: selected
                     )
@@ -158,7 +159,8 @@ struct CleanupHistoryView: View {
     private var visibleItems: [CleanupHistoryItem] {
         let matching = items.filter {
             filter.includes($0.state)
-                && (query.isEmpty || $0.originalURL.path.localizedCaseInsensitiveContains(query))
+                && (query.isEmpty || $0.originalURL.path.localizedCaseInsensitiveContains(query)
+                    || $0.name.localizedCaseInsensitiveContains(query))
         }
         return sorted(matching)
     }
@@ -248,6 +250,7 @@ private extension CleanupHistoryItem {
     var resultSortRank: Int { state.sortRank }
 
     var quickLookURL: URL? {
+        guard originalURL.isFileURL else { return nil }
         switch state {
         case .availableInTrash, .inTrash:
             guard let trashedURL else { return nil }

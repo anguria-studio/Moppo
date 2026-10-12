@@ -5,10 +5,7 @@ import MoppoCore
 struct ConfirmationSheet: View {
 
     enum Variant {
-        /// A clean-up always moves to the Trash. There was a `permanentCount` here,
-        /// for a preference that let the Scanner delete outright; it took a title, a
-        /// message, a tint, a button label and the receipt row with it. The
-        /// preference is gone — 20 Sep 2026 — and so is every branch it needed.
+        /// Confirms the selected cleanup plan.
         case cleanUp(
             itemCount: Int,
             totalBytes: Int64,
@@ -50,6 +47,8 @@ struct ConfirmationSheet: View {
     var runningOwnerNames: [String] = []
     var includesSoundLibrary = false
     var worktreeWarning: String? = nil
+    var dockerImageCount = 0
+    var dockerImageBytes: Int64 = 0
     let onConfirm: () -> Void
     /// Quit `runningOwnerNames`, then run the same plan. Required for the
     /// quit-first button to appear at all.
@@ -158,7 +157,7 @@ struct ConfirmationSheet: View {
 
     private var isDestructive: Bool {
         switch variant {
-        case .cleanUp(_, _, let protected, _): protected > 0
+        case .cleanUp(_, _, let protected, _): protected > 0 || dockerImageCount > 0
         case .emptyTrash: true
         case .soundLibrary: false
         case .photos: false
@@ -172,6 +171,10 @@ struct ConfirmationSheet: View {
             if protected > 0 {
                 return "Remove \(count) \(noun), including protected data?"
             }
+            if dockerImageCount == count {
+                return "Permanently remove \(count) Docker \(count == 1 ? "image" : "images")?"
+            }
+            if dockerImageCount > 0 { return "Remove \(count) \(noun)?" }
             return "Move \(count) \(noun) to the Trash?"
         case .emptyTrash(let count, _):
             return "Permanently erase the \(count) items in the Trash?"
@@ -194,6 +197,16 @@ struct ConfirmationSheet: View {
                     + "removing \(pronoun) can sign you out and erase profiles, history, or settings."
             } else {
                 warning = ""
+            }
+            if dockerImageCount > 0 {
+                let noun = dockerImageCount == 1 ? "image" : "images"
+                let permanent = "Docker permanently removes \(dockerImageCount) selected \(noun). "
+                    + "These images do not move to the Trash. "
+                    + "Image sizes include shared layers, so removal can recover less space."
+                let fileBytes = max(0, bytes - dockerImageBytes)
+                let files = fileBytes > 0
+                    ? " Other selected items move to the Trash (\(ByteFormatting.string(fileBytes)))." : ""
+                return permanent + files + warning
             }
             let sharing = Self.sharedStorageClause(selected: bytes, saving: saving)
             return "\(ByteFormatting.string(bytes)) will be moved to the Trash. "
@@ -253,7 +266,7 @@ struct ConfirmationSheet: View {
     private var confirmLabel: String {
         switch variant {
         case .cleanUp(_, _, let protected, _):
-            return protected > 0 ? "Remove Anyway" : "Move to Trash"
+            return protected > 0 ? "Remove Anyway" : dockerImageCount > 0 ? "Remove" : "Move to Trash"
         case .emptyTrash:   return "Erase"
         case .soundLibrary: return "Move to Trash"
         case .photos: return "Move to Recently Deleted"

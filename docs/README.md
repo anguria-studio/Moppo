@@ -51,7 +51,7 @@ Core/                         Swift package
     Measure/                 AllocatedSizeMeasurer, ByteFormatting
     System/                  Disk information, snapshots, process execution
     Scan/                    Category scanners and scan coordination
-    Act/                     Cleanup, app uninstall, sound libraries, Trash, history
+    Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
   Sources/moppo-cli/         Command-line tools
@@ -108,10 +108,17 @@ Only the matching operation can release the shared guard.
 All feature scans, removal reviews, removal tasks, and recovery operations use the same coordinator.
 Presentation state does not determine whether an operation is active.
 
-**Confirm before every clean-up** controls confirmations for removals that support recovery.
+**Confirm before every clean-up** controls the Cleanup review, including permanent Docker image removal.
 This includes Cleanup, application data, sound libraries, Storage Explorer, duplicate files, and duplicate photos.
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
+Docker images appear once per image identifier, with their tags grouped together.
+Docker removes selected images in the scanned context without forced removal.
+Before removal, Moppo checks the image identifier, tags, and container use again.
+After removal, Moppo updates the Docker category.
+Docker image removal does not use the Trash or support Put Back.
+Image sizes include shared layers, so removal can recover less space.
+Container, volume, and build cache cleanup still uses manual commands.
 Empty Trash always requires confirmation because it permanently erases items.
 Photos can show its own system confirmation after Moppo starts the deletion request.
 Confirmation captures the selection and preferences before the user makes a decision.
