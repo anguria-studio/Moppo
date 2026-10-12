@@ -12,6 +12,7 @@ enum AIToolStorage {
         let path: String
         let name: String
         let tool: FileEntry.AITool
+        var explanation: String = "Credentials, settings, memories, history, and installed files remain protected. Use the owning tool to manage them."
         var curationIdentifier: String? = nil
         var parts: [Part] = []
     }
@@ -25,15 +26,24 @@ enum AIToolStorage {
             Part(path: "archived_sessions", name: "Codex archived sessions", explanation: "Archived conversations can contain task history. Use Codex to manage these files."),
             Part(path: "attachments", name: "Codex attachments", explanation: "Files attached to tasks. These files can be the only local copies."),
             Part(path: "generated_images", name: "Codex generated images", explanation: "Images created in tasks. These files can be the only local copies."),
+            Part(path: "memories", name: "Codex memories", explanation: "Persistent memories and supporting files remain protected. Session deletion does not select this folder."),
             Part(path: "plugins", name: "Codex plugins", explanation: "Installed plugins and their files. Use Codex to manage plugins."),
             Part(path: "cache", name: "Codex other cache files", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected."),
             Part(path: ".tmp", name: "Codex temporary files", explanation: "These files can belong to active tasks. Moppo keeps them protected.")
         ]),
-        Root(path: ".claude", name: "Claude Code data", tool: .claude, parts: [
-            Part(path: "projects", name: "Claude Code sessions", explanation: "Saved conversations and project history. Use Claude Code to manage these files."),
-            Part(path: "file-history", name: "Claude Code file history", explanation: "Saved file versions can support recovery. Use Claude Code to manage these files.")
+        Root(path: ".claude", name: "Claude Code data", tool: .claude,
+             explanation: "Credentials, settings, memories, and session files remain protected. Claude Code purge also deletes memories.", parts: [
+            Part(path: "projects", name: "Claude Code sessions and memories", explanation: "Conversations, child sessions, tool results, and persistent memories share this folder. Moppo keeps the whole folder protected."),
+            Part(path: "agent-memory", name: "Claude Code agent memories", explanation: "Persistent agent memories remain protected. These files can be shared across sessions."),
+            Part(path: "file-history", name: "Claude Code file history", explanation: "Saved file versions support checkpoint recovery. Moppo keeps these files protected."),
+            Part(path: "paste-cache", name: "Claude Code pasted text", explanation: "Saved pasted text can contain session content. The cache name does not make it disposable."),
+            Part(path: "image-cache", name: "Claude Code saved images", explanation: "Earlier Claude Code versions stored attached images here. These files can be the only local copies."),
+            Part(path: "uploads", name: "Claude Code uploaded files", explanation: "Files and photos attached to local sessions. These files can be the only local copies.")
         ]),
-        Root(path: ".cursor/projects", name: "Cursor project data", tool: .cursor),
+        Root(path: ".cursor/projects", name: "Cursor project data", tool: .cursor,
+             explanation: "Project history and task files can be the only local copies. Moppo keeps them protected."),
+        Root(path: ".cursor/chats", name: "Cursor CLI sessions", tool: .cursor,
+             explanation: "Local conversations have no cloud backup. Moppo cannot verify inactive sessions and keeps this folder protected."),
         Root(path: ".cursor/worktrees", name: "Cursor worktrees", tool: .cursor),
         Root(path: ".cache/codex-runtimes", name: "Codex downloaded runtimes", tool: .codex),
         Root(path: "Library/Application Support/Codex", name: "ChatGPT desktop data", tool: .codex, curationIdentifier: "com.openai.codex"),
@@ -44,10 +54,10 @@ enum AIToolStorage {
             Part(path: "claude-code-vm", name: "Claude VM files", explanation: "Virtual machine runtime and task files. Use Claude to manage these files."),
             Part(path: "claude-code", name: "Claude downloaded tools", explanation: "Installed command-line tools. Use Claude to manage these files."),
             Part(path: "claude-code-sessions", name: "Claude desktop coding sessions", explanation: "Saved coding tasks and their files. Use Claude to manage these files."),
-            Part(path: "local-agent-mode-sessions", name: "Claude local agent sessions", explanation: "Saved local tasks and their files. Use Claude to manage these files.")
+            Part(path: "local-agent-mode-sessions", name: "Claude local agent sessions", explanation: "Task history, uploaded files, and outputs share this folder with persistent memories and plugins. Moppo keeps the whole folder protected.")
         ]),
         Root(path: "Library/Application Support/Cursor", name: "Cursor desktop data", tool: .cursor, curationIdentifier: "com.todesktop.230313mzl4w4u92", parts: [
-            Part(path: "User", name: "Cursor settings and workspace state", explanation: "Settings, history, and workspace state can include unsaved files. Use Cursor to manage these files.")
+            Part(path: "User", name: "Cursor settings and workspace state", explanation: "Chat history, checkpoints, settings, and unsaved files remain protected. Delete individual chats in Cursor.")
         ])
     ]
 }

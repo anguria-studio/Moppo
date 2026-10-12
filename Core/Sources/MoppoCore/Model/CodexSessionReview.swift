@@ -29,10 +29,16 @@ public struct CodexSessionReview: Sendable, Equatable {
     }
 
     public var warning: String {
-        let children = members.count - 1
+        Self.warning(for: [self])
+    }
+
+    public static func warning(for reviews: [Self]) -> String {
+        let children = reviews.reduce(0) { $0 + max(0, $1.members.count - 1) }
         let scope = children > 0
             ? " This also deletes \(children) child \(children == 1 ? "session" : "sessions")." : ""
         return "Codex permanently deletes the selected conversation history and related session files."
-            + scope + " This deletion does not use the Trash and cannot be undone."
+            + scope + " This includes messages, tool results, and images stored in the history."
+            + " Credentials, settings, and separate attachment, image, and memory folders stay protected."
+            + " This deletion does not use the Trash and cannot be undone."
     }
 }

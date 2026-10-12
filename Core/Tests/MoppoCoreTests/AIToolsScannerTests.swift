@@ -24,13 +24,27 @@ struct AIToolsScannerTests {
         try sandbox.file(".codex/sessions/task.jsonl")
         try sandbox.file(".codex/cache/unknown.sqlite")
         try sandbox.file(".codex/auth.json", bytes: 4096)
+        try sandbox.file(".codex/config.toml", bytes: 4096)
+        try sandbox.file(".codex/memories/memory_summary.md")
+        try sandbox.file(".codex/attachments/original.png")
+        try sandbox.file(".codex/generated_images/output.png")
         try sandbox.file(".claude/projects/task/conversation.jsonl")
+        try sandbox.file(".claude/projects/task/memory/MEMORY.md")
+        try sandbox.file(".claude/projects/task/session/subagents/child.jsonl")
+        try sandbox.file(".claude/projects/task/session/tool-results/image.png")
+        try sandbox.file(".claude/agent-memory/reviewer/MEMORY.md")
         try sandbox.file(".claude/file-history/previous.txt")
+        try sandbox.file(".claude/paste-cache/paste.txt")
+        try sandbox.file(".claude/image-cache/session/image.png")
+        try sandbox.file(".claude/uploads/session/original.pdf")
+        try sandbox.file(".claude/settings.json", bytes: 4096)
+        try sandbox.file(".claude/.credentials.json", bytes: 4096)
         try sandbox.file(".cursor/projects/task/state.json")
+        try sandbox.file(".cursor/chats/workspace/session/store.db")
         try sandbox.file(".cache/codex-runtimes/runtime/bin/python")
         let context = ScanContext()
         let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
-        #expect(ai.entries.count == 4)
+        #expect(ai.entries.count == 5)
         for entry in ai.entries {
             #expect(entry.displayBytes == (try await context.measurer.measure(entry.url)).allocatedBytes)
             #expect(entry.reclaimableBytes == 0)
@@ -42,6 +56,10 @@ struct AIToolsScannerTests {
         }
         #expect(ai.safeToRemoveBytes == 0)
         #expect(ai.needsReviewBytes == ai.totalBytes)
+        #expect(ai.totalBytes == (try await context.measurer.measure(sandbox.home)).allocatedBytes)
+        let claude = try #require(ai.entries.first { $0.displayName == "Claude Code data" })
+        #expect(claude.children.count == 6)
+        #expect(claude.children.first { $0.url.lastPathComponent == "projects" }?.protectionExplanation?.contains("persistent memories") == true)
         let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
         let system = try await SystemCachesScanner(
             cachesRoot: sandbox.home.appendingPathComponent("Library/Caches"),
@@ -50,6 +68,21 @@ struct AIToolsScannerTests {
         ).scan(context: context)
         #expect(hidden.entries.isEmpty)
         #expect(system.entries.isEmpty)
+    }
+
+    @Test("Cursor CLI attachments cannot enter the archive sweep when AI Tools is disabled")
+    func cursorSessionArchives() async throws {
+        let sandbox = try Sandbox()
+        let attachment = try sandbox.file(".cursor/chats/workspace/session/attachment.zip", bytes: 260 * 1024 * 1024)
+        let context = ScanContext()
+        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        #expect(hidden.entries.isEmpty)
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let row = try #require(ai.entries.first)
+        #expect(row.displayName == "Cursor CLI sessions")
+        #expect(row.displayBytes == (try await context.measurer.measure(attachment)).allocatedBytes)
+        #expect(row.isRemovalLocked)
+        #expect(!CleanupService.removalAllowed(row, userDataRemovalOverrides: [row.id]))
     }
 
     @Test("Claude VM files use allocated bytes and only verified desktop caches count as safe")
@@ -67,11 +100,14 @@ struct AIToolsScannerTests {
         try sandbox.file(prefix + "Partitions/feature/Cache/data")
         try sandbox.file(prefix + "Cookies", bytes: 4096)
         try sandbox.file(prefix + "Service Worker/CacheStorage/offline-state")
+        let taskFiles = try sandbox.file(prefix + "local-agent-mode-sessions/account/task/uploads/original.pdf")
+        try sandbox.file(prefix + "local-agent-mode-sessions/account/memory/MEMORY.md")
         let context = ScanContext()
         let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
         let row = try #require(ai.entries.first)
         #expect(row.children.filter(\.isRegenerable).count == 3)
-        #expect(row.children.filter { $0.protectionReason == .inventory }.count == 3)
+        #expect(row.children.filter { $0.protectionReason == .inventory }.count == 4)
+        #expect(row.children.first { $0.url.lastPathComponent == "local-agent-mode-sessions" }?.protectionExplanation?.contains("persistent memories") == true)
         let sessionRow = try #require(row.children.first { $0.url == session })
         #expect(sessionRow.allocatedBytes == (try await context.measurer.measure(session)).allocatedBytes)
         #expect(sessionRow.allocatedBytes < 1024 * 1024 * 1024)
@@ -81,6 +117,7 @@ struct AIToolsScannerTests {
         #expect(ai.filtered(safeToRemove: true).totalBytes == ai.safeToRemoveBytes)
         #expect(ai.filtered(safeToRemove: false).totalBytes == ai.needsReviewBytes)
         #expect(!row.children.contains { $0.url.path.contains("Service Worker") })
+        #expect(!row.children.filter { !$0.isRemovalLocked }.contains { taskFiles.path.hasPrefix($0.url.path + "/") })
 
         var running = context
         running.runningApplications = [.init(name: "Claude", bundleIdentifier: "com.anthropic.claudefordesktop", bundlePath: "/Applications/Claude.app")]

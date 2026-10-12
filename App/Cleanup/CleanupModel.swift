@@ -120,6 +120,7 @@ final class CleanupModel {
                 && $0.kind != .appBundle
                 && $0.removalAction == nil
                 && $0.protectionReason != .inventory
+                && $0.unlockableChildren.isEmpty
         }
     }
 
@@ -149,6 +150,33 @@ final class CleanupModel {
             scannerSelection.remove(parent.id)
         }
         select([entry])
+    }
+
+    /// Unlock reviewed children without selecting them or their parent.
+    func unlockChildren(in reviewedGroup: FileEntry) {
+        guard !isBusyWithDisk,
+              let currentGroup = scanResults?.categories.flatMap(\.entries).first(where: { $0.id == reviewedGroup.id })
+        else { return }
+        let reviewed = Dictionary(uniqueKeysWithValues: reviewedGroup.unlockableChildren.map { ($0.id, $0) })
+        let ids = Set(currentGroup.unlockableChildren.filter {
+            reviewed[$0.id] == $0
+        }.map(\.id))
+        guard !ids.isEmpty else { return }
+        scannerSelection.subtract(currentGroup.children.map(\.id))
+        scannerSelection.remove(currentGroup.id)
+        userDataRemovalOverrides.remove(currentGroup.id)
+        userDataRemovalOverrides.formUnion(ids)
+    }
+
+    func setChildrenSelected(_ isSelected: Bool, in groupID: FileEntry.ID) {
+        guard !isBusyWithDisk,
+              let group = scanResults?.categories.flatMap(\.entries).first(where: { $0.id == groupID })
+        else { return }
+        if isSelected {
+            scannerSelection.formUnion(group.selectableChildren(userDataRemovalOverrides: userDataRemovalOverrides).map(\.id))
+        } else {
+            scannerSelection.subtract(group.children.map(\.id))
+        }
     }
 
     var hasSelectedDockerImages: Bool { selectedEntries.contains { $0.dockerImage != nil } }
@@ -269,8 +297,10 @@ final class CleanupModel {
 
     private func selectableEntries(from candidates: [FileEntry]) -> [FileEntry] {
         var seen = Set<FileEntry.ID>()
-        let selectable = candidates.filter {
-            !$0.isRemovalLocked && $0.kind != .appBundle && seen.insert($0.id).inserted
+        let children = candidates.flatMap { $0.selectableChildren(userDataRemovalOverrides: userDataRemovalOverrides) }
+        let selectable = (candidates + children).filter {
+            (!$0.isRemovalLocked || ($0.protectionReason == .userData && userDataRemovalOverrides.contains($0.id)))
+                && $0.unlockableChildren.isEmpty && $0.kind != .appBundle && seen.insert($0.id).inserted
         }
         let covered = Set(selectable.flatMap(\.children).map(\.id))
         return selectable.filter { !covered.contains($0.id) }
@@ -288,6 +318,15 @@ final class CleanupModel {
 
     func selectedIDs(in category: ScanCategoryResult) -> Set<FileEntry.ID> {
         CleanupSelection.ids(in: [category], selected: scannerSelection, scope: .all)
+    }
+
+    func selectAllState(in category: ScanCategoryResult) -> NSControl.StateValue {
+        selectAllState(in: category.entries, selected: selectedIDs(in: category))
+    }
+
+    private func selectAllState(in rows: [FileEntry], selected: Set<FileEntry.ID>) -> NSControl.StateValue {
+        guard !selected.isEmpty else { return .off }
+        return !rows.isEmpty && rows.allSatisfy { selected.contains($0.id) } ? .on : .mixed
     }
 
     func setSelected(_ isSelected: Bool, in category: ScanCategoryResult) {
@@ -321,10 +360,13 @@ final class CleanupModel {
                 .reduce(0) { $0 + $1.displayBytes }
     }
 
+    var selectAllStateInCurrentView: NSControl.StateValue {
+        selectAllState(in: rowsInCurrentView, selected: cleanupSelection(in: scanFilter))
+    }
+
     var canSelectAllInCurrentView: Bool {
         let selectable = selectableInCurrentView
-        return !selectable.isEmpty
-            && !selectable.allSatisfy { scannerSelection.contains($0.id) }
+        return !selectable.isEmpty && !selectable.allSatisfy { scannerSelection.contains($0.id) }
     }
 
     var hasSelectableItemsInCurrentView: Bool { !selectableInCurrentView.isEmpty }
@@ -351,7 +393,7 @@ final class CleanupModel {
         safeSelectionSeededAt = finishedAt
 
         select(tileEntries(safeToRemove: true).filter {
-            !$0.isRemovalLocked && $0.kind != .appBundle && $0.removalAction == nil
+            !$0.isRemovalLocked && $0.kind != .appBundle && $0.removalAction == nil && $0.unlockableChildren.isEmpty
         })
     }
 
@@ -394,9 +436,7 @@ final class CleanupModel {
         var codexSessionWarning: String? {
             let reviews = entries.compactMap(\.codexSession)
             guard !reviews.isEmpty else { return nil }
-            let children = reviews.reduce(0) { $0 + $1.members.count - 1 }
-            let scope = children > 0 ? " This includes \(children) child \(children == 1 ? "session" : "sessions")." : ""
-            return "Session deletion cannot be undone. Deleted sessions cannot be put back." + scope
+            return CodexSessionReview.warning(for: reviews)
         }
 
         var worktreeWarning: String? {

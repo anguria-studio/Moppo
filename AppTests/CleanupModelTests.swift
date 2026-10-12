@@ -107,6 +107,103 @@ struct CleanupModelTests {
         cleanup.cancelCleanUp()
     }
 
+    @Test("Group review unlocks unchanged children without selection and keeps them unlocked after deselection")
+    func childGroupReview() throws {
+        let home = URL(fileURLWithPath: "/moppo-fixture/.codex")
+        func session(_ name: String) -> FileEntry {
+            var entry = cleanupEntry(name)
+            entry.isRegenerable = false
+            entry.protectionReason = .userData
+            entry.codexSession = .init(codexHome: home, threadID: name, members: [
+                .init(threadID: name, url: entry.url, identity: name, modifiedAt: .distantPast, fileSize: 1)
+            ])
+            return entry
+        }
+        let first = session("first")
+        let second = session("second")
+        var active = session("active")
+        active.protectionReason = .inventory
+        var otherData = cleanupEntry("unknown-data")
+        otherData.protectionReason = .inventory
+        var group = cleanupEntry("codex-sessions")
+        group.aiTool = .codex
+        group.protectionReason = .inventory
+        group.children = [first, second, active, otherData]
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(operations: operations)
+        cleanup.scanResults = cleanupResults([group])
+        let unrelated = cleanupEntry("unrelated")
+        cleanup.scannerSelection = [unrelated.id]
+        cleanup.userDataRemovalOverrides = [unrelated.id]
+        let operation = try #require(operations.begin(.fileScan))
+        cleanup.unlockChildren(in: group)
+        cleanup.setChildrenSelected(true, in: group.id)
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        operations.finish(operation)
+
+        var changedGroup = group
+        changedGroup.children[0].protectionReason = .inventory
+        changedGroup.children[1].codexSession = .init(codexHome: home, threadID: "second", members: [
+            .init(threadID: "second", url: second.url, identity: "replacement", modifiedAt: .distantPast, fileSize: 2)
+        ])
+        changedGroup.children.append(session("new-session"))
+        cleanup.scanResults = cleanupResults([changedGroup])
+        cleanup.unlockChildren(in: group)
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        #expect(cleanup.userDataRemovalOverrides == [unrelated.id])
+
+        cleanup.scanResults = cleanupResults([group])
+        cleanup.setChildrenSelected(true, in: group.id)
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        cleanup.scannerSelection.insert(first.id)
+        cleanup.userDataRemovalOverrides.insert(first.id)
+        cleanup.unlockChildren(in: group)
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        #expect(cleanup.userDataRemovalOverrides == [unrelated.id, first.id, second.id])
+        #expect(cleanup.selectedEntries.isEmpty)
+        cleanup.setChildrenSelected(true, in: group.id)
+        #expect(cleanup.scannerSelection == [unrelated.id, first.id, second.id])
+        #expect(cleanup.selectedEntries.map(\.id) == [first.id, second.id])
+        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
+        cleanup.setChildrenSelected(false, in: group.id)
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        #expect(cleanup.userDataRemovalOverrides == [unrelated.id, first.id, second.id])
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [unrelated.id, first.id, second.id])
+        cleanup.deselectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [unrelated.id])
+        #expect(cleanup.userDataRemovalOverrides == [unrelated.id])
+    }
+
+    @Test("Other protected groups use child unlocking while complete removal groups keep their own review")
+    func otherChildGroups() {
+        var data = cleanupEntry("profile")
+        data.protectionReason = .userData
+        var active = cleanupEntry("active")
+        active.protectionReason = .running
+        var group = cleanupEntry("storage-group")
+        group.children = [data, active]
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanResults = cleanupResults([group])
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(group.unlockableChildren.map(\.id) == [data.id])
+        cleanup.unlockChildren(in: group)
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(cleanup.userDataRemovalOverrides == [data.id])
+        cleanup.setChildrenSelected(true, in: group.id)
+        #expect(cleanup.selectedEntries.map(\.id) == [data.id])
+        #expect(cleanup.cleanupSelection(in: .all) == [data.id])
+        cleanup.scannerSelection.insert(group.id)
+        #expect(cleanup.selectedEntries.map(\.id) == [data.id])
+        #expect(cleanup.cleanupSelection(in: .all) == [data.id])
+        group.removesAsUnit = true
+        #expect(group.unlockableChildren.isEmpty)
+        group.removesAsUnit = false
+        group.kind = .appBundle
+        #expect(group.unlockableChildren.isEmpty)
+    }
+
     @Test("Cancellation retains the guard and rejects old callbacks after a restart")
     func scanLifetime() async throws {
         let scanner = HeldCleanupScanner()
@@ -238,6 +335,34 @@ struct CleanupModelTests {
         #expect(!cleanup.scannerSelection.contains(child.id))
     }
 
+    @Test("Select All shows partial selection when the filter contains more selectable items")
+    func selectAllStateAcrossFilters() {
+        let first = cleanupEntry("first-cache")
+        let second = cleanupEntry("second-cache")
+        var review = cleanupEntry("review-file")
+        review.isRegenerable = false
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanResults = cleanupResults([first, second, review])
+        #expect(cleanup.selectAllStateInCurrentView == .off)
+        cleanup.scannerSelection = [first.id]
+        #expect(cleanup.selectAllStateInCurrentView == .mixed)
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        cleanup.scanFilter = .all
+        #expect(cleanup.scannerSelection == [first.id, second.id])
+        #expect(cleanup.selectAllStateInCurrentView == .mixed)
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        cleanup.scanFilter = .needsReview
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        cleanup.deselectAllInCurrentView()
+        #expect(cleanup.selectAllStateInCurrentView == .off)
+        cleanup.scanFilter = .all
+        #expect(cleanup.selectAllStateInCurrentView == .mixed)
+        cleanup.deselectAllInCurrentView()
+        #expect(cleanup.selectAllStateInCurrentView == .off)
+    }
+
     @Test("A category checkbox selects only its removable rows and clears only its own selection")
     func categorySelection() throws {
         let operations = OperationCoordinator()
@@ -247,6 +372,7 @@ struct CleanupModelTests {
         parent.children = [child]
         var locked = cleanupEntry("locked")
         locked.protectionReason = .userData
+        locked.isRegenerable = false
         let appCache = cleanupEntry("app-cache")
         var app = cleanupEntry("Application.app")
         app.kind = .appBundle
@@ -261,24 +387,55 @@ struct CleanupModelTests {
         cleanup.userDataRemovalOverrides = [child.id]
         #expect(cleanup.selectedIDs(in: category) == [child.id])
         #expect(cleanup.selectableIDs(in: category) == [parent.id, appCache.id])
+        #expect(cleanup.selectAllState(in: category) == .mixed)
 
         cleanup.setSelected(true, in: category)
         #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
         #expect(cleanup.userDataRemovalOverrides.isEmpty)
+        #expect(cleanup.selectAllState(in: category) == .mixed)
         cleanup.scannerSelection.insert(locked.id)
         cleanup.userDataRemovalOverrides = [locked.id, unrelated.id]
         cleanup.setSelected(false, in: category)
         #expect(cleanup.scannerSelection == [unrelated.id])
         #expect(cleanup.userDataRemovalOverrides == [unrelated.id])
+        #expect(cleanup.selectAllState(in: category) == .off)
 
         cleanup.scanFilter = .safeToRemove
         let filtered = category.filtered(safeToRemove: true)
         cleanup.setSelected(true, in: filtered)
         #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
+        #expect(cleanup.selectAllState(in: filtered) == .on)
         let operation = try #require(operations.begin(.appUninstall))
         cleanup.setSelected(false, in: filtered)
         #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
         operations.finish(operation)
+    }
+
+    @Test("Selected application caches keep the All headers partially selected")
+    func applicationCacheSelectionState() {
+        let cache = cleanupEntry("application-cache")
+        var app = cleanupEntry("Application.app")
+        app.kind = .appBundle
+        app.isRegenerable = false
+        app.children = [cache]
+        let category = ScanCategoryResult(categoryID: .applications, entries: [app])
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanResults = .init(categories: [category], startedAt: .now, finishedAt: .now)
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection == [cache.id])
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        #expect(cleanup.selectAllState(in: category.filtered(safeToRemove: true)) == .on)
+        cleanup.scanFilter = .all
+        #expect(cleanup.selectAllStateInCurrentView == .mixed)
+        #expect(cleanup.selectAllState(in: category) == .mixed)
+        #expect(!cleanup.canSelectAllInCurrentView)
+        #expect(cleanup.selectedBytes(in: .applications) == cache.allocatedBytes)
+        cleanup.openCategories.insert(.applications)
+        #expect(cleanup.selectAllState(in: category) == .mixed)
+        cleanup.setSelected(false, in: category)
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(cleanup.selectAllStateInCurrentView == .off)
+        #expect(cleanup.selectAllState(in: category) == .off)
     }
 
     @Test("Removal uses the captured plan and survives caller cancellation")

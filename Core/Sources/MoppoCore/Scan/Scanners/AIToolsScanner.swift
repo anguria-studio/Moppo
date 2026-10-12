@@ -31,7 +31,7 @@ public struct AIToolsScanner: CategoryScanner {
                 url: url, displayName: root.name, kind: .folder,
                 allocatedBytes: total.allocatedBytes, lastOpened: lastOpenedDate(for: url),
                 protectionReason: .inventory,
-                protectionExplanation: "Settings, history, and installed files remain protected. Use the owning tool to manage them.",
+                protectionExplanation: root.explanation,
                 aiTool: root.tool
             )
             if let identifier = root.curationIdentifier,

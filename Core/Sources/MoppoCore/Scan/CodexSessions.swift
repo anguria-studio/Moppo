@@ -215,7 +215,7 @@ struct CodexSessions: Sendable {
             groups[name] = FileEntry(url: url,
                 displayName: name == "sessions" ? "Codex sessions" : "Codex archived sessions", kind: .folder,
                 allocatedBytes: size.allocatedBytes, protectionReason: .inventory,
-                protectionExplanation: "Review individual sessions below. Unknown session files remain protected.", aiTool: .codex)
+                protectionExplanation: "Review inactive conversations below. Active sessions and unknown files stay protected.", aiTool: .codex)
         }
         let childIDs = Set(snapshot.children.values.flatMap { $0 })
         let roots = snapshot.records.keys.filter { !childIDs.contains($0) }.sorted()

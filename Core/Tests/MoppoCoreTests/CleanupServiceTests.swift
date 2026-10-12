@@ -175,6 +175,9 @@ struct CleanupServiceTests {
         #expect(CleanupService.removalAllowed(
             userData, userDataRemovalOverrides: [userData.id]
         ))
+        let group = FileEntry(url: URL(fileURLWithPath: "/tmp/protected-group"),
+            kind: .folder, allocatedBytes: 64, children: [userData])
+        #expect(!CleanupService.removalAllowed(group, userDataRemovalOverrides: [group.id, userData.id]))
         // An override cannot turn a genuinely unavailable operation into a checkbox.
         #expect(!CleanupService.removalAllowed(
             running, userDataRemovalOverrides: [running.id]

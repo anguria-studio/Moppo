@@ -21,6 +21,8 @@ struct FileTable: View {
     var confirmBeforeCleanup = false
     var onUninstallApplication: ((FileEntry) -> Void)? = nil
     var onReviewWorktree: ((FileEntry) -> Void)? = nil
+    var onUnlockChildren: ((FileEntry) -> Void)? = nil
+    var onToggleChildren: ((Bool, FileEntry) -> Void)? = nil
     var selectAllState: NSControl.StateValue = .off
     var canToggleAll = false
     var onToggleAll: (Bool) -> Void = { _ in }
@@ -96,12 +98,27 @@ struct FileTable: View {
         }
         .overlay(alignment: .top) { Hairline() }
         .alert(item: $pendingUserDataOverride) { entry in
-            Alert(
+            let children = entry.unlockableChildren
+            if !children.isEmpty, let onUnlockChildren {
+                let sessions = children.compactMap(\.codexSession)
+                let warning = sessions.count == children.count
+                    ? CodexSessionReview.warning(for: sessions) : protectedDataWarning
+                return Alert(
+                    title: Text("Unlock \(children.count) child \(children.count == 1 ? "item" : "items") in \(entry.displayName)?"),
+                    message: Text(warning + " Unlocking does not select or remove items."
+                        + " Active sessions and other protected files stay locked."),
+                    primaryButton: .default(Text("Unlock Children")) {
+                        onUnlockChildren(entry)
+                        expandedRows.insert(entry.id)
+                        pendingUserDataOverride = nil
+                    },
+                    secondaryButton: .cancel { pendingUserDataOverride = nil }
+                )
+            }
+            return Alert(
                 title: Text("Remove \(entry.displayName)?"),
                 message: Text(
-                    entry.codexSession?.warning ?? ("This folder can contain profiles, logins, history, and settings. "
-                    + "Removing it may sign you out or reset the app. Quit the app first. "
-                    + "Moppo will always move this protected data to the Trash.")
+                    entry.codexSession?.warning ?? protectedDataWarning
                 ),
                 primaryButton: .destructive(Text("Unlock & Select")) {
                     unlockAndSelect(entry)
@@ -187,8 +204,7 @@ struct FileTable: View {
                     entry: entry,
                     isSafeToRemove: showsSafeToRemoveBadges && isSafeToRemove(entry),
                     isSelected: selection.contains(entry.id),
-                    selectionState: selection.contains(entry.id) ? .on
-                        : entry.children.contains(where: { selection.contains($0.id) }) ? .mixed : .off,
+                    selectionState: selectionState(for: entry),
                     hasUserDataOverride: userDataRemovalOverrides.contains(entry.id),
                     isExpanded: expandedRows.contains(entry.id),
                     onToggle: { isOn in setSelected(isOn, at: index) },
@@ -197,7 +213,12 @@ struct FileTable: View {
                     onUninstallApplication: onUninstallApplication.map { action in
                         { action(entry) }
                     },
-                    onReviewWorktree: onReviewWorktree.map { action in { action(entry) } }
+                    onReviewWorktree: onReviewWorktree.map { action in { action(entry) } },
+                    hasUnlockedChildren: !entry.unlockableChildren.isEmpty
+                        && entry.unlockableChildren.allSatisfy { userDataRemovalOverrides.contains($0.id) },
+                    onUnlockChildren: onUnlockChildren != nil && !entry.unlockableChildren.isEmpty
+                        ? { pendingUserDataOverride = entry } : nil,
+                    onToggleChildren: onToggleChildren.map { action in { action($0, entry) } }
                 )
                 // A parent discloses targets that can be removed separately. An app
                 // still uses the complete uninstall review for its parent action.
@@ -218,7 +239,9 @@ struct FileTable: View {
                                 if isOn { selection.insert(child.id) }
                                 else {
                                     selection.remove(child.id)
-                                    userDataRemovalOverrides.remove(child.id)
+                                    if entry.unlockableChildren.isEmpty {
+                                        userDataRemovalOverrides.remove(child.id)
+                                    }
                                 }
                             },
                             onRequestUserDataOverride: { requestUserDataOverride(child) },
@@ -238,6 +261,22 @@ struct FileTable: View {
     }
 
     // MARK: - Selection
+
+    private var protectedDataWarning: String {
+        "These files can contain profiles, logins, history, and settings. "
+            + "Removing them can sign you out or reset the app. Quit the app before removal. "
+            + "Moppo always moves this protected data to the Trash."
+    }
+
+    private func selectionState(for entry: FileEntry) -> NSControl.StateValue {
+        if onUnlockChildren != nil, !entry.unlockableChildren.isEmpty {
+            let children = entry.selectableChildren(userDataRemovalOverrides: userDataRemovalOverrides)
+            let count = children.filter { selection.contains($0.id) }.count
+            return count == 0 ? .off : count == children.count ? .on : .mixed
+        }
+        return selection.contains(entry.id) ? .on
+            : entry.children.contains(where: { selection.contains($0.id) }) ? .mixed : .off
+    }
 
     private func requestUserDataOverride(_ entry: FileEntry) {
         if confirmBeforeCleanup || entry.codexSession != nil { pendingUserDataOverride = entry }
@@ -291,8 +330,8 @@ struct FileTable: View {
             // locked checkbox must not be reachable through a side door. An exact
             // user-data override is the exception: after the warning, its checkbox
             // must work normally (including letting the user deselect it again).
-            guard !entry.isRemovalLocked
-                    || userDataRemovalOverrides.contains(entry.id)
+            guard entry.unlockableChildren.isEmpty,
+                  !entry.isRemovalLocked || userDataRemovalOverrides.contains(entry.id)
             else { continue }
             if isOn {
                 selection.insert(entry.id)
@@ -324,6 +363,9 @@ private struct FileRow: View {
     var onDisclose: (() -> Void)?
     var onUninstallApplication: (() -> Void)? = nil
     var onReviewWorktree: (() -> Void)? = nil
+    var hasUnlockedChildren = false
+    var onUnlockChildren: (() -> Void)? = nil
+    var onToggleChildren: ((Bool) -> Void)? = nil
     @FocusState private var isFocused: Bool
 
     @State private var isRowHovered = false
@@ -348,6 +390,7 @@ private struct FileRow: View {
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Show child items in \(entry.displayName)")
                     .help(disclosureHelp)
                 } else {
                     Color.clear
@@ -368,8 +411,10 @@ private struct FileRow: View {
                         isSelected: isSelected,
                         selectionState: selectionState,
                         hasUserDataOverride: hasUserDataOverride,
+                        hasUnlockedChildren: hasUnlockedChildren,
+                        onUnlockChildren: onUnlockChildren,
                         help: parentHelp,
-                        onToggle: onToggle,
+                        onToggle: onUnlockChildren != nil ? (onToggleChildren ?? onToggle) : onToggle,
                         onRequestUserDataOverride: onRequestUserDataOverride
                     )
                 }
@@ -385,8 +430,7 @@ private struct FileRow: View {
 
             Text(lastOpenedDisplay)
                 .font(.mcRowValue)
-                .foregroundStyle(entry.lastOpened == nil && entry.removalAction == nil && entry.url.scheme != "docker"
-                    ? Token.textColor(.orange) : Token.Text.secondary)
+                .foregroundStyle(Token.Text.secondary)
                 .lineLimit(1)
                 .frame(width: Metrics.lastOpened, alignment: .leading)
 
@@ -467,6 +511,11 @@ private struct FileRow: View {
     }
 
     private var parentHelp: String {
+        if onUnlockChildren != nil {
+            return hasUnlockedChildren
+                ? "Use this checkbox to select child items. The parent folder stays protected."
+                : "Use the lock to review and unlock child items. Unlocking does not select items."
+        }
         if let image = entry.dockerImage {
             if let count = image.containerCount, count > 0 {
                 return "\(count) \(count == 1 ? "container uses" : "containers use") this image. Remove those containers first."
@@ -547,6 +596,13 @@ private struct FileRow: View {
                         }
                     } else if let image = entry.dockerImage {
                         Badge(text: image.containerCount == nil ? "unavailable" : image.isRemovalLocked ? "in use" : "permanent removal").fixedSize()
+                    } else if entry.aiTool == .codex && entry.codexSession == nil
+                        && entry.children.contains(where: { $0.codexSession != nil }) {
+                        Badge(text: "conversation history").fixedSize()
+                    } else if entry.codexSession != nil {
+                        if entry.protectionReason == .inventory {
+                            Badge(text: "in use").fixedSize()
+                        }
                     } else if let reason = entry.protectionReason {
                         // Says *why* the checkbox is locked without hovering anything,
                         // and says the true thing: "in use" on an app that was merely
@@ -576,12 +632,10 @@ private struct FileRow: View {
         }
     }
 
-    /// `nil` is genuinely rare — the scanner falls back through several date sources
-    /// before giving up — so when it does appear it means nobody has ever opened this,
-    /// and the design makes it the one coloured thing in the row.
+    /// A missing date does not establish whether the user opened this item.
     @MainActor
     private var lastOpenedText: String {
-        guard let lastOpened = entry.lastOpened else { return "Never opened" }
+        guard let lastOpened = entry.lastOpened else { return "Unknown" }
         // Inside a minute the formatter says "in 0 seconds", which reads as a bug.
         guard Date.now.timeIntervalSince(lastOpened) >= 60 else { return "Just now" }
         return lastOpenedFormatter.localizedString(for: lastOpened, relativeTo: .now)
@@ -629,7 +683,6 @@ private struct ChildRow: View {
                         entry: entry,
                         isSelected: isSelected,
                         hasUserDataOverride: hasUserDataOverride,
-                        isCompact: true,
                         help: childHelp,
                         onToggle: onToggle,
                         onRequestUserDataOverride: onRequestUserDataOverride
@@ -653,7 +706,11 @@ private struct ChildRow: View {
                         .truncationMode(.middle)
                         .layoutPriority(1)
 
-                    if entry.protectionReason == .inventory {
+                    if entry.codexSession != nil {
+                        if entry.protectionReason == .inventory {
+                            Badge(text: "in use").fixedSize()
+                        }
+                    } else if entry.protectionReason == .inventory {
                         Badge(text: "protected").fixedSize()
                     } else if entry.protectionReason == .userData {
                         Badge(text: "user data").fixedSize()
@@ -765,49 +822,56 @@ struct ProtectedSelectionControl: View {
     let isSelected: Bool
     var selectionState: NSControl.StateValue? = nil
     let hasUserDataOverride: Bool
-    var isCompact = false
+    var hasUnlockedChildren = false
+    var onUnlockChildren: (() -> Void)? = nil
     let help: String
     let onToggle: (Bool) -> Void
     let onRequestUserDataOverride: () -> Void
 
     @State private var isHovered = false
 
+    private var isSelectable: Bool {
+        if onUnlockChildren != nil { return hasUnlockedChildren }
+        return !entry.isRemovalLocked || (entry.protectionReason == .userData && hasUserDataOverride)
+    }
+
     @ViewBuilder
     var body: some View {
         Group {
-            if !entry.isRemovalLocked || (entry.protectionReason == .userData && hasUserDataOverride) {
+            if isSelectable {
                 SelectionCheckbox(
-                    title: entry.displayName,
+                    title: onUnlockChildren != nil ? "Select child items in \(entry.displayName)" : entry.displayName,
                     state: selectionState ?? (isSelected ? .on : .off),
                     showsTitle: false,
-                    isCompact: isCompact,
                     onChange: onToggle
                 )
                 .fixedSize()
                 .help(help)
-            } else if entry.protectionReason == .userData {
-                Button(action: onRequestUserDataOverride) {
+            } else if onUnlockChildren != nil || entry.protectionReason == .userData {
+                Button(action: onUnlockChildren ?? onRequestUserDataOverride) {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: isCompact ? 9 : 10, weight: .semibold))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Token.textColor(.orange))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Unlock \(entry.displayName) for removal")
+                .accessibilityLabel(onUnlockChildren != nil
+                    ? "Unlock child items in \(entry.displayName)" : "Unlock \(entry.displayName) for removal")
             } else {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: isCompact ? 9 : 10, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Token.Text.disabled)
                     .accessibilityLabel("\(entry.displayName) is locked. \(help)")
             }
         }
+        .frame(width: 18, height: 18)
         .onHover { isHovered = $0 }
         .overlay(alignment: .bottomLeading) {
-            if isHovered, entry.isRemovalLocked, !hasUserDataOverride {
+            if isHovered, !isSelectable {
                 ProtectedItemHoverTip(
                     title: tooltipTitle,
                     message: tooltipMessage
                 )
-                .offset(x: -8, y: -(isCompact ? 17 : 20))
+                .offset(x: -8, y: -20)
                 .transition(.opacity)
             }
         }
@@ -815,8 +879,12 @@ struct ProtectedSelectionControl: View {
     }
 
     private var tooltipTitle: String {
+        if onUnlockChildren != nil { return "Protected child items" }
         if let image = entry.dockerImage {
             return image.containerCount == nil ? "Container use unavailable" : "Image used by containers"
+        }
+        if entry.codexSession != nil {
+            return entry.protectionReason == .inventory ? "Session is in use" : "Conversation history"
         }
         if entry.protectionReason == .inventory { return "Protected AI storage" }
         if entry.protectionReason == .userData { return "Protected user data" }
@@ -826,6 +894,7 @@ struct ProtectedSelectionControl: View {
     }
 
     private var tooltipMessage: String {
+        if onUnlockChildren != nil { return help }
         if entry.dockerImage != nil { return help }
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning
