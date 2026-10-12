@@ -102,6 +102,7 @@ public struct CleanupService: Sendable {
     private let log: RemovalLog
     private let dockerImages: DockerImageService
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
+    private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
 
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
@@ -116,12 +117,16 @@ public struct CleanupService: Sendable {
         measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
         log: RemovalLog,
         registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] },
-        dockerImages: DockerImageService = DockerImageService()
+        dockerImages: DockerImageService = DockerImageService(),
+        deleteCodexSession: @escaping @Sendable (CodexSessionReview) async throws -> Void = {
+            try await CodexSessions(home: $0.codexHome).remove($0)
+        }
     ) {
         self.measureSize = measureSize
         self.log = log
         self.registeredApplications = registeredApplications
         self.dockerImages = dockerImages
+        self.deleteCodexSession = deleteCodexSession
     }
 
     /// - Parameters:
@@ -197,6 +202,43 @@ public struct CleanupService: Sendable {
                         timestamp: Date(), originalPath: Self.dockerReceiptPath(for: entry),
                         bytes: bytes, disposition: disposition, freedBytes: 0
                     )])
+                }
+                continue
+            }
+
+            if let review = entry.codexSession {
+                var measurements: [(CodexSessionReview.Member, Int64, Int64?)] = []
+                for member in review.members {
+                    let measured = try await measureSize(member.url).allocatedBytes
+                    let freed = try await privateMeasurer.measure([member.url])
+                    measurements.append((member, measured, freed.flatMap { $0.unreportedCount == 0 ? $0.privateBytes : nil }))
+                }
+                func recordDeleted(_ members: [CodexSessionReview.Member]) {
+                    let ids = Set(members.map(\.threadID))
+                    for (member, bytes, freed) in measurements where ids.contains(member.threadID) {
+                        outcome.removedBytes += bytes
+                        outcome.removedCount += 1
+                        outcome.deletedCount += 1
+                        if let freed { outcome.freedBytes += freed }
+                        else { outcome.unreportedFreedCount += 1 }
+                        if keepReceipt {
+                            try? log.append([RemovalRecord(timestamp: Date(), originalPath: member.url.path,
+                                bytes: bytes, disposition: .deleted, freedBytes: freed)])
+                        }
+                    }
+                }
+                do {
+                    try await deleteCodexSession(review)
+                    recordDeleted(review.members)
+                } catch let partial as CodexSessions.PartialDeletion {
+                    recordDeleted(partial.members)
+                    outcome.failed.append(entry.url.path)
+                    if keepReceipt { try? log.append([Self.failureRecord(for: entry)]) }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    outcome.failed.append(entry.url.path)
+                    if keepReceipt { try? log.append([Self.failureRecord(for: entry)]) }
                 }
                 continue
             }
@@ -735,7 +777,7 @@ public struct CleanupService: Sendable {
         guard entry.kind == .appBundle else { return entry.children + [entry] }
 
         let children = entry.children.filter { child in
-            if child.manualRemoval != nil || child.protectionReason == .running || child.soundLibrary != nil {
+            if child.manualRemoval != nil || child.protectionReason == .running || child.protectionReason == .inventory || child.soundLibrary != nil {
                 return false
             }
             return child.isRegenerable || removeProtectedAppData
@@ -751,7 +793,10 @@ public struct CleanupService: Sendable {
         userDataRemovalOverrides: Set<FileEntry.ID>
     ) -> Bool {
         if entry.manualRemoval != nil || entry.protectionReason == .running
-            || entry.dockerImage?.isRemovalLocked == true { return false }
+            || entry.protectionReason == .inventory || entry.dockerImage?.isRemovalLocked == true { return false }
+        if entry.codexSession != nil {
+            return entry.protectionReason == .userData && userDataRemovalOverrides.contains(entry.id)
+        }
         if entry.protectionReason == .userData {
             return userDataRemovalOverrides.contains(entry.id)
         }
@@ -764,7 +809,8 @@ public struct CleanupService: Sendable {
     /// always gets the same recovery path. A bundle's children inherit the bundle's
     /// disposition, since they are removed as part of it.
     public static func alwaysMovesToTrash(_ entry: FileEntry) -> Bool {
-        (entry.kind == .appBundle && CategoryID.applications.alwaysMovesToTrash)
+        if entry.codexSession != nil { return false }
+        return (entry.kind == .appBundle && CategoryID.applications.alwaysMovesToTrash)
             || entry.protectionReason == .userData
             || entry.soundLibrary != nil
             || entry.isGitWorktree || GitWorktreeDetector.isWorktree(entry.url)

@@ -73,14 +73,14 @@ struct GitWorktreeTests {
         #expect(standalone.gitWorktreeReview?.status == .clean)
         #expect(standalone.gitWorktreeReview?.pushStatus == .unknown)
 
-        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
         for tree in [codexTree, claudeTree] {
-            let parent = try #require(hidden.entries.first { $0.children.contains { $0.url.path.hasSuffix(String(tree.path.dropFirst(sandbox.home.path.count))) } })
+            let parent = try #require(ai.entries.first { $0.children.contains { $0.url.path.hasSuffix(String(tree.path.dropFirst(sandbox.home.path.count))) } })
             let measurement = try await context.measurer.measure(parent.url)
             #expect(parent.displayBytes == measurement.allocatedBytes)
             #expect(parent.children.allSatisfy { !$0.regeneratesSafely })
         }
-        #expect(hidden.totalBytes == hidden.entries.reduce(0) { $0 + $1.displayBytes })
+        #expect(ai.totalBytes == ai.entries.reduce(0) { $0 + $1.displayBytes })
     }
 
     @Test("Git status detects untracked, unstaged, staged, and deleted files")

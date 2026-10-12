@@ -22,7 +22,8 @@ public struct ProcessRunner: Sendable {
         _ arguments: [String],
         timeout: Duration = .seconds(60),
         environment: [String: String] = [:],
-        allowsInput: Bool = true
+        allowsInput: Bool = true,
+        additionalSuccessExitStatuses: Set<Int32> = []
     ) async throws -> Data {
         try Task.checkCancellation()
         guard FileManager.default.isExecutableFile(atPath: executable) else {
@@ -113,7 +114,10 @@ public struct ProcessRunner: Sendable {
 
         try Task.checkCancellation()
 
-        guard process.terminationStatus == 0 else {
+        // Additional exit codes require normal termination and no error output.
+        let acceptedStatus = process.terminationReason == .exit
+            && additionalSuccessExitStatuses.contains(process.terminationStatus) && errorOutput.isEmpty
+        guard process.terminationStatus == 0 || acceptedStatus else {
             let command = "\(executable) \(arguments.joined(separator: " "))"
             if timedOut.isRaised {
                 throw ProcessError.timedOut(command)

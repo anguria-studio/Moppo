@@ -49,6 +49,8 @@ struct ConfirmationSheet: View {
     var worktreeWarning: String? = nil
     var dockerImageCount = 0
     var dockerImageBytes: Int64 = 0
+    var codexSessionCount = 0
+    var codexSessionWarning: String? = nil
     let onConfirm: () -> Void
     /// Quit `runningOwnerNames`, then run the same plan. Required for the
     /// quit-first button to appear at all.
@@ -75,6 +77,14 @@ struct ConfirmationSheet: View {
 
             if let worktreeWarning {
                 Label(worktreeWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.textColor(.orange))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 14)
+            }
+
+            if let codexSessionWarning {
+                Label(codexSessionWarning, systemImage: "exclamationmark.triangle.fill")
                     .font(.mcSubtitle)
                     .foregroundStyle(Token.textColor(.orange))
                     .fixedSize(horizontal: false, vertical: true)
@@ -156,7 +166,8 @@ struct ConfirmationSheet: View {
     }
 
     private var isDestructive: Bool {
-        switch variant {
+        if codexSessionCount > 0 { return true }
+        return switch variant {
         case .cleanUp(_, _, let protected, _): protected > 0 || dockerImageCount > 0
         case .emptyTrash: true
         case .soundLibrary: false
@@ -165,6 +176,7 @@ struct ConfirmationSheet: View {
     }
 
     private var title: String {
+        if codexSessionCount > 0 { return "Remove selected items, including Codex sessions?" }
         switch variant {
         case .cleanUp(let count, _, let protected, _):
             let noun = count == 1 ? "item" : "items"
@@ -187,6 +199,12 @@ struct ConfirmationSheet: View {
     }
 
     private var message: String {
+        if codexSessionCount > 0 {
+            let sessions = "Codex permanently deletes \(codexSessionCount) \(codexSessionCount == 1 ? "session" : "sessions") and related session files. "
+            let images = dockerImageCount > 0
+                ? "Docker permanently removes \(dockerImageCount) selected \(dockerImageCount == 1 ? "image" : "images"). " : ""
+            return sessions + images + "Other selected files move to the Trash."
+        }
         switch variant {
         case .cleanUp(_, let bytes, let protected, let saving):
             let warning: String
@@ -264,6 +282,7 @@ struct ConfirmationSheet: View {
     }
 
     private var confirmLabel: String {
+        if codexSessionCount > 0 { return "Delete Sessions and Clean Up" }
         switch variant {
         case .cleanUp(_, _, let protected, _):
             return protected > 0 ? "Remove Anyway" : dockerImageCount > 0 ? "Remove" : "Move to Trash"

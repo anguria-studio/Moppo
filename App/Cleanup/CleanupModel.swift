@@ -119,6 +119,7 @@ final class CleanupModel {
             selected.contains($0.id)
                 && $0.kind != .appBundle
                 && $0.removalAction == nil
+                && $0.protectionReason != .inventory
         }
     }
 
@@ -386,6 +387,18 @@ final class CleanupModel {
 
         var freed: PrivateSizeMeasurement?
 
+        var codexSessionCount: Int {
+            entries.compactMap(\.codexSession).reduce(0) { $0 + $1.members.count }
+        }
+
+        var codexSessionWarning: String? {
+            let reviews = entries.compactMap(\.codexSession)
+            guard !reviews.isEmpty else { return nil }
+            let children = reviews.reduce(0) { $0 + $1.members.count - 1 }
+            let scope = children > 0 ? " This includes \(children) child \(children == 1 ? "session" : "sessions")." : ""
+            return "Session deletion cannot be undone. Deleted sessions cannot be put back." + scope
+        }
+
         var worktreeWarning: String? {
             let worktrees = Dictionary(entries.flatMap(CleanupModel.plannedTargets)
                 .filter(\.isGitWorktree).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }).values
@@ -466,7 +479,7 @@ final class CleanupModel {
         )
         pendingCleanUp = plan
 
-        if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil {
+        if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil || plan.codexSessionCount > 0 {
             onEvent(.confirmationRequested)
             measureCleanUpSaving(for: plan)
         } else {

@@ -45,6 +45,68 @@ struct CleanupModelTests {
         cleanup.cancelCleanUp()
     }
 
+    @Test("AI inventory stays visible but cannot enter cleanup selection")
+    func aiInventorySelection() {
+        var cache = cleanupEntry("ai-cache")
+        cache.isRegenerable = true
+        var history = cleanupEntry("ai-history")
+        history.protectionReason = .inventory
+        var root = cleanupEntry("ai-root")
+        root.isRegenerable = false
+        root.protectionReason = .inventory
+        root.children = [cache, history]
+        let category = ScanCategoryResult(categoryID: .aiTools,
+            totalBytes: root.displayBytes, entries: [root])
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        let now = Date()
+        cleanup.scanResults = ScanResults(categories: [category], startedAt: now, finishedAt: now)
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection == [cache.id])
+        cleanup.scanFilter = .all
+        #expect(cleanup.selectableIDs(in: category) == [cache.id])
+        cleanup.scannerSelection = [root.id, history.id, cache.id]
+        cleanup.userDataRemovalOverrides = [root.id, history.id]
+        #expect(cleanup.selectedEntries.map(\.id) == [cache.id])
+        #expect(cleanup.cleanupSelection(in: .all) == [cache.id])
+        #expect(cleanup.selectedBytes(in: .aiTools) == cache.allocatedBytes)
+    }
+
+    @Test("Codex session deletion always requires confirmation and cannot enter safe cleanup")
+    func codexSessionConfirmation() {
+        let home = URL(fileURLWithPath: "/moppo-fixture/.codex")
+        var session = cleanupEntry("codex-session")
+        session.isRegenerable = false
+        session.protectionReason = .userData
+        session.codexSession = .init(codexHome: home, threadID: "parent", members: [
+            .init(threadID: "parent", url: session.url, identity: "fixture-parent", modifiedAt: .distantPast, fileSize: 1),
+            .init(threadID: "child", url: home.appendingPathComponent("child.jsonl"), identity: "fixture-child", modifiedAt: .distantPast, fileSize: 1)
+        ])
+        var group = cleanupEntry("codex-sessions")
+        group.isRegenerable = false
+        group.protectionReason = .inventory
+        group.children = [session]
+        let category = ScanCategoryResult(categoryID: .aiTools, totalBytes: group.displayBytes, entries: [group])
+        let cleanup = CleanupModel(operations: OperationCoordinator(),
+            preferences: { .init(confirmBeforeCleanup: false) }, measureSaving: { _ in nil })
+        let now = Date()
+        cleanup.scanResults = ScanResults(categories: [category], startedAt: now, finishedAt: now)
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(cleanup.selectableIDs(in: category).isEmpty)
+        cleanup.scannerSelection = [session.id]
+        cleanup.userDataRemovalOverrides = [session.id]
+        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
+        #expect(cleanup.cleanupSelection(in: .needsReview) == [session.id])
+        var requested = false
+        cleanup.onEvent = { if case .confirmationRequested = $0 { requested = true } }
+        cleanup.requestCleanUp(in: .needsReview)
+        #expect(requested)
+        #expect(cleanup.pendingCleanUp?.codexSessionCount == 2)
+        #expect(cleanup.pendingCleanUp?.codexSessionWarning?.contains("1 child session") == true)
+        #expect(cleanup.pendingCleanUp?.totalBytes == session.allocatedBytes)
+        cleanup.cancelCleanUp()
+    }
+
     @Test("Cancellation retains the guard and rejects old callbacks after a restart")
     func scanLifetime() async throws {
         let scanner = HeldCleanupScanner()

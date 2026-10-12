@@ -62,6 +62,7 @@ public actor ScanCoordinator {
         .documentsAndFiles: 3.0,
         .applications: 4.0,
         .applicationLeftovers: 1.0,
+        .aiTools: 2.0,
         .hiddenSystemData: 2.0,
         .systemCaches: 1.0,
         .packageManagers: 1.0,
@@ -86,6 +87,7 @@ public actor ScanCoordinator {
             DocumentsFilesScanner(),
             ApplicationsScanner(),
             ApplicationLeftoversScanner(),
+            AIToolsScanner(),
             HiddenDataScanner(),
             SystemCachesScanner(),
             PackageManagerScanner(),
@@ -183,6 +185,7 @@ public actor ScanCoordinator {
         // generic row contains a leftover path, remove the full row. Keeping that
         // parent would also remove the protected child when cleanup removes it.
         results = removingApplicationLeftoverOverlaps(from: results)
+        results = removingAIToolOverlaps(from: results)
         results = removingInstalledApplicationOverlaps(from: results)
 
         // Present in the design's fixed order, not completion order.
@@ -192,6 +195,36 @@ public actor ScanCoordinator {
         }
 
         return ScanResults(categories: results, startedAt: startedAt, finishedAt: Date())
+    }
+
+    /// AI storage owns its paths unless an application-leftover review owns them.
+    static func removingAIToolOverlaps(from results: [ScanCategoryResult]) -> [ScanCategoryResult] {
+        let claimed = results.first { $0.categoryID == .aiTools }?.claimedStoragePaths ?? []
+        guard !claimed.isEmpty else { return results }
+        func overlaps(_ entry: FileEntry) -> Bool {
+            claimed.contains { ApplicationsScanner.overlaps(entry.url.standardizedFileURL.path, $0) }
+        }
+        return results.map { result in
+            guard result.categoryID != .aiTools,
+                  result.categoryID != .applicationLeftovers,
+                  result.entries.contains(where: { overlaps($0) || $0.children.contains(where: overlaps) })
+            else { return result }
+            var copy = result
+            copy.entries = result.entries.compactMap { original in
+                if original.kind != .appBundle && original.removalAction == nil && overlaps(original) { return nil }
+                var entry = original
+                entry.children.removeAll(where: overlaps)
+                if entry.removalAction != nil {
+                    guard let first = entry.children.first else { return nil }
+                    entry.url = first.url
+                    entry.childCount = entry.children.count
+                }
+                return entry
+            }
+            copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
+            if copy.entries.isEmpty, copy.availability == .available { copy.availability = .empty }
+            return copy
+        }
     }
 
     static func removingApplicationLeftoverOverlaps(

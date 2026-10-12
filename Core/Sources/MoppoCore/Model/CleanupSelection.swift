@@ -13,7 +13,7 @@ public enum CleanupSelection {
     ) -> Set<FileEntry.ID> {
         let roots = categories.flatMap(\.entries)
         let entries = roots + roots.flatMap(\.children)
-        let known = Set(entries.filter { $0.kind != .appBundle }.map(\.id))
+        let known = Set(entries.filter { $0.kind != .appBundle && $0.protectionReason != .inventory }.map(\.id))
         let safeRows = categories.flatMap { $0.tileRows(safeToRemove: true) }
         let safeEntries = safeRows + safeRows.flatMap(\.children).filter(\.regeneratesSafely)
         let safe = Set(safeEntries

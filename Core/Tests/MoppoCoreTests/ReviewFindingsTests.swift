@@ -549,6 +549,21 @@ struct ReviewFindingsTests {
         #expect(elapsed < 10, "took \(elapsed)s — the grandchild should not hold the runner")
     }
 
+    @Test("Allowed exit codes retain output and do not hide error diagnostics")
+    func allowedExitStatusRetainsOutput() async throws {
+        let output = try await ProcessRunner().run("/bin/sh", ["-c", "printf 'open file'; exit 1"],
+                                                   additionalSuccessExitStatuses: [1])
+        #expect(String(decoding: output, as: UTF8.self) == "open file")
+        do {
+            try await ProcessRunner().run("/bin/sh", ["-c", "printf 'open file'; printf 'cannot inspect' >&2; exit 1"],
+                                           additionalSuccessExitStatuses: [1])
+            Issue.record("Error diagnostics must prevent acceptance of a nonzero exit code.")
+        } catch ProcessError.failed(_, let status, let stderr) {
+            #expect(status == 1)
+            #expect(stderr == "cannot inspect")
+        }
+    }
+
     // MARK: - Follow symlinks
 
     @Test("the follow-symlinks option actually follows them")

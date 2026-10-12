@@ -203,6 +203,8 @@ struct MainWindow: View {
                     worktreeWarning: model.cleanup.pendingCleanUp?.worktreeWarning,
                     dockerImageCount: model.cleanup.pendingCleanUp?.dockerImageCount ?? 0,
                     dockerImageBytes: model.cleanup.pendingCleanUp?.dockerImageBytes ?? 0,
+                    codexSessionCount: model.cleanup.pendingCleanUp?.codexSessionCount ?? 0,
+                    codexSessionWarning: model.cleanup.pendingCleanUp?.codexSessionWarning,
                     onConfirm: { Task { await model.cleanup.performCleanUp() } },
                     onQuitAndConfirm: {
                         Task { await model.cleanup.performCleanUp(quittingOwners: true) }

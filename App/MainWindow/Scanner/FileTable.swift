@@ -99,9 +99,9 @@ struct FileTable: View {
             Alert(
                 title: Text("Remove \(entry.displayName)?"),
                 message: Text(
-                    "This folder can contain profiles, logins, history, and settings. "
+                    entry.codexSession?.warning ?? ("This folder can contain profiles, logins, history, and settings. "
                     + "Removing it may sign you out or reset the app. Quit the app first. "
-                    + "Moppo will always move this protected data to the Trash."
+                    + "Moppo will always move this protected data to the Trash.")
                 ),
                 primaryButton: .destructive(Text("Unlock & Select")) {
                     unlockAndSelect(entry)
@@ -240,7 +240,7 @@ struct FileTable: View {
     // MARK: - Selection
 
     private func requestUserDataOverride(_ entry: FileEntry) {
-        if confirmBeforeCleanup { pendingUserDataOverride = entry }
+        if confirmBeforeCleanup || entry.codexSession != nil { pendingUserDataOverride = entry }
         else { unlockAndSelect(entry) }
     }
 
@@ -447,7 +447,7 @@ private struct FileRow: View {
                 isShowingManualInfo = true
             } else if entry.protectionReason == .userData, !hasUserDataOverride {
                 onRequestUserDataOverride()
-            } else if !entry.isRemovalLocked || hasUserDataOverride {
+            } else if !entry.isRemovalLocked || (entry.protectionReason == .userData && hasUserDataOverride) {
                 onToggle(!isSelected)
             }
         }
@@ -476,6 +476,9 @@ private struct FileRow: View {
                 + "Image sizes include shared layers, so removal can recover less space. "
                 + "Docker context: \(image.context). " + entry.displayName
         }
+        if let session = entry.codexSession {
+            return entry.protectionExplanation ?? session.warning
+        }
         if entry.removalAction != nil {
             return "Select this application group to move all listed files to the Trash."
         }
@@ -499,6 +502,8 @@ private struct FileRow: View {
             return hasUserDataOverride
                 ? "Protected user data selected for removal. It will always move to the Trash."
                 : "Contains user data. Use the lock to review and select it separately."
+        case .inventory:
+            return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
         case nil:
             return ""
         }
@@ -514,6 +519,7 @@ private struct FileRow: View {
         switch reason {
         case .running:   "running"
         case .userData:  "user data"
+        case .inventory: "protected"
         }
     }
 
@@ -647,7 +653,9 @@ private struct ChildRow: View {
                         .truncationMode(.middle)
                         .layoutPriority(1)
 
-                    if entry.protectionReason == .userData {
+                    if entry.protectionReason == .inventory {
+                        Badge(text: "protected").fixedSize()
+                    } else if entry.protectionReason == .userData {
                         Badge(text: "user data").fixedSize()
                     } else if entry.isRegenerable {
                         // The badge follows the same safety rules as the filter.
@@ -704,13 +712,19 @@ private struct ChildRow: View {
                 return
             } else if entry.protectionReason == .userData, !hasUserDataOverride {
                 onRequestUserDataOverride()
-            } else if !entry.isRemovalLocked || hasUserDataOverride {
+            } else if !entry.isRemovalLocked || (entry.protectionReason == .userData && hasUserDataOverride) {
                 onToggle(!isSelected)
             }
         }
     }
 
     private var childHelp: String {
+        if let session = entry.codexSession {
+            return entry.protectionExplanation ?? session.warning
+        }
+        if entry.protectionReason == .inventory {
+            return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+        }
         if isReadOnly {
             // True whether or not the parent is ticked yet: a child drawn this way
             // has no checkbox of its own.
@@ -761,7 +775,7 @@ struct ProtectedSelectionControl: View {
     @ViewBuilder
     var body: some View {
         Group {
-            if !entry.isRemovalLocked || hasUserDataOverride {
+            if !entry.isRemovalLocked || (entry.protectionReason == .userData && hasUserDataOverride) {
                 SelectionCheckbox(
                     title: entry.displayName,
                     state: selectionState ?? (isSelected ? .on : .off),
@@ -804,6 +818,7 @@ struct ProtectedSelectionControl: View {
         if let image = entry.dockerImage {
             return image.containerCount == nil ? "Container use unavailable" : "Image used by containers"
         }
+        if entry.protectionReason == .inventory { return "Protected AI storage" }
         if entry.protectionReason == .userData { return "Protected user data" }
         if entry.protectionReason == .running { return "Application is running" }
         if entry.manualRemoval != nil { return "Manual removal required" }
@@ -812,6 +827,12 @@ struct ProtectedSelectionControl: View {
 
     private var tooltipMessage: String {
         if entry.dockerImage != nil { return help }
+        if let session = entry.codexSession {
+            return entry.protectionExplanation ?? session.warning
+        }
+        if entry.protectionReason == .inventory {
+            return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+        }
         if entry.protectionReason == .userData {
             return "This item can contain profiles, logins, history, and settings. "
                 + "Click the lock to review and select it for removal."
@@ -1069,12 +1090,11 @@ struct FileEntryIcon: View {
 
     var body: some View {
         Group {
-            if entry.kind == .appBundle || entry.kind == .downloadedApp {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: entry.url.path))
+            if let icon = applicationIcon {
+                Image(nsImage: icon.image)
                     .resizable()
                     .scaledToFit()
-                    // App icons include transparent space around their artwork.
-                    .frame(width: 28, height: 28)
+                    .frame(width: icon.size, height: icon.size)
             } else if presentation.icon == .node {
                 ZStack {
                     Image(systemName: "hexagon")
@@ -1090,6 +1110,17 @@ struct FileEntryIcon: View {
             }
         }
         .accessibilityHidden(true)
+    }
+
+    private var applicationIcon: ApplicationIcons.Icon? {
+        if entry.kind == .appBundle || entry.kind == .downloadedApp {
+            return .init(image: ApplicationIcons.icon(for: entry.url), includesPadding: true)
+        }
+        if let tool = entry.aiTool { return ApplicationIcons.icon(for: tool) }
+        if let identifier = entry.orphanedApplicationBundleIdentifier {
+            return ApplicationIcons.icon(for: identifier)
+        }
+        return nil
     }
 
     private var symbol: String {
