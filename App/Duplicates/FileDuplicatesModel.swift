@@ -47,6 +47,7 @@ final class FileDuplicatesModel {
     @ObservationIgnored private var scanID: UUID?
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
+    @ObservationIgnored var confirmRemoval: (RemovalConfirmation) async -> Bool = { _ in false }
 
     init(
         operations: OperationCoordinator,
@@ -233,16 +234,21 @@ final class FileDuplicatesModel {
         guard !selected.isEmpty, let operation = operations.begin(.fileRemoval) else { return }
         let groups = groups
         let bytes = selectionBytes
-        let keepReceipt = preferences().keepReceipt
+        let settings = preferences()
         isRemoving = true
-        onEvent(.removalStarted(count: selected.count, bytes: bytes))
         let task = Task { [self] in
-            await performRemoval(selected, groups: groups, bytes: bytes, keepReceipt: keepReceipt)
+            let confirmed = await settings.confirmRemoval(
+                .trash(itemCount: selected.count, totalBytes: bytes), using: confirmRemoval
+            )
+            if confirmed {
+                onEvent(.removalStarted(count: selected.count, bytes: bytes))
+                await performRemoval(selected, groups: groups, bytes: bytes, keepReceipt: settings.keepReceipt)
+            }
             // Publish completion before the progress surface and shared guard close.
             onEvent(.operationFinished)
             isRemoving = false
             operations.finish(operation)
-            await refreshAfterRemoval()
+            if confirmed { await refreshAfterRemoval() }
         }
         await task.value
     }

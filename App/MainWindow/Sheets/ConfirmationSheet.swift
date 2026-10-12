@@ -19,6 +19,8 @@ struct ConfirmationSheet: View {
             saving: CleanupSaving?
         )
         case emptyTrash(itemCount: Int, totalBytes: Int64)
+        case soundLibrary(totalBytes: Int64)
+        case photos(itemCount: Int)
 
     }
 
@@ -46,6 +48,7 @@ struct ConfirmationSheet: View {
     /// 19 Sep 2026; see `FileEntry.inUseBy`. The sheet says so and offers to do the
     /// quitting, and leaves the choice where it belongs.
     var runningOwnerNames: [String] = []
+    var includesSoundLibrary = false
     let onConfirm: () -> Void
     /// Quit `runningOwnerNames`, then run the same plan. Required for the
     /// quit-first button to appear at all.
@@ -81,6 +84,13 @@ struct ConfirmationSheet: View {
                         .foregroundStyle(Token.textColor(.orange))
                 }
                 .padding(.top, 14)
+            }
+
+            if includesSoundLibrary {
+                Text("Projects that use these sounds may need another download.")
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.secondary)
+                    .padding(.top, 14)
             }
 
             HStack(spacing: 9) {
@@ -141,6 +151,8 @@ struct ConfirmationSheet: View {
         switch variant {
         case .cleanUp(_, _, let protected, _): protected > 0
         case .emptyTrash: true
+        case .soundLibrary: false
+        case .photos: false
         }
     }
 
@@ -154,6 +166,10 @@ struct ConfirmationSheet: View {
             return "Move \(count) \(noun) to the Trash?"
         case .emptyTrash(let count, _):
             return "Permanently erase the \(count) items in the Trash?"
+        case .soundLibrary:
+            return "Move downloaded sound content to the Trash?"
+        case .photos(let count):
+            return "Move \(count) \(count == 1 ? "photo" : "photos") to Recently Deleted?"
 
         }
     }
@@ -178,6 +194,15 @@ struct ConfirmationSheet: View {
         case .emptyTrash(_, let bytes):
             return "This erases \(ByteFormatting.string(bytes)) immediately. "
                 + "Items already in the Trash cannot be put back afterwards."
+        case .soundLibrary(let bytes):
+            return "This moves \(ByteFormatting.string(bytes)) of downloaded sound content to the Trash. "
+                + "Your application and music projects stay on this Mac. "
+                + "Projects that use these sounds may need another download. "
+                + "Empty the Trash to recover disk space."
+        case .photos:
+            return "Photos moves the selected photos to Recently Deleted. "
+                + "You can recover them in Photos for up to 30 days. "
+                + "With iCloud Photos on, this change applies to your linked devices."
 
         }
     }
@@ -221,6 +246,8 @@ struct ConfirmationSheet: View {
         case .cleanUp(_, _, let protected, _):
             return protected > 0 ? "Remove Anyway" : "Move to Trash"
         case .emptyTrash:   return "Erase"
+        case .soundLibrary: return "Move to Trash"
+        case .photos: return "Move to Recently Deleted"
         }
     }
 

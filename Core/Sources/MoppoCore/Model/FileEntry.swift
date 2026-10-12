@@ -170,6 +170,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
 
     /// A specialized cleanup action for this row.
     public var removalAction: RemovalAction?
+    /// The identities and owners checked before downloaded sound content moves.
+    public var soundLibrary: AppleSoundLibrary.Inventory?
 
     public var protectionReason: ProtectionReason?
     /// Any reason at all: drives the badge, nothing else.
@@ -205,6 +207,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         gitWorktreeStatus: GitWorktreeStatus? = nil,
         gitWorktreePushStatus: GitWorktreePushStatus? = nil,
         removalAction: RemovalAction? = nil,
+        soundLibrary: AppleSoundLibrary.Inventory? = nil,
         childCount: Int? = nil,
         children: [FileEntry] = []
     ) {
@@ -223,6 +226,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.gitWorktreeStatus = gitWorktreeStatus
         self.gitWorktreePushStatus = gitWorktreePushStatus
         self.removalAction = removalAction
+        self.soundLibrary = soundLibrary
         self.childCount = childCount
         self.children = children
     }

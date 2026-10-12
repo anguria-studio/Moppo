@@ -44,6 +44,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             case appComponent
             /// Profiles, preferences, documents, sessions, and other user state.
             case userData
+            /// Downloaded sound content that requires review before removal.
+            case soundLibrary
         }
 
         public var id: String { url.standardizedFileURL.path }
@@ -54,6 +56,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         public let allocatedBytes: Int64
         public let ownerBundleIdentifier: String?
         let plannedIdentity: String?
+        public let soundLibrary: AppleSoundLibrary.Inventory?
 
         public var isProtectedUserData: Bool { content == .userData }
 
@@ -63,7 +66,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             category: Category,
             content: Content,
             allocatedBytes: Int64,
-            ownerBundleIdentifier: String?
+            ownerBundleIdentifier: String?,
+            soundLibrary: AppleSoundLibrary.Inventory? = nil
         ) {
             self.url = url.standardizedFileURL
             self.displayName = displayName ?? url.lastPathComponent
@@ -72,6 +76,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             self.allocatedBytes = allocatedBytes
             self.ownerBundleIdentifier = ownerBundleIdentifier
             self.plannedIdentity = FileIdentity.of(url)
+            self.soundLibrary = soundLibrary
         }
 
         var fileEntry: FileEntry {
@@ -87,7 +92,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
                 kind: kind,
                 allocatedBytes: allocatedBytes,
                 isRegenerable: content == .regenerable,
-                protectionReason: content == .userData ? .userData : nil
+                protectionReason: content == .userData ? .userData : nil,
+                soundLibrary: soundLibrary
             )
         }
     }
@@ -105,10 +111,13 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
     /// application is removed as any other, and the review says what the same
     /// installer wrote elsewhere, which stays.
     public var installerPackage: InstallerReceipts.Package?
+    /// Sound content stays unless the user requests its separate removal.
+    public var soundLibraryItems: [Item] = []
     /// Candidate roots suppressed by an explicit exclusion or protected glob,
     /// plus shared group containers that cannot be attributed to one app safely.
     /// They are never included in the uninstall plan and are named in the UI.
-    public let preservedPaths: [URL]
+    public var preservedPaths: [URL]
+    public var soundLibraryUnreadableCount = 0
 
     let candidateBundleIdentifiers: Set<String>
     let applicationRoots: [URL]
@@ -207,6 +216,7 @@ public struct AppUninstallPlanner: Sendable {
     private let loadHomebrewCatalog: @Sendable (String) async throws -> Data
     /// Nil in fixture tests, which must not read this machine's receipts.
     private let installerReceipts: InstallerReceipts?
+    let soundLibraries: AppleSoundLibrary?
     let protectedBundleIdentifiers: Set<String>
 
     public init() {
@@ -227,7 +237,8 @@ public struct AppUninstallPlanner: Sendable {
                 "com.tommasolaterza.Moppo",
                 Bundle.main.bundleIdentifier ?? "com.tommasolaterza.Moppo",
             ],
-            installerReceipts: InstallerReceipts()
+            installerReceipts: InstallerReceipts(),
+            soundLibraries: AppleSoundLibrary()
         )
     }
 
@@ -242,7 +253,8 @@ public struct AppUninstallPlanner: Sendable {
         processRunner: ProcessRunner = ProcessRunner(),
         loadHomebrewCatalog: (@Sendable (String) async throws -> Data)? = nil,
         protectedBundleIdentifiers: Set<String> = ["com.tommasolaterza.Moppo"],
-        installerReceipts: InstallerReceipts? = nil
+        installerReceipts: InstallerReceipts? = nil,
+        soundLibraries: AppleSoundLibrary? = nil
     ) {
         self.home = home.standardizedFileURL
         self.userLibrary = home.appendingPathComponent("Library", isDirectory: true)
@@ -257,6 +269,7 @@ public struct AppUninstallPlanner: Sendable {
         }
         self.protectedBundleIdentifiers = protectedBundleIdentifiers
         self.installerReceipts = installerReceipts
+        self.soundLibraries = soundLibraries
     }
 
     public func plan(
@@ -264,6 +277,17 @@ public struct AppUninstallPlanner: Sendable {
         context: ScanContext = ScanContext()
     ) async throws -> AppUninstallPlan {
         var plan = try await planWithoutReceipts(applicationURL: applicationURL, context: context)
+        if let identifier = plan.bundleIdentifier,
+           AppleSoundLibrary.ownerIdentifiers.contains(identifier), let soundLibraries {
+            let installed = Self.installedBundleIdentifiers(in: applicationRoots)
+                .union(context.registeredApplicationBundleIdentifiers)
+            let content = try await soundLibraries.scan(
+                context: context, installedOwners: installed, applicationIdentifier: identifier
+            )
+            plan.soundLibraryItems = content.items
+            plan.preservedPaths = Self.deduplicated(plan.preservedPaths + content.preservedPaths)
+            plan.soundLibraryUnreadableCount = content.unreadableCount
+        }
         // Asked last, and only of an application the plan has accepted. It never
         // refuses one: a receipt that cannot be read is a note that is not shown.
         if plan.managedPackage == nil {

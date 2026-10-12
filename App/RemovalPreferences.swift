@@ -1,10 +1,26 @@
 import Foundation
 
-/// Exclusions and the receipt setting that an operation captures when it starts.
+/// Exclusions and removal settings captured when an operation starts.
 struct RemovalPreferences: Sendable {
     var excludedPaths: [String] = []
     var excludedPatterns: [String] = []
+    var confirmBeforeCleanup = false
     var keepReceipt = true
+
+    @MainActor
+    func confirmRemoval(
+        _ request: RemovalConfirmation,
+        using confirm: (RemovalConfirmation) async -> Bool
+    ) async -> Bool {
+        guard confirmBeforeCleanup else { return true }
+        return await confirm(request)
+    }
+}
+
+/// Describes a captured selection that can be restored after removal.
+enum RemovalConfirmation: Equatable {
+    case trash(itemCount: Int, totalBytes: Int64, protectedDataCount: Int = 0)
+    case photos(itemCount: Int)
 }
 
 extension RemovalPreferences {
@@ -14,6 +30,7 @@ extension RemovalPreferences {
         self.init(
             excludedPaths: settings?.excludedFolderPaths ?? [],
             excludedPatterns: settings?.excludedPatterns ?? [],
+            confirmBeforeCleanup: settings?.confirmBeforeCleanup ?? SettingsStore.Defaults.confirmBeforeCleanup,
             keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt
         )
     }

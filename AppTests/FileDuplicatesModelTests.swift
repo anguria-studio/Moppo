@@ -152,11 +152,12 @@ struct FileDuplicatesModelTests {
         #expect(files.selection.isEmpty)
     }
 
-    @Test("File removal survives caller cancellation and publishes completion before refresh")
-    func removalLifetime() async throws {
+    @Test("File removal follows confirmation settings and retains its operation", arguments: RemovalConfirmationChoice.allCases)
+    func removalLifetime(_ choice: RemovalConfirmationChoice) async throws {
+        let fixture = try RemovalSettingsFixture(confirm: choice.isEnabled)
         let scanner = HeldFileScanner(results: fileResults("initial"))
         let removal = HeldFileRemoval()
-        let app = AppModel(fileDuplicateService: scanner, fileDuplicateRemovalService: removal)
+        let app = AppModel(settings: fixture.settings, fileDuplicateService: scanner, fileDuplicateRemovalService: removal)
         let files = app.fileDuplicates
         let refresh = TestGate()
         files.refreshAfterRemoval = {
@@ -169,8 +170,27 @@ struct FileDuplicatesModelTests {
         files.startScan(roots: [URL(fileURLWithPath: "/file-fixture")])
         try await waitUntil { !files.isScanning }
         files.selectAll()
+        let reviewedSelection = files.selection
         let task = Task { await files.removeSelected() }
+        if choice.isEnabled {
+            try await waitUntil { app.pendingRemovalConfirmation != nil }
+            #expect(app.activeSheet == .removal)
+            #expect(app.pendingRemovalConfirmation == .trash(itemCount: 2, totalBytes: files.selectionBytes))
+            #expect(await removal.requestCount == 0)
+            app.finishRemovalConfirmation(choice == .confirm)
+            if choice == .cancel {
+                await task.value
+                #expect(files.selection == reviewedSelection)
+                #expect(!files.isBusyWithDisk)
+                #expect(!files.isRemoving)
+                #expect(app.pendingRemovalConfirmation == nil)
+                #expect(app.activeSheet == nil)
+                #expect(app.removalCompletion == nil)
+                return
+            }
+        }
         try await waitUntil { await removal.isPending }
+        #expect(app.pendingRemovalConfirmation == nil)
         #expect(files.isRemoving)
         #expect(app.isRemovingDuplicateFiles)
         #expect(app.storageExplorer.isMeasurementBlocked)

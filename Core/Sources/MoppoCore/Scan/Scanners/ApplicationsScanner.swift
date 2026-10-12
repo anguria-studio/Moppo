@@ -41,6 +41,7 @@ public struct ApplicationsScanner: CategoryScanner {
     /// search, and the machine's own applications back in the test.
     private let applicationDirectories: [URL]
     private let home: URL
+    private let soundLibraries: AppleSoundLibrary?
 
     /// - Parameters:
     ///   - applicationDirectories: where to look for `.app` bundles. Defaults to
@@ -49,8 +50,10 @@ public struct ApplicationsScanner: CategoryScanner {
     ///     cannot be removed, so listing them would offer an action that always fails.
     ///   - home: the home folder whose `Library` is searched for each app's leftovers.
     public init(applicationDirectories: [URL]? = nil,
-                home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)) {
+                home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
+                soundLibraries: AppleSoundLibrary? = AppleSoundLibrary()) {
         self.home = home
+        self.soundLibraries = soundLibraries
         self.applicationDirectories = applicationDirectories ?? [
             URL(fileURLWithPath: "/Applications", isDirectory: true),
             home.appendingPathComponent("Applications", isDirectory: true)
@@ -65,6 +68,8 @@ public struct ApplicationsScanner: CategoryScanner {
         var entries: [FileEntry] = []
         var unreadableCount = 0
         var readAnyDirectory = false
+        let installed = AppUninstallPlanner.installedBundleIdentifiers(in: applicationDirectories)
+            .union(context.registeredApplicationBundleIdentifiers)
 
         for directory in applicationDirectories {
             guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
@@ -157,6 +162,14 @@ public struct ApplicationsScanner: CategoryScanner {
                     children.append(contentsOf: curated.entries)
                 }
 
+                if let bundleID, AppleSoundLibrary.ownerIdentifiers.contains(bundleID), let soundLibraries {
+                    let content = try await soundLibraries.scan(
+                        context: context, installedOwners: installed, applicationIdentifier: bundleID
+                    )
+                    unreadableCount += content.unreadableCount
+                    children.append(contentsOf: content.items.map(\.fileEntry))
+                }
+
                 let bundleSize = try await context.measurer.measure(appURL)
                 guard bundleSize.allocatedBytes > 0 else { continue }
                 guard !bundleSize.containsProtectedPattern else { continue }
@@ -184,13 +197,16 @@ public struct ApplicationsScanner: CategoryScanner {
                 // A preference, container or support folder is user data whether
                 // the app ran today or four years ago. No date decides whether
                 // deleting a child alone gets a destructive warning.
-                for index in children.indices where !children[index].isRegenerable {
+                for index in children.indices where !children[index].isRegenerable && children[index].soundLibrary == nil {
                     children[index].protectionReason = .userData
                 }
 
                 // A running app's caches stay listed and removable, but are not
                 // called safe while it runs — see `FileEntry.inUseBy`.
                 if reason == .running {
+                    for index in children.indices where children[index].soundLibrary != nil {
+                        children[index].protectionReason = .running
+                    }
                     let owner = context.runningOwner(atBundlePath: appURL.path)
                         ?? FileEntry.RunningOwner(
                             name: baseName, bundleIdentifier: bundleID,

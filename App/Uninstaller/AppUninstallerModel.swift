@@ -81,6 +81,7 @@ final class AppUninstallerModel {
     /// Keep the guard until the planner returns. A reset requested during planning applies after that.
     private func startPlanning(
         _ operation: OperationCoordinator.Operation,
+        then: (() -> Void)? = nil,
         plan: @escaping @MainActor (_ planningID: UUID) async -> Void
     ) {
         let planningID = UUID()
@@ -90,6 +91,7 @@ final class AppUninstallerModel {
         appUninstallTask = Task { [self] in
             defer {
                 if appUninstallPlanningID == planningID {
+                    let interrupted = isInterruptingAppUninstall || Task.isCancelled
                     isPlanningAppUninstall = false
                     appUninstallPlanningURL = nil
                     appUninstallPlanningDetail = nil
@@ -97,6 +99,7 @@ final class AppUninstallerModel {
                     appUninstallPlanningID = nil
                     if isInterruptingAppUninstall { resetAppUninstall() }
                     operations.finish(operation)
+                    if !interrupted { then?() }
                 }
             }
             await plan(planningID)
@@ -109,8 +112,9 @@ final class AppUninstallerModel {
         switch uninstallerTab {
         case .installed:
             let count = selectedApplicationIDs.count
-            guard count > 0 else { return "Review Uninstall" }
-            return "Review Uninstall (\(count) \(count == 1 ? "app" : "apps"))"
+            let label = preferences().confirmBeforeCleanup ? "Review Uninstall" : "Uninstall"
+            guard count > 0 else { return label }
+            return "\(label) (\(count) \(count == 1 ? "app" : "apps"))"
         case .leftovers:
             return "Move Leftovers to Trash"
         }
@@ -120,6 +124,23 @@ final class AppUninstallerModel {
     @ObservationIgnored private var appUninstallPlanningID: UUID?
 
     var appUninstallPlan: AppUninstallPlan?
+    var selectedSoundLibraryIDs: Set<String> = []
+    struct SoundLibraryRemovalReview: Identifiable {
+        let id = UUID()
+        let plan: AppUninstallPlan
+        let items: [AppUninstallPlan.Item]
+        let keepReceipt: Bool
+    }
+    var pendingSoundLibraryRemoval: SoundLibraryRemovalReview?
+    struct LeftoverRemovalReview: Identifiable {
+        let id = UUID()
+        let plan: OrphanedAppLeftoverPlan
+        let identifiers: Set<String>
+        let items: [AppUninstallPlan.Item]
+        let keepReceipt: Bool
+    }
+    var pendingLeftoverRemoval: LeftoverRemovalReview?
+    @ObservationIgnored var confirmRemoval: (RemovalConfirmation) async -> Bool = { _ in false }
     private(set) var isPlanningAppUninstall = false
     private(set) var isInterruptingAppUninstall = false
     /// The selected application remains visible while its review is prepared.
@@ -172,6 +193,9 @@ final class AppUninstallerModel {
         appUninstallTask = nil
         appUninstallPlanningID = nil
         appUninstallPlan = nil
+        selectedSoundLibraryIDs.removeAll()
+        pendingSoundLibraryRemoval = nil
+        pendingLeftoverRemoval = nil
         appUninstallError = nil
         appUninstallOutcome = nil
         lastUninstalledApplicationName = nil
@@ -184,6 +208,55 @@ final class AppUninstallerModel {
     }
 
     // MARK: Installed applications
+
+    /// Removes only the sound content captured in the separate review.
+    func requestSoundLibraryRemoval(_ plan: AppUninstallPlan, itemPaths: Set<String>) async {
+        guard !Task.isCancelled, !isBusyWithDisk, pendingSoundLibraryRemoval == nil,
+              appUninstallPlan == plan else { return }
+        let items = plan.soundLibraryItems.filter { itemPaths.contains($0.id) }
+        guard !items.isEmpty else { return }
+        guard !applications.isRunning(plan.applicationURL) else {
+            report("Quit the Application", "Quit \(plan.applicationName) before you remove its sound library.")
+            return
+        }
+        let settings = preferences()
+        let review = SoundLibraryRemovalReview(plan: plan, items: items, keepReceipt: settings.keepReceipt)
+        if settings.confirmBeforeCleanup {
+            pendingSoundLibraryRemoval = review
+            return
+        }
+        await performSoundLibraryRemoval(review)
+    }
+
+    func confirmSoundLibraryRemoval() async {
+        guard let review = pendingSoundLibraryRemoval else { return }
+        pendingSoundLibraryRemoval = nil
+        await performSoundLibraryRemoval(review)
+    }
+
+    private func performSoundLibraryRemoval(_ review: SoundLibraryRemovalReview) async {
+        let plan = review.plan
+        guard appUninstallPlan == plan, !applications.isRunning(plan.applicationURL),
+              let operation = operations.begin(.appLeftoverRemoval) else { return }
+        let items = review.items
+        let paths = Set(items.map(\.id))
+        let bytes = items.reduce(0) { $0 + $1.allocatedBytes }
+        let keepReceipt = review.keepReceipt
+        onEvent(.removalStarted(count: items.count, bytes: bytes))
+        let task = startRemoval(operation) { [self] in
+            var presentation = OperationPresentationDuration()
+            presentation.extend(toShow: .deletion(bytes: bytes))
+            let outcome = (try? await remover.removeSoundLibraries(
+                plan, itemPaths: paths, privilegedFallback: true, keepReceipt: keepReceipt
+            )) ?? CleanupOutcome(failed: Array(paths).sorted())
+            appUninstallPlan = nil
+            selectedSoundLibraryIDs.removeAll()
+            try? await presentation.wait()
+            onEvent(.removed(outcome))
+            return true
+        }
+        await task.value
+    }
 
     /// A nil list indicates that the first application load has not finished.
     private(set) var installedApplications: [InstalledApplication]?
@@ -253,21 +326,44 @@ final class AppUninstallerModel {
 
     /// Capture the reviewed paths and preferences before removal starts.
     func requestLeftoverRemoval() async {
-        guard !Task.isCancelled, !isLoadingApplicationLeftovers,
+        guard !Task.isCancelled, !isBusyWithDisk, !isLoadingApplicationLeftovers,
+              pendingLeftoverRemoval == nil,
               let leftovers = applicationLeftovers else { return }
         let identifiers = selectedLeftoverIdentifiers
         let items = leftovers.groups
             .filter { identifiers.contains($0.bundleIdentifier) }
             .flatMap(\.items)
-        guard !items.isEmpty, let operation = operations.begin(.appLeftoverRemoval) else { return }
-        let keepReceipt = preferences().keepReceipt
+        guard !items.isEmpty else { return }
+        let settings = preferences()
+        let review = LeftoverRemovalReview(
+            plan: leftovers, identifiers: identifiers, items: items, keepReceipt: settings.keepReceipt
+        )
+        if settings.confirmBeforeCleanup {
+            pendingLeftoverRemoval = review
+            return
+        }
+        await performLeftoverRemoval(review)
+    }
+
+    func confirmLeftoverRemoval() async {
+        guard let review = pendingLeftoverRemoval else { return }
+        pendingLeftoverRemoval = nil
+        await performLeftoverRemoval(review)
+    }
+
+    private func performLeftoverRemoval(_ review: LeftoverRemovalReview) async {
+        guard let operation = operations.begin(.appLeftoverRemoval) else { return }
+        let leftovers = review.plan
+        let identifiers = review.identifiers
+        let items = review.items
+        let keepReceipt = review.keepReceipt
         let paths = Set(items.map(\.id))
         let bytes = items.reduce(0) { $0 + $1.allocatedBytes }
         onEvent(.removalStarted(count: items.count, bytes: bytes))
         let task = startRemoval(operation) { [self] in
             var presentation = OperationPresentationDuration()
             presentation.extend(toShow: .deletion(bytes: bytes))
-            let registered = applications.registeredIdentifiers(identifiers)
+            let registered = applications.registeredIdentifiers(leftovers.ownerBundleIdentifiers(for: identifiers))
             let outcome = (try? await remover.removeOrphanedAppLeftovers(
                 leftovers, bundleIdentifiers: identifiers, itemPaths: paths,
                 registeredApplicationBundleIdentifiers: registered,
@@ -315,9 +411,15 @@ final class AppUninstallerModel {
     func requestAppUninstall() {
         guard let plan = appUninstallPlan,
               let operation = operations.begin(.appUninstall) else { return }
-        let keepReceipt = preferences().keepReceipt
+        let settings = preferences()
         startRemoval(operation) { [self] in
-            await performAppUninstall(plan, keepReceipt: keepReceipt)
+            if plan.managedPackage == nil {
+                guard await settings.confirmRemoval(
+                    .trash(itemCount: plan.items.count, totalBytes: plan.totalBytes,
+                           protectedDataCount: plan.protectedItems.count), using: confirmRemoval
+                ) else { return false }
+            }
+            return await performAppUninstall(plan, keepReceipt: settings.keepReceipt)
         }
     }
 
@@ -496,7 +598,7 @@ final class AppUninstallerModel {
     /// "Slack · 2 of 5" under the planning spinner; nil for a single application.
     private(set) var appUninstallPlanningDetail: String?
 
-    /// Checks selected applications and shows each removal path before execution.
+    /// Checks selected applications before removal. Homebrew always requires a review.
     func moveSelectedApplicationsToTrash() {
         let selected = (installedApplications ?? [])
             .filter { selectedApplicationIDs.contains($0.id) }
@@ -505,7 +607,12 @@ final class AppUninstallerModel {
         guard canPlan(), let operation = operations.begin(.appUninstallPlanning) else { return }
         resetAppUninstall()
         let context = makeContext()
-        startPlanning(operation) { [self] planningID in
+        let settings = preferences()
+        startPlanning(operation, then: { [self] in
+            guard !settings.confirmBeforeCleanup, let review = batchUninstallReview,
+                  review.homebrewCount == 0 else { return }
+            startBatchUninstall(review, keepReceipt: settings.keepReceipt)
+        }) { [self] planningID in
             var plans: [AppUninstallPlan] = []
             var setAside: [SetAsideApplication] = []
             for (index, application) in selected.enumerated() {
@@ -531,9 +638,13 @@ final class AppUninstallerModel {
     }
 
     func requestBatchUninstall() {
-        guard let review = batchUninstallReview, !review.plans.isEmpty,
+        guard let review = batchUninstallReview else { return }
+        startBatchUninstall(review, keepReceipt: preferences().keepReceipt)
+    }
+
+    private func startBatchUninstall(_ review: BatchUninstallReview, keepReceipt: Bool) {
+        guard !review.plans.isEmpty,
               let operation = operations.begin(.appUninstall) else { return }
-        let keepReceipt = preferences().keepReceipt
         startRemoval(operation) { [self] in
             await performBatchUninstall(review, keepReceipt: keepReceipt)
         }

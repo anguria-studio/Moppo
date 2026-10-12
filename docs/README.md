@@ -51,7 +51,7 @@ Core/                         Swift package
     Measure/                 AllocatedSizeMeasurer, ByteFormatting
     System/                  Disk information, snapshots, process execution
     Scan/                    Category scanners and scan coordination
-    Act/                     Cleanup, app uninstall, Trash, history
+    Act/                     Cleanup, app uninstall, sound libraries, Trash, history
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
   Sources/moppo-cli/         Command-line tools
@@ -107,6 +107,15 @@ Scan and regroup identifiers reject results from cancelled or replaced tasks.
 Only the matching operation can release the shared guard.
 All feature scans, removal reviews, removal tasks, and recovery operations use the same coordinator.
 Presentation state does not determine whether an operation is active.
+
+**Confirm before every clean-up** controls confirmations for removals that support recovery.
+This includes Cleanup, application data, sound libraries, Storage Explorer, duplicate files, and duplicate photos.
+With the setting off, ordinary batch uninstalls start after planning without a review step.
+Homebrew batches always require review because their packages cannot move to the Trash.
+Empty Trash always requires confirmation because it permanently erases items.
+Photos can show its own system confirmation after Moppo starts the deletion request.
+Confirmation captures the selection and preferences before the user makes a decision.
+Cancellation keeps the selection and releases the operation guard without removal.
 
 The photo model owns access and deletion tasks independently of the requesting view.
 Photos can decline deletion through its confirmation request.
@@ -343,7 +352,7 @@ Moppo protects system locations, applications, managed media libraries, volumes,
 exclusions, cloud-only files, and items with unreadable contents. Alias targets do
 not count towards a row. A mounted volume is separate from its parent. Reviewed
 unlocked items move to the Trash. Moppo refreshes each selected size and checks
-each file identity before it shows the removal confirmation. Use List for exact
+each file identity before removal or optional confirmation. Use List for exact
 rows. Use Map to compare direct-child sizes visually.
 
 **Automatic scanning is process-resident.** Moppo evaluates daily and weekly
@@ -365,9 +374,22 @@ App Uninstaller review. The Finder action never removes files.
 **Application Leftovers uses strict ownership rules.** The Scanner finds exact
 bundle-identifier paths and roots from curated app rules. It ignores loose name
 matches and shared containers. It keeps exclusions, keychains, ambiguous paths,
-and files for installed applications protected. Safe to Remove includes each
+and files for installed applications protected. Needs Review includes each
 verified application group. Moppo checks the owner and the file identity
 again before removal.
+
+**Downloaded Apple sounds use the existing application flows.** An installed
+application has a separate sound removal review. Complete uninstall keeps this
+sound content. Without an installed owner, App Leftovers shows a GarageBand group.
+Logic Pro and MainStage protect shared content while installed.
+
+Moppo requires Apple asset package receipts for the standard `/Library` locations.
+It keeps folders that contain unknown files, symbolic links, or protected content.
+Relocated libraries and sound content inside newer application bundles are outside
+this separate review. Projects that use removed sounds may need another download.
+Sound removal moves content to the Trash.
+If **Confirm before every clean-up** is on, Moppo shows a sound removal confirmation.
+Put Back requires a saved receipt.
 
 **The app does not include "Storage Report…".** The design specified only its
 label and did not specify its function.

@@ -64,6 +64,28 @@ struct AppUninstallerView: View {
             model.planAppUninstall(application)
             return true
         } isTargeted: { isDropTargeted = $0 }
+        .sheet(item: $model.pendingSoundLibraryRemoval) { review in
+            ConfirmationSheet(
+                variant: .soundLibrary(
+                    totalBytes: review.items.reduce(0) { $0 + $1.allocatedBytes }
+                ),
+                onConfirm: { Task { await model.confirmSoundLibraryRemoval() } },
+                onCancel: { model.pendingSoundLibraryRemoval = nil }
+            )
+        }
+        .sheet(item: $model.pendingLeftoverRemoval) { review in
+            ConfirmationSheet(
+                variant: .cleanUp(
+                    itemCount: review.items.count,
+                    totalBytes: review.items.reduce(0) { $0 + $1.allocatedBytes },
+                    protectedDataCount: review.items.filter(\.isProtectedUserData).count,
+                    saving: nil
+                ),
+                includesSoundLibrary: review.items.contains { $0.soundLibrary != nil },
+                onConfirm: { Task { await model.confirmLeftoverRemoval() } },
+                onCancel: { model.pendingLeftoverRemoval = nil }
+            )
+        }
     }
 
     // MARK: Installed applications
@@ -513,6 +535,14 @@ struct AppUninstallerView: View {
 
                     completeUninstallCard(plan)
 
+                    if !plan.soundLibraryItems.isEmpty { soundLibraryCard(plan) }
+                    if plan.soundLibraryUnreadableCount > 0 {
+                        Label("Some sound content could not be read. Check access, then review the application again.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.mcSubtitle)
+                            .foregroundStyle(Token.textColor(.orange))
+                    }
+
                     if !plan.preservedPaths.isEmpty {
                         Label {
                             Text(
@@ -578,6 +608,41 @@ struct AppUninstallerView: View {
                     .disabled(model.isBusyWithDisk)
                     .fixedSize()
             }
+        }
+    }
+
+    private func soundLibraryCard(_ plan: AppUninstallPlan) -> some View {
+        GroupedBox {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Downloaded Sound Content").font(.mcBody.weight(.medium))
+                Text("Complete uninstall keeps this content. Sound removal keeps your application and projects. Projects may need another sound download.")
+                    .font(.mcCaption)
+                    .foregroundStyle(Token.Text.secondary)
+                ForEach(plan.soundLibraryItems) { item in
+                    HStack(spacing: 10) {
+                        SelectionCheckbox(
+                            title: "Select \(item.displayName)",
+                            state: model.selectedSoundLibraryIDs.contains(item.id) ? .on : .off,
+                            isEnabled: !model.isBusyWithDisk, showsTitle: false
+                        ) { isOn in
+                            if isOn { model.selectedSoundLibraryIDs.insert(item.id) }
+                            else { model.selectedSoundLibraryIDs.remove(item.id) }
+                        }
+                        Text(item.displayName).font(.mcBody)
+                        Spacer(minLength: 8)
+                        Text(ByteFormatting.string(item.allocatedBytes)).font(.mcRowValue)
+                    }
+                }
+                HStack {
+                    Spacer()
+                    Button("Move Sounds to Trash") {
+                        let paths = model.selectedSoundLibraryIDs
+                        Task { await model.requestSoundLibraryRemoval(plan, itemPaths: paths) }
+                    }
+                    .disabled(model.isBusyWithDisk || model.selectedSoundLibraryIDs.isEmpty)
+                }
+            }
+            .padding(14)
         }
     }
 
