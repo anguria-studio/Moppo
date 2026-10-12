@@ -179,12 +179,11 @@ struct ScannerView: View {
             SelectionCheckbox(
                 title: "Select All",
                 detail: "\(count) \(count == 1 ? "item" : "items")",
-                state: model.hasSelectableItemsInCurrentView && !model.canSelectAllInCurrentView
-                    ? .on : .off,
+                state: model.selectAllStateInCurrentView,
                 isEnabled: !model.isBusyWithDisk
                     && (model.hasSelectableItemsInCurrentView || model.hasSelectionInCurrentView)
             ) { isOn in
-                if isOn { model.selectAllInCurrentView() }
+                if isOn && model.canSelectAllInCurrentView { model.selectAllInCurrentView() }
                 else { model.deselectAllInCurrentView() }
             }
             .fixedSize()
@@ -302,10 +301,11 @@ struct ScannerView: View {
                     confirmBeforeCleanup: model.confirmBeforeCleanup,
                     onUninstallApplication: onUninstallApplication,
                     onReviewWorktree: { worktreeReviewEntry = $0 },
-                    selectAllState: selectedIDs.isEmpty ? .off
-                        : selectableIDs.isSubset(of: selectedIDs) ? .on : .mixed,
+                    onUnlockChildren: { model.unlockChildren(in: $0) },
+                    onToggleChildren: { model.setChildrenSelected($0, in: $1.id) },
+                    selectAllState: model.selectAllState(in: category),
                     canToggleAll: !selectableIDs.isEmpty || !selectedIDs.isEmpty,
-                    onToggleAll: { model.setSelected($0, in: category) }
+                    onToggleAll: { model.setSelected($0 && !selectableIDs.isSubset(of: selectedIDs), in: category) }
                 )
                 .id(model.scanFilter)
                 .disabled(model.isBusyWithDisk)

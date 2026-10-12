@@ -793,7 +793,8 @@ public struct CleanupService: Sendable {
         userDataRemovalOverrides: Set<FileEntry.ID>
     ) -> Bool {
         if entry.manualRemoval != nil || entry.protectionReason == .running
-            || entry.protectionReason == .inventory || entry.dockerImage?.isRemovalLocked == true { return false }
+            || entry.protectionReason == .inventory || entry.dockerImage?.isRemovalLocked == true
+            || !entry.unlockableChildren.isEmpty { return false }
         if entry.codexSession != nil {
             return entry.protectionReason == .userData && userDataRemovalOverrides.contains(entry.id)
         }

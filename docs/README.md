@@ -294,7 +294,9 @@ Codex archived and inactive sessions require an explicit deletion review.
 Codex permanently deletes their history, child sessions, and related session files.
 Session deletion requires confirmation even when you disable general cleanup confirmation.
 Active writers, changed history, and changed child sessions stop deletion.
-Other session history, attachments, settings, unknown caches, and downloaded runtimes remain protected.
+Other session history, attachments, memories, settings, unknown caches, and downloaded runtimes remain protected.
+Claude Code purge also deletes memories, so Moppo does not use it for session cleanup.
+Cursor CLI conversations remain protected because Moppo cannot verify inactive sessions.
 Their allocated sizes appear in category totals. These totals do not promise that removal will free all listed space.
 Only verified desktop caches and worktrees with complete checks enter Safe to Remove.
 A running application removes its caches from Safe to Remove.
@@ -310,6 +312,12 @@ Read the [AI storage sources and limits](ai-storage.md) before you add storage r
 ## Scanner rows and Git worktrees
 
 The Scanner groups cleanup items. It does not show a complete folder tree.
+When a group contains children that support unlocking, its parent shows a clickable amber lock.
+The parent review unlocks eligible children without selecting them.
+The parent and child checkboxes remain unchecked after unlocking.
+The parent checkbox selects child items. It does not select the parent folder.
+Deselecting a child keeps it unlocked.
+Parent and child checkboxes use the same regular size.
 Projects can expand to show dependencies and Git worktrees. Applications can
 expand to show associated files. Ordinary folders stay as single rows.
 

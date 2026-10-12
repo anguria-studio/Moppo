@@ -130,8 +130,16 @@ struct CodexSessionsTests {
         let parent = try await fixture.session(fixture.parent)
         let child = try await fixture.session(fixture.child, archived: true)
         try await fixture.sql("INSERT INTO thread_spawn_edges VALUES ('\(fixture.parent)', '\(fixture.child)', 'completed');")
-        let settings = fixture.home.appendingPathComponent("auth.json")
-        try Data("Keep credentials".utf8).write(to: settings)
+        let retainedPaths = ["auth.json", "config.toml", "memories/memory_summary.md",
+                             "attachments/original.png", "generated_images/output.png"]
+        var retained: [URL: Data] = [:]
+        for path in retainedPaths {
+            let url = fixture.home.appendingPathComponent(path)
+            let data = Data("Keep \(path)".utf8)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: url)
+            retained[url] = data
+        }
         let row = try await fixture.row(fixture.parent)
         let refused = try await fixture.service().remove(entries: [row], trashFirst: true)
         #expect(refused.failed == [row.url.path])
@@ -144,7 +152,7 @@ struct CodexSessionsTests {
         #expect(outcome.deletedCount == 2 && outcome.trashedCount == 0)
         #expect(!FileManager.default.fileExists(atPath: parent.path))
         #expect(!FileManager.default.fileExists(atPath: child.path))
-        #expect(FileManager.default.fileExists(atPath: settings.path))
+        for (url, data) in retained { #expect(try Data(contentsOf: url) == data) }
         let receipt = RemovalLog(directory: fixture.home.appendingPathComponent("moppo-receipts")).recentEntries()
         #expect(receipt.filter { $0.disposition == .deleted }.count == 2)
         #expect(receipt.filter { $0.disposition == .deleted }.allSatisfy { $0.trashedPath == nil })

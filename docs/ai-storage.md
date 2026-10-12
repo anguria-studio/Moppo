@@ -17,9 +17,9 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | --- | --- | --- |
 | Codex | `~/.codex`, `~/.cache/codex-runtimes` | Archived and inactive sessions require deletion review. Active sessions and other storage stay protected. Linked Git worktrees retain their review controls. |
 | ChatGPT desktop | `~/Library/Application Support/Codex` | Verified Chromium caches are selectable. Profiles and other files stay protected. |
-| Claude Code | `~/.claude` | Conversations, file history, and other files stay protected. Linked Git worktrees use the existing review controls. |
+| Claude Code | `~/.claude` | Conversations, memories, attachments, file history, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
-| Cursor | `~/.cursor/projects`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | Workspace state stays protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
+| Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
 | Ollama, Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. |
 
 The scanner subtracts disclosed child sizes from each protected parent remainder.
@@ -34,6 +34,17 @@ Use `swift run --package-path Core moppo-cli ai` to inspect the default storage 
 Expand Codex sessions or Codex archived sessions to review individual conversations.
 Each row includes its spawned child sessions. Their storage appears once in the category total.
 Use the session lock to review the deletion warning.
+Use the amber parent lock to review and unlock inactive conversations together.
+Unlocking leaves the parent and child checkboxes unchecked.
+Use a child checkbox to select an individual conversation.
+Use the parent checkbox to select all unlocked conversations.
+Deselecting a conversation keeps it unlocked.
+Active sessions and unknown files stay locked.
+The parent folder never enters the removal selection.
+The parent conversation history badge identifies messages, tool results, and embedded images.
+Child conversations do not repeat this badge.
+The badge does not identify stored login credentials.
+If the usage date is unavailable, the row shows Unknown in neutral text.
 Select Clean Up to confirm permanent deletion.
 The warning explains that deleted sessions cannot be put back.
 Codex session rows never enter Safe to Remove or automatic selection.
@@ -53,6 +64,9 @@ Codex removes history files and related records. Moppo does not directly remove 
 Native deletion errors do not fall back to ordinary file removal.
 Receipts record permanent deletions. They cannot restore deleted sessions.
 Credentials, settings, and unrelated stored files keep their existing protection.
+Deletion removes messages, tool results, and images embedded in the selected history files.
+Moppo does not select separate `attachments`, `generated_images`, or `memories` folders for session deletion.
+Deleting a transcript does not prove that all copies of its content are gone.
 
 - [Codex App Server](https://learn.chatgpt.com/docs/app-server) documents permanent deletion and spawned child sessions.
 - [Codex session commands](https://github.com/openai/codex/blob/main/codex-rs/tui/src/session_archive_commands.rs) connects the CLI deletion command to `thread/delete`.
@@ -61,14 +75,98 @@ Credentials, settings, and unrelated stored files keep their existing protection
 
 This review used the installed `codex-cli 0.162.0-alpha.17.2` protocol and source checks on 12 October 2026.
 
+## Claude retention and deletion
+
+Claude Code keeps transcripts under `~/.claude/projects/<project>/`.
+Session folders can contain child transcripts, large tool results, and images returned by tools.
+The same project folder contains persistent auto memory under `memory/`.
+The separate `~/.claude/agent-memory/` folder holds persistent agent memories.
+File history supports checkpoint recovery.
+Pasted text, older image caches, and uploaded files can contain session content or the only local copies.
+Moppo shows these stores as protected rows. It does not parse messages or decide that an old session is inactive.
+
+Claude Code owns its retention sweep. Moppo does not change the retention settings.
+The documented default for `cleanupPeriodDays` is 30 days. Version and settings affect its scope.
+Desktop transcripts and auto memory have separate retention rules.
+The sweep runs when Claude Code starts. File age does not establish that the sweep ran.
+See [Claude Code application data](https://code.claude.com/docs/en/claude-directory#application-data) for the complete rules.
+
+The current `claude purge` command removes project transcripts, auto memory, recovery files, prompt history entries, and project configuration.
+Earlier versions call this command `claude project purge`.
+The command can leave pasted text, attached images, and other session files elsewhere.
+Moppo does not use purge because its scope conflicts with memory preservation.
+See [Claude Code local deletion](https://code.claude.com/docs/en/hipaa-setup#delete-session-data-right-away) for the version limits and deletion scope.
+
+Claude desktop local task folders contain transcripts, uploaded files, and outputs.
+Their parent folder also holds persistent memory and plugins.
+VM disks can contain task files. They remain protected, including after you close or remove Claude.
+Documented automatic Cowork task removal depends on the HIPAA configuration and other conditions.
+It does not establish a general rule for Moppo to delete old task folders.
+See [Claude desktop local storage](https://claude.com/docs/cowork/hipaa-setup#manage-cowork-data-on-each-computer) for the conditions.
+
+Claude can run tasks in the cloud. Local cleanup cannot delete or measure those remote sessions.
+See [Claude Cowork execution modes](https://support.claude.com/en/articles/14479288-claude-cowork-architecture-overview) for local and cloud storage.
+
+## Cursor retention and deletion
+
+Cursor desktop stores chat and workspace state in its `User` folder.
+Moppo protects the folder, including databases, checkpoints, settings, and unsaved files.
+Cursor advises users to delete individual chats through History.
+That deletion removes messages, checkpoints, and diffs. Archiving does not perform this deletion.
+Cursor also provides commands for old chat deletion and unused blob cleanup.
+Moppo does not edit or remove `state.vscdb` because direct removal can break chat history.
+These rules come from [Cursor support](https://forum.cursor.com/t/how-to-remove-local-archived-chats/158574/4).
+The support reply reported no automatic chat expiration setting on 23 April 2026.
+Moppo does not infer an expiration period from that dated reply.
+
+Cursor CLI stores local conversations under `~/.cursor/chats/<workspace-hash>/<chat-uuid>/`.
+[Cursor support](https://forum.cursor.com/t/cursor-agent-create-chat-and-how-to-delete-old-chats/156640/7) states that these files have no cloud backup.
+Moppo measures this folder as protected storage.
+The reviewed sources do not establish a supported deletion API with active session protection.
+Moppo therefore refuses CLI session removal, including when Cursor desktop is absent.
+Deleting exported project history or worktrees does not delete the desktop chat database.
+Worktree removal keeps its separate Git checks.
+
+## Preserved data and other tools
+
+Ordinary AI cleanup cannot unlock protected Claude or Cursor history with a user-data override.
+Credentials, settings, memories, and active session state stay outside its removal targets.
+This includes Claude Code settings, `.credentials.json`, and the separate `~/.claude.json` configuration file.
+[Claude Code configuration](https://code.claude.com/docs/en/settings) describes these files.
+[Claude Code memory](https://code.claude.com/docs/en/memory#storage-location) describes shared project memories and custom memory locations.
+Custom paths remain outside current default-path coverage.
+
+Codex memories have separate [memory controls](https://learn.chatgpt.com/docs/customization/memories).
+Moppo keeps their files protected during session cleanup.
+
+The Ollama, Hugging Face, and LM Studio readers target model files only.
+They do not offer session history removal.
+Ollama keys, LM Studio settings and conversations, and non-model Hugging Face files stay outside model removal targets.
+Model removal does not prove that the tool deleted chat history or its attachments.
+
+App Uninstaller and Application Leftovers provide a separate review for complete application data removal.
+That review can include credentials, memories, history, uploaded files, and settings in the selected desktop support folder.
+These files require the existing user-data authorization and move to the Trash.
+Removing a desktop application does not establish that the tool deleted command-line or cloud sessions.
+
+Further tools in issue #66 have no verified session deletion integration.
+Their listed vendor sources support later research, not removal permission.
+No retention or inactivity rule carries from one tool to another.
+
 ## Test coverage
 
-- [AI scanner fixtures](../Core/Tests/MoppoCoreTests/AIToolsScannerTests.swift) cover storage ownership, totals, protected paths, absent applications, sparse VM files, and running applications.
+- [AI scanner fixtures](../Core/Tests/MoppoCoreTests/AIToolsScannerTests.swift) cover credentials, memories, attachments, child transcripts, storage ownership, and totals.
 - [Codex session fixtures](../Core/Tests/MoppoCoreTests/CodexSessionsTests.swift) cover child sessions, writer locks, open files, changed reviews, unsupported history, deletion failures, and receipts.
-- [Cleanup state tests](../AppTests/CleanupModelTests.swift) cover explicit session selection, child counts, and required confirmation when you disable general confirmation.
+- [Cleanup state tests](../AppTests/CleanupModelTests.swift) cover group unlocking, separate selection, changed reviews, child counts, and required confirmation.
+
+The AI scanner fixtures also cover absent applications, sparse VM files, and running applications.
 
 A local native Codex check used temporary storage. It verified active writer protection, archived session deletion, retained settings, and removed database records.
-The user completed manual testing on 12 October 2026.
+The user completed the original Codex session checks on 12 October 2026.
+A second native fixture preserved credentials, settings, memories, separate attachments, and generated images after archived session deletion.
+It also verified active writer protection.
+The new row text, group selection, and deletion warnings still need manual review in both appearances at the minimum window size.
+The pending checks remain in [issue #11](https://github.com/anguria-studio/Moppo/issues/11).
 
 ## Evidence
 
@@ -107,4 +205,4 @@ Documented paths can supply fixtures without application installation.
 | Antigravity | Local desktop support folder observed | AI Tools has no separate Antigravity rows. Standard application and Electron cache rules apply. Session and workspace removal rules require verification. |
 
 Custom paths and further tools remain in [issue #66](https://github.com/anguria-studio/Moppo/issues/66).
-Session deletion and retention for other tools require separate rules in [issue #67](https://github.com/anguria-studio/Moppo/issues/67).
+The retention review in [issue #67](https://github.com/anguria-studio/Moppo/issues/67) keeps unverified session deletion locked.

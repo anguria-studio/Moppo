@@ -184,6 +184,25 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var aiTool: AITool?
     public var codexSession: CodexSessionReview?
 
+    /// Child items that support separate removal after a user data review.
+    public var unlockableChildren: [FileEntry] {
+        guard kind != .appBundle, removalAction == nil, !removesAsUnit, manualRemoval == nil else { return [] }
+        return children.filter {
+            $0.protectionReason == .userData && $0.manualRemoval == nil
+                && $0.dockerImage?.isRemovalLocked != true && $0.kind != .appBundle
+        }
+    }
+
+    /// Child selection stays separate from permission to remove protected data.
+    public func selectableChildren(userDataRemovalOverrides: Set<ID>) -> [FileEntry] {
+        let locked = unlockableChildren
+        guard !locked.isEmpty, locked.allSatisfy({ userDataRemovalOverrides.contains($0.id) }) else { return [] }
+        let unlockedIDs = Set(locked.map(\.id))
+        return children.filter {
+            $0.kind != .appBundle && (!$0.isRemovalLocked || unlockedIDs.contains($0.id))
+        }
+    }
+
     /// Explains a permanent inventory lock in the row help and selection tooltip.
     public var protectionExplanation: String?
     public var protectionReason: ProtectionReason?
@@ -195,7 +214,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// User data requires separate authorization. Running apps and inventory rows stay locked.
     public var isRemovalLocked: Bool {
         protectionReason != nil
-            || manualRemoval != nil || dockerImage?.isRemovalLocked == true
+            || manualRemoval != nil || dockerImage?.isRemovalLocked == true || !unlockableChildren.isEmpty
     }
     /// Item count for folders, shown as `· 1,204 items`.
     public var childCount: Int?
@@ -279,7 +298,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var displayBytes: Int64 {
         if dockerImage != nil { return allocatedBytes }
         if removalAction != nil { return reclaimableBytes }
-        return manualRemoval != nil || protectionReason == .inventory || codexSession != nil
+        return manualRemoval != nil || protectionReason == .inventory || codexSession != nil || !unlockableChildren.isEmpty
             ? totalBytesIncludingChildren : reclaimableBytes
     }
 

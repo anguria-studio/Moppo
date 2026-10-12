@@ -73,7 +73,6 @@ struct SelectionCheckbox: NSViewRepresentable {
     var state: NSControl.StateValue
     var isEnabled = true
     var showsTitle = true
-    var isCompact = false
     var onChange: (Bool) -> Void
     @Environment(\.isEnabled) private var environmentEnabled
 
@@ -83,6 +82,8 @@ struct SelectionCheckbox: NSViewRepresentable {
         let button = NSButton()
         button.cell = SelectionCheckboxCell(textCell: "")
         button.setButtonType(.switch)
+        button.controlSize = .regular
+        button.font = .systemFont(ofSize: 14, weight: .medium)
         button.allowsMixedState = true
         button.target = context.coordinator
         button.action = #selector(Coordinator.toggle)
@@ -93,7 +94,7 @@ struct SelectionCheckbox: NSViewRepresentable {
         button.title = showsTitle ? title : ""
         button.imagePosition = showsTitle ? .imageLeading : .imageOnly
         button.setAccessibilityLabel(title)
-        button.controlSize = isCompact ? .small : .regular
+        button.controlSize = .regular
         button.font = .systemFont(ofSize: 14, weight: .medium)
         if showsTitle, let detail {
             let label = NSMutableAttributedString(string: title, attributes: [
@@ -127,7 +128,7 @@ private final class SelectionCheckboxCell: NSButtonCell {
         let ink: NSColor = dark ? .white : .black
         let opposite: NSColor = dark ? .black : .white
         let alpha: CGFloat = isEnabled ? (isHighlighted ? 0.75 : 1) : 0.35
-        let side: CGFloat = controlSize == .small ? 12 : 15
+        let side: CGFloat = 15
         let box = NSRect(x: frame.midX - side / 2, y: frame.midY - side / 2,
                          width: side, height: side)
         let shape = NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4)
