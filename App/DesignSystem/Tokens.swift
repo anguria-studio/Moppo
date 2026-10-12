@@ -1,19 +1,8 @@
 import SwiftUI
 import MoppoCore
 
-/// Design tokens.
-///
-/// The handoff is explicit that platform semantics beat its literals: "prefer the
-/// platform's semantic colors (`NSColor.controlAccentColor`, `.systemGreen`,
-/// `.separatorColor`, `.quaternaryLabelColor`) over these literals where an
-/// equivalent exists, so the app follows the user's accent choice and Increase
-/// Contrast setting."
-///
-/// So almost everything here resolves to a system colour, and those adapt to the
-/// user's appearance for free. What is left is a short list of literals with no
-/// AppKit equivalent. Each of those now carries a pair: the design's authored dark
-/// value, and a light value derived from it. The design was drawn dark and light is
-/// read off it; the system decides which one the user sees.
+/// Shared colors and layout values.
+/// Light mode uses neutral surfaces and blue-gray text. Dark mode keeps its neutral palette.
 enum Token {
 
     // MARK: - Appearance
@@ -46,44 +35,35 @@ enum Token {
         switch token {
         // Follows the user's accent selection in System Settings.
         case .accent:    Color(nsColor: .controlAccentColor)
-        case .green:     Color(nsColor: .systemGreen)
-        case .orange:    Color(nsColor: .systemOrange)
+        case .green:     dynamic(light: NSColor(srgbRed: 0.207, green: 0.780, blue: 0.349, alpha: 1), dark: .systemGreen)
+        case .orange:    dynamic(light: NSColor(srgbRed: 1, green: 0.620, blue: 0.180, alpha: 1), dark: .systemOrange)
         case .red:       Color(nsColor: .systemRed)
         case .yellow:    Color(nsColor: .systemYellow)
-        case .purple:    Color(nsColor: .systemPurple)
+        case .purple:    dynamic(light: NSColor(srgbRed: 0.655, green: 0.365, blue: 0.980, alpha: 1), dark: .systemPurple)
         case .indigo:    Color(nsColor: .systemIndigo)
-        case .teal:      Color(nsColor: .systemTeal)
-        case .pink:      Color(nsColor: .systemPink)
+        case .teal:      dynamic(light: NSColor(srgbRed: 0.220, green: 0.741, blue: 0.973, alpha: 1), dark: .systemTeal)
+        case .pink:      dynamic(light: NSColor(srgbRed: 1, green: 0.325, blue: 0.533, alpha: 1), dark: .systemPink)
         case .brown:     Color(nsColor: .systemBrown)
-        case .gray:      Color(nsColor: .systemGray)
+        case .gray:      dynamic(light: NSColor(srgbRed: 0.631, green: 0.659, blue: 0.859, alpha: 1), dark: .systemGray)
 
-        // No AppKit equivalent for these three — kept as design literals, so they are
-        // also the only category colours that need a light value drawn by hand.
-        //
-        // All three share a track with `systemGray`, which is #8E8E93 in light and
-        // #98989D in dark, so the light values are chosen for separation from it as
-        // much as for fidelity to the dark ones.
-
-        // System Data. Warm taupe, and in light it has to go darker than `systemGray`
-        // rather than lighter: the two sit next to each other at the head of the bar.
+        // System Data uses slate in light mode and taupe in dark mode.
         case .warmGray:  dynamic(
-            light: NSColor(srgbRed: 0.435, green: 0.392, blue: 0.333, alpha: 1),  // #6F6455
+            light: NSColor(srgbRed: 0.278, green: 0.333, blue: 0.412, alpha: 1),  // #475569
             dark:  NSColor(srgbRed: 0.557, green: 0.522, blue: 0.467, alpha: 1)   // #8E8577
         )
 
-        // Unmeasured. The honest residual, so it stays quiet — which in dark means
-        // near the background and in light means a mid grey, not a dark one. It has
-        // to stay legible between `Other` (`systemGray`) on one side and `Free` on
-        // the other, and #9E9E9E was too close to `systemGray` light to tell apart,
-        // so it sits a little above the midpoint of that pair.
+        // Unmeasured stays distinct from the system category and free space.
         case .darkGray:  dynamic(
-            light: NSColor(srgbRed: 0.659, green: 0.659, blue: 0.678, alpha: 1),  // #A8A8AD
+            light: NSColor(srgbRed: 0.580, green: 0.639, blue: 0.722, alpha: 1),  // #94A3B8
             dark:  NSColor(srgbRed: 0.290, green: 0.290, blue: 0.306, alpha: 1)   // #4A4A4E
         )
 
         // Free. A tint of the surface either way, since empty space should read as
         // the track rather than as another category.
-        case .freeSpace: ink(light: 0.10, dark: 0.14)
+        case .freeSpace: dynamic(
+            light: NSColor(srgbRed: 0.886, green: 0.910, blue: 0.941, alpha: 1),
+            dark: .white.withAlphaComponent(0.14)
+        )
         }
     }
 
@@ -102,7 +82,7 @@ enum Token {
     static func textColor(_ token: ColorToken) -> Color {
         switch token {
         case .green:  dynamic(
-            light: NSColor(srgbRed: 0.078, green: 0.404, blue: 0.165, alpha: 1),  // #14672A
+            light: NSColor(srgbRed: 0.086, green: 0.478, blue: 0.184, alpha: 1),  // #167A2F
             dark: .systemGreen
         )
         case .orange: dynamic(
@@ -123,31 +103,44 @@ enum Token {
 
     // MARK: - Text.
 
-    /// The text ramp.
-    ///
-    /// The top two steps use AppKit semantics, which match the design closely and
-    /// respond to Increase Contrast. The bottom two do not: AppKit's
-    /// `tertiaryLabelColor` and `quaternaryLabelColor` sit near 0.25 and 0.10 alpha,
-    /// well below the design's 0.42 and 0.34, and on a dark translucent surface they
-    /// were genuinely hard to read — eyebrows, tile descriptions and the status bar
-    /// all disappeared. Those two are explicit values, set slightly brighter than the
-    /// design's own, since the prototype was measured against an opaque mock rather
-    /// than live window glass.
-    ///
-    /// Light inherits the argument, not the numbers. AppKit's light ramp is black at
-    /// 0.50, 0.26 and 0.10 for the bottom three steps, so the two that were the
-    /// problem in dark are again set well clear of the platform's. The pairs are not
-    /// mirrored — equal alphas do not read as equal weight — so each side is set
-    /// against its own surface.
+    /// Blue-gray text in light mode and neutral text in dark mode.
     enum Text {
-        static let primary = Color(nsColor: .labelColor)
-        static let secondary = Token.ink(light: 0.60, dark: 0.62)
-        static let tertiary = Token.ink(light: 0.55, dark: 0.52)
-        static let quaternary = Token.ink(light: 0.48, dark: 0.44)
-        static let disabled = Token.ink(light: 0.34, dark: 0.34)
+        /// Table names stay distinct from the softer metadata columns.
+        static let tableName = Token.dynamic(
+            light: NSColor(white: 0.20, alpha: 1), dark: .labelColor
+        )
+        static let tableDetail = Token.dynamic(
+            light: NSColor(white: 0.50, alpha: 1), dark: .white.withAlphaComponent(0.62)
+        )
+        static let tablePath = Token.dynamic(
+            light: NSColor(white: 0.50, alpha: 1), dark: .white.withAlphaComponent(0.52)
+        )
+        static let tableSize = Token.dynamic(
+            light: NSColor(white: 0.50, alpha: 1), dark: .labelColor
+        )
+        static let primary = Token.dynamic(
+            light: NSColor(srgbRed: 0.090, green: 0.125, blue: 0.200, alpha: 1), dark: .labelColor
+        )
+        static let secondary = Token.dynamic(
+            light: NSColor(srgbRed: 0.278, green: 0.333, blue: 0.412, alpha: 1), dark: .white.withAlphaComponent(0.62)
+        )
+        static let tertiary = Token.dynamic(
+            light: NSColor(srgbRed: 0.365, green: 0.424, blue: 0.522, alpha: 1), dark: .white.withAlphaComponent(0.52)
+        )
+        static let quaternary = Token.dynamic(
+            light: NSColor(srgbRed: 0.459, green: 0.506, blue: 0.592, alpha: 1), dark: .white.withAlphaComponent(0.44)
+        )
+        static let disabled = Token.dynamic(
+            light: NSColor(srgbRed: 0.580, green: 0.639, blue: 0.722, alpha: 1), dark: .white.withAlphaComponent(0.34)
+        )
         /// The one hero number per view. A step past `labelColor`, which is 0.85 in
         /// both modes.
-        static let emphasis = Token.ink(light: 0.92, dark: 0.96)
+        static let emphasis = Token.dynamic(
+            light: NSColor(srgbRed: 0.059, green: 0.090, blue: 0.165, alpha: 1), dark: .white.withAlphaComponent(0.96)
+        )
+        static let duplicateAvailableStorage = Token.dynamic(
+            light: NSColor(srgbRed: 0.839, green: 0.373, blue: 0, alpha: 1), dark: .labelColor
+        )
 
         /// The destructive control's label, on its own red-tinted fill.
         ///
@@ -188,13 +181,9 @@ enum Token {
     //
     // Light keeps its own scheme. These three values are authored for dark.
 
-    /// The content area behind everything else.
-    ///
-    /// Light paints the System Settings grey so that white cards stand off the
-    /// page; the detail pane's own background is white there, which left them
-    /// invisible.
+    /// The white light canvas separates gray cards from the page.
     static let pageBackground = Token.dynamic(
-        light: NSColor(srgbRed: 0.949, green: 0.949, blue: 0.957, alpha: 1),  // #F2F2F4
+        light: .white,  // #FFFFFF
         dark: NSColor(white: 14 / 255, alpha: 1)  // #0E0E0E
     )
 
@@ -208,13 +197,13 @@ enum Token {
 
     /// The opaque sidebar stays slightly lighter than the page in dark mode.
     static let sidebar = Token.dynamic(
-        light: NSColor(white: 0.935, alpha: 1),
+        light: NSColor(white: 236 / 255, alpha: 1),  // #ECECEC
         dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
     )
 
     /// The surface for onboarding and popovers.
     static let chrome = Token.dynamic(
-        light: NSColor.windowBackgroundColor,
+        light: NSColor(white: 250 / 255, alpha: 1),
         dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
     )
 
@@ -228,33 +217,82 @@ enum Token {
     // it whichever way round the window is.
 
     enum Fill {
+        static let previewBackdrop = Token.dynamic(
+            light: .black.withAlphaComponent(0.12),
+            dark: .black.withAlphaComponent(0.28)
+        )
+        static let groupHeader = Token.dynamic(
+            light: NSColor(white: 244 / 255, alpha: 1),
+            dark: .clear
+        )
+        static let cardContent = Token.dynamic(
+            light: .white, dark: NSColor(white: 23 / 255, alpha: 1)
+        )
+        static let safeBadge = Token.dynamic(
+            light: NSColor(srgbRed: 0.784, green: 0.937, blue: 0.800, alpha: 1),
+            dark: .systemGreen.withAlphaComponent(0.16)
+        )
+        static let keepIndicator = Token.dynamic(
+            light: NSColor(srgbRed: 0.141, green: 0.643, blue: 0.271, alpha: 1),
+            dark: .systemGreen
+        )
         /// Shared card color. Dark mode matches the expanded Cleanup file lists.
         static let box = Token.dynamic(
-            light: .white.withAlphaComponent(0.85),
+            light: NSColor(white: 246 / 255, alpha: 1),
             dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
         )
-        /// Also the row rule in every table and the capacity bar's track. Deliberately
-        /// weaker than `separatorColor`, which is roughly 0.10 in light: repeated every
-        /// 38pt down a table, the system separator draws a grid rather than a hint.
+        static let warning = Token.dynamic(
+            light: NSColor(srgbRed: 1.000, green: 0.890, blue: 0.627, alpha: 1),  // #FFE3A0
+            dark: .systemOrange.withAlphaComponent(0.10)
+        )
+        /// Table rules use a faint neutral line.
         static let boxBorder = Token.ink(light: 0.06, dark: 0.07)
+        /// Card outlines are slightly stronger than the table rules in light mode.
+        static let cardBorder = Token.ink(light: 0.12, dark: 0.07)
         /// The specular top edge on a secondary button. In light there is no specular
         /// edge to draw, so it becomes the outline that makes the control look raised,
         /// and it needs more weight than the box hairline to do that.
         static let controlBorder = Token.ink(light: 0.13, dark: 0.10)
         /// An inset surface for file lists, callouts, and exclusions.
         static let well = Token.dynamic(
-            light: .black.withAlphaComponent(0.04),
+            light: NSColor(white: 242 / 255, alpha: 1),
             dark: NSColor(white: 23 / 255, alpha: 1)  // #171717
         )
-        static let control = Token.ink(light: 0.07, dark: 0.09)
+        static let control = Token.dynamic(
+            light: NSColor(white: 240 / 255, alpha: 1), dark: .white.withAlphaComponent(0.09)
+        )
+        /// Neutral action buttons stay distinct from the page background.
+        static let button = Token.dynamic(
+            light: NSColor(white: 244 / 255, alpha: 1), dark: .white.withAlphaComponent(0.09)
+        )
+        static let buttonOnCard = Token.dynamic(
+            light: .white, dark: .white.withAlphaComponent(0.09)
+        )
+        static let buttonHover = Token.dynamic(
+            light: NSColor(white: 234 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
+        )
+        static let buttonBorder = Token.dynamic(light: .black.withAlphaComponent(0.07), dark: .clear)
         /// Disabled controls have less contrast than active controls.
         static let controlDisabled = Token.ink(light: 0.035, dark: 0.04)
-        /// Hover darkens the control in light and lightens it in dark. Same gesture,
-        /// opposite direction, which is what `ink` already does.
-        static let controlHover = Token.ink(light: 0.12, dark: 0.14)
-        static let rowHover = Token.ink(light: 0.04, dark: 0.03)
-        /// A neutral selection fill over the sidebar gradient.
-        static let sidebarSelection = Token.ink(light: 0.09, dark: 0.12)
+        /// Hover slightly darkens neutral surfaces in light mode.
+        static let controlHover = Token.dynamic(
+            light: NSColor(white: 230 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
+        )
+        static let rowSelection = Token.ink(light: 0.14, dark: 0.12)
+        static let rowHover = Token.dynamic(
+            light: NSColor(white: 249 / 255, alpha: 1), dark: .white.withAlphaComponent(0.03)
+        )
+        /// Cleanup content is white in light mode.
+        static let cleanupRow = Token.dynamic(
+            light: .white, dark: .clear
+        )
+        static let cleanupRowHover = Token.dynamic(
+            light: NSColor(white: 249 / 255, alpha: 1), dark: .white.withAlphaComponent(0.03)
+        )
+        /// The selected sidebar row uses neutral gray in light mode.
+        static let sidebarSelection = Token.dynamic(
+            light: NSColor(white: 218 / 255, alpha: 1), dark: .white.withAlphaComponent(0.12)
+        )
 
         /// The fill under the pointer in the menu bar popover — the same blue a
         /// real `NSMenu` row takes. `selectedContentBackgroundColor` is that
@@ -272,6 +310,42 @@ enum Token {
         light: .black.withAlphaComponent(0.18),
         dark: .black.withAlphaComponent(0.40)
     )
+
+    /// Segmented controls use a neutral track and semantic selection colors.
+    enum Segments {
+        static let track = Token.dynamic(
+            light: NSColor(srgbRed: 244 / 255, green: 244 / 255, blue: 246 / 255, alpha: 1),
+            dark: NSColor(white: 41 / 255, alpha: 1)
+        )
+        static let blueFill = Token.dynamic(
+            light: NSColor(srgbRed: 227 / 255, green: 237 / 255, blue: 253 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 20 / 255, green: 42 / 255, blue: 68 / 255, alpha: 1)
+        )
+        static let blueBorder = Token.dynamic(
+            light: NSColor(srgbRed: 195 / 255, green: 215 / 255, blue: 247 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 36 / 255, green: 72 / 255, blue: 116 / 255, alpha: 1)
+        )
+        static let blueText = Token.dynamic(
+            light: NSColor(srgbRed: 47 / 255, green: 111 / 255, blue: 219 / 255, alpha: 1),
+            dark: .systemBlue
+        )
+        static let greenFill = Token.dynamic(
+            light: NSColor(srgbRed: 223 / 255, green: 243 / 255, blue: 227 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 29 / 255, green: 60 / 255, blue: 37 / 255, alpha: 1)
+        )
+        static let greenBorder = Token.dynamic(
+            light: NSColor(srgbRed: 182 / 255, green: 226 / 255, blue: 193 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 44 / 255, green: 89 / 255, blue: 55 / 255, alpha: 1)
+        )
+        static let amberFill = Token.dynamic(
+            light: NSColor(srgbRed: 255 / 255, green: 237 / 255, blue: 199 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 65 / 255, green: 47 / 255, blue: 17 / 255, alpha: 1)
+        )
+        static let amberBorder = Token.dynamic(
+            light: NSColor(srgbRed: 240 / 255, green: 210 / 255, blue: 140 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 102 / 255, green: 73 / 255, blue: 25 / 255, alpha: 1)
+        )
+    }
 
     // MARK: - Geometry
 
@@ -292,6 +366,7 @@ enum Token {
         static let toolbar: CGFloat = 52
         static let sidebarRow: CGFloat = 36
         static let control: CGFloat = 24
+        static let tabControl: CGFloat = 32
         /// The side inset every page uses, header and content alike. The headers
         /// had drifted to 18, 16 and 14 while the rows beneath them stayed at 14,
         /// so each title sat out of line with what it described.

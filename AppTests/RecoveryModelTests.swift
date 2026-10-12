@@ -11,7 +11,7 @@ struct RecoveryModelTests {
         let model = RecoveryModel(operations: OperationCoordinator(), trashService: trash)
         let old = recoveryItem("Old")
         let current = recoveryItem("Current")
-        model.selectedTrashItemID = old.id
+        model.selectedTrashItemIDs = [old.id]
         let first = Task { await model.loadTrash() }
         try await waitUntil { await trash.readLimits.count == 1 }
         let second = Task { await model.loadTrash() }
@@ -21,7 +21,7 @@ struct RecoveryModelTests {
         await trash.finishRead(0, TrashSummary(totalBytes: 128, itemCount: 1, items: [old]))
         await first.value
         #expect(model.trashSummary?.items == [current])
-        #expect(model.selectedTrashItemID == nil)
+        #expect(model.selectedTrashItemIDs.isEmpty)
         #expect(model.hasLoadedTrash)
         #expect(!model.isLoadingTrash)
         #expect(await trash.readLimits == [Int.max, Int.max])
@@ -79,6 +79,55 @@ struct RecoveryModelTests {
         #expect(app.view == .history)
         #expect(refreshes.count == 1)
         #expect(refreshes.first == .putBack)
+    }
+
+    @Test("Batch Put Back restores only requested items and continues after a failure")
+    func batchRestoration() async throws {
+        let trash = HeldRecoveryTrash(holdReads: true)
+        let history = HeldRecoveryHistory(holdReads: false)
+        let model = RecoveryModel(
+            operations: OperationCoordinator(), trashService: trash, historyService: history
+        )
+        let first = recoveryItem("First")
+        let occupied = recoveryItem("Occupied")
+        let last = recoveryItem("Last")
+        let unselected = recoveryItem("Unselected")
+        let unknown = TrashItem(url: URL(filePath: "/moppo-fixture/.Trash/Unknown"), bytes: 64)
+        let requested = [first, occupied, last, unknown]
+        model.selectedTrashItemIDs = Set(requested.map(\.id))
+        var failures: [String] = []
+        var refreshCount = 0
+        model.onEvent = { event in
+            if case .failure(let title, _) = event { failures.append(title) }
+        }
+        model.refreshAfterMutation = { _ in refreshCount += 1 }
+
+        let caller = Task { await model.putBack(requested) }
+        try await waitUntil { await trash.restorations.count == 1 }
+        caller.cancel()
+        await model.putBack(unselected)
+        #expect(await trash.restorations == [first])
+        await trash.finishRestoration()
+        try await waitUntil { await trash.restorations.count == 2 }
+        await trash.failRestoration(.destinationOccupied(occupied.id))
+        try await waitUntil { await trash.restorations.count == 3 }
+        #expect(model.isBusyWithDisk)
+        #expect(await trash.readLimits.isEmpty)
+        await trash.finishRestoration()
+        try await waitUntil { await trash.readLimits.count == 1 }
+        await trash.finishRead(0, TrashSummary(
+            totalBytes: 192, itemCount: 3, items: [occupied, unselected, unknown]
+        ))
+        await caller.value
+
+        #expect(await trash.restorations == [first, occupied, last])
+        #expect(await trash.cancelled == [false, false])
+        #expect(await trash.readLimits == [Int.max])
+        #expect(await history.readCount == 1)
+        #expect(model.selectedTrashItemIDs == [occupied.id, unknown.id])
+        #expect(failures == ["Occupied Was Not Put Back"])
+        #expect(refreshCount == 1)
+        #expect(!model.isBusyWithDisk)
     }
 
     @Test("Empty Trash keeps its guard through refreshed reads and reports survivors")
@@ -158,7 +207,7 @@ struct RecoveryModelTests {
             historyService: HeldRecoveryHistory(holdReads: false)
         )
         let item = recoveryItem("Restored")
-        model.selectedTrashItemID = item.id
+        model.selectedTrashItemIDs = [item.id]
         let initial = Task { await model.loadTrash() }
         try await waitUntil { await trash.readLimits.count == 1 }
         let restore = Task { await model.putBack(item) }
@@ -170,7 +219,7 @@ struct RecoveryModelTests {
         await trash.finishRead(0, TrashSummary(totalBytes: 64, itemCount: 1, items: [item]))
         await initial.value
         #expect(model.trashSummary?.items.isEmpty == true)
-        #expect(model.selectedTrashItemID == nil)
+        #expect(model.selectedTrashItemIDs.isEmpty)
         #expect(!model.isBusyWithDisk)
     }
 

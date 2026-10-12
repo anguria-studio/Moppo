@@ -9,7 +9,7 @@ public enum ColorToken: String, Sendable, Equatable, Codable {
 }
 
 public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
-    case macOSSystem, systemData, appleIntelligence
+    case macOSSystem, systemData
     case documentsDesktop, downloads, photos, music, movies, developer
     case appDataCaches, packageBuildCaches, otherFilesInHome
     case applications
@@ -18,10 +18,23 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     case other
     case free
 
+    /// Merge the retired category when reading saved measurements.
+    static func storedID(_ value: String) -> Self? {
+        value == "appleIntelligence" ? .macOSSystem : Self(rawValue: value)
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        guard let id = Self.storedID(value) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unknown storage category: \(value)")
+        }
+        self = id
+    }
+
     public var displayName: String {
         switch self {
         case .macOSSystem:        "macOS System"
-        case .appleIntelligence:  "Apple Intelligence"
         case .systemData:         "System Data"
         case .documentsDesktop:   "Documents & Desktop"
         case .downloads:          "Downloads"
@@ -42,7 +55,6 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     public var color: ColorToken {
         switch self {
         case .macOSSystem:        .gray
-        case .appleIntelligence:  .indigo
         case .systemData:         .warmGray
         case .documentsDesktop:   .orange
         case .downloads:          .green
@@ -70,7 +82,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     /// the honest residual and it stays visible.
     var isMergeable: Bool {
         switch self {
-        case .unmeasured, .free, .other, .appleIntelligence: false
+        case .unmeasured, .free, .other: false
         default: true
         }
     }
@@ -106,18 +118,36 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
     public let segments: [StorageSegment]
     /// Entries an unprivileged scan could not read, summed across the run.
     public let unreadableCount: Int
-    public let appleIntelligence: AppleIntelligenceStorage?
 
     public init(
         capacityBytes: Int64,
         segments: [StorageSegment],
-        unreadableCount: Int,
-        appleIntelligence: AppleIntelligenceStorage? = nil
+        unreadableCount: Int
     ) {
         self.capacityBytes = capacityBytes
         self.segments = segments
         self.unreadableCount = unreadableCount
-        self.appleIntelligence = appleIntelligence
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        capacityBytes = try values.decode(Int64.self, forKey: .capacityBytes)
+        unreadableCount = try values.decode(Int.self, forKey: .unreadableCount)
+        let saved = try values.decode([StorageSegment].self, forKey: .segments)
+        var merged: [StorageSegment] = []
+        for segment in saved {
+            if let index = merged.firstIndex(where: { $0.id == segment.id }) {
+                merged[index].bytes += segment.bytes
+            } else {
+                merged.append(segment)
+            }
+        }
+        segments = merged.count == saved.count ? saved : Self.make(
+            capacityBytes: capacityBytes,
+            rawSegments: Dictionary(uniqueKeysWithValues: merged.map { ($0.id, $0.bytes) }),
+            unreadableCount: unreadableCount,
+            mergeThresholdPercent: 0
+        ).segments
     }
 
     public var usedBytes: Int64 { capacityBytes - freeBytes }
@@ -138,13 +168,6 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
     /// figures add up to the disk capacity.
     public var legendEntries: [StorageSegment] {
         segments.filter { $0.bytes > 0 }
-    }
-
-    public func sizeLabel(for segment: StorageSegment) -> String {
-        if segment.id == .appleIntelligence, let appleIntelligence {
-            return appleIntelligence.sizeLabel
-        }
-        return ByteFormatting.string(segment.bytes)
     }
 
     public func percent(of segment: StorageSegment) -> Double {
@@ -182,8 +205,7 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
             capacityBytes: capacity,
             rawSegments: rawSegments,
             unreadableCount: unreadableCount,
-            mergeThresholdPercent: 0,
-            appleIntelligence: appleIntelligence
+            mergeThresholdPercent: 0
         )
     }
 
@@ -195,8 +217,7 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         capacityBytes: Int64,
         rawSegments: [StorageSegmentID: Int64],
         unreadableCount: Int,
-        mergeThresholdPercent: Double = 0.5,
-        appleIntelligence: AppleIntelligenceStorage? = nil
+        mergeThresholdPercent: Double = 0.5
     ) -> StorageBreakdown {
         let threshold = Int64(Double(capacityBytes) * mergeThresholdPercent / 100)
 
@@ -225,8 +246,7 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         return StorageBreakdown(
             capacityBytes: capacityBytes,
             segments: kept,
-            unreadableCount: unreadableCount,
-            appleIntelligence: appleIntelligence
+            unreadableCount: unreadableCount
         )
     }
 }

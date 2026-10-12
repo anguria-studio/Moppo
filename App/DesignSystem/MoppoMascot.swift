@@ -81,7 +81,10 @@ private enum MascotTuning {
     // Fraction of empty space around the glyph, so the tails stay inside the frame when they swing.
     static let padding = 1.2
     // Beams while scanning
-    static let beamColor = Color(red: 0xF2 / 255, green: 0xB3 / 255, blue: 0)
+    static let beamColor = Token.dynamic(
+        light: NSColor(srgbRed: 1, green: 0xD0 / 255, blue: 0, alpha: 1),
+        dark: NSColor(srgbRed: 0xF2 / 255, green: 0xB3 / 255, blue: 0, alpha: 1)
+    )
     static let beamLength = 1500.0, beamStartWidth = 30.0, beamSpread = 0.2, beamOpacity = 1.0
     static let chargeTime = 0.3, fireTime = 0.21, sweepTime = 1.0, offTime = 0.25, restTime = 2.3
     static let sweepRange = 55.0, maxUp = 40.0, maxDown = 45.0
@@ -575,7 +578,9 @@ final class MoppoMascotMotion {
         drawFloorLight(of: beams, in: &graphics)
         // The eyes are holes, so they show whatever is behind Moppo.
         graphics.drawLayer { layer in
-            layer.fill(Self.smoothRing(body), with: .foreground)
+            let bodyFill: GraphicsContext.Shading = layer.environment.colorScheme == .light
+                ? .color(Color(white: 0x2B / 255)) : .foreground
+            layer.fill(Self.smoothRing(body), with: bodyFill)
             layer.blendMode = .destinationOut
             layer.fill(eyes, with: .color(.black))
         }

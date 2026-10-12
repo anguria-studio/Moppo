@@ -18,10 +18,10 @@ struct TrashView: View {
                 TrashContent(
                     summary: summary,
                     findRequest: findRequest,
-                    selectedItemID: $model.selectedTrashItemID,
-                    onPutBack: { item in Task { await model.putBack(item) } }
+                    isBusyWithDisk: model.isBusyWithDisk,
+                    selectedItemIDs: $model.selectedTrashItemIDs,
+                    onPutBack: { items in Task { await model.putBack(items) } }
                 )
-                .disabled(model.isBusyWithDisk)
             } else if model.hasLoadedTrash {
                 unreadableNote
             } else {
@@ -62,23 +62,14 @@ private struct TrashContent: View {
     let summary: TrashSummary
     /// `AppModel.findRequest`: ⌘F moves the focus to the search field.
     var findRequest = 0
-    @Binding var selectedItemID: TrashItem.ID?
-    let onPutBack: (TrashItem) -> Void
+    var isBusyWithDisk = false
+    @Binding var selectedItemIDs: Set<TrashItem.ID>
+    let onPutBack: ([TrashItem]) -> Void
 
     /// Narrows the rows and nothing else. The header's size and count stay the whole
     /// Trash's: they are what Empty Trash will remove, whatever is typed here.
     @State private var searchText = ""
-    @State private var sortOrder: TrashSortOrder = .date
-    @State private var ascending = false
-
-    private func adopt(_ order: TrashSortOrder) {
-        if sortOrder == order {
-            ascending.toggle()
-        } else {
-            sortOrder = order
-            ascending = order == .name
-        }
-    }
+    @State private var sortOrder = [TrashItemComparator(key: .date, order: .reverse)]
 
     private var query: String {
         searchText.trimmingCharacters(in: .whitespaces)
@@ -90,108 +81,80 @@ private struct TrashContent: View {
         let matching = query.isEmpty ? summary.items : summary.items.filter {
             $0.name.localizedCaseInsensitiveContains(query)
         }
-        return sortOrder.sorted(matching, ascending: ascending)
+        return matching.sorted(using: sortOrder)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             summaryHeader
-
-            ScrollViewReader { proxy in
-                GeometryReader { geometry in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            if summary.items.isEmpty {
-                                emptyNote
-                            } else if visibleItems.isEmpty {
-                                PageState(
-                                    title: "No Results for “\(query)”", symbol: "magnifyingglass",
-                                    detail: summary.itemCount > summary.items.count
-                                        ? "Only the \(summary.items.count) listed items were searched."
-                                        : "No item in the Trash has that in its name."
-                                )
-                            } else {
-                                // Finder's Bin also shows iCloud's Recently Deleted, which are cloud
-                                // records with no bytes on this disk. Saying so heads off "why does
-                                // Finder show more items" — the honest scope here is this disk.
-                                if hasICloudDrive {
-                                    Text("Finder's Bin may also show iCloud's Recently Deleted. Those "
-                                         + "items live in iCloud, not on this disk.")
-                                        .font(.mcSubtitle)
-                                        .foregroundStyle(Token.Text.tertiary)
-                                        .padding(.horizontal, 2)
-                                }
-                                GroupedBox {
-                                    VStack(spacing: 0) {
-                                        columnHeader
-                                        Hairline()
-                                        // Create rows as they enter the visible area.
-                                        LazyVStack(spacing: 0) {
-                                            ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
-                                                VStack(spacing: 0) {
-                                                    if index > 0 { Hairline() }
-                                                    TrashRow(
-                                                        item: item,
-                                                        isSelected: selectedItemID == item.id,
-                                                        onSelect: { selectedItemID = item.id },
-                                                        onPutBack: { onPutBack(item) }
-                                                    )
-                                                }
-                                                .id(item.id)
-                                            }
-                                        }
-                                    }
-                                    .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
-                                }
-
-                                if summary.itemCount > summary.items.count {
-                                    Text("Showing \(summary.items.count) of "
-                                         + "\(summary.itemCount) items. Finder lists them all.")
-                                        .font(.mcSubtitle)
-                                        .foregroundStyle(Token.Text.tertiary)
-                                        .padding(.horizontal, 2)
-                                }
-                            }
-                        }
-                        .frame(minHeight: visibleItems.isEmpty ? geometry.size.height : 0, alignment: .top)
-                        .padding(.horizontal, visibleItems.isEmpty ? 0 : Token.Size.pageGutter)
-                        .padding(.top, visibleItems.isEmpty ? 0 : 14)
-                        .padding(.bottom, visibleItems.isEmpty ? 0 : 22)
-                    }
-                }
-                .onAppear {
-                    // Reveal the initial selection without scrolling when the user selects another row.
-                    guard let id = selectedItemID else { return }
-                    proxy.scrollTo(id, anchor: .center)
+            if summary.items.isEmpty {
+                emptyNote
+            } else if visibleItems.isEmpty {
+                PageState(
+                    title: "No Results for “\(query)”", symbol: "magnifyingglass",
+                    detail: "No item in the Trash has that in its name."
+                )
+            } else {
+                trashTable
+                if summary.itemCount > summary.items.count {
+                    Text("Showing \(summary.items.count) of \(summary.itemCount) items. Finder lists them all.")
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.tertiary)
+                        .padding(8)
                 }
             }
         }
-    }
-
-    private var columnHeader: some View {
-        HStack(spacing: Metrics.gap) {
-            sortHeader(.name)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text("Action")
-                .frame(width: Metrics.action, alignment: .leading)
-            sortHeader(.date)
-                .frame(width: Metrics.date, alignment: .leading)
-            sortHeader(.size)
-                .frame(width: Metrics.size, alignment: .trailing)
+        .onChange(of: visibleItems.map(\.id)) { _, ids in
+            selectedItemIDs.formIntersection(ids)
         }
-        .font(.mcControlLabel)
-        .foregroundStyle(Token.Text.tertiary)
-        .padding(.horizontal, Metrics.sidePadding)
     }
 
-    private func sortHeader(_ order: TrashSortOrder) -> some View {
-        SortableColumnHeader(
-            title: order.rawValue,
-            isActive: sortOrder == order,
-            ascending: ascending,
-            alignment: order == .size ? .trailing : .leading,
-            action: { adopt(order) }
+    private var trashTable: some View {
+        CompactTable(
+            items: visibleItems,
+            selection: $selectedItemIDs,
+            sortOrder: $sortOrder,
+            columns: [
+                CompactTableColumn("Item", width: 400, min: 200, sort: TrashItemComparator(key: .name)) { item, selected in
+                    CompactTableItem(
+                        name: item.name,
+                        path: item.originalURL.map { FileEntry.abbreviate($0.deletingLastPathComponent().path) }
+                            ?? "Original location unknown",
+                        iconURL: item.url,
+                        isSelected: selected
+                    )
+                },
+                CompactTableColumn("Deleted", width: 105, min: 95, max: 145, sort: TrashItemComparator(key: .date, order: .reverse)) { item, selected in
+                    CompactTableDate(date: item.deletedAt, isSelected: selected)
+                },
+                CompactTableColumn("Size", width: 78, min: 65, max: 100, sort: TrashItemComparator(key: .size, order: .reverse)) { item, selected in
+                    Text(ByteFormatting.string(item.bytes))
+                        .monospacedDigit()
+                        .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                },
+                CompactTableColumn("", width: 80, min: 80, max: 80) { item, selected in
+                    if item.canPutBack {
+                        Button("Put Back") { onPutBack([item]) }
+                            .buttonStyle(CompactTableActionStyle(isSelected: selected))
+                            .disabled(isBusyWithDisk)
+                            .help("Restore this item to its original folder.")
+                    }
+                }
+            ],
+            itemName: { $0.name },
+            allowsMultipleSelection: true,
+            menuActions: { selectedIDs in
+                let selected = visibleItems.filter { selectedIDs.contains($0.id) }
+                let restorable = selected.filter(\.canPutBack)
+                let title = restorable.isEmpty || restorable.count == selected.count
+                    ? "Put Back" : "Put Back \(restorable.count) \(restorable.count == 1 ? "Item" : "Items")"
+                return [CompactTableMenuAction(title: title, isEnabled: !isBusyWithDisk && !restorable.isEmpty) {
+                    onPutBack(restorable)
+                }]
+            }
         )
+        .tableQuickLook(items: visibleItems, selection: $selectedItemIDs, url: { $0.url })
     }
 
     // MARK: Summary header
@@ -224,7 +187,12 @@ private struct TrashContent: View {
                     .lineLimit(1)
             }
 
-            Text("How long items remain here is controlled by Finder settings.")
+            Label(
+                hasICloudDrive
+                    ? "Finder settings control how long items stay. iCloud Recently Deleted is not on this disk."
+                    : "Finder settings control how long items stay.",
+                systemImage: "info.circle"
+            )
                 .font(.mcControlLabel)
                 .foregroundStyle(Token.Text.quaternary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -248,120 +216,6 @@ private struct TrashContent: View {
     }
 }
 
-// MARK: - One row
-
-private struct TrashRow: View {
-    let item: TrashItem
-    let isSelected: Bool
-    let onSelect: () -> Void
-    let onPutBack: () -> Void
-
-    var body: some View {
-        HStack(spacing: Metrics.gap) {
-            Text(item.name)
-                .font(.mcRowTitle)
-                .foregroundStyle(Token.Text.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .help(item.url.path)
-
-            putBack
-                .frame(width: Metrics.action, alignment: .leading)
-
-            deletionDate
-
-            Text(ByteFormatting.string(item.bytes))
-                .font(.mcRowValue)
-                .foregroundStyle(Token.Text.primary)
-                .lineLimit(1)
-                .fixedSize()
-                .frame(width: Metrics.size, alignment: .trailing)
-        }
-        .padding(.horizontal, Metrics.sidePadding)
-        .frame(minHeight: 56)
-        .contentShape(Rectangle())
-        .background(isSelected ? Token.color(.accent).opacity(0.14) : Color.clear)
-        .onTapGesture(perform: onSelect)
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .hoverHighlight()
-    }
-
-    private var deletionDate: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let date = item.deletedAt {
-                Text(date, format: .dateTime.day().month(.abbreviated).year())
-                    .foregroundStyle(Token.Text.secondary)
-                Text(date, format: .dateTime.hour().minute())
-                    .foregroundStyle(Token.Text.tertiary)
-            } else {
-                Text("—")
-                    .foregroundStyle(Token.Text.tertiary)
-            }
-        }
-        .font(.mcSubtitle)
-        .lineLimit(1)
-        .frame(width: Metrics.date, alignment: .leading)
-        .help(deletedText)
-    }
-
-    /// The tooltip hangs on the wrapper rather than the button: a disabled control is
-    /// exactly the case where the reason matters most, and a greyed button that cannot
-    /// explain itself is worse than no button at all.
-    private var putBack: some View {
-        HStack(spacing: 0) {
-            Button("Put Back", action: onPutBack)
-                .buttonStyle(SecondaryButtonStyle())
-                .disabled(!item.canPutBack)
-        }
-        .help(putBackHelp)
-        .accessibilityHint(putBackHelp)
-    }
-
-    /// macOS publishes no API for where a trashed item came from — Finder keeps that
-    /// privately — so Moppo can only restore what its own removal log recorded.
-    /// Anything dragged in from Finder is Finder's to put back.
-    private var putBackHelp: String {
-        item.canPutBack
-            ? "Move this back to the folder Moppo removed it from."
-            : "Moppo did not move this to the Trash, and macOS does not say where a trashed item came from. Use Finder's Put Back for this one."
-    }
-
-    /// `nil` renders as no caption rather than an invented date.
-    @MainActor
-    private var deletedText: String {
-        guard let deletedAt = item.deletedAt else { return "" }
-        guard Date.now.timeIntervalSince(deletedAt) >= 60 else { return "Deleted just now" }
-        return "Deleted " + deletedFormatter.localizedString(for: deletedAt, relativeTo: .now)
-    }
-}
-
-// MARK: - Shared parts
-
-private enum Metrics {
-    static let sidePadding: CGFloat = 18
-    static let gap: CGFloat = 11
-    /// Match the History table column widths.
-    static let action: CGFloat = 160
-    static let date: CGFloat = 110
-    static let size: CGFloat = 78
-}
-
-private struct Hairline: View {
-    var body: some View {
-        Rectangle()
-            .fill(Token.Fill.boxBorder)
-            .frame(height: Token.hairline)
-    }
-}
-
-/// One formatter, not one per row — building these is expensive.
-@MainActor private let deletedFormatter: RelativeDateTimeFormatter = {
-    let formatter = RelativeDateTimeFormatter()
-    formatter.dateTimeStyle = .named   // "yesterday" over "1 day ago"
-    return formatter
-}()
-
 /// 15pt belongs to this card alone, so it is not in the shared ramp — but it carries a
 /// figure, so it carries tabular digits.
 private extension Font {
@@ -376,7 +230,7 @@ private extension Font {
 #Preview("Trash") {
     TrashContent(
         summary: PreviewTrash.populated,
-        selectedItemID: .constant(nil),
+        selectedItemIDs: .constant([]),
         onPutBack: { _ in }
     )
         .frame(width: Token.Size.windowWidth - Token.Size.sidebarWidth, height: 420)
@@ -385,7 +239,7 @@ private extension Font {
 }
 
 #Preview("Trash — empty") {
-    TrashContent(summary: TrashSummary(), selectedItemID: .constant(nil), onPutBack: { _ in })
+    TrashContent(summary: TrashSummary(), selectedItemIDs: .constant([]), onPutBack: { _ in })
         .frame(width: Token.Size.windowWidth - Token.Size.sidebarWidth, height: 420)
         .background(Color(nsColor: .windowBackgroundColor))
         .preferredColorScheme(.dark)

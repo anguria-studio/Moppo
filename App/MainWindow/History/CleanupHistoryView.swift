@@ -1,7 +1,7 @@
 import SwiftUI
 import MoppoCore
 
-/// Shows a read-only record of Moppo removal results.
+/// Shows a record of Moppo removal results.
 struct CleanupHistoryView: View {
     @Bindable var model: RecoveryModel
     var findRequest = 0
@@ -11,23 +11,8 @@ struct CleanupHistoryView: View {
     @State private var searchText = ""
     @State private var filter: HistoryFilter = .all
 
-    /// Opens newest first, which is the order the log is read in.
-    @State private var sortKey: SortKey = .date
-    @State private var ascending = false
-
-    private enum SortKey { case name, result, date, size }
-
-    /// The Scanner's rule: a second click flips the column; a new column opens in
-    /// the direction it is usually wanted — largest and newest first, names and
-    /// results from the top.
-    private func adopt(_ key: SortKey) {
-        if sortKey == key {
-            ascending.toggle()
-        } else {
-            sortKey = key
-            ascending = (key == .name || key == .result)
-        }
-    }
+    @State private var selection: CleanupHistoryItem.ID?
+    @State private var sortOrder = [KeyPathComparator(\CleanupHistoryItem.timestamp, order: .reverse)]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,95 +41,97 @@ struct CleanupHistoryView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 8) {
-                ForEach(HistoryFilter.allCases) { choice in
-                    PageTabPill(
-                        title: choice.rawValue,
-                        symbol: choice.symbol,
-                        detail: "\(items.filter { choice.includes($0.state) }.count)",
-                        isSelected: filter == choice
-                    ) { filter = choice }
-                    .help(choice.helpText)
-                }
-                Spacer(minLength: 0)
+        HStack(spacing: 12) {
+            filterMenu
+            if let summary = model.cleanupHistory {
+                let visible = visibleItems
+                let bytes = visible.reduce(Int64(0)) { $0 + $1.bytes }
+                Text("\(visible.count) \(visible.count == 1 ? "item" : "items") · \(ByteFormatting.string(bytes))")
+                    .font(.mcControlLabel)
+                    .foregroundStyle(Token.Text.secondary)
+                    .lineLimit(1)
+                    .help(summaryText(summary))
             }
-
-            HStack(spacing: 12) {
-                if let summary = model.cleanupHistory {
-                    let visible = visibleItems
-                    let bytes = visible.reduce(Int64(0)) { $0 + $1.bytes }
-                    Text("\(visible.count) \(visible.count == 1 ? "item" : "items") · \(ByteFormatting.string(bytes))")
-                        .font(.mcControlLabel)
-                        .foregroundStyle(Token.Text.secondary)
-                        .help(summaryText(summary))
-                }
-                Spacer(minLength: 12)
-                FindField(text: $searchText, findRequest: findRequest)
-                    .frame(width: 180)
-                    .disabled(items.isEmpty)
-            }
+            Spacer(minLength: 0)
+            FindField(text: $searchText, findRequest: findRequest)
+                .frame(width: 180)
+                .disabled(items.isEmpty)
         }
         .padding(.horizontal, Token.Size.pageGutter)
         .padding(.top, Token.Size.pageGutter)
         .padding(.bottom, 12)
     }
 
-    /// The Trash view's list, not a native `Table`. `Table` paints its own backdrop —
-    /// the window material, which takes the desktop's tint — so this one page stood
-    /// brown against the opaque canvas every other page sits on, with AppKit's header
-    /// and alternating stripes where the rest of the app has a grouped box.
-    private var historyTable: some View {
-        ScrollView {
-            GroupedBox {
-                VStack(spacing: 0) {
-                    columnHeader
-                    Hairline()
-                    // Lazy: the log is read 5,000 records deep.
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(visibleItems.enumerated()), id: \.element.id) { index, item in
-                            VStack(spacing: 0) {
-                                if index > 0 { Hairline() }
-                                HistoryRow(item: item, onShowInTrash: { model.showInTrash(item) })
-                            }
-                        }
-                    }
+    private var filterMenu: some View {
+        Menu {
+            Picker("Result", selection: $filter) {
+                ForEach(HistoryFilter.allCases) { choice in
+                    Text("\(choice.rawValue) (\(items.filter { choice.includes($0.state) }.count))")
+                        .tag(choice)
+                        .help(choice.helpText)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
             }
-            .padding(.horizontal, Token.Size.pageGutter)
-            .padding(.top, 2)
-            .padding(.bottom, 22)
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 7) {
+                Text(filter.rawValue)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
         }
-        // Reset cached row positions when the visible set changes.
-        .id([filter.rawValue, query])
+        .menuStyle(.button)
+        .buttonStyle(PageActionButtonStyle(size: .small))
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Select a history filter")
+        .accessibilityLabel("History filter")
+        .accessibilityValue(filter.rawValue)
     }
 
-    /// Column labels use the same style as the other file lists.
-    private var columnHeader: some View {
-        HStack(spacing: Metrics.gap) {
-            sortHeader("Item", .name)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            sortHeader("Result", .result)
-                .frame(width: Metrics.result, alignment: .leading)
-            sortHeader("Date", .date)
-                .frame(width: Metrics.date, alignment: .leading)
-            sortHeader("Size", .size)
-                .frame(width: Metrics.size, alignment: .trailing)
-        }
-        .font(.mcControlLabel)
-        .foregroundStyle(Token.Text.tertiary)
-        .padding(.horizontal, Metrics.sidePadding)
-    }
-
-    private func sortHeader(_ title: String, _ key: SortKey) -> some View {
-        SortableColumnHeader(
-            title: title,
-            isActive: sortKey == key,
-            ascending: ascending,
-            alignment: key == .size ? .trailing : .leading,
-            action: { adopt(key) }
+    private var historyTable: some View {
+        CompactTable(
+            items: visibleItems,
+            selection: tableSelection,
+            sortOrder: $sortOrder,
+            columns: [
+                CompactTableColumn("Item", width: 280, min: 150, sort: KeyPathComparator(\CleanupHistoryItem.name)) { item, selected in
+                    CompactTableItem(
+                        name: item.name,
+                        path: FileEntry.abbreviate(item.originalURL.deletingLastPathComponent().path),
+                        iconURL: item.trashedURL ?? item.originalURL,
+                        isSelected: selected
+                    )
+                },
+                CompactTableColumn("Result", width: 160, min: 120, max: 200, sort: KeyPathComparator(\CleanupHistoryItem.resultSortRank)) { item, selected in
+                    ResultLabel(state: item.state, isSelected: selected)
+                },
+                CompactTableColumn("Date", width: 105, min: 95, max: 145, sort: KeyPathComparator(\CleanupHistoryItem.timestamp)) { item, selected in
+                    CompactTableDate(date: item.timestamp, isSelected: selected)
+                },
+                CompactTableColumn("Size", width: 78, min: 65, max: 100, sort: KeyPathComparator(\CleanupHistoryItem.bytes)) { item, selected in
+                    Text(item.bytes > 0 ? ByteFormatting.string(item.bytes) : "—")
+                        .monospacedDigit()
+                        .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            ],
+            itemName: { $0.name },
+            menuActions: { ids in
+                guard let item = visibleItems.first(where: { ids.contains($0.id) }),
+                      item.state == .availableInTrash, item.trashedURL != nil else { return [] }
+                return [CompactTableMenuAction(title: "Show in Trash") { model.showInTrash(item) }]
+            }
         )
+        .tableQuickLook(items: visibleItems, selection: tableSelection, url: { $0.quickLookURL })
+        .onChange(of: visibleItems.map(\.id)) { _, ids in
+            if let selection, !ids.contains(selection) { self.selection = nil }
+        }
+    }
+
+    private var tableSelection: Binding<Set<CleanupHistoryItem.ID>> {
+        Binding(get: { Set(selection.map { [$0] } ?? []) }, set: { selection = $0.first })
     }
 
     private var loadingState: some View {
@@ -176,25 +163,10 @@ struct CleanupHistoryView: View {
         return sorted(matching)
     }
 
-    /// Every key but the date falls back to newest first, so the rows inside one
-    /// result — several hundred "No longer in Trash" here — keep a readable order
-    /// instead of whatever the sort left them in. The fallback does not flip with
-    /// the column: reversing "Result" should not also turn its groups oldest first.
     private func sorted(_ items: [CleanupHistoryItem]) -> [CleanupHistoryItem] {
-        items.sorted { a, b in
-            let order: ComparisonResult = switch sortKey {
-            case .name:   a.name.localizedStandardCompare(b.name)
-            case .result: compare(a.state.sortRank, b.state.sortRank)
-            case .date:   compare(a.timestamp, b.timestamp)
-            case .size:   compare(a.bytes, b.bytes)
-            }
-            if order == .orderedSame { return a.timestamp > b.timestamp }
-            return (order == .orderedAscending) == ascending
-        }
-    }
-
-    private func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
-        a < b ? .orderedAscending : (a > b ? .orderedDescending : .orderedSame)
+        items.sorted(using: sortOrder + [
+            KeyPathComparator(\.timestamp, order: .reverse), KeyPathComparator(\.id)
+        ])
     }
 
     private func summaryText(_ summary: CleanupHistorySummary) -> String {
@@ -272,96 +244,37 @@ private extension CleanupHistoryState {
     }
 }
 
-private struct HistoryRow: View {
-    let item: CleanupHistoryItem
-    let onShowInTrash: () -> Void
+private extension CleanupHistoryItem {
+    var resultSortRank: Int { state.sortRank }
 
-    var body: some View {
-        HStack(spacing: Metrics.gap) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.name)
-                    .font(.mcRowTitle)
-                    .foregroundStyle(Token.Text.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(FileEntry.abbreviate(item.originalURL.deletingLastPathComponent().path))
-                    .font(.mcCaption)
-                    .foregroundStyle(Token.Text.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .help(item.originalURL.path)
-
-            Group {
-                if item.state == .availableInTrash, item.trashedURL != nil {
-                    Button(action: onShowInTrash) {
-                        Label("Show in Trash", systemImage: "trash")
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .help("Open the Trash and select this item.")
-                    .accessibilityHint("Selects \(item.name) in the Trash view.")
-                } else {
-                    ResultLabel(state: item.state)
-                }
-            }
-            .font(.mcSubtitle)
-            .frame(width: Metrics.result, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(item.timestamp, format: .dateTime.day().month(.abbreviated).year())
-                    .foregroundStyle(Token.Text.secondary)
-                Text(item.timestamp, format: .dateTime.hour().minute())
-                    .foregroundStyle(Token.Text.tertiary)
-            }
-            .font(.mcSubtitle)
-            .lineLimit(1)
-            .frame(width: Metrics.date, alignment: .leading)
-
-            Text(item.bytes > 0 ? ByteFormatting.string(item.bytes) : "—")
-                .font(.mcRowValue)
-                .foregroundStyle(Token.Text.primary)
-                .lineLimit(1)
-                .fixedSize()
-                .frame(width: Metrics.size, alignment: .trailing)
+    var quickLookURL: URL? {
+        switch state {
+        case .availableInTrash, .inTrash:
+            guard let trashedURL else { return nil }
+            if let trashedIdentity, FileIdentity.of(trashedURL) != trashedIdentity { return nil }
+            return trashedURL
+        case .restored, .failed:
+            return originalURL
+        case .removedPermanently, .noLongerInTrash:
+            return nil
         }
-        .padding(.horizontal, Metrics.sidePadding)
-        .frame(minHeight: 56)
-        .contentShape(Rectangle())
-        .hoverHighlight()
-    }
-}
-
-/// Shared widths keep the column labels and values aligned.
-private enum Metrics {
-    static let sidePadding: CGFloat = 18
-    static let gap: CGFloat = 11
-    static let result: CGFloat = 160
-    static let date: CGFloat = 110
-    static let size: CGFloat = 78
-}
-
-private struct Hairline: View {
-    var body: some View {
-        Rectangle()
-            .fill(Token.Fill.boxBorder)
-            .frame(height: Token.hairline)
     }
 }
 
 private struct ResultLabel: View {
     let state: CleanupHistoryState
+    let isSelected: Bool
 
     var body: some View {
         Label(title, systemImage: symbol)
-            .foregroundStyle(color)
+            .foregroundStyle(isSelected ? Color.white : color)
             .lineLimit(1)
             .help(helpText)
     }
 
     private var title: String {
         switch state {
-        case .availableInTrash: "Available in Trash"
+        case .availableInTrash: "In Trash"
         case .inTrash: "In Trash"
         case .restored: "Restored"
         case .removedPermanently: "Removed permanently"
@@ -383,10 +296,10 @@ private struct ResultLabel: View {
 
     private var color: Color {
         switch state {
-        case .availableInTrash: Token.textColor(.green)
+        case .availableInTrash: Token.Text.tableDetail
         case .failed: Token.textColor(.orange)
-        case .restored: Token.Text.secondary
-        case .inTrash, .removedPermanently, .noLongerInTrash: Token.Text.tertiary
+        case .restored: Token.Text.tableDetail
+        case .inTrash, .removedPermanently, .noLongerInTrash: Token.Text.tablePath
         }
     }
 

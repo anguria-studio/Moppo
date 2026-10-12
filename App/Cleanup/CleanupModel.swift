@@ -226,12 +226,42 @@ final class CleanupModel {
         let rows = rowsInCurrentView
         let candidates = scanFilter == .all
             ? rows + tileEntries(safeToRemove: true) : rows
+        return selectableEntries(from: candidates)
+    }
+
+    private func selectableEntries(from candidates: [FileEntry]) -> [FileEntry] {
         var seen = Set<FileEntry.ID>()
         let selectable = candidates.filter {
             !$0.isRemovalLocked && $0.kind != .appBundle && seen.insert($0.id).inserted
         }
         let covered = Set(selectable.flatMap(\.children).map(\.id))
         return selectable.filter { !covered.contains($0.id) }
+    }
+
+    private func selectableEntries(in category: ScanCategoryResult) -> [FileEntry] {
+        let candidates = scanFilter == .all
+            ? category.entries + category.tileRows(safeToRemove: true) : category.entries
+        return selectableEntries(from: candidates)
+    }
+
+    func selectableIDs(in category: ScanCategoryResult) -> Set<FileEntry.ID> {
+        Set(selectableEntries(in: category).map(\.id))
+    }
+
+    func selectedIDs(in category: ScanCategoryResult) -> Set<FileEntry.ID> {
+        CleanupSelection.ids(in: [category], selected: scannerSelection, scope: .all)
+    }
+
+    func setSelected(_ isSelected: Bool, in category: ScanCategoryResult) {
+        guard !isBusyWithDisk else { return }
+        if isSelected {
+            select(selectableEntries(in: category))
+        } else {
+            let rows = category.entries
+            let ids = Set((rows + rows.flatMap(\.children)).map(\.id))
+            scannerSelection.subtract(ids)
+            userDataRemovalOverrides.subtract(ids)
+        }
     }
 
     func cleanupSelection(in filter: ScanFilter) -> Set<FileEntry.ID> {
@@ -397,6 +427,11 @@ final class CleanupModel {
     }
 
     private(set) var cleanupRunningOwners: [FileEntry.RunningOwner] = []
+    private(set) var isRunningAppsNoticeDismissed = false
+
+    func dismissRunningAppsNotice() {
+        isRunningAppsNoticeDismissed = true
+    }
 
     private var runningCacheCandidates: [FileEntry] {
         var candidates: [FileEntry] = []
@@ -452,6 +487,7 @@ final class CleanupModel {
         guard canScan(automatic), pendingCleanUp == nil,
               let operation = operations.begin(.cleanupScan) else { return }
         let preferences = preferences()
+        isRunningAppsNoticeDismissed = false
         let scanID = UUID()
         self.scanID = scanID
         hasStartedInitialScan = true

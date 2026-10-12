@@ -48,9 +48,7 @@ public enum SnapshotCapture {
         // and each sits at depth 0 because none of them is below home.
         for (url, size) in measurement.rootMeasurements {
             guard let segment = StorageBreakdownService.segment(forRoot: url) else { continue }
-            let modelBytes = url == AppleIntelligenceStorage.systemRoot
-                ? measurement.breakdown.appleIntelligence?.allocatedBytes ?? 0 : 0
-            let bytes = size.allocatedBytes - modelBytes
+            let bytes = size.allocatedBytes
             guard bytes >= minimumNodeBytes else { continue }
             nodes.append(SnapshotNode(
                 path: url.standardizedFileURL.path,

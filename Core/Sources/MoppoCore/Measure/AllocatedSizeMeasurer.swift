@@ -210,7 +210,6 @@ public struct AllocatedSizeMeasurer: Sendable {
     public func measureSubtrees(
         of root: URL,
         depth: Int,
-        reportSkippedEntries: Bool = false,
         progress: (@Sendable (SizeMeasurement) -> Void)? = nil
     ) async throws -> [URL: SizeMeasurement] {
         precondition(depth >= 1, "depth must be at least 1")
@@ -228,8 +227,7 @@ public struct AllocatedSizeMeasurer: Sendable {
                     protectedPatterns: protectedPatterns,
                     cancelled: cancelled,
                     keys: keys,
-                    progress: progress,
-                    reportSkippedEntries: reportSkippedEntries
+                    progress: progress
                 )
                 if Self.isCloudOnly(rootValues) { walker.markCloudOnly(standardRoot) }
                 walker.enqueue(
@@ -396,7 +394,6 @@ private final class ParallelTreeWalker: @unchecked Sendable {
     private let keys: [URLResourceKey]
     private let progress: (@Sendable (SizeMeasurement) -> Void)?
     private let childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)?
-    private let reportSkippedEntries: Bool
 
     private let condition = NSCondition()
     private var stack: [WorkItem] = []
@@ -436,8 +433,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         cancelled: CancellationFlag,
         keys: [URLResourceKey],
         progress: (@Sendable (SizeMeasurement) -> Void)?,
-        childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)? = nil,
-        reportSkippedEntries: Bool = false
+        childrenProgress: (@Sendable ([URL: SizeMeasurement]) -> Void)? = nil
     ) {
         self.followSymlinks = followSymlinks
         self.protectedPatterns = protectedPatterns
@@ -445,7 +441,6 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         self.keys = keys
         self.progress = progress
         self.childrenProgress = childrenProgress
-        self.reportSkippedEntries = reportSkippedEntries
     }
 
     func enqueue(
@@ -627,7 +622,6 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             if let volume = item.volume,
                let entryVolume = values.volumeIdentifier as? NSObject,
                !entryVolume.isEqual(volume) {
-                if reportSkippedEntries { recordUnreadable(at: childAttribution) }
                 continue
             }
             if AllocatedSizeMeasurer.isCloudOnly(values) {
@@ -635,7 +629,6 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             }
             if values.isSymbolicLink == true {
                 guard followSymlinks else {
-                    if reportSkippedEntries { recordUnreadable(at: childAttribution) }
                     continue
                 }
                 // The setting is on: measure the target as if it lived here. The
@@ -654,7 +647,6 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                 if let volume = item.volume,
                    let targetVolume = target.volumeIdentifier as? NSObject,
                    !targetVolume.isEqual(volume) {
-                    if reportSkippedEntries { recordUnreadable(at: childAttribution) }
                     continue
                 }
                 if AllocatedSizeMeasurer.isCloudOnly(target) {

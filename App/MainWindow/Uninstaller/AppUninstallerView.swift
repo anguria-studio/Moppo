@@ -159,7 +159,7 @@ struct AppUninstallerView: View {
         let identifiers = Set(model.applicationLeftovers?.groups.map(\.bundleIdentifier) ?? [])
         let selected = identifiers.intersection(model.selectedLeftoverIdentifiers)
         return HStack(spacing: 12) {
-            MonochromeCheckbox(
+            SelectionCheckbox(
                 title: "Select All",
                 detail: "\(identifiers.count) \(identifiers.count == 1 ? "application" : "applications")",
                 state: !identifiers.isEmpty && identifiers.isSubset(of: selected) ? .on : .off,
@@ -193,7 +193,7 @@ struct AppUninstallerView: View {
             } else {
                 // Never ticked for the user: whether a removed application's
                 // settings matter depends on whether it is coming back.
-                GroupedBox {
+                GroupedBox(fill: Token.Fill.cardContent) {
                     VStack(spacing: 0) {
                         let groups = leftovers.groups.sorted { $0.totalBytes > $1.totalBytes }
                         ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
@@ -207,6 +207,7 @@ struct AppUninstallerView: View {
                             }
                         }
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
                 }
             }
         } else {
@@ -241,7 +242,7 @@ struct AppUninstallerView: View {
             .buttonStyle(.plain)
             .help("\(group.items.count) files")
 
-            MonochromeCheckbox(
+            SelectionCheckbox(
                 title: "Select \(group.displayName ?? group.bundleIdentifier)",
                 state: isSelected ? .on : .off,
                 isEnabled: !model.isBusyWithDisk && !model.isLoadingApplicationLeftovers,
@@ -280,7 +281,7 @@ struct AppUninstallerView: View {
         .padding(.horizontal, 13)
         .frame(height: 46)
         .contentShape(Rectangle())
-        .hoverHighlight()
+        .hoverHighlight(restingFill: Token.Fill.groupHeader)
         .onTapGesture {
             guard !model.isBusyWithDisk, !model.isLoadingApplicationLeftovers else { return }
             model.toggleLeftoverSelection(group.bundleIdentifier)
@@ -290,13 +291,12 @@ struct AppUninstallerView: View {
     private var libraryHeader: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                ForEach(AppUninstallerModel.UninstallerTab.allCases, id: \.self) { tab in
-                    PageTabPill(
-                        title: tab.rawValue,
-                        symbol: tab == .installed ? "app" : "archivebox",
-                        isSelected: model.uninstallerTab == tab
-                    ) { model.uninstallerTab = tab }
-                }
+                PageSegmentedControl(selection: $model.uninstallerTab, segments:
+                    AppUninstallerModel.UninstallerTab.allCases.map { tab in
+                        .init(id: tab, title: tab.rawValue,
+                              symbol: tab == .installed ? "app" : "archivebox")
+                    }
+                )
                 Spacer()
             }
             .padding(Token.Size.pageGutter)
@@ -328,17 +328,32 @@ struct AppUninstallerView: View {
                 .foregroundStyle(Token.Text.secondary)
                 .lineLimit(1)
             Button("Deselect All", action: model.clearApplicationSelection)
-                .buttonStyle(SecondaryButtonStyle())
+                .buttonStyle(PageActionButtonStyle(size: .small))
                 .fixedSize()
         }
     }
 
     @ViewBuilder
     private var installedActions: some View {
-        Picker("Sort", selection: $sortOrder) {
-            ForEach(SortOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        Menu {
+            Picker("Sort", selection: $sortOrder) {
+                ForEach(SortOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 7) {
+                Text(sortOrder.rawValue)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
         }
-        .labelsHidden()
+        .menuStyle(.button)
+        .buttonStyle(PageActionButtonStyle(size: .small))
+        .menuIndicator(.hidden)
+        .accessibilityLabel("Sort")
+        .accessibilityValue(sortOrder.rawValue)
         .fixedSize()
 
         // The one thing in this header that may narrow. At a fixed 180 pt it
@@ -428,7 +443,7 @@ struct AppUninstallerView: View {
                 // An application-only or Homebrew plan carries a longer label and
                 // will still shift; the ordinary one does not.
                 Button("Uninstall") {}
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
+                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
                     .controlSize(.regular)
                     .disabled(true)
                     .fixedSize()
@@ -513,7 +528,7 @@ struct AppUninstallerView: View {
                         .help(plan.preservedPaths.map(\.path).joined(separator: "\n"))
                     }
 
-                    GroupedBox {
+                    GroupedBox(fill: Token.Fill.cardContent) {
                         VStack(spacing: 0) {
                             let groups = groupedItems(plan)
                             ForEach(Array(groups.enumerated()), id: \.element.category) { index, group in
@@ -521,6 +536,7 @@ struct AppUninstallerView: View {
                                 itemSection(group.category, items: group.items)
                             }
                         }
+                        .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
                     }
                 }
                 .padding(.horizontal, Token.Size.pageGutter)
@@ -548,7 +564,7 @@ struct AppUninstallerView: View {
 
             if plan.managedPackage != nil {
                 Button("Uninstall with Homebrew", action: model.requestAppUninstall)
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
+                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
                 .controlSize(.regular)
                 .disabled(model.isBusyWithDisk)
                 .fixedSize()
@@ -557,7 +573,7 @@ struct AppUninstallerView: View {
                 // repeat it.
                 Button(plan.isApplicationOnly ? "Uninstall Application" : "Uninstall",
                        action: model.requestAppUninstall)
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
+                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
                     .controlSize(.regular)
                     .disabled(model.isBusyWithDisk)
                     .fixedSize()
@@ -708,6 +724,7 @@ struct AppUninstallerView: View {
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 7)
+            .background(Token.Fill.groupHeader, in: Rectangle())
 
             HairlineDivider()
 
@@ -842,11 +859,11 @@ struct AppUninstallerView: View {
             Spacer()
 
             Button("Back", action: model.resetAppUninstall)
-                .buttonStyle(PageActionButtonStyle())
+                .buttonStyle(PageActionButtonStyle(size: .small))
                 .fixedSize()
             Button("Uninstall Selected",
                    action: model.requestBatchUninstall)
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red)))
+                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
                 .controlSize(.regular)
                 .disabled(review.plans.isEmpty || model.isBusyWithDisk)
                 .fixedSize()

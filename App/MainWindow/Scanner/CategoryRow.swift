@@ -18,11 +18,12 @@ struct CategoryRow: View {
         if isActionable {
             Button(action: onToggle) { rowContent }
                 .buttonStyle(.plain)
-                .hoverHighlight()
+                .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.groupHeader)
                 .accessibilityLabel(accessibilityDescription)
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
         } else {
             rowContent
+                .background(Token.Fill.groupHeader, in: Rectangle())
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(accessibilityDescription)
         }
@@ -37,7 +38,11 @@ struct CategoryRow: View {
                 .opacity(isActionable ? 1 : 0)
                 .frame(width: 11)
                 .animation(.easeOut(duration: 0.18), value: isExpanded)
-            CategoryDot(color: category.color)
+            Image(systemName: iconStyle.symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Token.color(iconStyle.color))
+                .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(category.displayName)
                     .font(.mcToolbarTitle)
@@ -74,6 +79,19 @@ struct CategoryRow: View {
         if case .unavailable(let reason) = result.availability { return reason }
         let count = result.entries.count
         return "\(count) \(count == 1 ? "item" : "items")"
+    }
+
+    private var iconStyle: (symbol: String, color: ColorToken) {
+        switch category {
+        case .documentsAndFiles: ("doc.text", .orange)
+        case .applications: ("macwindow", .red)
+        case .applicationLeftovers: ("puzzlepiece.extension", .teal)
+        case .hiddenSystemData: ("eye.slash", .purple)
+        case .systemCaches: ("gearshape", .accent)
+        case .packageManagers: ("shippingbox", .green)
+        case .xcode: ("hammer", .indigo)
+        case .docker: ("shippingbox", .gray)
+        }
     }
 
     private var totalDisplay: String {

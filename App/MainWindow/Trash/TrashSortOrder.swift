@@ -7,7 +7,12 @@ enum TrashSortOrder: String, CaseIterable {
     case size = "Size"
 
     func sorted(_ items: [TrashItem], ascending: Bool = false) -> [TrashItem] {
-        items.sorted { left, right in
+        items.sorted { compare($0, $1, ascending: ascending) == .orderedAscending }
+    }
+
+    func compare(_ left: TrashItem, _ right: TrashItem, ascending: Bool) -> ComparisonResult {
+        guard left.id != right.id else { return .orderedSame }
+        let precedes: Bool = {
             let nameOrder = left.name.localizedStandardCompare(right.name)
             if self == .name, nameOrder != .orderedSame {
                 return (nameOrder == .orderedAscending) == ascending
@@ -25,6 +30,17 @@ enum TrashSortOrder: String, CaseIterable {
             if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
             // Equal dates and names keep the same order after a refresh.
             return left.id < right.id
-        }
+        }()
+        return precedes ? .orderedAscending : .orderedDescending
+    }
+}
+
+/// Native column headers use the existing Trash sort rules.
+struct TrashItemComparator: SortComparator {
+    let key: TrashSortOrder
+    var order: SortOrder = .forward
+
+    func compare(_ lhs: TrashItem, _ rhs: TrashItem) -> ComparisonResult {
+        key.compare(lhs, rhs, ascending: order == .forward)
     }
 }

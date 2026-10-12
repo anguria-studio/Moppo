@@ -348,6 +348,7 @@ final class AppModel {
     }
 
     private func completeTrashRemoval(_ outcome: CleanupOutcome, in destination: View, extraFailures: Int = 0) {
+        dashboard.recordTrashRemoval(outcome)
         let remaining = outcome.failed.count + extraFailures
         let success = remaining == 0 && outcome.removedCount > 0
         let count = outcome.removedCount
@@ -650,6 +651,7 @@ final class AppModel {
             removalCompletion = nil
             activity = .emptyingTrash(itemCount: count, totalBytes: bytes)
         case .emptiedTrash(let freedBytes, let skipped):
+            if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             removalCompletion = RemovalCompletion(
                 destination: .trash,
                 title: skipped == 0 ? "Trash emptied" : "Some items remain in Trash",
@@ -661,6 +663,7 @@ final class AppModel {
         case .restoringTrashItem(let name):
             activity = .restoringTrashItem(name: name)
         case .restored:
+            if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             fileDuplicates.invalidateResults()
             storageExplorer.invalidateCache()
             cleanup.invalidateResults()
@@ -699,7 +702,8 @@ final class AppModel {
                destination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
                 notice = unfinished
             }
-            if destination != .scanner { completeTrashRemoval(outcome, in: destination) }
+            if destination == .scanner { dashboard.recordTrashRemoval(outcome) }
+            else { completeTrashRemoval(outcome, in: destination) }
             if view == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,
                outcome.trashedCount == outcome.removedCount, outcome.deletedCount == 0 {
                 cleanupCompletion = CleanupCompletion(outcome: outcome)

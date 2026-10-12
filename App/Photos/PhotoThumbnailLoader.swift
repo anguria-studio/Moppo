@@ -2,13 +2,7 @@ import SwiftUI
 import Photos
 import AppKit
 
-/// Loads grid thumbnails, once each.
-///
-/// The review grid is the whole point of the feature — a bulk delete the user cannot
-/// see is not reviewable — so this is on the critical path for trust, not just for
-/// looks. Requests are cached and de-duplicated because SwiftUI rebuilds rows freely
-/// while scrolling, and an uncached loader would re-request the same asset (and, for
-/// anything not held locally, re-fetch it from iCloud) on every pass.
+/// Loads visible thumbnails and retains a bounded cache for scrolling back.
 @MainActor
 @Observable
 final class PhotoThumbnailLoader {
@@ -19,6 +13,11 @@ final class PhotoThumbnailLoader {
     @ObservationIgnored private let fetchImage: ImageFetcher
     @ObservationIgnored private let fetchPreview: PreviewFetcher
     @ObservationIgnored private var imageTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var pendingImages: [String] = []
+    @ObservationIgnored private var visibleImages: [String: Int] = [:]
+    @ObservationIgnored private var imageOrder: [String] = []
+    private static let thumbnailCacheLimit = 160
+    private static let concurrentThumbnailLimit = 6
     @ObservationIgnored private var previewTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var previewRequestIDs: [String: UUID] = [:]
     @ObservationIgnored private var generation = UUID()
@@ -34,6 +33,9 @@ final class PhotoThumbnailLoader {
         imageTasks.values.forEach { $0.cancel() }
         previewTasks.values.forEach { $0.cancel() }
         imageTasks.removeAll()
+        pendingImages.removeAll()
+        imageOrder.removeAll()
+        // Keep consumer counts until the visible views disappear.
         previewTasks.removeAll()
         previewRequestIDs.removeAll()
         inFlight.removeAll()
@@ -74,21 +76,70 @@ final class PhotoThumbnailLoader {
     /// The cached image, or nil while it loads.
     func image(for assetID: String) -> NSImage? { images[assetID] }
 
-    func load(_ assetID: String) {
-        guard images[assetID] == nil, !inFlight.contains(assetID) else { return }
-        inFlight.insert(assetID)
-        let allowsNetwork = allowsNetworkFetch()
+    func retain(_ assetID: String) {
+        visibleImages[assetID, default: 0] += 1
+        load(assetID)
+    }
 
-        let generation = generation
-        let fetchImage = fetchImage
-        imageTasks[assetID] = Task { [weak self] in
-            guard !Task.isCancelled else { return }
-            let image = await fetchImage(assetID, allowsNetwork)
-            guard let self, self.generation == generation, !Task.isCancelled else { return }
-            self.imageTasks[assetID] = nil
-            self.inFlight.remove(assetID)
-            guard let image, !self.previewThumbnailIDs.contains(assetID) else { return }
-            self.images[assetID] = image
+    func release(_ assetID: String) {
+        guard let count = visibleImages[assetID] else { return }
+        if count > 1 {
+            visibleImages[assetID] = count - 1
+            return
+        }
+        visibleImages[assetID] = nil
+        pendingImages.removeAll { $0 == assetID }
+        imageTasks.removeValue(forKey: assetID)?.cancel()
+        inFlight.remove(assetID)
+        trimImages()
+        startPendingImages()
+    }
+
+    func load(_ assetID: String) {
+        if images[assetID] != nil {
+            imageOrder.removeAll { $0 == assetID }
+            imageOrder.append(assetID)
+            return
+        }
+        guard !inFlight.contains(assetID) else { return }
+        inFlight.insert(assetID)
+        pendingImages.append(assetID)
+        startPendingImages()
+    }
+
+    private func startPendingImages() {
+        while imageTasks.count < Self.concurrentThumbnailLimit, !pendingImages.isEmpty {
+            let assetID = pendingImages.removeFirst()
+            let allowsNetwork = allowsNetworkFetch()
+            let generation = generation
+            let fetchImage = fetchImage
+            imageTasks[assetID] = Task { [weak self] in
+                guard !Task.isCancelled else { return }
+                let image = await fetchImage(assetID, allowsNetwork)
+                guard let self, self.generation == generation, !Task.isCancelled else { return }
+                self.imageTasks[assetID] = nil
+                self.inFlight.remove(assetID)
+                if let image, !self.previewThumbnailIDs.contains(assetID) {
+                    self.storeImage(image, for: assetID)
+                }
+                self.startPendingImages()
+            }
+        }
+    }
+
+    private func storeImage(_ image: NSImage, for assetID: String) {
+        images[assetID] = image
+        imageOrder.removeAll { $0 == assetID }
+        imageOrder.append(assetID)
+        trimImages()
+    }
+
+    private func trimImages() {
+        while images.count > Self.thumbnailCacheLimit,
+              let index = imageOrder.firstIndex(where: { visibleImages[$0] == nil }) {
+            let oldest = imageOrder.remove(at: index)
+            images[oldest] = nil
+            previewThumbnailIDs.remove(oldest)
         }
     }
 
@@ -144,8 +195,8 @@ final class PhotoThumbnailLoader {
 
             self.previews[assetID] = image
             if let thumbnail {
-                self.images[assetID] = thumbnail
                 self.previewThumbnailIDs.insert(assetID)
+                self.storeImage(thumbnail, for: assetID)
             }
             self.previewOrder.append(assetID)
             while self.previewOrder.count > Self.previewCacheLimit {

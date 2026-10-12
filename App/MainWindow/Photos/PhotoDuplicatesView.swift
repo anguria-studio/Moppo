@@ -3,19 +3,15 @@ import Photos
 import SwiftUI
 import MoppoCore
 
-/// The duplicate review grid.
-///
-/// The grid is the feature, not a nicety. Bulk-deleting photographs on the strength
-/// of a similarity score is only defensible if the user can see what is going and
-/// what is being kept, side by side, before anything happens — so every group shows
-/// its keeper next to its casualties at the same size, and the keeper is not
-/// selectable from here at all.
+/// Reviews photos with separate highlight, selection, and keeper states.
 struct PhotoDuplicatesView: View {
     @Bindable var model: PhotoDuplicatesModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var requiresAuthorization = false
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
+    @State private var review = PhotoReviewState()
+    @FocusState private var gridIsFocused: Bool
     private var thumbnails: PhotoThumbnailLoader { model.thumbnails }
 
     var body: some View {
@@ -61,12 +57,28 @@ struct PhotoDuplicatesView: View {
         }
         .onChange(of: model.isScanning, initial: true) { wasRunning, isRunning in
             if isRunning {
+                model.preview = nil
                 resultBeforeScan = model.results?.finishedAt
                 animateEmptyResult = false
             } else if wasRunning {
                 animateEmptyResult = model.results?.finishedAt != nil
                     && model.results?.finishedAt != resultBeforeScan
             }
+        }
+        .onChange(of: model.results?.finishedAt) { _, _ in
+            review.highlightedID = nil
+            model.preview = nil
+        }
+        .onChange(of: model.groups) { _, groups in
+            review.update(groups: groups)
+            if let preview = model.preview,
+               !groups.contains(where: { $0.id == preview.groupID && $0.assets.contains(where: { $0.id == preview.id }) }) {
+                model.preview = nil
+            }
+        }
+        .onChange(of: model.preview?.id) { _, id in
+            if let id { review.highlightedID = id }
+            else { gridIsFocused = true }
         }
         .onChange(of: model.similarity) { _, _ in animateEmptyResult = false }
         .onDisappear { animateEmptyResult = false }
@@ -158,7 +170,7 @@ struct PhotoDuplicatesView: View {
         let selectable = Set(model.groups.flatMap(\.removable).map(\.id))
         return VStack(spacing: 0) {
             HStack {
-                MonochromeCheckbox(
+                SelectionCheckbox(
                     title: "Select All",
                     detail: "\(selectable.count) items",
                     state: !selectable.isEmpty && selectable.isSubset(of: model.selection) ? .on : .off,
@@ -169,77 +181,136 @@ struct PhotoDuplicatesView: View {
                 }
                 .fixedSize()
                 Spacer()
-                if let results = model.results, results.skippedCount > 0 {
-                    Text(summary(results)).pageHeaderSummary()
+                HStack(spacing: 5) {
+                    Text("space")
+                        .font(.system(size: 10, design: .monospaced))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Token.Fill.control, in: RoundedRectangle(cornerRadius: 4))
+                    Text("Quick Look").font(.mcCaption)
                 }
+                .foregroundStyle(Token.Text.secondary)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Press Space to preview the highlighted photo")
             }
             .padding(.horizontal, Token.Size.pageGutter + 15)
             .padding(.top, 18)
             .padding(.bottom, 14)
+            .background { clearHighlightBackground }
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    ForEach(model.groups) { group in
-                        groupCard(group)
+            if let results = model.results, results.skippedCount > 0 {
+                Text(summary(results))
+                    .pageHeaderSummary()
+                    .padding(.horizontal, Token.Size.pageGutter)
+            }
+            GeometryReader { geometry in
+                let columns = max(1, Int((geometry.size.width - 2 * Token.Size.pageGutter - 24 + 12) / 144))
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            ForEach(model.groups) { group in
+                                groupCard(group, columns: columns)
+                            }
+                        }
+                        .padding(.horizontal, Token.Size.pageGutter)
+                        .padding(.top, 2)
+                        .padding(.bottom, Token.Size.pageGutter)
+                        .frame(minHeight: geometry.size.height, alignment: .top)
+                        .background { clearHighlightBackground }
+                    }
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($gridIsFocused)
+                    .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { key in
+                        let direction: PhotoReviewState.Direction = switch key.key {
+                        case .leftArrow: .left
+                        case .rightArrow: .right
+                        case .upArrow: .up
+                        default: .down
+                        }
+                        review.moveHighlight(direction, groups: model.groups, columns: columns)
+                        return .handled
+                    }
+                    .onKeyPress(.space) {
+                        guard let id = review.highlightedID,
+                              let group = model.groups.first(where: { $0.assets.contains(where: { $0.id == id }) }),
+                              let asset = group.assets.first(where: { $0.id == id }) else { return .ignored }
+                        showPreview(asset, in: group)
+                        return .handled
+                    }
+                    .onChange(of: review.highlightedID) { _, id in
+                        if let id { proxy.scrollTo(id) }
                     }
                 }
-                .padding(.horizontal, Token.Size.pageGutter)
-                .padding(.vertical, 14)
             }
         }
     }
 
-    private func groupCard(_ group: DuplicateGroup) -> some View {
-        GroupedBox {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Badge(text: kindLabel(group.kind), style: group.kind == .similar ? .neutral : .safe)
-                        // The badge names how the group was decided, not how sure
-                        // Moppo is — a "Looks similar" group at 0.03 is the same
-                        // photograph twice, and reads as a guess without this.
-                        .help(badgeExplanation(group.kind))
-                    // The number the threshold was compared against, on the groups
-                    // a number decided. Without it "Looks similar" is the same
-                    // sentence whether the match was tight or barely made, and the
-                    // similarity setting is a dial with no readout.
-                    if let distance = group.maximumDistance {
-                        Text(String(format: "%.2f", distance))
-                            .font(.mcCaption.monospacedDigit())
-                            .foregroundStyle(Token.Text.tertiary)
-                            .help("How far apart the two least alike photographs here are. "
-                                  + "Lower is more alike; zero is the same image. "
-                                  + "This group was formed at \(model.similarity.thresholdLabel) "
-                                  + "or closer.")
-                    }
-                    Text("\(group.count) copies · keeping 1")
-                        .font(.mcRowTitle)
-                        .foregroundStyle(Token.Text.primary)
-                    Text("(\(group.keeperReason.label))")
-                        .font(.mcSubtitle)
+    private func groupCard(_ group: DuplicateGroup, columns: Int) -> some View {
+        let selectedCount = group.removable.filter { model.selection.contains($0.id) }.count
+        return GroupedBox(fill: Token.Fill.cardContent) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(group.reviewTitle)
+                            .font(.mcRowTitle)
+                            .foregroundStyle(Token.Text.primary)
+                        HStack(spacing: 4) {
+                            Text(kindLabel(group.kind))
+                            if let distance = group.maximumDistance {
+                                Text("· \(String(format: "%.2f", distance)) match")
+                            }
+                            if let date = group.assets.first?.creationDate {
+                                Text("·")
+                                Text(date, format: .dateTime.day().month().year())
+                            }
+                        }
+                        .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
-                    if let date = group.keeper.creationDate {
-                        Text(date, format: .dateTime.day().month().year())
-                            .font(.mcSubtitle)
-                            .foregroundStyle(Token.Text.tertiary)
+                        .help(badgeExplanation(group.kind))
                     }
-                    Spacer()
-                    Button(model.isGroupSelected(group.id) ? "Deselect" : "Select \(group.removable.count)") {
+                    Spacer(minLength: 4)
+                    Text(selectedCount > 0
+                         ? "\(selectedCount) \(selectedCount == 1 ? "photo" : "photos") selected"
+                         : "\(group.removable.count) \(group.removable.count == 1 ? "photo" : "photos") available")
+                        .font(.mcControlLabel)
+                        .foregroundStyle(selectedCount > 0 ? Token.color(.accent) : Token.Text.duplicateAvailableStorage)
+                    Button(selectedCount == group.removable.count ? "Deselect" : "Select Copies") {
                         model.toggleGroup(group.id)
                     }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
+                    .disabled(model.isBusyWithDisk || model.isRegrouping)
                 }
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(group.assets) { asset in
-                            tile(asset, in: group)
-                        }
+                .padding(12)
+                .background(Token.Fill.groupHeader, in: Rectangle())
+                Rectangle().fill(Token.Fill.boxBorder).frame(height: Token.hairline)
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(132), spacing: 12), count: columns), alignment: .leading, spacing: 12) {
+                    ForEach(group.assets) { asset in
+                        tile(asset, in: group).id(asset.id)
                     }
-                    .padding(.vertical, 2)
                 }
+                .padding(12)
             }
-            .padding(12)
+            .background { clearHighlightBackground }
+            .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
         }
+    }
+
+    private var clearHighlightBackground: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture { review.highlightedID = nil }
+            .accessibilityHidden(true)
+    }
+
+    private func highlight(_ asset: PhotoAsset) {
+        review.highlightedID = asset.id
+        gridIsFocused = true
+    }
+
+    private func showPreview(_ asset: PhotoAsset, in group: DuplicateGroup) {
+        highlight(asset)
+        model.preview = .init(groupID: group.id, asset: asset)
     }
 
     private func badgeExplanation(_ kind: DuplicateGroup.Kind) -> String {
@@ -270,118 +341,120 @@ struct PhotoDuplicatesView: View {
     private func tile(_ asset: PhotoAsset, in group: DuplicateGroup) -> some View {
         let isKeeper = asset.id == group.keeper.id
         let selected = model.selection.contains(asset.id)
-
-        return VStack(spacing: 5) {
-            thumbnail(asset)
-                .overlay {
-                    RoundedRectangle(cornerRadius: Token.Radius.well, style: .continuous)
-                        .strokeBorder(
-                            isKeeper ? Token.color(.green).opacity(0.7)
-                                : (selected ? Token.color(.red) : Token.Fill.boxBorder),
-                            lineWidth: isKeeper || selected ? 2 : 1
-                        )
-                        .allowsHitTesting(false)
-                }
-            Text(isKeeper ? "Keep" : (selected ? "Delete" : "Keeping"))
-                .font(.mcBadge)
-                .foregroundStyle(
-                    isKeeper ? Token.textColor(.green)
-                        : (selected ? Token.textColor(.red) : Token.Text.tertiary)
-                )
-        }
-        .contentShape(Rectangle())
+        let highlighted = review.highlightedID == asset.id
+        return PhotoReviewThumbnail(
+            asset: asset, thumbnails: thumbnails, size: 132,
+            isKeeper: isKeeper, isSelected: selected, isHighlighted: highlighted
+        )
         .overlay {
             PhotoThumbnailClickTarget(
-                isSelected: Binding(
-                    get: { model.selection.contains(asset.id) },
-                    set: { isSelected in
-                        guard !isKeeper else { return }
-                        model.setSelected(isSelected, assetID: asset.id)
-                    }
-                ),
-                isSelectable: !isKeeper,
-                onPreview: { model.preview = PhotoDuplicatesModel.Preview(groupID: group.id, asset: asset) }
+                onHighlight: { highlight(asset) },
+                onPreview: { showPreview(asset, in: group) }
             )
         }
-        .help(isKeeper ? "Double-click to preview" : "Click to select. Double-click to preview.")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(isKeeper ? "Photo to keep" : "Photo")
-        .accessibilityValue(selected ? "Selected for deletion" : "Not selected for deletion")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction {
-            if !isKeeper { model.toggle(asset.id) }
-        }
-        .accessibilityAction(named: Text("Preview photo")) {
-            model.preview = PhotoDuplicatesModel.Preview(groupID: group.id, asset: asset)
-        }
+        .accessibilityLabel(asset.filename ?? "Photo")
+        .accessibilityValue(isKeeper ? "Kept photo" : (selected ? "Selected for deletion" : "Not selected for deletion"))
+        .accessibilityAddTraits(highlighted ? [.isSelected, .isButton] : .isButton)
+        .accessibilityAction { highlight(asset) }
+        .accessibilityAction(named: "Quick Look") { showPreview(asset, in: group) }
         .overlay(alignment: .top) {
             if !isKeeper {
                 HStack(spacing: 4) {
-                    Button {
+                    Button("Keep instead") {
                         model.keepInstead(groupID: group.id, assetID: asset.id)
-                    } label: {
-                        Text("Keep")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .frame(height: 24)
-                            .background(Color.black.opacity(0.65), in: Capsule())
-                            .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PhotoKeepButtonStyle())
                     .accessibilityLabel("Keep this photo instead")
-                    .help("Choose this photo as the copy to keep")
                     Spacer(minLength: 0)
-                    Button {
-                        model.toggle(asset.id)
-                    } label: {
-                        Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 17))
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(
-                                selected ? Color.white : Color.white.opacity(0.9),
-                                selected ? Token.color(.red) : Color.black.opacity(0.35)
-                            )
-                            .frame(width: 24, height: 24)
-                            .contentShape(Circle())
+                    Button { model.toggle(asset.id) } label: {
+                        ZStack {
+                            Circle().fill(selected ? Token.color(.accent) : Color.black.opacity(0.3))
+                            Circle().strokeBorder(.white, lineWidth: 1.5)
+                            if selected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 20, height: 20)
+                        .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(selected ? "Deselect photo" : "Select photo for deletion")
-                    .help(selected ? "Deselect photo" : "Select photo for deletion")
+                    .accessibilityValue(selected ? "Selected" : "Not selected")
                 }
-                .padding(5)
+                .padding(7)
+                .disabled(model.isBusyWithDisk || model.isRegrouping)
             }
         }
-        .contextMenu {
-            if !isKeeper {
-                Button("Keep This One Instead") {
-                    model.keepInstead(groupID: group.id, assetID: asset.id)
-                }
-            }
-            Button("Open") { model.preview = PhotoDuplicatesModel.Preview(groupID: group.id, asset: asset) }
-        }
-    }
-
-    private func thumbnail(_ asset: PhotoAsset) -> some View {
-        Group {
-            if let image = thumbnails.image(for: asset.id) {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Token.Fill.well
-            }
-        }
-        .frame(width: 108, height: 108)
-        .clipShape(RoundedRectangle(cornerRadius: Token.Radius.well, style: .continuous))
-        .task { thumbnails.load(asset.id) }
+        .help("Click to highlight. Double-click or press Space to preview.")
     }
 }
 
-/// Selects immediately and restores the prior selection when a double-click opens the preview.
+/// Shows the same state rings in the grid and the preview strip.
+struct PhotoReviewThumbnail: View {
+    let asset: PhotoAsset
+    let thumbnails: PhotoThumbnailLoader
+    let size: CGFloat
+    let isKeeper: Bool
+    let isSelected: Bool
+    let isHighlighted: Bool
+
+    var body: some View {
+        Group {
+            if let image = thumbnails.image(for: asset.id) {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                Token.Fill.well.overlay {
+                    Image(systemName: "photo").foregroundStyle(Token.Text.tertiary)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: Token.Radius.well))
+        .overlay {
+            RoundedRectangle(cornerRadius: Token.Radius.well)
+                .strokeBorder(isKeeper ? Token.color(.green) : (isSelected ? Token.color(.accent) : .clear), lineWidth: 2)
+        }
+        .overlay {
+            if isHighlighted {
+                RoundedRectangle(cornerRadius: Token.Radius.well + 3)
+                    .strokeBorder(Token.ink(light: 0.35, dark: 0.5), lineWidth: 2)
+                    .padding(-4)
+            }
+        }
+        .onAppear { thumbnails.retain(asset.id) }
+        .onDisappear { thumbnails.release(asset.id) }
+    }
+}
+
+private struct PhotoKeepButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        PhotoKeepButtonSurface(label: configuration.label, isPressed: configuration.isPressed)
+    }
+}
+
+private struct PhotoKeepButtonSurface<Label: View>: View {
+    let label: Label
+    let isPressed: Bool
+    @State private var isHovering = false
+
+    var body: some View {
+        label
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .frame(height: 20)
+            .background(Color.black.opacity(isPressed ? 0.9 : (isHovering ? 0.8 : 0.6)), in: Capsule())
+            .contentShape(Capsule())
+            .onHover { isHovering = $0 }
+    }
+}
+
+/// Handles photo clicks without changing the deletion selection.
 private struct PhotoThumbnailClickTarget: NSViewRepresentable {
-    @Binding var isSelected: Bool
-    let isSelectable: Bool
+    let onHighlight: () -> Void
     let onPreview: () -> Void
     @Environment(\.isEnabled) private var isEnabled
 
@@ -393,35 +466,74 @@ private struct PhotoThumbnailClickTarget: NSViewRepresentable {
 
     func updateNSView(_ nsView: ClickView, context: Context) {
         nsView.isEnabled = isEnabled
-        nsView.allowsSelection = isSelectable
-        nsView.selection = $isSelected
+        nsView.onHighlight = onHighlight
         nsView.onPreview = onPreview
     }
 
     final class ClickView: NSView {
         var isEnabled = true
-        var allowsSelection = true
-        var selection: Binding<Bool>?
+        var onHighlight: (() -> Void)?
         var onPreview: (() -> Void)?
-        private var selectionBeforeClick: Bool?
 
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func mouseDown(with event: NSEvent) {
             guard isEnabled else { return }
-            if event.clickCount == 1 {
-                selectionBeforeClick = selection?.wrappedValue
-                if allowsSelection, let selection {
-                    selection.wrappedValue.toggle()
-                }
-            } else if event.clickCount == 2 {
-                if allowsSelection, let selectionBeforeClick {
-                    selection?.wrappedValue = selectionBeforeClick
-                }
-                selectionBeforeClick = nil
-                onPreview?()
+            if event.clickCount == 1 { onHighlight?() }
+            else if event.clickCount == 2 { onPreview?() }
+        }
+    }
+}
+
+struct PhotoReviewState {
+    enum Direction { case left, right, up, down }
+    var highlightedID: String?
+
+    mutating func update(groups: [DuplicateGroup]) {
+        if let highlightedID, !groups.contains(where: { $0.assets.contains(where: { $0.id == highlightedID }) }) {
+            self.highlightedID = nil
+        }
+    }
+
+    mutating func moveHighlight(_ direction: Direction, groups: [DuplicateGroup], columns: Int) {
+        let columns = max(1, columns)
+        let rows = groups.flatMap { group in
+            stride(from: 0, to: group.assets.count, by: columns).map {
+                Array(group.assets[$0..<min($0 + columns, group.assets.count)])
             }
         }
+        let assets = rows.flatMap { $0 }
+        guard !assets.isEmpty else { highlightedID = nil; return }
+        guard let index = assets.firstIndex(where: { $0.id == highlightedID }) else {
+            highlightedID = (direction == .left || direction == .up) ? assets.last?.id : assets.first?.id
+            return
+        }
+        if direction == .left || direction == .right {
+            highlightedID = assets[min(max(index + (direction == .left ? -1 : 1), 0), assets.count - 1)].id
+        } else if let row = rows.firstIndex(where: { $0.contains(where: { $0.id == highlightedID }) }),
+                  let column = rows[row].firstIndex(where: { $0.id == highlightedID }) {
+            let target = min(max(row + (direction == .up ? -1 : 1), 0), rows.count - 1)
+            highlightedID = rows[target][min(column, rows[target].count - 1)].id
+        }
+    }
+}
+
+extension DuplicateGroup {
+    var reviewTitle: String {
+        let kindText = switch kind {
+        case .burst: "photos in a burst"
+        case .exact: "identical photos"
+        case .similar: "similar photos"
+        }
+        let reason = switch keeperReason {
+        case .favorite: "a favorite"
+        case .burstPick: "your burst pick"
+        case .edited: "the edited photo"
+        case .resolution: "the highest resolution"
+        case .earliest: "the original"
+        case .chosenByYou: "your choice"
+        }
+        return "\(count) \(kindText) · keeping \(reason)"
     }
 }
 
@@ -454,7 +566,7 @@ struct PhotoSimilarityPicker: View {
                 }
             }
             .menuStyle(.button)
-            .buttonStyle(PageActionButtonStyle())
+            .buttonStyle(PageActionButtonStyle(size: .small))
             .menuIndicator(.hidden)
             .accessibilityLabel("Match")
             .accessibilityValue(similarityLabel(model.similarity))

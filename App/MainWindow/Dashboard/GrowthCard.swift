@@ -4,10 +4,8 @@ import MoppoCore
 /// The Dashboard's "what grew" card: what changed since a dated measurement, and
 /// where.
 ///
-/// Every figure here is one measured number minus another measured number, taken
-/// under the same rules. Nothing is estimated. When the rules changed between the
-/// two measurements the card says so and shows no figures at all, because a
-/// difference across a rule change describes the rules, not the disk.
+/// Figures compare measurements made under the same rules.
+/// The card shows an empty state until a comparison is available.
 ///
 /// The card is dated history, not live data. A measurement in progress therefore
 /// leaves it exactly as it is — there is no measuring state and no skeleton. The
@@ -23,8 +21,6 @@ struct GrowthCard: View {
     /// show. The card needs the figures, not the snapshots they came from.
     enum Presentation: Equatable {
         case report(Report)
-        /// The two measurements were made under different rules.
-        case notComparable(reason: String)
         case insufficientHistory
     }
 
@@ -114,7 +110,7 @@ struct GrowthCard: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(PageActionButtonStyle(compact: true))
+        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
         // The label already carries a chevron, drawn at the size the design's
         // controls use rather than the one AppKit picks.
         .menuIndicator(.hidden)
@@ -129,10 +125,8 @@ struct GrowthCard: View {
         switch presentation {
         case .report(let report):
             reportBody(report)
-        case .notComparable(let reason):
-            message(reason, hint: "Measure again to start a new history.")
         case .insufficientHistory:
-            message("First measurement.", hint: "Growth appears after the next one.")
+            message("Collecting storage history.", hint: "Storage changes appear once enough measurements are available.")
         }
     }
 
@@ -208,9 +202,7 @@ extension GrowthCard.Presentation {
                 classDeltas: report.classDeltas,
                 attributions: Self.oneRowPerEvent(report.attributions)
             ))
-        case .notComparable(let reason):
-            self = .notComparable(reason: reason)
-        case .insufficientHistory:
+        case .notComparable, .insufficientHistory:
             self = .insufficientHistory
         }
     }
@@ -264,13 +256,11 @@ private struct AttributionRow: View {
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
                     .fixedSize()
-                if attribution.segment != .appleIntelligence {
-                    Text(FileEntry.abbreviate(attribution.path))
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
+                Text(FileEntry.abbreviate(attribution.path))
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 if let badge = Self.badge(for: attribution.kind) {
                     Badge(text: badge.text)
                         .lineLimit(1)
@@ -413,14 +403,8 @@ private struct GrowthChangeBar: View {
     .preferredColorScheme(.dark)
 }
 
-#Preview("What grew — first measurement") {
-    VStack(spacing: 16) {
-        GrowthCard(presentation: .insufficientHistory, baseline: .sevenDays)
-        GrowthCard(
-            presentation: .notComparable(reason: "The measurement rules changed."),
-            baseline: .sevenDays
-        )
-    }
+#Preview("What grew — collecting history") {
+    GrowthCard(presentation: .insufficientHistory, baseline: .sevenDays)
     .padding(24)
     .frame(width: Token.Size.windowWidth - Token.Size.sidebarWidth)
     .background(Token.pageBackground)

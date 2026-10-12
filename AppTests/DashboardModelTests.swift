@@ -5,6 +5,80 @@ import Testing
 @Suite("Dashboard feature ownership")
 @MainActor
 struct DashboardModelTests {
+
+    @Test("Free-space states respect both limits at their exact boundaries")
+    func spaceStates() {
+        let gb = ByteFormatting.bytesPerGB
+        #expect(DashboardSpaceState(freeBytes: 20 * gb, warnBelowGB: 20) == .healthy)
+        #expect(DashboardSpaceState(freeBytes: 20 * gb - 1, warnBelowGB: 20) == .low)
+        #expect(DashboardSpaceState(freeBytes: 5 * gb, warnBelowGB: 20) == .low)
+        #expect(DashboardSpaceState(freeBytes: 5 * gb - 1, warnBelowGB: 20) == .critical)
+        #expect(DashboardSpaceState(freeBytes: 0, warnBelowGB: 0) == .critical)
+        #expect(DashboardSpaceState(freeBytes: 30 * gb, warnBelowGB: 40) == .low)
+        #expect(DashboardSpaceState(freeBytes: 30 * gb, warnBelowGB: 20) == .healthy)
+    }
+
+    @Test("Critical space remains visible after dismissal and during a Trash notice")
+    func criticalWarningPriority() async throws {
+        let service = HeldDashboardMeasurements(holdVolume: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        #expect(!model.showsSpaceWarning(warnBelowGB: 20))
+        let lowRead = Task { await model.refreshVolumeInfo(notifyLowSpace: false) }
+        try await waitUntil { await service.volumeCount == 1 }
+        await service.finishVolume(0, dashboardVolume(free: 10 * ByteFormatting.bytesPerGB))
+        await lowRead.value
+        #expect(model.showsSpaceWarning(warnBelowGB: 20))
+        model.recordTrashRemoval(.init(removedBytes: 100, removedCount: 1, trashedCount: 1))
+        #expect(!model.showsSpaceWarning(warnBelowGB: 20))
+        let notice = try #require(model.trashNotice)
+        model.dismissTrashNotice(notice.id)
+        #expect(model.showsSpaceWarning(warnBelowGB: 20))
+        model.dismissLowSpaceWarning()
+        #expect(!model.showsSpaceWarning(warnBelowGB: 20))
+        let criticalRead = Task { await model.refreshVolumeInfo(notifyLowSpace: false) }
+        try await waitUntil { await service.volumeCount == 2 }
+        await service.finishVolume(1, dashboardVolume(free: 3 * ByteFormatting.bytesPerGB))
+        await criticalRead.value
+        #expect(model.showsSpaceWarning(warnBelowGB: 20))
+        model.recordTrashRemoval(.init(removedBytes: 100, removedCount: 1, trashedCount: 1))
+        #expect(model.showsSpaceWarning(warnBelowGB: 20))
+    }
+
+    @Test("Trash notices exclude permanent deletions and reject an old dismissal")
+    func trashNotices() throws {
+        let model = DashboardModel(service: HeldDashboardMeasurements(), persistence: HeldDashboardPersistence())
+        model.recordTrashRemoval(.init(removedBytes: 500, removedCount: 1, deletedCount: 1))
+        #expect(model.trashNotice == nil)
+        model.recordTrashRemoval(.init(removedBytes: 200, removedCount: 2, trashedCount: 2))
+        let first = try #require(model.trashNotice)
+        #expect(first.bytes == 200)
+        #expect(first.count == 2)
+        model.recordTrashRemoval(.init(removedBytes: 300, removedCount: 2, trashedCount: 1, deletedCount: 1))
+        let second = try #require(model.trashNotice)
+        #expect(second.bytes == nil)
+        #expect(second.count == 1)
+        model.dismissTrashNotice(first.id)
+        #expect(model.trashNotice?.id == second.id)
+        model.dismissTrashNotice(second.id)
+        #expect(model.trashNotice == nil)
+    }
+
+    @Test("Cleanup and duplicate removal feed the dashboard Trash notice")
+    func trashNoticeEvents() {
+        let app = AppModel(
+            hasFullDiskAccess: { true }, dashboardService: HeldDashboardMeasurements(),
+            dashboardPersistence: HeldDashboardPersistence()
+        )
+        app.view = .scanner
+        app.cleanup.onEvent(.removed(.init(removedBytes: 200, removedCount: 1, trashedCount: 1)))
+        #expect(app.dashboard.trashNotice?.bytes == 200)
+        app.fileDuplicates.onEvent(.removed(
+            .init(removedBytes: 300, removedCount: 1, trashedCount: 1), extraFailures: 0
+        ))
+        #expect(app.dashboard.trashNotice?.bytes == 300)
+        app.recovery.onEvent(.emptiedTrash(freedBytes: 500, skipped: 0))
+        #expect(app.dashboard.trashNotice == nil)
+    }
     @Test("Limited access loads cached figures without starting background measurements")
     func limitedLaunch() async throws {
         let service = HeldDashboardMeasurements()

@@ -5,6 +5,53 @@ import Testing
 @Suite("File duplicate feature ownership")
 @MainActor
 struct FileDuplicatesModelTests {
+    @Test("Review navigation preserves row order and skips hidden copies")
+    func reviewNavigation() throws {
+        let small = try #require(fileResults("small").groups.first)
+        let large = try #require(fileResults("large").groups.first)
+        var review = FileDuplicateReviewState()
+        review.reset(groups: [small, large])
+        let originalOrder = review.files(in: small).map(\.id)
+        review.moveHighlight(1, groups: [small, large])
+        #expect(review.highlightedID == small.keeper.id)
+        review.moveHighlight(1, groups: [small, large])
+        let highlighted = try #require(review.highlightedID)
+        let promoted = try #require(small.promoting(highlighted))
+        review.update(groups: [promoted, large])
+        #expect(review.files(in: promoted).map(\.id) == originalOrder)
+        #expect(review.highlightedID == highlighted)
+
+        review.toggleGroup(promoted)
+        #expect(review.highlightedID == nil)
+        #expect(review.visibleFiles(in: [promoted, large]).map(\.id) == large.files.map(\.id))
+        review.moveHighlight(1, groups: [promoted, large])
+        #expect(review.highlightedID == large.keeper.id)
+        review.moveHighlight(-1, groups: [promoted, large])
+        #expect(review.highlightedID == large.keeper.id)
+        review.update(groups: [promoted])
+        #expect(review.highlightedID == nil)
+        review.reset(groups: [promoted])
+        #expect(review.collapsedGroups.isEmpty)
+        #expect(review.files(in: promoted).map(\.id) == promoted.files.map(\.id))
+    }
+
+    @Test("Matching filenames show distinct folder locations")
+    func matchingFilenameLocations() throws {
+        let keeper = DuplicateFile(url: URL(filePath: "/fixture/Project/out/movie.mov"), logicalBytes: 10, allocatedBytes: 10)
+        let copy = DuplicateFile(url: URL(filePath: "/fixture/Export/movie.mov"), logicalBytes: 10, allocatedBytes: 10)
+        let group = FileDuplicateGroup(id: "locations", keeper: keeper, removable: [copy], contentDigest: "test")
+        #expect(group.sharedFilename == "movie.mov")
+        #expect(group.locationLabel(for: keeper) == "Project/out")
+        #expect(group.locationLabel(for: copy) == "Export")
+        #expect(group.headerDetail == "2 identical files · keeping the oldest")
+        let promoted = try #require(group.promoting(copy.id))
+        #expect(promoted.headerDetail == "2 identical files · keeping your choice")
+        let renamed = DuplicateFile(url: URL(filePath: "/fixture/Export/renamed.mov"), logicalBytes: 10, allocatedBytes: 10)
+        let differentNames = FileDuplicateGroup(id: "names", keeper: keeper, removable: [renamed], contentDigest: "test")
+        #expect(differentNames.sharedFilename == nil)
+        #expect(differentNames.headerDetail == ".mov · keeping the oldest")
+    }
+
     @Test("A stopped scan holds the guard and rejects late progress and results")
     func cancellationAndNavigation() async throws {
         let service = HeldFileScanner()
@@ -41,6 +88,7 @@ struct FileDuplicatesModelTests {
         app.view = .dashboard
         await service.report(1, completed: 32)
         try await waitUntil { files.progress?.completed == 32 }
+        await service.report(1, completed: 12)
         await service.report(0, completed: 99)
         await service.finish(1, results: fileResults("current"))
         try await waitUntil { !files.isScanning }

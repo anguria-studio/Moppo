@@ -1,6 +1,9 @@
 import SwiftUI
 import MoppoCore
 
+private let freeSpaceExplanation = "Free is unused disk space. Available space can also include temporary files that macOS can remove when needed. "
+    + "System Settings can therefore show more available space than Moppo shows as free."
+
 /// The Dashboard's capacity card: how full the volume is, and what is filling it.
 ///
 /// Every byte of capacity is accounted for here, `Unmeasured` included. That segment
@@ -21,14 +24,17 @@ struct CapacityCard: View {
     private let freeBytes: Int64
     private let breakdown: StorageBreakdown?
     private let isMeasuring: Bool
+    private let spaceState: DashboardSpaceState
 
-    init(volume: VolumeInfo, breakdown: StorageBreakdown?, isMeasuring: Bool = false) {
+    init(volume: VolumeInfo, breakdown: StorageBreakdown?, isMeasuring: Bool = false,
+         warnBelowGB: Int = SettingsStore.Defaults.warnBelowGB) {
         self.init(
             capacityBytes: volume.capacityBytes,
             usedBytes: volume.usedBytes,
             freeBytes: volume.freeBytes,
             breakdown: breakdown,
-            isMeasuring: isMeasuring
+            isMeasuring: isMeasuring,
+            warnBelowGB: warnBelowGB
         )
     }
 
@@ -39,13 +45,15 @@ struct CapacityCard: View {
         usedBytes: Int64,
         freeBytes: Int64,
         breakdown: StorageBreakdown?,
-        isMeasuring: Bool = false
+        isMeasuring: Bool = false,
+        warnBelowGB: Int = SettingsStore.Defaults.warnBelowGB
     ) {
         self.capacityBytes = capacityBytes
         self.usedBytes = usedBytes
         self.freeBytes = freeBytes
         self.breakdown = breakdown
         self.isMeasuring = isMeasuring
+        self.spaceState = DashboardSpaceState(freeBytes: freeBytes, warnBelowGB: warnBelowGB)
     }
 
     var body: some View {
@@ -92,38 +100,32 @@ struct CapacityCard: View {
 
     private var hero: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(ByteFormatting.string(usedBytes))
-                    .animatedTotal(usedBytes)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(ByteFormatting.string(freeBytes))
+                    .animatedTotal(freeBytes)
                     .font(.mcHero)
-                    .mcTracked(-0.68)   // -0.02em
-                    .foregroundStyle(Token.Text.emphasis)
-                    // A cramped window truncates the clause beside it, never the figure.
-                    .layoutPriority(1)
-
-                Text("of \(ByteFormatting.string(capacityBytes)) used")
-                    .font(.capacityHeroUnit)
-                    .foregroundStyle(Token.Text.tertiary)
+                    .mcTracked(-0.68)
+                Text("free")
+                    .font(.mcControlLabel)
+                    .fontWeight(.semibold)
             }
+            .foregroundStyle(Token.color(spaceState.color))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
+            .layoutPriority(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(ByteFormatting.string(freeBytes)) free")
+            .accessibilityValue(spaceState == .critical ? "Almost out of space" : (spaceState == .low ? "Running low on space" : "Above warning threshold"))
+            .help(freeSpaceExplanation)
 
             Spacer(minLength: 12)
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Available")
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.tertiary)
-                Text(ByteFormatting.string(freeBytes))
-                    .animatedTotal(freeBytes)
-                    .font(.mcSecondaryHero)
-                    .mcTracked(-0.26)   // -0.01em
-                    .foregroundStyle(Token.textColor(.green))
-                    .lineLimit(1)
-            }
-            // Sit the free figure on the used figure's baseline — not the eyebrow
-            // above it, which is what a plain first-baseline alignment would take.
-            .alignmentGuide(.firstTextBaseline) { $0[.lastTextBaseline] }
+            Text("\(ByteFormatting.string(usedBytes)) of \(ByteFormatting.string(capacityBytes)) used")
+                .font(.mcControlLabel)
+                .fontWeight(.semibold)
+                .foregroundStyle(Token.Text.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 
@@ -139,13 +141,11 @@ struct CapacityCard: View {
             legendColumn(
                 Array(entries.prefix(leftCount)),
                 unreadableCount: breakdown.unreadableCount,
-                appleIntelligence: breakdown.appleIntelligence,
                 valuesAreBones: valuesAreBones
             )
             legendColumn(
                 Array(entries.dropFirst(leftCount)),
                 unreadableCount: breakdown.unreadableCount,
-                appleIntelligence: breakdown.appleIntelligence,
                 valuesAreBones: valuesAreBones
             )
         }
@@ -154,7 +154,6 @@ struct CapacityCard: View {
     private func legendColumn(
         _ entries: [StorageSegment],
         unreadableCount: Int,
-        appleIntelligence: AppleIntelligenceStorage?,
         valuesAreBones: Bool
     ) -> some View {
         VStack(spacing: 0) {
@@ -162,7 +161,6 @@ struct CapacityCard: View {
                 LegendRow(
                     entry: entry,
                     unreadableCount: unreadableCount,
-                    appleIntelligence: appleIntelligence,
                     valueIsBone: valuesAreBones
                 )
             }
@@ -175,7 +173,6 @@ struct CapacityCard: View {
 private struct LegendRow: View {
     let entry: StorageSegment
     let unreadableCount: Int
-    let appleIntelligence: AppleIntelligenceStorage?
     /// A measurement is running: the name stands, the figure is not yet a fact.
     var valueIsBone = false
 
@@ -199,8 +196,7 @@ private struct LegendRow: View {
             // appears instantly and can never be clipped by the card.
             if let explanation = Self.explanation(
                 for: entry.id,
-                unreadableCount: unreadableCount,
-                appleIntelligence: appleIntelligence
+                unreadableCount: unreadableCount
             ) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 10))
@@ -226,9 +222,7 @@ private struct LegendRow: View {
                 SkeletonBone(width: 52, height: 10)
                     .skeletonPulse()
             } else {
-                Text(entry.id == .appleIntelligence
-                     ? appleIntelligence?.sizeLabel ?? ByteFormatting.string(entry.bytes)
-                     : ByteFormatting.string(entry.bytes))
+                Text(ByteFormatting.string(entry.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize()   // the name truncates first; the figure never does
@@ -240,12 +234,23 @@ private struct LegendRow: View {
 
     private static func explanation(
         for id: StorageSegmentID,
-        unreadableCount: Int,
-        appleIntelligence: AppleIntelligenceStorage?
+        unreadableCount: Int
     ) -> String? {
         switch id {
-        case .appleIntelligence:
-            return appleIntelligence?.explanation
+        case .free:
+            return freeSpaceExplanation
+        case .applications:
+            return "This category measures disk space in /Applications and ~/Applications. "
+                + "App data, caches, and apps stored elsewhere count in their folder categories. "
+                + "System Settings uses different category rules."
+        case .documentsDesktop:
+            return "This category measures your Documents and Desktop folders. "
+                + "Downloads and files elsewhere count in their folder categories. "
+                + "The Documents category in System Settings covers more locations."
+        case .macOSSystem:
+            return "This category includes system files and supporting volumes, such as Preboot, Recovery, and VM. "
+                + "It also includes readable system files on the Data volume. "
+                + "It differs from the macOS category in System Settings."
         case .systemData:
             return "Machine-wide files outside your home folder: /Library (support "
                 + "files for all apps and users), Homebrew in /opt, and service data "
@@ -336,7 +341,7 @@ private struct CapacityBar: View {
                         else if hovered == slice.id { hovered = nil }
                     }
                     .accessibilityLabel(slice.segment.displayName)
-                    .accessibilityValue(breakdown.sizeLabel(for: slice.segment))
+                    .accessibilityValue(ByteFormatting.string(slice.segment.bytes))
                 }
             }
             .overlay(alignment: .topLeading) { tooltip(for: slices, in: proxy.size.width) }
@@ -366,7 +371,7 @@ private struct CapacityBar: View {
                 Text(slice.segment.displayName)
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
-                Text(breakdown.sizeLabel(for: slice.segment))
+                Text(ByteFormatting.string(slice.segment.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
             }
@@ -440,12 +445,6 @@ private struct CapacityBar: View {
 
         return zip(visible, final).map { Slice(segment: $0, width: $1) }
     }
-}
-
-/// The hero row's trailing clause. 16pt belongs to this card alone, so it is not in
-/// the shared ramp — but it carries a figure, so it carries tabular digits.
-private extension Font {
-    static let capacityHeroUnit = Font.system(size: 16).monospacedDigit()
 }
 
 #Preview("Capacity card") {

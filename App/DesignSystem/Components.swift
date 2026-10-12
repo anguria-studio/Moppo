@@ -41,7 +41,7 @@ struct HeaderRemovalButtonStyle: ButtonStyle {
 }
 
 /// Keeps native checkbox behavior with colors that follow the current theme.
-struct MonochromeCheckbox: NSViewRepresentable {
+struct SelectionCheckbox: NSViewRepresentable {
     var title: String
     var detail: String? = nil
     var state: NSControl.StateValue
@@ -55,7 +55,7 @@ struct MonochromeCheckbox: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSButton {
         let button = NSButton()
-        button.cell = MonochromeCheckboxCell(textCell: "")
+        button.cell = SelectionCheckboxCell(textCell: "")
         button.setButtonType(.switch)
         button.allowsMixedState = true
         button.target = context.coordinator
@@ -95,7 +95,7 @@ struct MonochromeCheckbox: NSViewRepresentable {
     }
 }
 
-private final class MonochromeCheckboxCell: NSButtonCell {
+private final class SelectionCheckboxCell: NSButtonCell {
     override func drawImage(_ image: NSImage, withFrame frame: NSRect, in controlView: NSView) {
         let dark = controlView.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         let ink: NSColor = dark ? .white : .black
@@ -106,13 +106,14 @@ private final class MonochromeCheckboxCell: NSButtonCell {
                          width: side, height: side)
         let shape = NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4)
         if state == .off {
-            ink.withAlphaComponent(0.06 * alpha).setFill()
+            (dark ? ink.withAlphaComponent(0.06 * alpha) : NSColor.white.withAlphaComponent(alpha)).setFill()
             shape.fill()
-            ink.withAlphaComponent(0.45 * alpha).setStroke()
+            ink.withAlphaComponent((dark ? 0.45 : 0.5) * alpha).setStroke()
             shape.lineWidth = 1
             shape.stroke()
         } else {
-            ink.withAlphaComponent(alpha).setFill()
+            let selectedFill = dark ? ink : NSColor(srgbRed: 0.145, green: 0.388, blue: 0.922, alpha: 1)
+            selectedFill.withAlphaComponent(alpha).setFill()
             shape.fill()
             let mark = NSBezierPath()
             func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
@@ -144,15 +145,49 @@ private final class MonochromeCheckboxCell: NSButtonCell {
 /// padding, which fights every layout here; the design's box is a plain surface.
 struct GroupedBox<Content: View>: View {
     var radius: CGFloat = Token.Radius.box
+    var fill: Color = Token.Fill.box
     @ViewBuilder var content: Content
 
     var body: some View {
         content
-            .background(Token.Fill.box, in: RoundedRectangle(cornerRadius: radius))
+            .background(fill, in: RoundedRectangle(cornerRadius: radius))
             .overlay(
                 RoundedRectangle(cornerRadius: radius)
-                    .strokeBorder(Token.Fill.boxBorder, lineWidth: Token.hairline)
+                    .strokeBorder(Token.Fill.cardBorder, lineWidth: Token.hairline)
             )
+    }
+}
+
+/// Shares the alert surface, close button, and dismissal animation.
+struct NoticeBanner<Content: View>: View {
+    let title: String
+    var dismiss: (() -> Void)?
+    @ViewBuilder var content: Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GroupedBox(radius: Token.Radius.well) {
+            HStack(spacing: 12) {
+                content
+                if let dismiss {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.mcSubtitle)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Token.Text.secondary)
+                    .accessibilityLabel("Dismiss \(title)")
+                }
+            }
+            .padding(14)
+        }
+        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -6)))
     }
 }
 
@@ -216,7 +251,7 @@ struct Badge: View {
     private var background: Color {
         switch style {
         case .neutral: Token.Fill.control
-        case .safe: Token.color(.green).opacity(0.16)
+        case .safe: Token.Fill.safeBadge
         case .danger: Token.color(.red).opacity(0.16)
         case .positiveOutline: .clear
         }
@@ -253,9 +288,12 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .frame(minHeight: 28)
             .background(
-                isEnabled ? (isHovering ? Token.Fill.controlHover : Token.Fill.control) : Token.Fill.controlDisabled,
+                isEnabled ? (isHovering ? Token.Fill.buttonHover : Token.Fill.button) : Token.Fill.controlDisabled,
                 in: Capsule()
             )
+            .overlay {
+                Capsule().strokeBorder(isEnabled ? Token.Fill.buttonBorder : .clear, lineWidth: Token.hairline)
+            }
             .contentShape(Capsule())
             .opacity(isEnabled && configuration.isPressed ? 0.8 : 1)
             .onHover { isHovering = isEnabled && $0 }
@@ -434,12 +472,14 @@ struct SortableColumnHeader: View {
 /// Applies the design's hover fill to a list row.
 struct HoverHighlight: ViewModifier {
     var radius: CGFloat = 0
+    var fill: Color = Token.Fill.rowHover
+    var restingFill: Color = .clear
     @State private var isHovering = false
 
     func body(content: Content) -> some View {
         content
             .background(
-                isHovering ? Token.Fill.rowHover : .clear,
+                isHovering ? fill : restingFill,
                 in: RoundedRectangle(cornerRadius: radius)
             )
             .onHover { isHovering = $0 }
@@ -447,8 +487,12 @@ struct HoverHighlight: ViewModifier {
 }
 
 extension View {
-    func hoverHighlight(radius: CGFloat = 0) -> some View {
-        modifier(HoverHighlight(radius: radius))
+    func hoverHighlight(
+        radius: CGFloat = 0,
+        fill: Color = Token.Fill.rowHover,
+        restingFill: Color = .clear
+    ) -> some View {
+        modifier(HoverHighlight(radius: radius, fill: fill, restingFill: restingFill))
     }
 
     /// Uppercased, tracked, quaternary — eyebrows and column headers.
@@ -625,13 +669,43 @@ struct WindowDragHandle: NSViewRepresentable {
 
 /// Uses the same action size and response across pages.
 struct PageActionButtonStyle: ButtonStyle {
+    enum Size {
+        case regular, small, compact
+
+        var fontSize: CGFloat {
+            switch self {
+            case .regular: 14
+            case .small: 13
+            case .compact: 12
+            }
+        }
+
+        var horizontalPadding: CGFloat {
+            switch self {
+            case .regular: 20
+            case .small: 13
+            case .compact: 12
+            }
+        }
+
+        var height: CGFloat {
+            switch self {
+            case .regular: 38
+            case .small: Token.Size.tabControl
+            case .compact: 28
+            }
+        }
+    }
+
     var tint: Color? = nil
-    var compact = false
+    var size: Size = .regular
     var foreground: Color? = nil
+    var fill: Color = Token.Fill.button
+    var border: Color = Token.Fill.buttonBorder
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.modifier(PageActionSurface(
-            tint: tint, compact: compact, isPressed: configuration.isPressed,
-            foreground: foreground
+            tint: tint, size: size, isPressed: configuration.isPressed,
+            foreground: foreground, fill: fill, border: border
         ))
     }
 }
@@ -639,20 +713,28 @@ struct PageActionButtonStyle: ButtonStyle {
 /// Gives buttons and menus the same size, colors, and hover response.
 struct PageActionSurface: ViewModifier {
     var tint: Color? = nil
-    var compact = false
+    var size: PageActionButtonStyle.Size = .regular
     var isPressed = false
     var foreground: Color? = nil
+    var fill: Color = Token.Fill.button
+    var border: Color = Token.Fill.buttonBorder
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
 
     func body(content: Content) -> some View {
         content
-            .font(.system(size: compact ? 12 : 14, weight: .medium))
-            .padding(.horizontal, compact ? 12 : 20)
-            .frame(minHeight: compact ? 28 : 38)
+            .font(.system(size: size.fontSize, weight: .medium))
+            .padding(.horizontal, size.horizontalPadding)
+            .frame(minHeight: size.height)
             .foregroundStyle(isEnabled ? (foreground ?? (tint == nil ? Token.Text.primary : Color.white)) : Token.Text.disabled)
-            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.controlHover : Token.Fill.control)) : Token.Fill.controlDisabled, in: Capsule())
+            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.buttonHover : fill)) : Token.Fill.controlDisabled, in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(
+                    isEnabled && tint == nil ? border : .clear,
+                    lineWidth: Token.hairline
+                )
+            }
             .contentShape(Capsule())
             .opacity(isEnabled && isPressed ? 0.8 : 1)
             .onHover { isHovering = isEnabled && $0 }
@@ -662,45 +744,120 @@ struct PageActionSurface: ViewModifier {
     }
 }
 
-/// A separate pill for each page filter or presentation.
-struct PageTabPill: View {
-    let title: String
-    let symbol: String
-    var detail: String? = nil
-    let isSelected: Bool
-    var tint: Color = Token.textColor(.accent)
-    let action: () -> Void
+/// Switches between related views without animating the page content.
+struct PageSegmentedControl<Selection: Hashable>: View {
+    struct Segment: Identifiable {
+        let id: Selection
+        let title: String
+        let symbol: String
+        var detail: String? = nil
+        var tint: Tint = .blue
+    }
+
+    enum Tint {
+        case blue, green, amber
+
+        var fill: Color {
+            switch self {
+            case .blue: Token.Segments.blueFill
+            case .green: Token.Segments.greenFill
+            case .amber: Token.Segments.amberFill
+            }
+        }
+
+        var border: Color {
+            switch self {
+            case .blue: Token.Segments.blueBorder
+            case .green: Token.Segments.greenBorder
+            case .amber: Token.Segments.amberBorder
+            }
+        }
+
+        var foreground: Color {
+            switch self {
+            case .blue: Token.Segments.blueText
+            case .green: Token.textColor(.green)
+            case .amber: Token.textColor(.orange)
+            }
+        }
+
+        var icon: Color {
+            switch self {
+            case .blue: Token.Segments.blueText
+            case .green: Token.color(.green)
+            case .amber: Token.color(.orange)
+            }
+        }
+    }
+
+    @Binding var selection: Selection
+    let segments: [Segment]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: symbol).accessibilityHidden(true)
-                Text(title)
-                if let detail {
-                    Text(detail).monospacedDigit().opacity(isSelected ? 1 : 0.75)
+        HStack(spacing: 2) {
+            ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                segmentButton(segment, index: index)
+                    .anchorPreference(key: SegmentBoundsKey.self, value: .bounds) { [index: $0] }
+            }
+        }
+        .backgroundPreferenceValue(SegmentBoundsKey.self) { bounds in
+            GeometryReader { geometry in
+                if let index = segments.firstIndex(where: { $0.id == selection }), let anchor = bounds[index] {
+                    let rect = geometry[anchor]
+                    let tint = segments[index].tint
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(tint.fill)
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(tint.border, lineWidth: 1))
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: selection)
                 }
             }
-            .font(.mcRowTitle)
-            .foregroundStyle(isSelected ? tint : Token.Text.secondary)
-            .padding(.horizontal, 13)
-            .padding(.vertical, 8)
-            .background(isSelected ? tint.opacity(0.12) : Token.Fill.control, in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(
-                    isSelected ? tint.opacity(0.3) : Token.Fill.controlBorder,
-                    lineWidth: Token.hairline
-                )
+            .allowsHitTesting(false)
+        }
+        .padding(2)
+        .background(Token.Segments.track, in: RoundedRectangle(cornerRadius: 9))
+        .opacity(isEnabled ? 1 : 0.5)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func segmentButton(_ segment: Segment, index: Int) -> some View {
+        let selected = segment.id == selection
+        return Button { selection = segment.id } label: {
+            HStack(spacing: 6) {
+                Image(systemName: segment.symbol)
+                    .foregroundStyle(segment.tint == .blue && !selected ? Token.Text.secondary : segment.tint.icon)
+                    .accessibilityHidden(true)
+                Text(segment.title)
+                    .foregroundStyle(selected ? segment.tint.foreground : Token.Text.primary)
+                if let detail = segment.detail {
+                    Text(detail)
+                        .monospacedDigit()
+                        .foregroundStyle(Token.Text.secondary)
+                }
             }
-            .contentShape(Capsule())
-            .opacity(isEnabled ? 1 : 0.5)
+            .font(.mcControlLabel)
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(height: Token.Size.tabControl - 4)
+            .contentShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(detail ?? "")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isSelected)
+        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+        .help("\(segment.title) (⌘\(index + 1))")
+        .accessibilityLabel(segment.title)
+        .accessibilityValue(segment.detail ?? "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct SegmentBoundsKey: PreferenceKey {
+    static let defaultValue: [Int: Anchor<CGRect>] = [:]
+
+    static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
