@@ -146,8 +146,6 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case clean, uncommittedChanges, unavailable
     }
 
-    public var gitWorktreeStatus: GitWorktreeStatus?
-
     /// Compares commits with local remote-tracking data, which can be out of date.
     public enum GitWorktreePushStatus: Sendable, Equatable {
         case noUnpushedCommits
@@ -155,7 +153,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case unknown
     }
 
-    public var gitWorktreePushStatus: GitWorktreePushStatus?
+    public var gitWorktreeReview: GitWorktreeReview?
+    public var isGitWorktree: Bool { gitWorktreeReview != nil }
 
     /// The row and its children are one thing, removed together or not at all.
     ///
@@ -204,8 +203,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         manualRemoval: ManualRemoval? = nil,
         inUseBy: RunningOwner? = nil,
         safetyCaveat: String? = nil,
-        gitWorktreeStatus: GitWorktreeStatus? = nil,
-        gitWorktreePushStatus: GitWorktreePushStatus? = nil,
+        gitWorktreeReview: GitWorktreeReview? = nil,
         removalAction: RemovalAction? = nil,
         soundLibrary: AppleSoundLibrary.Inventory? = nil,
         childCount: Int? = nil,
@@ -223,8 +221,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.manualRemoval = manualRemoval
         self.inUseBy = inUseBy
         self.safetyCaveat = safetyCaveat
-        self.gitWorktreeStatus = gitWorktreeStatus
-        self.gitWorktreePushStatus = gitWorktreePushStatus
+        self.gitWorktreeReview = gitWorktreeReview
         self.removalAction = removalAction
         self.soundLibrary = soundLibrary
         self.childCount = childCount
@@ -290,7 +287,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// safe while the tile, correctly, refused to count one of them. The figure and
     /// the badge now ask the same question.
     public var regeneratesSafely: Bool {
-        isRegenerable && !isRemovalLocked && inUseBy == nil
+        (gitWorktreeReview?.isSafeToRemove ?? isRegenerable) && !isRemovalLocked && inUseBy == nil
     }
 
     /// The size shown beside a top-level Scanner row. Applications show only their

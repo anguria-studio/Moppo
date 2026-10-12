@@ -226,7 +226,16 @@ public struct CleanupService: Sendable {
 
                 let landed: URL?
                 do {
-                    landed = try Self.discard(target.url, disposition: disposition)
+                    if GitWorktreeDetector.isWorktree(target.url) {
+                        let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask,
+                            appropriateFor: target.url, create: true)
+                        var reserved: Set<String> = []
+                        let destination = Self.freeTrashPath(for: target.url, in: trash, reserved: &reserved)
+                        if try await GitWorktreeDetector.move(target.url, to: destination) { landed = destination }
+                        else { landed = try Self.discard(target.url, disposition: .trashed) }
+                    } else {
+                        landed = try Self.discard(target.url, disposition: disposition)
+                    }
                 } catch let error as CocoaError where error.code == .fileNoSuchFile {
                     // Already gone: someone else removed it since the scan. That is
                     // the outcome the user wanted, not a failure — reporting it as
@@ -723,6 +732,8 @@ public struct CleanupService: Sendable {
         (entry.kind == .appBundle && CategoryID.applications.alwaysMovesToTrash)
             || entry.protectionReason == .userData
             || entry.soundLibrary != nil
+            || entry.isGitWorktree || GitWorktreeDetector.isWorktree(entry.url)
+            || entry.children.contains { $0.isGitWorktree || GitWorktreeDetector.isWorktree($0.url) }
     }
 
     /// Printed by the privileged script for each item that really moved.

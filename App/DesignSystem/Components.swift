@@ -2,6 +2,32 @@ import AppKit
 import SwiftUI
 import MoppoCore
 
+/// Shows an explanation when the pointer enters the icon.
+struct HoverHelpIcon: View {
+    let systemName: String
+    let text: String
+    var color: Color = Token.Text.quaternary
+    var hoverColor: Color? = nil
+    @State private var isPresented = false
+
+    var body: some View {
+        Image(systemName: systemName)
+            .foregroundStyle(isPresented ? hoverColor ?? color : color)
+            .contentShape(Rectangle())
+            .onHover { isPresented = $0 && !text.isEmpty }
+            .popover(isPresented: $isPresented, arrowEdge: .top) {
+                Text(text)
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(12)
+                    .frame(width: 280)
+                    .presentationBackground(Token.chrome)
+            }
+            .accessibilityLabel(text)
+    }
+}
+
 /// Gives cards immediate feedback while the mouse button is held.
 struct CardPressButtonStyle: ButtonStyle {
     var cornerRadius: CGFloat = Token.Radius.card
@@ -216,7 +242,7 @@ struct CategoryDot: View {
 }
 
 struct Badge: View {
-    enum Style { case neutral, safe, danger, positiveOutline }
+    enum Style { case neutral, safe, review, danger, positiveOutline }
 
     let text: String
     var style: Style = .neutral
@@ -243,6 +269,7 @@ struct Badge: View {
         switch style {
         case .neutral: Token.Text.secondary
         case .safe: Token.textColor(.green)
+        case .review: Token.textColor(.orange)
         case .danger: Token.textColor(.red)
         case .positiveOutline: Token.textColor(.green).opacity(0.8)
         }
@@ -252,6 +279,7 @@ struct Badge: View {
         switch style {
         case .neutral: Token.Fill.control
         case .safe: Token.Fill.safeBadge
+        case .review: Token.color(.orange).opacity(0.16)
         case .danger: Token.color(.red).opacity(0.16)
         case .positiveOutline: .clear
         }

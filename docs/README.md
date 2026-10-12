@@ -287,22 +287,48 @@ folders, including `.codex` and `.claude`. Discovery searches up to eight folder
 levels and skips dependency stores and Git metadata. Worktree rows include their
 contents once in the parent total.
 
-Worktree badges report the state at scan time:
+Each worktree has one status pill and an information button in the name column.
+The branch icon and branch name identify the worktree.
+Select the information button or status pill to open the review dialog.
+If the worktree row has focus, press Space or double-click the row to open the dialog.
+The dialog shows checks, local files, and ignored files in separate lists.
+Select **Done**, the close button, or Escape to close the dialog.
 
+The status pill reports one result, in this order:
+
+- **In use:** Git locks or an open process were found.
 - **Uncommitted changes:** staged changes, unstaged changes, or untracked files.
 - **Unpushed commits:** commits absent from the compared remote-tracking branches.
-- **No unpushed commits:** both checks pass. This badge has muted green text and an outline.
-- **Status unavailable** or **Push status unknown:** Moppo could not complete the corresponding check.
+- **Has local files:** ignored files can contain local settings or user data.
+- **`Couldn't verify`:** a check failed or could not finish.
+- **Safe to remove:** all checks passed, and ignored files have recognized removal evidence.
+
+The dialog verdict uses the same title and color as the row.
+The sentence reports every known problem.
+Checks show local changes, unpushed commits, ignored files, Git locks, and process use.
+Unpushed commits includes the last fetch date. There is no separate push comparison row.
+The date gives context. Its age does not change the status.
+An incomplete check shows **`Couldn't check`**. Its question mark icon shows the reason in a tooltip.
 
 Branches use their upstream branch for comparison. Detached worktrees use all
 local remote-tracking branches. Branches without an upstream have unknown push
 status. Incomplete Git history also gives unknown push status.
 
 Checks make no network requests. Local remote data can be out of date.
-The uncommitted check excludes ignored files, which can include local settings
-or databases. Every worktree stays in Needs Review, including worktrees with
-no uncommitted changes or unpushed commits. A green outline does not mean
-Safe to Remove.
+Moppo checks installed Git before use. It does not start a Git installation.
+The review measures ignored files separately. Unknown ignored content remains under review.
+The open-file check covers the current user's visible processes. It cannot identify every inactive tool session.
+Close the owning tool session before removal.
+
+Only worktrees with complete checks can enter Safe to Remove or the initial selection.
+Other worktrees remain selectable. **Select anyway** selects removal and closes the dialog.
+The cleanup confirmation reports selected worktrees that need review, including with confirmation disabled.
+All worktree removals move to the Trash.
+If Git is available, Git moves the worktree and updates its registration.
+Git can refuse locked worktrees or unsupported moves. Moppo does not force these moves.
+If Git is unavailable, Moppo uses the normal Trash action.
+Put Back restores the worktree and updates Git registration when Git is available.
+Put Back requires a saved receipt. Emptying the Trash ends recovery through Moppo.
 
 ## The boot snapshot
 
