@@ -39,6 +39,8 @@ struct CLI {
                 try growth(baseline: arguments.dropFirst().first)
             case "scan":
                 try await scan()
+            case "ai":
+                try await ai()
             case "apps":
                 try await apps()
             case "uninstallable":
@@ -63,7 +65,7 @@ struct CLI {
             default:
                 print("moppo-cli — MoppoCore engine harness")
                 print("commands: volume | snapshots | breakdown | snapshot"
-                      + " | growth [previous|7d|cleanup] | scan | apps | uninstallable | models"
+                      + " | growth [previous|7d|cleanup] | scan | ai | apps | uninstallable | models"
                       + " | installer <app>"
                       + " | measure <path>"
                       + " | reclaim <path>")
@@ -72,6 +74,32 @@ struct CLI {
             FileHandle.standardError.write(Data("error: \(error)\n".utf8))
             exit(1)
         }
+    }
+
+    /// Lists AI storage sizes and protection without reading conversation contents.
+    static func ai() async throws {
+        let results = try await ScanCoordinator(scanners: [
+            ApplicationLeftoversScanner(), AIToolsScanner()
+        ]).scan(context: scanContext())
+        guard let result = results.categories.first(where: { $0.categoryID == .aiTools }) else { return }
+        print("AI Tools: " + ByteFormatting.string(result.totalBytes))
+        for entry in result.entries {
+            print("  " + ByteFormatting.string(entry.displayBytes) + "  " + entry.displayName)
+            for child in entry.children {
+                let status = child.isRemovalLocked ? "protected" : child.isGitWorktree ? "Git review" : "cache"
+                print("    " + ByteFormatting.string(child.allocatedBytes) + "  " + child.displayName + "  · " + status)
+            }
+        }
+        let leftovers = results.categories.first { $0.categoryID == .applicationLeftovers }?.entries ?? []
+        for entry in leftovers where entry.children.contains(where: {
+            result.claimedStoragePaths.contains($0.url.standardizedFileURL.path)
+        }) {
+            print("Application Leftovers: " + ByteFormatting.string(entry.displayBytes) + "  " + entry.displayName)
+            for child in entry.children {
+                print("  " + ByteFormatting.string(child.allocatedBytes) + "  " + FileEntry.abbreviate(child.url.path) + "  · review required")
+            }
+        }
+        print("Unreadable items: " + String(result.unreadableCount))
     }
 
     static func volume() async throws {
@@ -157,8 +185,7 @@ struct CLI {
         print("  \(applications.count) applications")
     }
 
-    static func scan() async throws {
-        let started = Date()
+    static func scanContext() async -> ScanContext {
         // The same ownership context the app builds, or the Application Leftovers
         // figures here describe a different product: without Launch Services this
         // harness once reported 26 orphaned groups and 9.8 GB where the app
@@ -199,13 +226,17 @@ struct CLI {
                 }
             }
         }
-        let context = ScanContext(
+        return ScanContext(
             runningApplications: owners,
             registeredApplicationBundleIdentifiers: registered,
             applicationLeftoverCandidates: candidates
         )
+    }
+
+    static func scan() async throws {
+        let started = Date()
         let results = try await ScanCoordinator.standard().scan(
-            context: context,
+            context: scanContext(),
             onProgress: { print("  … \($0.percent)% (\($0.completedCategories)/\($0.totalCategories))") }
         )
         print("")
@@ -222,7 +253,7 @@ struct CLI {
                     let opened = entry.lastOpened.map { Self.relative($0) } ?? "Never opened"
                     // A leftover group carries its size in its children, as the app's
                     // table knows; printing `allocatedBytes` showed every group as 0 B.
-                    print("      \(ByteFormatting.string(entry.removalAction == nil ? entry.allocatedBytes : entry.displayBytes).padding(toLength: 11, withPad: " ", startingAt: 0)) "
+                    print("      \(ByteFormatting.string(entry.rowDisplayBytes).padding(toLength: 11, withPad: " ", startingAt: 0)) "
                           + "\(entry.displayName)  \(entry.parentQualifier)  · \(opened)")
                 }
             case .empty:

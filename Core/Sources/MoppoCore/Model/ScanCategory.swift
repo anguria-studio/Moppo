@@ -5,6 +5,7 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
     case documentsAndFiles
     case applications
     case applicationLeftovers
+    case aiTools
     case hiddenSystemData
     case systemCaches
     case packageManagers
@@ -18,6 +19,7 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
         case .documentsAndFiles: "Documents & Files"
         case .applications:      "Applications"
         case .applicationLeftovers: "Application Leftovers"
+        case .aiTools:           "AI Tools"
         case .hiddenSystemData:  "Hidden & System Data"
         case .systemCaches:      "System Caches & Logs"
         case .packageManagers:   "Package Manager Caches"
@@ -34,6 +36,8 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
             "Apps in /Applications and ~/Applications. Least recently used first."
         case .applicationLeftovers:
             "Files with no installed application owner"
+        case .aiTools:
+            "Sessions, worktrees, downloaded runtimes, virtual machines, and local models"
         case .hiddenSystemData:
             "iOS backups, Mail downloads, hidden folders, large disk images"
         case .systemCaches:
@@ -55,6 +59,7 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
         case .documentsAndFiles: .orange
         case .applications:      .pink
         case .applicationLeftovers: .teal
+        case .aiTools:           .indigo
         case .hiddenSystemData:  .purple
         case .systemCaches:      .accent
         case .packageManagers:   .green
@@ -79,7 +84,7 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
         switch self {
         case .systemCaches, .packageManagers, .xcode: true
         case .documentsAndFiles, .applications, .applicationLeftovers,
-             .hiddenSystemData, .docker: false
+             .aiTools, .hiddenSystemData, .docker: false
         }
     }
 
@@ -111,6 +116,8 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
     public var unreadableCount: Int
     /// The reviewed identities behind the Application Leftovers rows.
     public var applicationLeftoverPlan: OrphanedAppLeftoverPlan?
+    /// Storage roots that this category owns, including excluded or unreadable roots.
+    public var claimedStoragePaths: [String] = []
 
     public var id: String { categoryID.rawValue }
 

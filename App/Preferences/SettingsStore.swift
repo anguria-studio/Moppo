@@ -159,7 +159,7 @@ final class SettingsStore {
         static func categoryEnabled(_ category: CategoryID) -> Bool {
             switch category {
             case .documentsAndFiles, .applications, .applicationLeftovers,
-                    .hiddenSystemData, .systemCaches, .packageManagers, .xcode:
+                    .aiTools, .hiddenSystemData, .systemCaches, .packageManagers, .xcode:
                 true
             case .docker:
                 false

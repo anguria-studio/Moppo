@@ -3,6 +3,12 @@ import Foundation
 /// One removable thing: a file, a folder, or an app bundle with its leftovers.
 public struct FileEntry: Sendable, Equatable, Identifiable {
 
+    /// Identifies the tool icon without changing storage ownership or removal rules.
+    public enum AITool: String, Sendable {
+        case codex = "Codex", claude = "Claude", cursor = "Cursor"
+        case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
+    }
+
     /// A removal workflow that needs more checks than ordinary file cleanup.
     public enum RemovalAction: Sendable, Equatable {
         case orphanedApplication(bundleIdentifier: String)
@@ -85,6 +91,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         /// Profiles, logins, history, documents. Locked by default; an interactive
         /// caller may authorize this exact row after a destructive warning.
         case userData
+        /// Storage shown for information. Ordinary cleanup cannot override this lock.
+        case inventory
     }
 
     /// How to remove something this app cannot: the explanation of what it is and
@@ -173,18 +181,20 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var removalAction: RemovalAction?
     /// The identities and owners checked before downloaded sound content moves.
     public var soundLibrary: AppleSoundLibrary.Inventory?
+    public var aiTool: AITool?
+    public var codexSession: CodexSessionReview?
 
+    /// Explains a permanent inventory lock in the row help and selection tooltip.
+    public var protectionExplanation: String?
     public var protectionReason: ProtectionReason?
     /// Any reason at all: drives the badge, nothing else.
     public var isProtectedFromRemoval: Bool { protectionReason != nil }
 
     /// Whether removal is actually refused.
     ///
-    /// Only two reasons lock by default: a running app (Finder refuses the same
-    /// trash operation, and it would fail), and user data (which needs an explicit
-    /// row-specific or app-uninstall authorization).
+    /// User data requires separate authorization. Running apps and inventory rows stay locked.
     public var isRemovalLocked: Bool {
-        protectionReason == .running || protectionReason == .userData
+        protectionReason != nil
             || manualRemoval != nil || dockerImage?.isRemovalLocked == true
     }
     /// Item count for folders, shown as `· 1,204 items`.
@@ -202,6 +212,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         lastOpened: Date? = nil,
         isRegenerable: Bool = false,
         protectionReason: ProtectionReason? = nil,
+        protectionExplanation: String? = nil,
         manualRemoval: ManualRemoval? = nil,
         dockerImage: DockerImage? = nil,
         inUseBy: RunningOwner? = nil,
@@ -209,6 +220,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         gitWorktreeReview: GitWorktreeReview? = nil,
         removalAction: RemovalAction? = nil,
         soundLibrary: AppleSoundLibrary.Inventory? = nil,
+        aiTool: AITool? = nil,
+        codexSession: CodexSessionReview? = nil,
         childCount: Int? = nil,
         children: [FileEntry] = []
     ) {
@@ -221,6 +234,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.lastOpened = lastOpened
         self.isRegenerable = isRegenerable
         self.protectionReason = protectionReason
+        self.protectionExplanation = protectionExplanation
         self.manualRemoval = manualRemoval
         self.dockerImage = dockerImage
         self.inUseBy = inUseBy
@@ -228,6 +242,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.gitWorktreeReview = gitWorktreeReview
         self.removalAction = removalAction
         self.soundLibrary = soundLibrary
+        self.aiTool = aiTool
+        self.codexSession = codexSession
         self.childCount = childCount
         self.children = children
     }
@@ -263,7 +279,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var displayBytes: Int64 {
         if dockerImage != nil { return allocatedBytes }
         if removalAction != nil { return reclaimableBytes }
-        return manualRemoval != nil ? totalBytesIncludingChildren : reclaimableBytes
+        return manualRemoval != nil || protectionReason == .inventory || codexSession != nil
+            ? totalBytesIncludingChildren : reclaimableBytes
     }
 
     /// Bytes among this row's children that regenerate and can actually be removed.

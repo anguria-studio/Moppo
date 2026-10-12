@@ -49,6 +49,7 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | Docker images | Select unused images and remove them through Docker. |
 | Storage Explorer | Browse a folder or volume with a table and treemap. Review selected items before removal. |
 | Developer folders | Inspect project files and Git worktrees. Review local files, commits, and removal checks. |
+| AI Tools | Inspect AI storage. Review Codex sessions, worktrees, and local models. Keep active sessions and VM files protected. |
 | Local AI models | Review Ollama, Hugging Face, and LM Studio models with shared storage information. |
 
 <a name="duplicates-and-applications"></a>

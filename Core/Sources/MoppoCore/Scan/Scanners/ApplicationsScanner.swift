@@ -381,7 +381,7 @@ public struct ApplicationsScanner: CategoryScanner {
         // them on demand.
         "com.anthropic.claudefordesktop": AppDataCuration(
             root: "Library/Application Support/Claude",
-            regenerable: ["Crashpad", "Partitions/*/Cache", "Partitions/*/Code Cache"],
+            regenerable: electronRegenerable + ["Partitions/*/Cache", "Partitions/*/Code Cache"],
             remainderName: "Claude settings and data"
         ),
 
@@ -396,6 +396,14 @@ public struct ApplicationsScanner: CategoryScanner {
                 "CachedProfilesData", "CachedConfigurations"
             ],
             remainderName: "Visual Studio Code settings and data"
+        ),
+
+        // Cursor keeps its desktop profile after the application is removed.
+        // Its stable bundle identifier links this named root to the leftover review.
+        "com.todesktop.230313mzl4w4u92": AppDataCuration(
+            root: "Library/Application Support/Cursor",
+            regenerable: electronRegenerable,
+            remainderName: "Cursor settings and data"
         ),
 
         // The ChatGPT desktop bundle currently identifies as `com.openai.codex`

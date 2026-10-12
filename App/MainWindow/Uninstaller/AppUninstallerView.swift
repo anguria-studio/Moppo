@@ -1028,21 +1028,6 @@ struct AppUninstallerView: View {
     }
 }
 
-/// Application icons by path. `NSWorkspace.icon(forFile:)` is synchronous and a
-/// card's body runs again whenever any figure lands, so an uncached grid asked for
-/// every icon once per application measured.
-@MainActor
-private enum ApplicationIcons {
-    private static let cache = NSCache<NSString, NSImage>()
-
-    static func icon(for url: URL) -> NSImage {
-        if let cached = cache.object(forKey: url.path as NSString) { return cached }
-        let icon = NSWorkspace.shared.icon(forFile: url.path)
-        cache.setObject(icon, forKey: url.path as NSString)
-        return icon
-    }
-}
-
 /// One installed application. The card toggles its tick; the chevron opens the
 /// review. The chevron is a sibling laid over the card, not a button inside the
 /// card's label — a button nested in a button's label does not get its own clicks.

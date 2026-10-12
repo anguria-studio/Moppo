@@ -86,6 +86,7 @@ struct CategoryRow: View {
         case .documentsAndFiles: ("doc.text", .orange)
         case .applications: ("macwindow", .red)
         case .applicationLeftovers: ("puzzlepiece.extension", .teal)
+        case .aiTools: ("sparkles", .indigo)
         case .hiddenSystemData: ("eye.slash", .purple)
         case .systemCaches: ("gearshape", .accent)
         case .packageManagers: ("shippingbox", .green)

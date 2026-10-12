@@ -199,9 +199,9 @@ public struct SystemCachesScanner: CategoryScanner {
                 if root == cachesRoot, IdentityState.isIdentityCache(named: url.lastPathComponent) {
                     continue
                 }
-                // Model stores are listed model by model, by Hidden & System Data.
+                // AI Tools owns model stores and downloaded runtimes.
                 if root == dotCacheRoot,
-                   LocalModelStores.dotCacheFolders.contains(url.lastPathComponent) {
+                   (LocalModelStores.dotCacheFolders.union(AIToolStorage.dotCacheFolders)).contains(url.lastPathComponent) {
                     continue
                 }
 

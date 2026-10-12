@@ -1,0 +1,22 @@
+{
+  "images": [
+    {
+      "filename": "Cursor-light.png",
+      "idiom": "universal"
+    },
+    {
+      "filename": "Cursor-dark.png",
+      "idiom": "universal",
+      "appearances": [
+        {
+          "appearance": "luminosity",
+          "value": "dark"
+        }
+      ]
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

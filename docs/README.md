@@ -50,7 +50,7 @@ Core/                         Swift package
   Sources/MoppoCore/          Scanning engine and cleanup services
     Measure/                 AllocatedSizeMeasurer, ByteFormatting
     System/                  Disk information, snapshots, process execution
-    Scan/                    Category scanners and scan coordination
+    Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
@@ -59,7 +59,7 @@ Core/                         Swift package
 App/                          SwiftUI app
   Cleanup/                   Cleanup model, services, and scheduler
   Dashboard/                 Dashboard model and measurement services
-  DesignSystem/              Shared controls, colors, and text styles
+  DesignSystem/              Shared controls, colors, text styles, and application icons
   Duplicates/                File duplicate model
   MainWindow/                Main views, sidebar, and sheets
   Photos/                    Photo model, PhotoKit access, and thumbnails
@@ -277,6 +277,35 @@ rules makes the two figures different kinds of measurement. The report states "n
 comparable" and shows no numbers. Moppo keeps this history in
 `~/Library/Application Support/Moppo/storage-history/`. Preferences › Advanced
 clears it.
+
+## AI storage
+
+AI Tools shows default Codex, Claude, and Cursor data paths.
+Tool rows use application icons. Child rows keep their file or folder icons.
+Bundled vendor icons identify tools when their desktop applications are absent.
+It also includes the existing Ollama, Hugging Face, and LM Studio model rows.
+Installed application bundles remain under Applications.
+AI Tools owns installed desktop support folders.
+If the application is absent, Application Leftovers owns its verified desktop data.
+Each folder appears in one category.
+App Uninstaller builds its own complete review when you select an application.
+
+Codex archived and inactive sessions require an explicit deletion review.
+Codex permanently deletes their history, child sessions, and related session files.
+Session deletion requires confirmation even when you disable general cleanup confirmation.
+Active writers, changed history, and changed child sessions stop deletion.
+Other session history, attachments, settings, unknown caches, and downloaded runtimes remain protected.
+Their allocated sizes appear in category totals. These totals do not promise that removal will free all listed space.
+Only verified desktop caches and worktrees with complete checks enter Safe to Remove.
+A running application removes its caches from Safe to Remove.
+Model removal keeps the existing shared-file rules and requires review.
+
+Claude VM rows separate the system disk, compressed runtime download, and session disk.
+The scanner measures allocated storage. It does not mount disks or read conversations.
+The system disk can contain Linux, installed tools, and task files.
+A folder name or file age does not make these files disposable.
+
+Read the [AI storage sources and limits](ai-storage.md) before you add storage rules.
 
 ## Scanner rows and Git worktrees
 

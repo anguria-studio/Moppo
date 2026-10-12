@@ -172,14 +172,14 @@ struct LocalModelStoresTests {
         try sandbox.file(".cache/huggingface/xet/chunks.bin", bytes: 2 * mb)
         try sandbox.file(".cache/sometool/blob", bytes: 2 * mb)
 
-        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: ScanContext())
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext())
         let system = try await SystemCachesScanner(
             cachesRoot: sandbox.home.appendingPathComponent("Library/Caches"),
             logsRoot: sandbox.home.appendingPathComponent("Library/Logs"),
             dotCacheRoot: sandbox.home.appendingPathComponent(".cache")
         ).scan(context: ScanContext())
 
-        let gemma = try #require(hidden.entries.first { $0.displayName == "gemma3:4b" })
+        let gemma = try #require(ai.entries.first { $0.displayName == "gemma3:4b" })
         #expect(gemma.parentDisplay.hasPrefix("Ollama model"))
         #expect(gemma.totalBytesIncludingChildren >= Int64(8 * mb))
         #expect(!gemma.isRegenerable && !gemma.isRemovalLocked)
@@ -190,17 +190,17 @@ struct LocalModelStoresTests {
 
         // The two repositories share seven megabytes, so they are one row and the
         // twelve go together. Apart, neither could have removed the seven.
-        let set = try #require(hidden.entries.first { $0.displayName == "org/alone + org/other" })
+        let set = try #require(ai.entries.first { $0.displayName == "org/alone + org/other" })
         #expect(set.totalBytesIncludingChildren >= Int64(12 * mb))
         #expect(set.parentDisplay.hasPrefix("2 Hugging Face models that share their weights"))
         #expect(set.removesAsUnit)
 
-        let offered = (hidden.entries + system.entries).flatMap { [$0] + $0.children }.map(\.url.path)
+        let offered = (ai.entries + system.entries).flatMap { [$0] + $0.children }.map(\.url.path)
         #expect(!offered.contains { $0.hasSuffix("/.ollama") || $0.hasSuffix("id_ed25519") })
         #expect(!offered.contains { $0.hasSuffix("/.cache/huggingface") })
         #expect(offered.filter { $0.hasSuffix("b7both") }.count == 1, "offered once, by the set")
-        #expect(hidden.entries.contains { $0.url.lastPathComponent == "xet" })
+        #expect(ai.entries.contains { $0.url.lastPathComponent == "xet" })
         #expect(system.entries.map(\.url.lastPathComponent) == ["sometool"])
-        #expect(hidden.safeToRemoveBytes == 0)
+        #expect(ai.safeToRemoveBytes == 0)
     }
 }
