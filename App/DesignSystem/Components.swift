@@ -158,6 +158,39 @@ struct GroupedBox<Content: View>: View {
     }
 }
 
+/// Shares the alert surface, close button, and dismissal animation.
+struct NoticeBanner<Content: View>: View {
+    let title: String
+    var dismiss: (() -> Void)?
+    @ViewBuilder var content: Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        GroupedBox(radius: Token.Radius.well) {
+            HStack(spacing: 12) {
+                content
+                if let dismiss {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                            dismiss()
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.mcSubtitle)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Token.Text.secondary)
+                    .accessibilityLabel("Dismiss \(title)")
+                }
+            }
+            .padding(14)
+        }
+        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -6)))
+    }
+}
+
 /// A recessed well — expanded table bodies, callouts, the exclusion list.
 struct Well<Content: View>: View {
     var radius: CGFloat = Token.Radius.well
@@ -711,61 +744,120 @@ struct PageActionSurface: ViewModifier {
     }
 }
 
-/// A separate pill for each page filter or presentation.
-struct PageTabPill: View {
-    struct LightPalette {
-        let foreground: Color
-        let selectedBackground: Color
-        let border: Color
+/// Switches between related views without animating the page content.
+struct PageSegmentedControl<Selection: Hashable>: View {
+    struct Segment: Identifiable {
+        let id: Selection
+        let title: String
+        let symbol: String
+        var detail: String? = nil
+        var tint: Tint = .blue
     }
 
-    let title: String
-    var symbol: String? = nil
-    var detail: String? = nil
-    let isSelected: Bool
-    var tint: Color = Token.textColor(.accent)
-    var lightPalette: LightPalette? = nil
-    let action: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
+    enum Tint {
+        case blue, green, amber
+
+        var fill: Color {
+            switch self {
+            case .blue: Token.Segments.blueFill
+            case .green: Token.Segments.greenFill
+            case .amber: Token.Segments.amberFill
+            }
+        }
+
+        var border: Color {
+            switch self {
+            case .blue: Token.Segments.blueBorder
+            case .green: Token.Segments.greenBorder
+            case .amber: Token.Segments.amberBorder
+            }
+        }
+
+        var foreground: Color {
+            switch self {
+            case .blue: Token.Segments.blueText
+            case .green: Token.textColor(.green)
+            case .amber: Token.textColor(.orange)
+            }
+        }
+
+        var icon: Color {
+            switch self {
+            case .blue: Token.Segments.blueText
+            case .green: Token.color(.green)
+            case .amber: Token.color(.orange)
+            }
+        }
+    }
+
+    @Binding var selection: Selection
+    let segments: [Segment]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
-                Text(title)
-                if let detail {
-                    Text(detail).monospacedDigit().opacity(isSelected ? 1 : 0.75)
+        HStack(spacing: 2) {
+            ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+                segmentButton(segment, index: index)
+                    .anchorPreference(key: SegmentBoundsKey.self, value: .bounds) { [index: $0] }
+            }
+        }
+        .backgroundPreferenceValue(SegmentBoundsKey.self) { bounds in
+            GeometryReader { geometry in
+                if let index = segments.firstIndex(where: { $0.id == selection }), let anchor = bounds[index] {
+                    let rect = geometry[anchor]
+                    let tint = segments[index].tint
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(tint.fill)
+                        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(tint.border, lineWidth: 1))
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: selection)
                 }
             }
-            .font(.mcRowTitle)
-            .foregroundStyle(isSelected ? (palette?.foreground ?? tint) : Token.Text.secondary)
-            .padding(.horizontal, 13)
-            .frame(minHeight: Token.Size.tabControl)
-            .background(background, in: Capsule())
-            .overlay {
-                Capsule().strokeBorder(
-                    isSelected ? (palette?.border ?? tint.opacity(0.3))
-                        : (colorScheme == .light ? Token.Fill.boxBorder : Token.Fill.controlBorder),
-                    lineWidth: Token.hairline
-                )
-            }
-            .contentShape(Capsule())
-            .opacity(isEnabled ? 1 : 0.5)
+            .allowsHitTesting(false)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(detail ?? "")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isSelected)
+        .padding(2)
+        .background(Token.Segments.track, in: RoundedRectangle(cornerRadius: 9))
+        .opacity(isEnabled ? 1 : 0.5)
+        .accessibilityElement(children: .contain)
     }
 
-    private var palette: LightPalette? { colorScheme == .light ? lightPalette : nil }
+    private func segmentButton(_ segment: Segment, index: Int) -> some View {
+        let selected = segment.id == selection
+        return Button { selection = segment.id } label: {
+            HStack(spacing: 6) {
+                Image(systemName: segment.symbol)
+                    .foregroundStyle(segment.tint == .blue && !selected ? Token.Text.secondary : segment.tint.icon)
+                    .accessibilityHidden(true)
+                Text(segment.title)
+                    .foregroundStyle(selected ? segment.tint.foreground : Token.Text.primary)
+                if let detail = segment.detail {
+                    Text(detail)
+                        .monospacedDigit()
+                        .foregroundStyle(Token.Text.secondary)
+                }
+            }
+            .font(.mcControlLabel)
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .frame(height: Token.Size.tabControl - 4)
+            .contentShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+        .help("\(segment.title) (⌘\(index + 1))")
+        .accessibilityLabel(segment.title)
+        .accessibilityValue(segment.detail ?? "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
 
-    private var background: Color {
-        if isSelected { return palette?.selectedBackground ?? tint.opacity(0.12) }
-        return Token.Fill.control
+private struct SegmentBoundsKey: PreferenceKey {
+    static let defaultValue: [Int: Anchor<CGRect>] = [:]
+
+    static func reduce(value: inout [Int: Anchor<CGRect>], nextValue: () -> [Int: Anchor<CGRect>]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 

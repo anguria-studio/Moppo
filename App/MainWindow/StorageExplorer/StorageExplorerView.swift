@@ -157,14 +157,12 @@ struct StorageExplorerView: View {
     /// from the rows clears them, as it does in any table on this platform.
     private var header: some View {
         PageHeader {
-            HStack(spacing: 8) {
-                ForEach(StorageExplorerPresentation.allCases) { option in
-                    PageTabPill(
-                        title: option.rawValue,
-                        isSelected: presentation == option
-                    ) { presentation = option }
+            PageSegmentedControl(selection: $presentation, segments:
+                StorageExplorerPresentation.allCases.map { option in
+                    .init(id: option, title: option.rawValue,
+                          symbol: option == .list ? "list.bullet" : "square.grid.2x2")
                 }
-            }
+            )
         } trailing: {
             Button {
                 model.refresh()

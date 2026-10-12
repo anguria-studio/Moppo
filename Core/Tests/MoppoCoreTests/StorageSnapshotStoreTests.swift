@@ -40,6 +40,38 @@ struct StorageSnapshotStoreTests {
 
     // MARK: - Writing and reading
 
+    @Test("Retired model storage merges into macOS without losing saved bytes")
+    func retiredStorageCategory() throws {
+        let original = GrowthFixture.snapshot(
+            used: 100_000_000_000,
+            named: [.macOSSystem: 30_000_000_000],
+            contract: GrowthFixture.contract(version: 2)
+        )
+        let encoded = try JSONEncoder().encode(original)
+        var json = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var raw = try #require(json["rawSegments"] as? [String: Any])
+        raw["macOSSystem"] = 24_000_000_000 as Int64
+        raw["appleIntelligence"] = 6_000_000_000 as Int64
+        json["rawSegments"] = raw
+        var breakdown = try #require(json["breakdown"] as? [String: Any])
+        var segments = try #require(breakdown["segments"] as? [[String: Any]])
+        let index = try #require(segments.firstIndex { $0["id"] as? String == "macOSSystem" })
+        segments[index]["bytes"] = 24_000_000_000 as Int64
+        segments.append(["id": "appleIntelligence", "bytes": 6_000_000_000 as Int64])
+        breakdown["segments"] = segments
+        breakdown["appleIntelligence"] = [
+            "allocatedBytes": 6_000_000_000 as Int64, "coverage": "complete", "macOSMajorVersion": 27
+        ]
+        json["breakdown"] = breakdown
+
+        let restored = try JSONDecoder().decode(StorageSnapshot.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(restored == original)
+        #expect(restored.breakdown.isConsistent)
+        let rewritten = try JSONEncoder().encode(restored)
+        #expect(!String(decoding: rewritten, as: UTF8.self).contains("appleIntelligence"))
+        #expect(try JSONDecoder().decode(StorageSnapshot.self, from: rewritten) == original)
+    }
+
     @Test("a measurement survives the round trip, dictionary keys included")
     func roundTrip() throws {
         let box = try Sandbox()

@@ -7,17 +7,12 @@ struct DuplicatesView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                ForEach(AppModel.DuplicateKind.allCases) { kind in
-                    PageTabPill(
-                        title: kind.title,
-                        symbol: kind == .files ? "doc.on.doc" : "photo.on.rectangle",
-                        isSelected: model.duplicateKind == kind
-                    ) {
-                        var transaction = Transaction(animation: nil)
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) { model.duplicateKind = kind }
+                PageSegmentedControl(selection: $model.duplicateKind, segments:
+                    AppModel.DuplicateKind.allCases.map { kind in
+                        .init(id: kind, title: kind.title,
+                              symbol: kind == .files ? "doc.on.doc" : "photo.on.rectangle")
                     }
-                }
+                )
                 if (model.duplicateKind == .photos && model.photoDuplicates.libraryAccess?.canSweep == true && model.photoDuplicates.unavailableReason == nil)
                     || (model.duplicateKind == .files && model.fileDuplicates.results != nil) {
                     Rectangle()

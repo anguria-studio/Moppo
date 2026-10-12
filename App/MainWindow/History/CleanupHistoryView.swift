@@ -41,37 +41,53 @@ struct CleanupHistoryView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                ForEach(HistoryFilter.allCases) { choice in
-                    PageTabPill(
-                        title: choice.rawValue,
-                        detail: "\(items.filter { choice.includes($0.state) }.count)",
-                        isSelected: filter == choice
-                    ) { filter = choice }
-                    .help(choice.helpText)
-                }
-                Spacer(minLength: 0)
-                FindField(text: $searchText, findRequest: findRequest)
-                    .frame(width: 180)
-                    .disabled(items.isEmpty)
+        HStack(spacing: 12) {
+            filterMenu
+            if let summary = model.cleanupHistory {
+                let visible = visibleItems
+                let bytes = visible.reduce(Int64(0)) { $0 + $1.bytes }
+                Text("\(visible.count) \(visible.count == 1 ? "item" : "items") · \(ByteFormatting.string(bytes))")
+                    .font(.mcControlLabel)
+                    .foregroundStyle(Token.Text.secondary)
+                    .lineLimit(1)
+                    .help(summaryText(summary))
             }
-
-            HStack(spacing: 12) {
-                if let summary = model.cleanupHistory {
-                    let visible = visibleItems
-                    let bytes = visible.reduce(Int64(0)) { $0 + $1.bytes }
-                    Text("\(visible.count) \(visible.count == 1 ? "item" : "items") · \(ByteFormatting.string(bytes))")
-                        .font(.mcControlLabel)
-                        .foregroundStyle(Token.Text.secondary)
-                        .help(summaryText(summary))
-                }
-                Spacer(minLength: 0)
-            }
+            Spacer(minLength: 0)
+            FindField(text: $searchText, findRequest: findRequest)
+                .frame(width: 180)
+                .disabled(items.isEmpty)
         }
         .padding(.horizontal, Token.Size.pageGutter)
         .padding(.top, Token.Size.pageGutter)
         .padding(.bottom, 12)
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            Picker("Result", selection: $filter) {
+                ForEach(HistoryFilter.allCases) { choice in
+                    Text("\(choice.rawValue) (\(items.filter { choice.includes($0.state) }.count))")
+                        .tag(choice)
+                        .help(choice.helpText)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            HStack(spacing: 7) {
+                Text(filter.rawValue)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(PageActionButtonStyle(size: .small))
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Select a history filter")
+        .accessibilityLabel("History filter")
+        .accessibilityValue(filter.rawValue)
     }
 
     private var historyTable: some View {

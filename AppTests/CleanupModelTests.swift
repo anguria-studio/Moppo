@@ -10,14 +10,22 @@ struct CleanupModelTests {
         let scanner = HeldCleanupScanner()
         let app = AppModel(hasFullDiskAccess: { true }, cleanupScanner: scanner)
         let cleanup = app.cleanup
+        cleanup.dismissRunningAppsNotice()
+        #expect(cleanup.isRunningAppsNoticeDismissed)
         cleanup.startScan(refreshOverview: false)
+        #expect(!cleanup.isRunningAppsNoticeDismissed)
         try await waitUntil { await scanner.requestCount == 1 }
+        app.view = .history
+        cleanup.dismissRunningAppsNotice()
+        app.view = .scanner
+        #expect(cleanup.isRunningAppsNoticeDismissed)
         app.view = .history
         #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.isBusyWithDisk)
         cleanup.cancelScan()
         #expect(cleanup.isInterruptingScan)
         cleanup.startScan(refreshOverview: false)
+        #expect(cleanup.isRunningAppsNoticeDismissed)
         #expect(await scanner.requestCount == 1)
         await scanner.report(0, percent: 99)
         await scanner.finish(0, results: cleanupResults([]))
@@ -28,6 +36,7 @@ struct CleanupModelTests {
         #expect(app.view == .history)
 
         cleanup.startScan(automatic: true, refreshOverview: false)
+        #expect(!cleanup.isRunningAppsNoticeDismissed)
         try await waitUntil { await scanner.requestCount == 2 }
         #expect(app.view == .history)
         await scanner.report(1, percent: 32)

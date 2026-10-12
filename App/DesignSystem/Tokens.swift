@@ -311,22 +311,39 @@ enum Token {
         dark: .black.withAlphaComponent(0.40)
     )
 
-    /// Bright Cleanup filters retain dark text on pastel surfaces in light mode.
-    enum CleanupTabs {
-        static let all = PageTabPill.LightPalette(
-            foreground: Color(red: 0.333, green: 0.180, blue: 0.690),
-            selectedBackground: Color(red: 0.843, green: 0.776, blue: 1),
-            border: Color(red: 0.690, green: 0.557, blue: 0.910).opacity(0.45)
+    /// Segmented controls use a neutral track and semantic selection colors.
+    enum Segments {
+        static let track = Token.dynamic(
+            light: NSColor(srgbRed: 244 / 255, green: 244 / 255, blue: 246 / 255, alpha: 1),
+            dark: NSColor(white: 41 / 255, alpha: 1)
         )
-        static let safe = PageTabPill.LightPalette(
-            foreground: Color(red: 0.086, green: 0.392, blue: 0.165),
-            selectedBackground: Color(red: 0.725, green: 0.922, blue: 0.757),
-            border: Color(red: 0.467, green: 0.792, blue: 0.525).opacity(0.45)
+        static let blueFill = Token.dynamic(
+            light: NSColor(srgbRed: 227 / 255, green: 237 / 255, blue: 253 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 20 / 255, green: 42 / 255, blue: 68 / 255, alpha: 1)
         )
-        static let review = PageTabPill.LightPalette(
-            foreground: Color(red: 0.471, green: 0.259, blue: 0.016),
-            selectedBackground: Color(red: 1, green: 0.847, blue: 0.541),
-            border: Color(red: 0.890, green: 0.643, blue: 0.220).opacity(0.45)
+        static let blueBorder = Token.dynamic(
+            light: NSColor(srgbRed: 195 / 255, green: 215 / 255, blue: 247 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 36 / 255, green: 72 / 255, blue: 116 / 255, alpha: 1)
+        )
+        static let blueText = Token.dynamic(
+            light: NSColor(srgbRed: 47 / 255, green: 111 / 255, blue: 219 / 255, alpha: 1),
+            dark: .systemBlue
+        )
+        static let greenFill = Token.dynamic(
+            light: NSColor(srgbRed: 223 / 255, green: 243 / 255, blue: 227 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 29 / 255, green: 60 / 255, blue: 37 / 255, alpha: 1)
+        )
+        static let greenBorder = Token.dynamic(
+            light: NSColor(srgbRed: 182 / 255, green: 226 / 255, blue: 193 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 44 / 255, green: 89 / 255, blue: 55 / 255, alpha: 1)
+        )
+        static let amberFill = Token.dynamic(
+            light: NSColor(srgbRed: 255 / 255, green: 237 / 255, blue: 199 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 65 / 255, green: 47 / 255, blue: 17 / 255, alpha: 1)
+        )
+        static let amberBorder = Token.dynamic(
+            light: NSColor(srgbRed: 240 / 255, green: 210 / 255, blue: 140 / 255, alpha: 1),
+            dark: NSColor(srgbRed: 102 / 255, green: 73 / 255, blue: 25 / 255, alpha: 1)
         )
     }
 

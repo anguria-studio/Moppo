@@ -123,11 +123,7 @@ public struct StorageBreakdownService: Sendable {
         let dataSideSystemURL = URL(
             fileURLWithPath: DiskInfoService.dataVolumeMountPoint + "/System"
         ).standardizedFileURL
-        let systemTree = try await measurer.measureSubtrees(
-            of: dataSideSystemURL, depth: 3, reportSkippedEntries: true
-        )
-        let dataSideSystem = systemTree[dataSideSystemURL] ?? SizeMeasurement(unreadableCount: 1)
-        let appleIntelligence = AppleIntelligenceStorage.classify(systemTree: systemTree)
+        let dataSideSystem = try await measurer.measure(dataSideSystemURL)
         rootMeasurements[dataSideSystemURL] = dataSideSystem
         progress?(0.7)
 
@@ -168,8 +164,7 @@ public struct StorageBreakdownService: Sendable {
         let otherFilesInHome = max(0, homeTotal - accountedInHome)
 
         var raw: [StorageSegmentID: Int64] = [
-            .macOSSystem: otherVolumes + dataSideSystem.allocatedBytes - appleIntelligence.allocatedBytes,
-            .appleIntelligence: appleIntelligence.allocatedBytes,
+            .macOSSystem: otherVolumes + dataSideSystem.allocatedBytes,
             .systemData: systemDataBytes,
             .documentsDesktop: documentsDesktop,
             .downloads: downloads,
@@ -196,8 +191,7 @@ public struct StorageBreakdownService: Sendable {
             capacityBytes: volume.capacityBytes,
             rawSegments: raw,
             unreadableCount: homeUnreadable + systemDataUnreadable
-                + dataSideSystem.unreadableCount + systemApplications.unreadableCount,
-            appleIntelligence: appleIntelligence
+                + dataSideSystem.unreadableCount + systemApplications.unreadableCount
         )
 
         return StorageMeasurement(

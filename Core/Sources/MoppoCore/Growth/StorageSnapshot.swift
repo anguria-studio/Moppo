@@ -13,7 +13,7 @@ public struct MeasurementContract: Codable, Sendable, Equatable {
     /// deduplication, the symlink policy, the root tables, the node depth, or the
     /// node threshold. Snapshots written before the change then read as what they
     /// are — a different measurement — instead of being subtracted from a new one.
-    public static let currentVersion = 2
+    public static let currentVersion = 3
 
     public let version: Int
     public let homePath: String
@@ -154,5 +154,27 @@ public struct StorageSnapshot: Codable, Sendable, Equatable, Identifiable {
         self.rawSegments = rawSegments
         self.breakdown = breakdown
         self.nodes = nodes
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        measuredAt = try values.decode(Date.self, forKey: .measuredAt)
+        trigger = try values.decode(SnapshotTrigger.self, forKey: .trigger)
+        contract = try values.decode(MeasurementContract.self, forKey: .contract)
+        volume = try values.decode(VolumeInfo.self, forKey: .volume)
+        breakdown = try values.decode(StorageBreakdown.self, forKey: .breakdown)
+        nodes = try values.decode([SnapshotNode].self, forKey: .nodes)
+        let saved = try values.decode([String: Int64].self, forKey: .rawSegments)
+        var merged: [StorageSegmentID: Int64] = [:]
+        for (name, bytes) in saved {
+            guard let segment = StorageSegmentID.storedID(name) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .rawSegments, in: values, debugDescription: "Unknown storage category: \(name)"
+                )
+            }
+            merged[segment, default: 0] += bytes
+        }
+        rawSegments = merged
     }
 }

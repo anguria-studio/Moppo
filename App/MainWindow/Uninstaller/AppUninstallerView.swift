@@ -291,13 +291,12 @@ struct AppUninstallerView: View {
     private var libraryHeader: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                ForEach(AppUninstallerModel.UninstallerTab.allCases, id: \.self) { tab in
-                    PageTabPill(
-                        title: tab.rawValue,
-                        symbol: tab == .installed ? "app" : "archivebox",
-                        isSelected: model.uninstallerTab == tab
-                    ) { model.uninstallerTab = tab }
-                }
+                PageSegmentedControl(selection: $model.uninstallerTab, segments:
+                    AppUninstallerModel.UninstallerTab.allCases.map { tab in
+                        .init(id: tab, title: tab.rawValue,
+                              symbol: tab == .installed ? "app" : "archivebox")
+                    }
+                )
                 Spacer()
             }
             .padding(Token.Size.pageGutter)

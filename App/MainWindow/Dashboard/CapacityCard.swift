@@ -1,6 +1,9 @@
 import SwiftUI
 import MoppoCore
 
+private let freeSpaceExplanation = "Free is unused disk space. Available space can also include temporary files that macOS can remove when needed. "
+    + "System Settings can therefore show more available space than Moppo shows as free."
+
 /// The Dashboard's capacity card: how full the volume is, and what is filling it.
 ///
 /// Every byte of capacity is accounted for here, `Unmeasured` included. That segment
@@ -113,6 +116,7 @@ struct CapacityCard: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(ByteFormatting.string(freeBytes)) free")
             .accessibilityValue(spaceState == .critical ? "Almost out of space" : (spaceState == .low ? "Running low on space" : "Above warning threshold"))
+            .help(freeSpaceExplanation)
 
             Spacer(minLength: 12)
 
@@ -137,13 +141,11 @@ struct CapacityCard: View {
             legendColumn(
                 Array(entries.prefix(leftCount)),
                 unreadableCount: breakdown.unreadableCount,
-                appleIntelligence: breakdown.appleIntelligence,
                 valuesAreBones: valuesAreBones
             )
             legendColumn(
                 Array(entries.dropFirst(leftCount)),
                 unreadableCount: breakdown.unreadableCount,
-                appleIntelligence: breakdown.appleIntelligence,
                 valuesAreBones: valuesAreBones
             )
         }
@@ -152,7 +154,6 @@ struct CapacityCard: View {
     private func legendColumn(
         _ entries: [StorageSegment],
         unreadableCount: Int,
-        appleIntelligence: AppleIntelligenceStorage?,
         valuesAreBones: Bool
     ) -> some View {
         VStack(spacing: 0) {
@@ -160,7 +161,6 @@ struct CapacityCard: View {
                 LegendRow(
                     entry: entry,
                     unreadableCount: unreadableCount,
-                    appleIntelligence: appleIntelligence,
                     valueIsBone: valuesAreBones
                 )
             }
@@ -173,7 +173,6 @@ struct CapacityCard: View {
 private struct LegendRow: View {
     let entry: StorageSegment
     let unreadableCount: Int
-    let appleIntelligence: AppleIntelligenceStorage?
     /// A measurement is running: the name stands, the figure is not yet a fact.
     var valueIsBone = false
 
@@ -197,8 +196,7 @@ private struct LegendRow: View {
             // appears instantly and can never be clipped by the card.
             if let explanation = Self.explanation(
                 for: entry.id,
-                unreadableCount: unreadableCount,
-                appleIntelligence: appleIntelligence
+                unreadableCount: unreadableCount
             ) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 10))
@@ -224,9 +222,7 @@ private struct LegendRow: View {
                 SkeletonBone(width: 52, height: 10)
                     .skeletonPulse()
             } else {
-                Text(entry.id == .appleIntelligence
-                     ? appleIntelligence?.sizeLabel ?? ByteFormatting.string(entry.bytes)
-                     : ByteFormatting.string(entry.bytes))
+                Text(ByteFormatting.string(entry.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize()   // the name truncates first; the figure never does
@@ -238,12 +234,23 @@ private struct LegendRow: View {
 
     private static func explanation(
         for id: StorageSegmentID,
-        unreadableCount: Int,
-        appleIntelligence: AppleIntelligenceStorage?
+        unreadableCount: Int
     ) -> String? {
         switch id {
-        case .appleIntelligence:
-            return appleIntelligence?.explanation
+        case .free:
+            return freeSpaceExplanation
+        case .applications:
+            return "This category measures disk space in /Applications and ~/Applications. "
+                + "App data, caches, and apps stored elsewhere count in their folder categories. "
+                + "System Settings uses different category rules."
+        case .documentsDesktop:
+            return "This category measures your Documents and Desktop folders. "
+                + "Downloads and files elsewhere count in their folder categories. "
+                + "The Documents category in System Settings covers more locations."
+        case .macOSSystem:
+            return "This category includes system files and supporting volumes, such as Preboot, Recovery, and VM. "
+                + "It also includes readable system files on the Data volume. "
+                + "It differs from the macOS category in System Settings."
         case .systemData:
             return "Machine-wide files outside your home folder: /Library (support "
                 + "files for all apps and users), Homebrew in /opt, and service data "
@@ -334,7 +341,7 @@ private struct CapacityBar: View {
                         else if hovered == slice.id { hovered = nil }
                     }
                     .accessibilityLabel(slice.segment.displayName)
-                    .accessibilityValue(breakdown.sizeLabel(for: slice.segment))
+                    .accessibilityValue(ByteFormatting.string(slice.segment.bytes))
                 }
             }
             .overlay(alignment: .topLeading) { tooltip(for: slices, in: proxy.size.width) }
@@ -364,7 +371,7 @@ private struct CapacityBar: View {
                 Text(slice.segment.displayName)
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
-                Text(breakdown.sizeLabel(for: slice.segment))
+                Text(ByteFormatting.string(slice.segment.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
             }

@@ -48,7 +48,8 @@ struct ScannerView: View {
                     Divider()
                         .opacity(resultsVisible ? 1 : 0)
                     let visibleCategories = categories(of: results, for: model.scanFilter)
-                    let showsRunningApps = model.scanFilter == .safeToRemove && !model.runningAppCaches.isEmpty
+                    let showsRunningApps = model.scanFilter == .safeToRemove
+                        && !model.runningAppCaches.isEmpty && !model.isRunningAppsNoticeDismissed
                     let showsEmptyState = hasNoCleanupItems(visibleCategories) && !showsRunningApps
                     GeometryReader { geometry in
                         ScrollView {
@@ -117,31 +118,31 @@ struct ScannerView: View {
     private var runningAppsNotice: some View {
         let names = ListFormatter.localizedString(byJoining: model.cleanupRunningOwners.map(\.name))
         let bytes = model.runningAppCaches.reduce(Int64(0)) { $0 + $1.allocatedBytes }
-        return GroupedBox {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Some apps are using cached files")
-                        .font(.mcRowTitle)
-                        .foregroundStyle(Token.Text.primary)
-                    Text("\(names) · \(ByteFormatting.string(bytes)) of caches")
-                        .font(.mcControlLabel)
-                        .foregroundStyle(Token.Text.secondary)
-                        .lineLimit(2)
-                        .help(names)
-                    Text("Save your work before you quit these apps. Their caches will appear in Safe to Remove.")
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                Button("Quit Apps") {
-                    Task { await model.quitAppsForCleanup() }
-                }
-                    .buttonStyle(PageActionButtonStyle())
-                    .fixedSize()
-                    .disabled(model.isBusyWithDisk)
+        return NoticeBanner(
+            title: "Some apps are using cached files",
+            dismiss: { model.dismissRunningAppsNotice() }
+        ) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Some apps are using cached files")
+                    .font(.mcRowTitle)
+                    .foregroundStyle(Token.Text.primary)
+                Text("\(names) · \(ByteFormatting.string(bytes)) of caches")
+                    .font(.mcControlLabel)
+                    .foregroundStyle(Token.Text.secondary)
+                    .lineLimit(2)
+                    .help(names)
+                Text("Save your work before you quit these apps. Their caches will appear in Safe to Remove.")
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(14)
+            Spacer(minLength: 8)
+            Button("Quit Apps") {
+                Task { await model.quitAppsForCleanup() }
+            }
+                .buttonStyle(PageActionButtonStyle(fill: Token.Fill.buttonOnCard))
+                .fixedSize()
+                .disabled(model.isBusyWithDisk)
         }
     }
 
@@ -202,38 +203,16 @@ struct ScannerView: View {
 
     /// Filters stay visible while the file list scrolls.
     private func filterPicker(_ results: ScanResults) -> some View {
-        HStack(spacing: 8) {
-            ForEach(CleanupModel.ScanFilter.allCases) { filter in
-                filterPill(filter, results: results)
-            }
-        }
+        PageSegmentedControl(selection: $model.scanFilter, segments: [
+            .init(id: .all, title: CleanupModel.ScanFilter.all.title, symbol: "square.grid.2x2",
+                  detail: ByteFormatting.string(bytes(in: .all, results: results))),
+            .init(id: .safeToRemove, title: CleanupModel.ScanFilter.safeToRemove.title, symbol: "checkmark.circle.fill",
+                  detail: ByteFormatting.string(bytes(in: .safeToRemove, results: results)), tint: .green),
+            .init(id: .needsReview, title: CleanupModel.ScanFilter.needsReview.title, symbol: "questionmark.circle",
+                  detail: ByteFormatting.string(bytes(in: .needsReview, results: results)), tint: .amber)
+        ])
         .frame(maxWidth: .infinity, alignment: .leading)
         .disabled(model.isBusyWithDisk)
-    }
-
-    private func filterPill(_ filter: CleanupModel.ScanFilter, results: ScanResults) -> some View {
-        let isSelected = model.scanFilter == filter
-        let tint: Color = switch filter {
-        case .all: Token.textColor(.accent)
-        case .safeToRemove: Token.textColor(.green)
-        case .needsReview: Token.textColor(.orange)
-        }
-        let symbol = switch filter {
-        case .all: "square.grid.2x2"
-        case .safeToRemove: "checkmark.circle.fill"
-        case .needsReview: "questionmark.circle"
-        }
-        let size = ByteFormatting.string(bytes(in: filter, results: results))
-        let palette: PageTabPill.LightPalette = switch filter {
-        case .all: Token.CleanupTabs.all
-        case .safeToRemove: Token.CleanupTabs.safe
-        case .needsReview: Token.CleanupTabs.review
-        }
-
-        return PageTabPill(
-            title: filter.title, symbol: symbol, detail: size,
-            isSelected: isSelected, tint: tint, lightPalette: palette
-        ) { model.scanFilter = filter }
     }
 
     private func bytes(in filter: CleanupModel.ScanFilter, results: ScanResults) -> Int64 {

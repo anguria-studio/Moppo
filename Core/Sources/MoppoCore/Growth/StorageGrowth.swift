@@ -66,7 +66,7 @@ public enum GrowthClass: String, Sendable, CaseIterable, Codable {
             .applications
         case .appDataCaches, .packageBuildCaches:
             .appDataAndCaches
-        case .macOSSystem, .systemData, .appleIntelligence:
+        case .macOSSystem, .systemData:
             .macOS
         // `other` never appears in a raw segment table — it is made by the merge —
         // and `free` is excluded before this is called. Both are named honestly
@@ -102,7 +102,6 @@ public struct GrowthAttribution: Sendable, Equatable, Identifiable {
     public var id: String { path }
 
     public var isRevealable: Bool {
-        guard segment != .appleIntelligence else { return false }
         return switch kind {
         case .disappeared, .movedOut: false
         default: true
@@ -196,7 +195,7 @@ public enum StorageGrowth {
         minimumAttributionBytes: Int64 = StorageGrowth.defaultMinimumAttributionBytes,
         maximumAttributions: Int = StorageGrowth.defaultMaximumAttributions
     ) -> GrowthComparison {
-        if let reason = incompatibility(baseline, latest) {
+        if let reason = baseline.contract.incompatibility(with: latest.contract) {
             return .notComparable(reason: reason)
         }
 
@@ -262,7 +261,7 @@ public enum StorageGrowth {
             return older.first
         case .sevenDays:
             let cutoff = latest.measuredAt.addingTimeInterval(-7 * 24 * 60 * 60)
-            let compatible = older.filter { incompatibility($0, latest) == nil }
+            let compatible = older.filter { $0.contract.incompatibility(with: latest.contract) == nil }
             let candidates = compatible.isEmpty ? older : compatible
             // Nothing that old yet: the oldest there is, and the card shows its real
             // date. Silently reporting a two-day change as a week is the lie.
@@ -276,16 +275,6 @@ public enum StorageGrowth {
 
     // MARK: - Segment and class arithmetic
 
-    private static func incompatibility(_ baseline: StorageSnapshot, _ latest: StorageSnapshot) -> String? {
-        if let reason = baseline.contract.incompatibility(with: latest.contract) { return reason }
-        if let before = baseline.breakdown.appleIntelligence,
-           let after = latest.breakdown.appleIntelligence,
-           before.macOSMajorVersion != after.macOSMajorVersion {
-            return "The macOS version changed."
-        }
-        return nil
-    }
-
     static func segmentDeltas(
         baseline: StorageSnapshot,
         latest: StorageSnapshot
@@ -297,7 +286,6 @@ public enum StorageGrowth {
             .union(latest.rawSegments.keys)
             .subtracting([.free])
         for id in ids {
-            if id == .appleIntelligence, !canCompareAppleIntelligence(baseline, latest) { continue }
             let delta = (latest.rawSegments[id] ?? 0) - (baseline.rawSegments[id] ?? 0)
             if delta != 0 { deltas[id] = delta }
         }
@@ -322,12 +310,6 @@ public enum StorageGrowth {
     }
 
     // MARK: - Where the change happened
-
-    private static func canCompareAppleIntelligence(_ baseline: StorageSnapshot, _ latest: StorageSnapshot) -> Bool {
-        guard let before = baseline.breakdown.appleIntelligence,
-              let after = latest.breakdown.appleIntelligence else { return false }
-        return before.isComparable(to: after)
-    }
 
     static func attributions(
         baseline: StorageSnapshot,
@@ -396,20 +378,6 @@ public enum StorageGrowth {
                     moves: moves
                 )
             ))
-        }
-
-        if canCompareAppleIntelligence(baseline, latest),
-           let before = baseline.breakdown.appleIntelligence,
-           let after = latest.breakdown.appleIntelligence {
-            let change = after.allocatedBytes - before.allocatedBytes
-            if change != 0, abs(change) >= minimumAttributionBytes {
-                found.append(GrowthAttribution(
-                    path: AppleIntelligenceStorage.assetsRoot.path,
-                    segment: .appleIntelligence,
-                    deltaBytes: change,
-                    kind: change > 0 ? .grew : .shrank
-                ))
-            }
         }
 
         found.sort { lhs, rhs in

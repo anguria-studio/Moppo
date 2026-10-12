@@ -9,7 +9,6 @@ import MoppoCore
 /// there is no manual top inset here; the platform provides it.
 struct DashboardView: View {
     @Bindable var model: DashboardModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var scanResults: ScanResults?
     var lastScanAt: Date?
     var onShowScanner: (CleanupModel.ScanFilter) -> Void = { _ in }
@@ -23,7 +22,6 @@ struct DashboardView: View {
             VStack(spacing: Token.Size.pageGutter) {
                 if let volume = model.volume, model.showsSpaceWarning(warnBelowGB: warnBelowGB) {
                     lowSpaceBanner(volume)
-                        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -6)))
                 }
 
                 if let notice = model.trashNotice {
@@ -117,9 +115,7 @@ struct DashboardView: View {
             symbol: "exclamationmark.triangle",
             color: critical ? .red : .orange,
             dismiss: critical ? nil : {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                    model.dismissLowSpaceWarning()
-                }
+                model.dismissLowSpaceWarning()
             }
         )
     }
@@ -144,40 +140,26 @@ struct DashboardView: View {
         title: String, detail: String, symbol: String, color: ColorToken,
         dismiss: (() -> Void)?
     ) -> some View {
-        GroupedBox(radius: Token.Radius.well) {
-            HStack(spacing: 12) {
-                Image(systemName: symbol)
+        NoticeBanner(title: title, dismiss: dismiss) {
+            Image(systemName: symbol)
+                .font(.mcControlLabel)
+                .foregroundStyle(Token.textColor(color))
+                .frame(width: 30, height: 30)
+                .background(
+                    color == .orange ? Token.Fill.warning : (color == .green ? Token.Fill.safeBadge : Token.color(.red).opacity(0.15)),
+                    in: RoundedRectangle(cornerRadius: Token.Radius.control)
+                )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
                     .font(.mcControlLabel)
-                    .foregroundStyle(Token.textColor(color))
-                    .frame(width: 30, height: 30)
-                    .background(
-                        color == .orange ? Token.Fill.warning : (color == .green ? Token.Fill.safeBadge : Token.color(.red).opacity(0.15)),
-                        in: RoundedRectangle(cornerRadius: Token.Radius.control)
-                    )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.mcControlLabel)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(Token.Text.primary)
-                    Text(detail)
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 4)
-                if let dismiss {
-                    Button(action: dismiss) {
-                        Image(systemName: "xmark")
-                            .font(.mcSubtitle)
-                            .frame(width: 24, height: 24)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Token.Text.primary)
+                Text(detail)
+                    .font(.mcSubtitle)
                     .foregroundStyle(Token.Text.secondary)
-                    .accessibilityLabel("Dismiss \(title)")
-                }
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(14)
+            Spacer(minLength: 4)
         }
     }
 

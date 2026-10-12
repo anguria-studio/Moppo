@@ -427,6 +427,11 @@ final class CleanupModel {
     }
 
     private(set) var cleanupRunningOwners: [FileEntry.RunningOwner] = []
+    private(set) var isRunningAppsNoticeDismissed = false
+
+    func dismissRunningAppsNotice() {
+        isRunningAppsNoticeDismissed = true
+    }
 
     private var runningCacheCandidates: [FileEntry] {
         var candidates: [FileEntry] = []
@@ -482,6 +487,7 @@ final class CleanupModel {
         guard canScan(automatic), pendingCleanUp == nil,
               let operation = operations.begin(.cleanupScan) else { return }
         let preferences = preferences()
+        isRunningAppsNoticeDismissed = false
         let scanID = UUID()
         self.scanID = scanID
         hasStartedInitialScan = true
