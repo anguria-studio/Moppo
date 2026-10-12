@@ -195,7 +195,9 @@ struct ScannerView: View {
 
     private func completion(_ outcome: CleanupOutcome) -> some View {
         HStack(spacing: 12) {
-            Text("\(ByteFormatting.string(outcome.removedBytes)) moved to Trash")
+            Text(outcome.deletedCount > 0
+                ? "\(outcome.removedCount) \(outcome.removedCount == 1 ? "item removed" : "items removed")"
+                : "\(ByteFormatting.string(outcome.removedBytes)) moved to Trash")
                 .font(.mcRowTitle)
             if !outcome.failed.isEmpty {
                 Text("\(outcome.failed.count) items could not be removed.")

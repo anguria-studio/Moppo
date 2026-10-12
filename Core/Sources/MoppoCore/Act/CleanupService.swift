@@ -100,24 +100,28 @@ public struct CleanupService: Sendable {
     /// would have cost on every whole-disk walk.
     private let privateMeasurer = PrivateSizeMeasurer()
     private let log: RemovalLog
+    private let dockerImages: DockerImageService
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
 
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
-        log: RemovalLog = RemovalLog()
+        log: RemovalLog = RemovalLog(),
+        dockerImages: DockerImageService = DockerImageService()
     ) {
         self.init(measureSize: { try await measurer.measure($0) }, log: log,
-                  registeredApplications: AppleSoundLibrary.registeredOwners)
+                  registeredApplications: AppleSoundLibrary.registeredOwners, dockerImages: dockerImages)
     }
 
     init(
         measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
         log: RemovalLog,
-        registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] }
+        registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] },
+        dockerImages: DockerImageService = DockerImageService()
     ) {
         self.measureSize = measureSize
         self.log = log
         self.registeredApplications = registeredApplications
+        self.dockerImages = dockerImages
     }
 
     /// - Parameters:
@@ -168,8 +172,32 @@ public struct CleanupService: Sendable {
             // and lands in `failed` so the refusal is reported rather than silently
             // absorbed. Recent use is information for the user, not a veto.
             if !Self.removalAllowed(entry, userDataRemovalOverrides: userDataRemovalOverrides) {
-                outcome.failed.append(entry.url.path)
+                outcome.failed.append(entry.id)
                 if keepReceipt { try? log.append([Self.failureRecord(for: entry)]) }
+                continue
+            }
+
+            if let image = entry.dockerImage {
+                var bytes = entry.allocatedBytes
+                var disposition: RemovalDisposition = .failed
+                do {
+                    bytes = try await dockerImages.remove(image)
+                    outcome.removedBytes += bytes
+                    outcome.removedCount += 1
+                    outcome.deletedCount += 1
+                    outcome.unreportedFreedCount += 1
+                    disposition = .deleted
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    outcome.failed.append(entry.id)
+                }
+                if keepReceipt {
+                    try? log.append([RemovalRecord(
+                        timestamp: Date(), originalPath: Self.dockerReceiptPath(for: entry),
+                        bytes: bytes, disposition: disposition, freedBytes: 0
+                    )])
+                }
                 continue
             }
 
@@ -549,7 +577,7 @@ public struct CleanupService: Sendable {
     ) -> RemovalRecord {
         RemovalRecord(
             timestamp: Date(),
-            originalPath: entry.url.path,
+            originalPath: entry.dockerImage != nil ? Self.dockerReceiptPath(for: entry) : entry.url.path,
             bytes: max(0, bytes ?? entry.allocatedBytes),
             disposition: .failed
         )
@@ -686,6 +714,12 @@ public struct CleanupService: Sendable {
         if !records.isEmpty { try? log?.append(records) }
     }
 
+    private static func dockerReceiptPath(for entry: FileEntry) -> String {
+        var url = URLComponents(url: entry.url, resolvingAgainstBaseURL: false)
+        url?.queryItems = [URLQueryItem(name: "name", value: entry.displayName)]
+        return url?.string ?? entry.id
+    }
+
     // MARK: - Disposition
 
     /// The concrete paths one selected row will remove.
@@ -716,7 +750,8 @@ public struct CleanupService: Sendable {
         _ entry: FileEntry,
         userDataRemovalOverrides: Set<FileEntry.ID>
     ) -> Bool {
-        if entry.manualRemoval != nil || entry.protectionReason == .running { return false }
+        if entry.manualRemoval != nil || entry.protectionReason == .running
+            || entry.dockerImage?.isRemovalLocked == true { return false }
         if entry.protectionReason == .userData {
             return userDataRemovalOverrides.contains(entry.id)
         }

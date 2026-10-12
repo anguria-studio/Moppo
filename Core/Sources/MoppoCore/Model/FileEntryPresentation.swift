@@ -21,7 +21,22 @@ public struct FileEntryPresentation: Sendable, Equatable {
         let type: String
         let symbol: Icon
 
-        if entry.isGitWorktree {
+        if let image = entry.dockerImage {
+            let usage: String
+            if let count = image.containerCount {
+                usage = count == 0 ? "Unused"
+                    : "Used by \(count) \(count == 1 ? "container" : "containers")"
+            } else {
+                usage = "Container use unavailable"
+            }
+            summary = "Docker image · " + usage
+            icon = .package
+            return
+        } else if entry.url.scheme == "docker" {
+            summary = "Docker storage · Docker Desktop"
+            icon = .diskImage
+            return
+        } else if entry.isGitWorktree {
             type = entry.gitWorktreeReview?.branch ?? "Branch unknown"
             symbol = .folder
         } else if entry.removalAction != nil {

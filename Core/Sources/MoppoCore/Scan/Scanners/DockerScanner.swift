@@ -1,61 +1,43 @@
 import Foundation
 
-/// Docker's own accounting of what a prune would free.
-///
-/// This is the one scanner that does not walk the filesystem, because it cannot:
-/// dangling image layers, stopped containers, unused volumes and build cache all
-/// live *inside* Docker Desktop's single VM disk image, where no per-file API can
-/// tell one from another. `docker system df` is Docker reading its own ledger, so
-/// running it is not a measurement of the disk — every byte the rest of the app
-/// reports still comes from `context.measurer`.
-///
-/// The interesting path here is the unavailable one. Docker Desktop is not running
-/// on most Macs most of the time, and the row has to say so in a way the user can
-/// act on: the predecessor's bare "Docker is not running" left them with nothing to
-/// do about it.
+/// Reports individual images and other reclaimable Docker storage.
 public struct DockerScanner: CategoryScanner {
 
     public let id: CategoryID = .docker
 
-    private let runner: ProcessRunner
-    private let timeout: Duration
+    private let images: DockerImageService
     private let resolveExecutable: @Sendable () -> String?
 
     /// - Parameters:
-    ///   - timeout: deliberately short. A daemon that is booting, or a VM that has
-    ///     lost its socket, leaves the CLI blocked indefinitely; a healthy
-    ///     `system df` answers in well under a second. One category must never hold
-    ///     the whole scan hostage, so the wait is capped and a lapsed one reads as
-    ///     "not running" rather than as a thrown error.
+    ///   - timeout: time limit for each command attempt. The first storage request
+    ///     can need more time. Temporary read failures get one retry.
     ///   - resolveExecutable: injectable so the unavailable paths can be tested
     ///     without Docker installed.
     public init(
         runner: ProcessRunner = ProcessRunner(),
-        timeout: Duration = .seconds(5),
+        timeout: Duration = .seconds(30),
         resolveExecutable: @escaping @Sendable () -> String? = { SystemExecutable.resolveDocker() }
     ) {
-        self.runner = runner
-        self.timeout = timeout
+        self.images = DockerImageService(runner: runner, timeout: timeout, resolveExecutable: resolveExecutable)
         self.resolveExecutable = resolveExecutable
+    }
+
+    init(images: DockerImageService) {
+        self.images = images
+        self.resolveExecutable = { "/docker-fixture" }
     }
 
     // MARK: - User-facing copy
 
-    /// Verbatim from the design. The row renders disabled with an `unavailable`
-    /// badge, and this subtitle is the only thing telling the user how to fix it.
-    static let daemonReason =
-        "Docker Desktop is not running. Start it to measure images and volumes."
+    static let connectionReason =
+        "Moppo cannot connect to Docker. Check Docker Desktop and try scanning again."
 
-    /// A different string from `daemonReason` on purpose: "start it" is useless
-    /// advice to someone who has no Docker to start.
     static let notInstalledReason =
         "Docker Desktop is not installed. There is nothing to measure on this Mac."
 
     /// Docker Desktop keeps its VM disk here. Only consulted to honour an exclusion
     /// rule — never measured, never listed.
     static let dataDirectory = NSHomeDirectory() + "/Library/Containers/com.docker.docker"
-
-    private static let arguments = ["system", "df", "--format", "{{json .}}"]
 
     // MARK: - Scanning
 
@@ -65,7 +47,7 @@ public struct DockerScanner: CategoryScanner {
         // Never `docker` off `PATH`: a GUI app launched from Finder inherits none of
         // the shell's environment, so name resolution works in a dev terminal and
         // then silently reports "not installed" to every real user.
-        guard let executable = resolveExecutable() else {
+        guard resolveExecutable() != nil else {
             return .unavailable(id, reason: Self.notInstalledReason)
         }
 
@@ -76,25 +58,27 @@ public struct DockerScanner: CategoryScanner {
         }
 
         let output: Data
+        let inventory: (entries: [FileEntry], unreadableCount: Int)
         do {
-            output = try await runner.run(executable, Self.arguments, timeout: timeout)
+            let dockerContext = try await images.currentContext()
+            output = try await images.diskUsage(context: dockerContext)
+            inventory = try await images.images(context: dockerContext)
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch let error as ProcessError {
             return .unavailable(id, reason: Self.reason(for: error))
         } catch {
-            // `Process.run()` itself failed — the binary vanished, or is quarantined
-            // or non-executable. Nothing about the daemon can be concluded.
-            return .unavailable(id, reason: Self.notInstalledReason)
+            return .unavailable(id, reason: "Docker image information is unavailable. Try scanning again.")
         }
 
         try Task.checkCancellation()
 
         let usage = Self.parseDiskUsage(output)
-        var unreadableCount = usage.unreadableLines
-        var entries: [FileEntry] = []
+        var unreadableCount = usage.unreadableLines + inventory.unreadableCount
+        var entries = inventory.entries
 
-        for row in usage.rows where row.reclaimableBytes > 0 {
+        for row in usage.rows where row.reclaimableBytes > 0
+            && row.type.caseInsensitiveCompare("Images") != .orderedSame {
             if let entry = Self.entry(for: row) {
                 entries.append(entry)
             } else {
@@ -121,11 +105,11 @@ public struct DockerScanner: CategoryScanner {
         switch error {
         case .executableMissing:
             return notInstalledReason
-        case .timedOut, .failed:
-            // `system df` exits non-zero with "Cannot connect to the Docker daemon"
-            // when Docker Desktop is stopped, and is killed by the watchdog when it
-            // is wedged. Both are the same state to the user: unusable until started.
-            return daemonReason
+        case .timedOut:
+            return "Docker did not finish the scan in time. Try scanning again."
+        case .failed:
+            if DockerImageService.isConnectionFailure(error) { return connectionReason }
+            return "Docker could not read its storage information. Try scanning again."
         }
     }
 

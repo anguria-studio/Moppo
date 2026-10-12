@@ -32,6 +32,7 @@ final class CleanupModel {
     @ObservationIgnored private let preferences: () -> Preferences
     @ObservationIgnored private let applications: CleanupApplications
     @ObservationIgnored private let measureSaving: ([URL]) async throws -> PrivateSizeMeasurement?
+    @ObservationIgnored private let scanDocker: (Preferences) async throws -> ScanCategoryResult
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanID: UUID?
@@ -48,6 +49,11 @@ final class CleanupModel {
         preferences: @escaping () -> Preferences = { Preferences() },
         applications: CleanupApplications = CleanupApplications(),
         defaults: UserDefaults = .standard,
+        scanDocker: @escaping (Preferences) async throws -> ScanCategoryResult = { preferences in
+            try await DockerScanner().scan(context: ScanContext(
+                excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns
+            ))
+        },
         measureSaving: @escaping ([URL]) async throws -> PrivateSizeMeasurement? = {
             try await PrivateSizeMeasurer().measure($0)
         }
@@ -59,6 +65,7 @@ final class CleanupModel {
         self.applications = applications
         self.defaults = defaults
         self.measureSaving = measureSaving
+        self.scanDocker = scanDocker
         lastScanFinishedAt = defaults.object(forKey: "lastScanFinishedAt") as? Date
     }
 
@@ -142,6 +149,8 @@ final class CleanupModel {
         }
         select([entry])
     }
+
+    var hasSelectedDockerImages: Bool { selectedEntries.contains { $0.dockerImage != nil } }
 
     private var selectedOrphanApplicationEntries: [FileEntry] {
         let selected = scannerSelection
@@ -414,6 +423,10 @@ final class CleanupModel {
             let ordinary = entries.reduce(0) { $0 + CleanupModel.plannedBytes(for: $1) }
             return ordinary + orphanedApplicationItems.reduce(0) { $0 + $1.allocatedBytes }
         }
+        var dockerImageCount: Int { entries.filter { $0.dockerImage != nil }.count }
+        var dockerImageBytes: Int64 {
+            entries.filter { $0.dockerImage != nil }.reduce(0) { $0 + $1.allocatedBytes }
+        }
         var protectedDataCount: Int {
             var protectedIDs: Set<FileEntry.ID> = []
             for entry in entries {
@@ -464,6 +477,8 @@ final class CleanupModel {
     var confirmBeforeCleanup: Bool { preferences().confirmBeforeCleanup }
 
     private func measureCleanUpSaving(for plan: CleanupPlan) {
+        // Filesystem measurements cannot measure Docker image layers.
+        guard plan.dockerImageCount == 0 else { return }
         let urls = plan.entries.flatMap(Self.plannedTargets).map(\.url)
             + plan.orphanedApplicationItems.map(\.url)
         guard !urls.isEmpty else { return }
@@ -699,10 +714,22 @@ final class CleanupModel {
             scanResults = results
         }
         pruneVanishedEntries()
+        if plan.dockerImageCount > 0, var results = scanResults {
+            let category: ScanCategoryResult
+            do {
+                category = try await scanDocker(preferences())
+            } catch {
+                category = .unavailable(.docker, reason: "Docker storage could not be updated. Try scanning again.")
+            }
+            results.categories = results.categories.map { $0.categoryID == .docker ? category : $0 }
+            scanResults = results
+            let imageIDs = Set(category.entries.filter { !$0.isRemovalLocked }.map(\.id))
+            scannerSelection.subtract(Set(plan.entries.filter { $0.dockerImage != nil }.map(\.id)).subtracting(imageIDs))
+        }
         await refreshLeftovers(plan.orphanedApplicationBundleIdentifiers)
         try? await presentation.wait()
         onEvent(.removed(outcome))
-        if outcome.removedCount > 0 { invalidateResults() }
+        if outcome.removedCount > 0, plan.dockerImageCount == 0 { invalidateResults() }
         return true
     }
 

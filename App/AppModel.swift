@@ -458,7 +458,7 @@ final class AppModel {
             switch self {
             case .cleaningUp(let count, _):
                 let items = count == 1 ? "item" : "items"
-                return "Moving \(count) \(items) to the Trash"
+                return "Removing \(count) \(items)"
             case .emptyingTrash:
                 return "Emptying the Trash"
             case .removingDuplicateFiles(let count, _):
@@ -482,8 +482,9 @@ final class AppModel {
         /// Explains why the current disk operation can take time.
         var detail: String {
             switch self {
-            case .cleaningUp(_, let bytes),
-                 .emptyingTrash(_, let bytes),
+            case .cleaningUp(_, let bytes):
+                return "\(ByteFormatting.string(bytes)). Moppo checks the selected items before removal."
+            case .emptyingTrash(_, let bytes),
                  .removingStorageItems(_, let bytes):
                 return "\(ByteFormatting.string(bytes)). Each item is measured on disk "
                     + "before it goes, so large folders take a moment."
@@ -531,7 +532,9 @@ final class AppModel {
     var removeLabel: String {
         switch view {
         case .scanner:
-            "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: .all))))"
+            cleanup.hasSelectedDockerImages
+                ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: .all))))"
+                : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: .all))))"
         case .duplicates:
             duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
@@ -600,8 +603,8 @@ final class AppModel {
         }
         return Notice(
             title: "Some Items Could Not Be Removed",
-            message: "\(count) \(one ? "item" : "items") could not be removed; "
-                + "the other \(outcome.removedCount) moved to the Trash."
+            message: "\(count) \(one ? "item" : "items") could not be removed. "
+                + "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
         )
     }
 
