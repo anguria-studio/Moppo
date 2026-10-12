@@ -128,12 +128,14 @@ struct AppUninstallerModelTests {
         #expect(model.installedApplicationBytes.isEmpty)
     }
 
-    @Test("Removal owns its task and captures the plan and receipt setting")
-    func removalLifetime() async throws {
-        let operations = OperationCoordinator()
+    @Test("Removal follows confirmation settings and retains its reviewed plan", arguments: RemovalConfirmationChoice.allCases)
+    func removalLifetime(_ choice: RemovalConfirmationChoice) async throws {
+        let fixture = try RemovalSettingsFixture(confirm: choice.isEnabled)
+        fixture.settings.keepReceipt = false
         let remover = HeldUninstallerRemoval()
-        var preferences = AppUninstallerModel.Preferences(keepReceipt: false)
-        let model = AppUninstallerModel(operations: operations, remover: remover, preferences: { preferences })
+        let app = AppModel(settings: fixture.settings, uninstallerRemover: remover)
+        let model = app.uninstaller
+        let operations = app.operations
         let plan = uninstallPlan("Original")
         model.appUninstallPlan = plan
         var refreshes = 0
@@ -142,9 +144,24 @@ struct AppUninstallerModelTests {
             refreshes += 1
         }
         let caller = Task { model.requestAppUninstall() }
+        if choice.isEnabled {
+            try await waitUntil { app.pendingRemovalConfirmation != nil }
+            #expect(app.pendingRemovalConfirmation == .trash(itemCount: plan.items.count, totalBytes: plan.totalBytes))
+            #expect(await remover.requests.isEmpty)
+            app.finishRemovalConfirmation(choice == .confirm)
+            if choice == .cancel {
+                try await waitUntil { !model.isUninstallingApp }
+                #expect(model.appUninstallPlan == plan)
+                #expect(!operations.isBusy)
+                #expect(refreshes == 0)
+                #expect(model.appUninstallOutcome == nil)
+                return
+            }
+        }
         try await waitUntil { await remover.requests.count == 1 }
+        #expect(app.pendingRemovalConfirmation == nil)
         caller.cancel()
-        preferences.keepReceipt = true
+        fixture.settings.keepReceipt = true
         model.appUninstallPlan = uninstallPlan("Replacement")
         model.requestAppUninstall()
         model.resetAppUninstall()
@@ -190,12 +207,12 @@ struct AppUninstallerModelTests {
         #expect(!operations.isBusy)
     }
 
-    @Test("A batch captures one receipt setting and retains failed applications")
-    func batchRemoval() async throws {
+    @Test("A batch follows confirmation settings and retains failed applications", arguments: [true, false])
+    func batchRemoval(confirm: Bool) async throws {
         let operations = OperationCoordinator()
         let scanner = HeldUninstallerScanner()
         let remover = HeldUninstallerRemoval()
-        var preferences = AppUninstallerModel.Preferences(keepReceipt: false)
+        var preferences = AppUninstallerModel.Preferences(confirmBeforeCleanup: confirm, keepReceipt: false)
         let model = AppUninstallerModel(
             operations: operations, scanner: scanner, remover: remover, preferences: { preferences }
         )
@@ -216,7 +233,10 @@ struct AppUninstallerModelTests {
         }
         try await waitUntil { !model.isPlanningAppUninstall }
         #expect(model.batchUninstallReview?.plans.count == 2)
-        model.requestBatchUninstall()
+        if confirm {
+            #expect(await remover.requests.isEmpty)
+            model.requestBatchUninstall()
+        }
         preferences.keepReceipt = true
         try await waitUntil { await remover.requests.count == 1 }
         await remover.finish(0, CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
@@ -278,6 +298,115 @@ struct AppUninstallerModelTests {
         #expect(result?.failed == [path])
         #expect(result?.permissionDenied == [path])
         #expect(model.selectedLeftoverIdentifiers.isEmpty)
+        #expect(!operations.isBusy)
+    }
+
+    @Test("Sound removal follows the setting and retains the application", arguments: [true, false])
+    func soundRemoval(confirm: Bool) async throws {
+        let operations = OperationCoordinator()
+        let remover = HeldUninstallerRemoval()
+        var preferences = AppUninstallerModel.Preferences(confirmBeforeCleanup: confirm, keepReceipt: false)
+        var running = true
+        let model = AppUninstallerModel(
+            operations: operations, remover: remover, preferences: { preferences },
+            applications: AppUninstallApplications(isRunning: { _ in running })
+        )
+        var plan = uninstallPlan("GarageBand")
+        let sound = soundLibraryItem()
+        plan.soundLibraryItems = [sound]
+        model.appUninstallPlan = plan
+        #expect(model.selectedSoundLibraryIDs.isEmpty)
+        let operation = try #require(operations.begin(.cleanupScan))
+        await model.requestSoundLibraryRemoval(plan, itemPaths: [sound.id])
+        #expect(await remover.soundRequests.isEmpty)
+        operations.finish(operation)
+        await model.requestSoundLibraryRemoval(plan, itemPaths: [sound.id])
+        #expect(await remover.soundRequests.isEmpty)
+        #expect(!operations.isBusy)
+        running = false
+        var result: CleanupOutcome?
+        model.onEvent = { if case .removed(let outcome) = $0 { result = outcome } }
+        var caller = Task { await model.requestSoundLibraryRemoval(plan, itemPaths: [sound.id, plan.applicationURL.path]) }
+        if confirm {
+            await caller.value
+            #expect(model.pendingSoundLibraryRemoval?.items == [sound])
+            #expect(await remover.soundRequests.isEmpty)
+            preferences.keepReceipt = true
+            caller = Task { await model.confirmSoundLibraryRemoval() }
+        }
+        try await waitUntil { await remover.soundRequests.count == 1 }
+        caller.cancel()
+        preferences.keepReceipt = true
+        model.resetAppUninstall()
+        #expect(model.isUninstallingApp)
+        #expect(operations.isBusy)
+        let request = try #require(await remover.soundRequests.first)
+        #expect(request.plan == plan)
+        #expect(request.paths == [sound.id])
+        #expect(!request.keepReceipt)
+        #expect(await remover.requests.isEmpty)
+        await remover.finishSounds(CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
+        await caller.value
+        #expect(result?.trashedCount == 1)
+        #expect(model.lastUninstalledApplicationName == nil)
+        #expect(model.appUninstallOutcome == nil)
+        #expect(model.appUninstallPlan == nil)
+        #expect(model.pendingSoundLibraryRemoval == nil)
+        #expect(!operations.isBusy)
+    }
+
+    @Test("Leftover removal follows the setting and captures content owners", arguments: [true, false], [true, false])
+    func leftoverConfirmation(confirm: Bool, sounds: Bool) async throws {
+        let operations = OperationCoordinator()
+        let scanner = HeldUninstallerScanner()
+        let remover = HeldUninstallerRemoval()
+        let suite = "LeftoverConfirmationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        settings.confirmBeforeCleanup = confirm
+        settings.keepReceipt = false
+        var checked: Set<String> = []
+        let model = AppUninstallerModel(
+            operations: operations, scanner: scanner, remover: remover,
+            preferences: { RemovalPreferences(settings: settings) },
+            applications: AppUninstallApplications(registeredIdentifiers: { checked = $0; return [] })
+        )
+        let item = sounds ? soundLibraryItem() : leftoverPlan("org.moppo.fixture").groups[0].items[0]
+        let identifier = try #require(item.ownerBundleIdentifier)
+        let plan = OrphanedAppLeftoverPlan(
+            groups: [.init(bundleIdentifier: identifier, items: [item])],
+            preservedPaths: [], unreadableCount: 0, applicationRoots: [], allowedRelatedRoots: []
+        )
+        model.loadApplicationLeftovers()
+        try await waitUntil { await scanner.leftoverCount == 1 }
+        await scanner.finishLeftovers(0, plan)
+        try await waitUntil { !model.isLoadingApplicationLeftovers }
+        #expect(model.selectedLeftoverIdentifiers.isEmpty)
+        model.toggleLeftoverSelection(identifier)
+        let operation = try #require(operations.begin(.cleanupScan))
+        await model.requestLeftoverRemoval()
+        #expect(model.pendingLeftoverRemoval == nil)
+        operations.finish(operation)
+        var caller = Task { await model.requestLeftoverRemoval() }
+        if confirm {
+            await caller.value
+            #expect(model.pendingLeftoverRemoval?.items == [item])
+            #expect(await remover.leftoverRequests.isEmpty)
+            settings.keepReceipt = true
+            model.selectedLeftoverIdentifiers.removeAll()
+            caller = Task { await model.confirmLeftoverRemoval() }
+        }
+        try await waitUntil { await remover.leftoverRequests.count == 1 }
+        let request = try #require(await remover.leftoverRequests.first)
+        #expect(request.paths == [item.id])
+        #expect(!request.keepReceipt)
+        #expect(checked == (sounds ? AppleSoundLibrary.ownerIdentifiers : [identifier]))
+        #expect(model.pendingLeftoverRemoval == nil)
+        await remover.finishLeftovers(CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
+        try await waitUntil { await scanner.leftoverCount == 2 }
+        await scanner.finishLeftovers(1, plan)
+        await caller.value
         #expect(!operations.isBusy)
     }
 
@@ -396,6 +525,13 @@ private actor HeldUninstallerScanner: AppUninstallerScanning {
 }
 
 private actor HeldUninstallerRemoval: AppUninstallRemoving {
+    func removeSoundLibraries(
+        _ plan: AppUninstallPlan, itemPaths: Set<String>,
+        privilegedFallback: Bool, keepReceipt: Bool
+    ) async throws -> CleanupOutcome {
+        soundRequests.append(SoundRequest(plan: plan, paths: itemPaths, keepReceipt: keepReceipt))
+        return await withCheckedContinuation { soundReply = $0 }
+    }
     struct Request: Sendable {
         let plan: AppUninstallPlan
         let privilegedFallback: Bool
@@ -406,11 +542,18 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
         let paths: Set<String>?
         let keepReceipt: Bool
     }
+    struct SoundRequest: Sendable {
+        let plan: AppUninstallPlan
+        let paths: Set<String>
+        let keepReceipt: Bool
+    }
     private(set) var requests: [Request] = []
     private(set) var leftoverRequests: [LeftoverRequest] = []
+    private(set) var soundRequests: [SoundRequest] = []
     private(set) var cancelled: [Bool] = []
     private var replies: [Int: CheckedContinuation<CleanupOutcome, Never>] = [:]
     private var leftoverReply: CheckedContinuation<CleanupOutcome, Never>?
+    private var soundReply: CheckedContinuation<CleanupOutcome, Never>?
     func uninstall(_ plan: AppUninstallPlan, privilegedFallback: Bool, keepReceipt: Bool) async throws -> CleanupOutcome {
         let index = requests.count
         requests.append(Request(plan: plan, privilegedFallback: privilegedFallback, keepReceipt: keepReceipt))
@@ -427,6 +570,7 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
     }
     func finish(_ index: Int, _ outcome: CleanupOutcome) { replies.removeValue(forKey: index)?.resume(returning: outcome) }
     func finishLeftovers(_ outcome: CleanupOutcome) { leftoverReply?.resume(returning: outcome); leftoverReply = nil }
+    func finishSounds(_ outcome: CleanupOutcome) { soundReply?.resume(returning: outcome); soundReply = nil }
 }
 
 private final class UninstallerFixture {

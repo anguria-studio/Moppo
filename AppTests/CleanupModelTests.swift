@@ -384,6 +384,41 @@ struct CleanupModelTests {
         }
     }
 
+    @Test("Cleanup confirmation follows the setting for sounds and open applications", arguments: [true, false], [true, false])
+    func confirmationSetting(confirm: Bool, sounds: Bool) async throws {
+        var item = sounds ? soundLibraryItem().fileEntry : cleanupEntry("running")
+        if !sounds {
+            item.inUseBy = FileEntry.RunningOwner(name: "Fixture", bundleIdentifier: "test.cleanup", bundlePath: "/fixture.app")
+        }
+        let removal = HeldCleanupRemoval()
+        let cleanup = CleanupModel(
+            operations: OperationCoordinator(), remover: removal,
+            preferences: { CleanupModel.Preferences(confirmBeforeCleanup: confirm) },
+            applications: CleanupApplications(stillRunning: { $0 }),
+            measureSaving: { _ in nil }
+        )
+        cleanup.scanResults = ScanResults(categories: [ScanCategoryResult(
+            categoryID: sounds ? .applications : .systemCaches, totalBytes: item.allocatedBytes, entries: [item]
+        )], startedAt: .now, finishedAt: .now)
+        cleanup.scannerSelection = [item.id]
+        var confirmed = false
+        cleanup.onEvent = { if case .confirmationRequested = $0 { confirmed = true } }
+        cleanup.requestCleanUp(in: .all)
+        #expect(confirmed == confirm)
+        if confirm {
+            #expect(cleanup.pendingCleanUp?.includesSoundLibrary == sounds)
+            #expect(!cleanup.isRemoving)
+            #expect(await removal.requestCount == 0)
+            cleanup.cancelCleanUp()
+        } else {
+            #expect(cleanup.pendingCleanUp == nil)
+            try await waitUntil { await removal.isPending }
+            #expect(await removal.entries == [item])
+            await removal.finish(CleanupOutcome(failed: [item.id]))
+            try await waitUntil { !cleanup.isRemoving }
+        }
+    }
+
     @Test("Cleanup without confirmation captures the selection before its task starts")
     func immediateRemoval() async throws {
         let fixture = try CleanupFixture()

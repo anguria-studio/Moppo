@@ -28,10 +28,11 @@ struct HomebrewUninstallFlowTests {
         #expect(!FileManager.default.fileExists(atPath: fixture.profile.path))
     }
 
-    @Test("Batch review precedes removal and preserves mixed results")
-    func mixedBatch() async throws {
+    @Test("Homebrew batch review is required with either confirmation setting", arguments: [true, false])
+    func mixedBatch(confirm: Bool) async throws {
+        let settings = try RemovalSettingsFixture(confirm: confirm)
         let fixture = try Fixture()
-        let model = fixture.model()
+        let model = fixture.model(settings: settings.settings)
         model.uninstaller.loadInstalledApplications()
         try await waitUntil(timeout: .seconds(15)) { model.uninstaller.installedApplicationsMeasured }
         let applications = try #require(model.uninstaller.installedApplications)
@@ -258,9 +259,10 @@ struct HomebrewUninstallFlowTests {
             )
         }
 
-        @MainActor func model() -> AppModel {
+        @MainActor func model(settings: SettingsStore? = nil) -> AppModel {
             let brew = brew
             return AppModel(
+                settings: settings,
                 launchAccess: .limited, hasFullDiskAccess: { false },
                 trashService: TrashService(home: root, log: log),
                 cleanupHistoryService: CleanupHistoryService(log: log),

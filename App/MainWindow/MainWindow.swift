@@ -172,7 +172,9 @@ struct MainWindow: View {
         // The header contains the actions for the current page.
         // A real sheet, so macOS supplies the titlebar attachment, the entrance
         // animation, and Escape/Return handling.
-        .sheet(item: $model.activeSheet) { sheet in
+        .sheet(item: $model.activeSheet, onDismiss: {
+            if model.activeSheet == nil { model.finishRemovalConfirmation(false) }
+        }) { sheet in
             switch sheet {
             case .cleanUp:
                 ConfirmationSheet(
@@ -197,12 +199,21 @@ struct MainWindow: View {
                         }
                     ),
                     runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
+                    includesSoundLibrary: model.cleanup.pendingCleanUp?.includesSoundLibrary ?? false,
                     onConfirm: { Task { await model.cleanup.performCleanUp() } },
                     onQuitAndConfirm: {
                         Task { await model.cleanup.performCleanUp(quittingOwners: true) }
                     },
                     onCancel: { model.cleanup.cancelCleanUp() }
                 )
+            case .removal:
+                if let request = model.pendingRemovalConfirmation {
+                    ConfirmationSheet(
+                        variant: removalVariant(request),
+                        onConfirm: { model.finishRemovalConfirmation(true) },
+                        onCancel: { model.finishRemovalConfirmation(false) }
+                    )
+                }
             case .emptyTrash:
                 ConfirmationSheet(
                     variant: .emptyTrash(
@@ -213,6 +224,15 @@ struct MainWindow: View {
                     onCancel: { model.activeSheet = nil }
                 )
             }
+        }
+    }
+
+    private func removalVariant(_ request: RemovalConfirmation) -> ConfirmationSheet.Variant {
+        switch request {
+        case .trash(let count, let bytes, let protected):
+            .cleanUp(itemCount: count, totalBytes: bytes, protectedDataCount: protected, saving: nil)
+        case .photos(let count):
+            .photos(itemCount: count)
         }
     }
 
@@ -290,7 +310,7 @@ struct MainWindow: View {
         .help(model.view == .scanner
               ? "Moves selected items from all filters to the Trash."
               : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
-                ? "Reviews the removal path for each selected application."
+                ? "Checks each selected application before uninstall."
                 : model.removeLabel)
     }
 

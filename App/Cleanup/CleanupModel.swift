@@ -360,6 +360,10 @@ final class CleanupModel {
         var itemCount: Int {
             entries.count + orphanedApplicationItems.count
         }
+        var includesSoundLibrary: Bool {
+            entries.flatMap { [$0] + $0.children }.contains { $0.soundLibrary != nil }
+                || orphanedApplicationItems.contains { $0.soundLibrary != nil }
+        }
         var totalBytes: Int64 {
             let ordinary = entries.reduce(0) { $0 + CleanupModel.plannedBytes(for: $1) }
             return ordinary + orphanedApplicationItems.reduce(0) { $0 + $1.allocatedBytes }
@@ -403,13 +407,15 @@ final class CleanupModel {
         )
         pendingCleanUp = plan
 
-        if preferences.confirmBeforeCleanup || !plan.runningOwners.isEmpty {
+        if preferences.confirmBeforeCleanup {
             onEvent(.confirmationRequested)
             measureCleanUpSaving(for: plan)
         } else {
             beginRemoval(quittingOwners: false)
         }
     }
+
+    var confirmBeforeCleanup: Bool { preferences().confirmBeforeCleanup }
 
     private func measureCleanUpSaving(for plan: CleanupPlan) {
         let urls = plan.entries.flatMap(Self.plannedTargets).map(\.url)
@@ -607,7 +613,9 @@ final class CleanupModel {
         }
         if let leftovers = plan.applicationLeftoverPlan,
            !plan.orphanedApplicationBundleIdentifiers.isEmpty {
-            let registered = applications.registeredIdentifiers(plan.orphanedApplicationBundleIdentifiers)
+            let registered = applications.registeredIdentifiers(
+                leftovers.ownerBundleIdentifiers(for: plan.orphanedApplicationBundleIdentifiers)
+            )
             let orphaned = (try? await remover.removeOrphanedAppLeftovers(
                 leftovers,
                 bundleIdentifiers: plan.orphanedApplicationBundleIdentifiers,

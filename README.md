@@ -59,6 +59,7 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | Duplicate files | Compare files in selected folders by size, hashes, and exact file contents. |
 | Duplicate photos | Find identical or similar photos with PhotoKit and Vision. Keep one copy in each group. |
 | App Uninstaller | Review an application and its associated files before removal. |
+| Downloaded sounds | Review GarageBand sound libraries under Applications or App Leftovers. Keep content that other installed applications use. |
 | Homebrew applications | Review the package, then let Homebrew remove it and update its installation record. |
 | Finder action | Open an uninstall review with **Services > Review Uninstall with Moppo**. |
 
@@ -79,6 +80,10 @@ Put Back needs a saved receipt and an item still in the Trash.
 Put Back cannot restore applications that Homebrew removes.
 After Homebrew removes the package, Moppo moves its verified related data to the Trash, including profiles and settings.
 Related data moved to the Trash supports Put Back.
+If **Confirm before every clean-up** is on, Moppo confirms removals that support recovery.
+With this setting off, those removals start without a Moppo confirmation.
+Homebrew uninstall always requires review because Put Back cannot restore the package.
+Empty Trash always requires confirmation because it permanently erases items.
 Moppo does not use `--zap`.
 If Homebrew needs administrator access, Moppo shows a password dialog.
 The password helper sends your login password directly to `sudo`.

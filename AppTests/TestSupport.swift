@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import MoppoCore
 
 /// Waits for asynchronous model work. The test stops when the deadline expires.
 @MainActor
@@ -32,6 +33,26 @@ actor TestGate {
     }
 }
 
+enum RemovalConfirmationChoice: CaseIterable {
+    case disabled, confirm, cancel
+    var isEnabled: Bool { self != .disabled }
+}
+
+/// Keeps removal preferences separate from the user's settings.
+@MainActor
+final class RemovalSettingsFixture {
+    let settings: SettingsStore
+    private let suite = "RemovalSettingsTests.\(UUID().uuidString)"
+
+    init(confirm: Bool) throws {
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        settings.confirmBeforeCleanup = confirm
+    }
+
+    deinit { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+}
+
 /// Creates a disposable folder and removes it when the test releases the folder.
 final class TemporaryFolder {
     let url: URL
@@ -50,4 +71,17 @@ final class TemporaryFolder {
     }
 
     deinit { try? FileManager.default.removeItem(at: url) }
+}
+
+/// Supplies downloaded content for model tests without reading system libraries.
+func soundLibraryItem() -> AppUninstallPlan.Item {
+    let url = URL(fileURLWithPath: "/moppo-fixture/Library/Application Support/Logic")
+    return .init(
+        url: url, category: .support, content: .soundLibrary, allocatedBytes: 64,
+        ownerBundleIdentifier: AppleSoundLibrary.garageBandIdentifier,
+        soundLibrary: AppleSoundLibrary.Inventory(
+            url: url, ownerIdentifiers: AppleSoundLibrary.ownerIdentifiers, permittedOwner: nil,
+            applicationRoots: [], libraryRoot: url.deletingLastPathComponent(), identities: [:]
+        )
+    )
 }

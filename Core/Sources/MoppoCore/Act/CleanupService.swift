@@ -100,20 +100,24 @@ public struct CleanupService: Sendable {
     /// would have cost on every whole-disk walk.
     private let privateMeasurer = PrivateSizeMeasurer()
     private let log: RemovalLog
+    private let registeredApplications: @Sendable (Set<String>) -> Set<String>
 
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         log: RemovalLog = RemovalLog()
     ) {
-        self.init(measureSize: { try await measurer.measure($0) }, log: log)
+        self.init(measureSize: { try await measurer.measure($0) }, log: log,
+                  registeredApplications: AppleSoundLibrary.registeredOwners)
     }
 
     init(
         measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
-        log: RemovalLog
+        log: RemovalLog,
+        registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] }
     ) {
         self.measureSize = measureSize
         self.log = log
+        self.registeredApplications = registeredApplications
     }
 
     /// - Parameters:
@@ -184,6 +188,11 @@ public struct CleanupService: Sendable {
                 for: entry,
                 removeProtectedAppData: appDataRemovalOverrides.contains(entry.id)
             ) {
+                guard soundLibraryIsStillSafe(target) else {
+                    outcome.failed.append(target.url.path)
+                    records.append(Self.failureRecord(for: target))
+                    continue
+                }
                 if let expected = expectedIdentities[target.id],
                    FileIdentity.of(target.url) != expected {
                     outcome.failed.append(target.url.path)
@@ -208,6 +217,12 @@ public struct CleanupService: Sendable {
                 // already removed reports here as the sole owner of those blocks —
                 // which is exactly what removing it now gives back.
                 let freed = try? await privateMeasurer.measure([target.url])
+
+                guard soundLibraryIsStillSafe(target) else {
+                    outcome.failed.append(target.url.path)
+                    records.append(Self.failureRecord(for: target, bytes: measured))
+                    continue
+                }
 
                 let landed: URL?
                 do {
@@ -263,6 +278,14 @@ public struct CleanupService: Sendable {
         }
 
         if !privileged.isEmpty {
+            privileged = privileged.filter { target in
+                guard soundLibraryIsStillSafe(target) else {
+                    outcome.failed.append(target.url.path)
+                    if keepReceipt { try? log.append([Self.failureRecord(for: target)]) }
+                    return false
+                }
+                return true
+            }
             await Self.removeWithPrivileges(
                 privileged, freedByID: privilegedFreed,
                 log: keepReceipt ? log : nil, outcome: &outcome
@@ -270,6 +293,28 @@ public struct CleanupService: Sendable {
         }
 
         return outcome
+    }
+
+    private func soundLibraryIsStillSafe(_ entry: FileEntry) -> Bool {
+        guard let library = entry.soundLibrary else { return true }
+        return entry.url.standardizedFileURL == library.url
+            && library.isStillSafe(registeredOwners: registeredApplications(library.ownerIdentifiers))
+    }
+
+    /// Moves selected downloaded content while keeping the installed application.
+    public func removeSoundLibraries(
+        _ plan: AppUninstallPlan, itemPaths: Set<String>,
+        privilegedFallback: Bool = false, keepReceipt: Bool = true
+    ) async throws -> CleanupOutcome {
+        let items = plan.soundLibraryItems.filter { itemPaths.contains($0.id) && $0.soundLibrary != nil }
+        guard !items.isEmpty else { return CleanupOutcome() }
+        return try await remove(
+            entries: items.map(\.fileEntry), trashFirst: true,
+            privilegedFallback: privilegedFallback, keepReceipt: keepReceipt,
+            expectedIdentities: Dictionary(uniqueKeysWithValues: items.compactMap { item in
+                item.plannedIdentity.map { (item.id, $0) }
+            })
+        )
     }
 
     /// Executes a dedicated application uninstall plan.
@@ -647,7 +692,7 @@ public struct CleanupService: Sendable {
         guard entry.kind == .appBundle else { return entry.children + [entry] }
 
         let children = entry.children.filter { child in
-            if child.manualRemoval != nil || child.protectionReason == .running {
+            if child.manualRemoval != nil || child.protectionReason == .running || child.soundLibrary != nil {
                 return false
             }
             return child.isRegenerable || removeProtectedAppData
@@ -677,6 +722,7 @@ public struct CleanupService: Sendable {
     public static func alwaysMovesToTrash(_ entry: FileEntry) -> Bool {
         (entry.kind == .appBundle && CategoryID.applications.alwaysMovesToTrash)
             || entry.protectionReason == .userData
+            || entry.soundLibrary != nil
     }
 
     /// Printed by the privileged script for each item that really moved.

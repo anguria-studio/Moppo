@@ -74,13 +74,14 @@ final class AppModel {
                     },
                     excludedPaths: removal.excludedPaths,
                     excludedPatterns: removal.excludedPatterns,
-                    confirmBeforeCleanup: settings?.confirmBeforeCleanup ?? SettingsStore.Defaults.confirmBeforeCleanup,
+                    confirmBeforeCleanup: removal.confirmBeforeCleanup,
                     keepReceipt: removal.keepReceipt
                 )
             }
         )
         self.photoDuplicates = PhotoDuplicatesModel(
             operations: operations,
+            preferences: { [weak settings] in RemovalPreferences(settings: settings) },
             allowsNetworkFetch: { [weak settings] in
                 settings?.allowPhotoDownloads ?? SettingsStore.Defaults.allowPhotoDownloads
             },
@@ -108,6 +109,13 @@ final class AppModel {
             operations: operations, service: storageExplorerService, removalService: storageExplorerRemover,
             preferences: { [weak settings] in RemovalPreferences(settings: settings) }
         )
+        let confirmRemoval: (RemovalConfirmation) async -> Bool = { [weak self] request in
+            await self?.requestRemovalConfirmation(request) ?? false
+        }
+        fileDuplicates.confirmRemoval = confirmRemoval
+        photoDuplicates.confirmRemoval = confirmRemoval
+        storageExplorer.confirmRemoval = confirmRemoval
+        uninstaller.confirmRemoval = confirmRemoval
         storageExplorer.onEvent = { [weak self] event in self?.handleStorageExplorerEvent(event) }
         storageExplorer.refreshAfterRemoval = { [weak self] in await self?.refreshAfterRemoval() }
         dashboard.iCloudPlanBytes = settings?.iCloudPlan.bytes
@@ -245,8 +253,28 @@ final class AppModel {
     }
 
     enum Sheet: String, Identifiable {
-        case cleanUp, emptyTrash
+        case cleanUp, removal, emptyTrash
         var id: String { rawValue }
+    }
+
+    private(set) var pendingRemovalConfirmation: RemovalConfirmation?
+    @ObservationIgnored private var removalConfirmationReply: CheckedContinuation<Bool, Never>?
+
+    private func requestRemovalConfirmation(_ request: RemovalConfirmation) async -> Bool {
+        guard activeSheet == nil, removalConfirmationReply == nil else { return false }
+        return await withCheckedContinuation { reply in
+            removalConfirmationReply = reply
+            pendingRemovalConfirmation = request
+            activeSheet = .removal
+        }
+    }
+
+    func finishRemovalConfirmation(_ confirmed: Bool) {
+        let reply = removalConfirmationReply
+        removalConfirmationReply = nil
+        pendingRemovalConfirmation = nil
+        if activeSheet == .removal { activeSheet = nil }
+        reply?.resume(returning: confirmed)
     }
 
     enum DuplicateKind: String, CaseIterable, Identifiable {

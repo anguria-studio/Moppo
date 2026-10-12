@@ -290,6 +290,7 @@ struct ScannerView: View {
                     showsSafeToRemoveBadges: model.scanFilter != .safeToRemove,
                     selection: $model.scannerSelection,
                     userDataRemovalOverrides: $model.userDataRemovalOverrides,
+                    confirmBeforeCleanup: model.confirmBeforeCleanup,
                     onUninstallApplication: onUninstallApplication,
                     selectAllState: selectedIDs.isEmpty ? .off
                         : selectableIDs.isSubset(of: selectedIDs) ? .on : .mixed,

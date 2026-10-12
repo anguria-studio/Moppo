@@ -43,6 +43,11 @@ struct AppUninstallerScanService: AppUninstallerScanning {
 }
 
 protocol AppUninstallRemoving: Sendable {
+    func removeSoundLibraries(
+        _ plan: AppUninstallPlan, itemPaths: Set<String>,
+        privilegedFallback: Bool, keepReceipt: Bool
+    ) async throws -> CleanupOutcome
+
     func uninstall(
         _ plan: AppUninstallPlan, privilegedFallback: Bool, keepReceipt: Bool
     ) async throws -> CleanupOutcome

@@ -32,6 +32,7 @@ final class StorageExplorerModel {
     @ObservationIgnored private var scanOperation: OperationCoordinator.Operation?
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
+    @ObservationIgnored var confirmRemoval: (RemovalConfirmation) async -> Bool = { _ in false }
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanGeneration = 0
     @ObservationIgnored private var cachedSnapshots: [String: StorageExplorerSnapshot] = [:]
@@ -287,6 +288,9 @@ final class StorageExplorerModel {
             return false
         }
         let bytes = review.items.reduce(0) { $0 + $1.allocatedBytes }
+        guard await preferences.confirmRemoval(
+            .trash(itemCount: review.items.count, totalBytes: bytes), using: confirmRemoval
+        ) else { return false }
         onEvent(.removalStarted(count: review.items.count, bytes: bytes))
         presentation.extend(toShow: .deletion(bytes: bytes))
         do {

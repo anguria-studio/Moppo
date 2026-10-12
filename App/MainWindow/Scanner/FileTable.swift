@@ -18,6 +18,7 @@ struct FileTable: View {
     var showsSafeToRemoveBadges = true
     @Binding var selection: Set<FileEntry.ID>
     @Binding var userDataRemovalOverrides: Set<FileEntry.ID>
+    var confirmBeforeCleanup = false
     var onUninstallApplication: ((FileEntry) -> Void)? = nil
     var selectAllState: NSControl.StateValue = .off
     var canToggleAll = false
@@ -102,8 +103,7 @@ struct FileTable: View {
                     + "Moppo will always move this protected data to the Trash."
                 ),
                 primaryButton: .destructive(Text("Unlock & Select")) {
-                    userDataRemovalOverrides.insert(entry.id)
-                    selection.insert(entry.id)
+                    unlockAndSelect(entry)
                     pendingUserDataOverride = nil
                 },
                 secondaryButton: .cancel { pendingUserDataOverride = nil }
@@ -187,7 +187,7 @@ struct FileTable: View {
                     hasUserDataOverride: userDataRemovalOverrides.contains(entry.id),
                     isExpanded: expandedRows.contains(entry.id),
                     onToggle: { isOn in setSelected(isOn, at: index) },
-                    onRequestUserDataOverride: { pendingUserDataOverride = entry },
+                    onRequestUserDataOverride: { requestUserDataOverride(entry) },
                     onDisclose: { toggleDisclosure(entry.id) },
                     onUninstallApplication: onUninstallApplication.map { action in
                         { action(entry) }
@@ -215,7 +215,7 @@ struct FileTable: View {
                                     userDataRemovalOverrides.remove(child.id)
                                 }
                             },
-                            onRequestUserDataOverride: { pendingUserDataOverride = child }
+                            onRequestUserDataOverride: { requestUserDataOverride(child) }
                         )
                     }
                 }
@@ -231,6 +231,16 @@ struct FileTable: View {
     }
 
     // MARK: - Selection
+
+    private func requestUserDataOverride(_ entry: FileEntry) {
+        if confirmBeforeCleanup { pendingUserDataOverride = entry }
+        else { unlockAndSelect(entry) }
+    }
+
+    private func unlockAndSelect(_ entry: FileEntry) {
+        userDataRemovalOverrides.insert(entry.id)
+        selection.insert(entry.id)
+    }
 
     /// Applies a checkbox click, extending it over a range when Shift is held.
     ///
@@ -1025,7 +1035,8 @@ private struct FileEntryIcon: View {
         case .diskImage: "externaldrive"
         case .folder: "folder"
         case .document: "doc"
-        case .application: "app.dashed"
+        case .application:
+            entry.orphanedApplicationBundleIdentifier == nil ? "app.dashed" : "folder.badge.gearshape"
         case .package: "shippingbox"
         case .backup: "iphone"
         }

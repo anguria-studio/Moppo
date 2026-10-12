@@ -28,6 +28,11 @@ public struct OrphanedAppLeftoverPlan: Sendable, Equatable {
     public var itemCount: Int { groups.reduce(0) { $0 + $1.items.count } }
     public var totalBytes: Int64 { groups.reduce(0) { $0 + $1.totalBytes } }
 
+    /// Includes the other applications that can own selected sound content.
+    public func ownerBundleIdentifiers(for selected: Set<String>) -> Set<String> {
+        selected.union(items(for: selected).flatMap { $0.soundLibrary?.ownerIdentifiers ?? [] })
+    }
+
     func items(
         for bundleIdentifiers: Set<String>,
         itemPaths: Set<String>? = nil
@@ -229,6 +234,16 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
             itemsByIdentifier[candidate.ownerBundleIdentifier, default: []].append(item)
         }
 
+        if let soundLibraries = pathPlanner.soundLibraries {
+            let content = try await soundLibraries.scan(context: context, installedOwners: installed)
+            for item in content.items {
+                guard let identifier = item.ownerBundleIdentifier else { continue }
+                itemsByIdentifier[identifier, default: []].append(item)
+            }
+            preserved.append(contentsOf: content.preservedPaths)
+            unreadableCount += content.unreadableCount
+        }
+
         let categoryRank = Dictionary(
             uniqueKeysWithValues: AppUninstallPlan.Item.Category.allCases.enumerated().map {
                 ($0.element, $0.offset)
@@ -250,7 +265,8 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
                 displayName: items.lazy
                     .filter { $0.category == .containers }
                     .compactMap { Self.systemName(of: $0.url) }
-                    .first
+                    .first ?? (items.contains { $0.soundLibrary != nil }
+                        ? AppleSoundLibrary.ownerNames[identifier] : nil)
             )
         }.sorted { left, right in
             if left.totalBytes != right.totalBytes { return left.totalBytes > right.totalBytes }
@@ -412,6 +428,9 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
             let root = pathPlanner.home.appendingPathComponent(curation.root)
             if fileManager.fileExists(atPath: root.path) { result.insert(identifier) }
         }
+        if let soundLibraries = pathPlanner.soundLibraries {
+            result.formUnion(soundLibraries.candidateIdentifiers())
+        }
 
         return CandidateScan(
             identifiers: result, unreadableCount: unreadableCount,
@@ -568,6 +587,9 @@ extension OrphanedAppLeftoverPlan {
                   owner, installedBundleIdentifiers: installedBundleIdentifiers
               )
         else { return false }
+
+        if let soundLibrary = item.soundLibrary,
+           !soundLibrary.isStillSafe(registeredOwners: installedBundleIdentifiers) { return false }
 
         if let currentIdentity = FileIdentity.of(item.url),
            currentIdentity != item.plannedIdentity {

@@ -190,17 +190,34 @@ struct PhotoDuplicatesModelTests {
         #expect(!photos.isBusyWithDisk)
     }
 
-    @Test("Photo deletion owns its task and publishes the completion before releasing the guard")
-    func deletionLifetime() async throws {
+    @Test("Photo deletion follows confirmation settings and retains its operation", arguments: RemovalConfirmationChoice.allCases)
+    func deletionLifetime(_ choice: RemovalConfirmationChoice) async throws {
+        let fixture = try RemovalSettingsFixture(confirm: choice.isEnabled)
         let service = HeldPhotoService()
-        let app = makeApp(service)
+        let app = makeApp(service, settings: fixture.settings)
         let photos = app.photoDuplicates
         await photos.requestAccess()
         photos.startScan()
         try await waitUntil { !photos.isScanning }
         await service.holdDeletion()
+        let reviewedSelection = photos.selection
         let deletion = Task { await photos.deleteSelected() }
+        if choice.isEnabled {
+            try await waitUntil { app.pendingRemovalConfirmation != nil }
+            #expect(app.pendingRemovalConfirmation == .photos(itemCount: 1))
+            #expect(await service.deletedIDs.isEmpty)
+            app.finishRemovalConfirmation(choice == .confirm)
+            if choice == .cancel {
+                await deletion.value
+                #expect(photos.selection == reviewedSelection)
+                #expect(!photos.isDeleting)
+                #expect(!app.isBusyWithDisk)
+                #expect(app.removalCompletion == nil)
+                return
+            }
+        }
         try await waitUntil { await service.isDeletionPending }
+        #expect(app.pendingRemovalConfirmation == nil)
         #expect(photos.isDeleting)
         #expect(app.isBusyWithDisk)
         #expect(app.storageExplorer.isMeasurementBlocked)
@@ -312,8 +329,8 @@ struct PhotoDuplicatesModelTests {
         #expect(photos.thumbnails.allowsNetworkFetch())
     }
 
-    private func makeApp(_ service: HeldPhotoService) -> AppModel {
-        let app = AppModel(makePhotoService: { _ in service })
+    private func makeApp(_ service: HeldPhotoService, settings: SettingsStore? = nil) -> AppModel {
+        let app = AppModel(settings: settings, makePhotoService: { _ in service })
         app.view = .duplicates
         app.duplicateKind = .photos
         return app

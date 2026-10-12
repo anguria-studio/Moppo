@@ -247,15 +247,21 @@ struct StorageExplorerModelTests {
         operations.finish(operation)
     }
 
-    @Test("Removal captures its selection and preferences and survives caller cancellation")
-    func removalLifetime() async throws {
-        let operations = OperationCoordinator()
+    @Test("Removal follows confirmation settings and retains its reviewed selection", arguments: RemovalConfirmationChoice.allCases)
+    func removalLifetime(_ choice: RemovalConfirmationChoice) async throws {
+        let fixture = try RemovalSettingsFixture(confirm: choice.isEnabled)
         let service = HeldExplorerScanner()
         let remover = HeldExplorerRemover()
-        var preferences = StorageExplorerModel.Preferences(excludedPaths: ["original"], excludedPatterns: ["*.keep"], keepReceipt: false)
-        let model = StorageExplorerModel(
-            operations: operations, service: service, removalService: remover, preferences: { preferences }
+        let excluded = try TemporaryFolder()
+        fixture.settings.addFolders([excluded.url])
+        fixture.settings.addPattern("*.keep")
+        fixture.settings.keepReceipt = false
+        let originalPreferences = RemovalPreferences(settings: fixture.settings)
+        let app = AppModel(
+            settings: fixture.settings, storageExplorerService: service, storageExplorerRemover: remover
         )
+        let model = app.storageExplorer
+        let operations = app.operations
         let folder = URL(fileURLWithPath: "/explorer-fixture")
         let snapshot = explorerSnapshot(folder)
         model.currentURL = folder
@@ -274,20 +280,38 @@ struct StorageExplorerModelTests {
         caller.cancel()
         model.selectLocation(folder.appendingPathComponent("other"))
         model.selection = []
-        preferences.keepReceipt = true
-        preferences.excludedPaths = []
-        preferences.excludedPatterns = []
+        fixture.settings.keepReceipt = true
+        fixture.settings.remove(ids: Set(fixture.settings.exclusions.map(\.id)))
         #expect(model.currentURL == folder)
         #expect(operations.isBusy)
         await service.finishReview(0, readyReview(snapshot))
+        if choice.isEnabled {
+            try await waitUntil { app.pendingRemovalConfirmation != nil }
+            #expect(app.pendingRemovalConfirmation == .trash(
+                itemCount: snapshot.items.count, totalBytes: snapshot.items.reduce(0) { $0 + $1.allocatedBytes }
+            ))
+            #expect(await remover.requests.isEmpty)
+            app.finishRemovalConfirmation(choice == .confirm)
+            if choice == .cancel {
+                await caller.value
+                #expect(model.snapshot == snapshot)
+                #expect(model.selection == Set(snapshot.items.map(\.id)))
+                #expect(!operations.isBusy)
+                #expect(!model.isRemoving)
+                #expect(refreshes == 0)
+                #expect(outcome == nil)
+                return
+            }
+        }
         try await waitUntil { await remover.requests.count == 1 }
+        #expect(app.pendingRemovalConfirmation == nil)
         await model.requestRemoval()
         let request = try #require(await remover.requests.first)
         #expect(request.items == snapshot.items)
         #expect(request.directory == folder)
         #expect(!request.keepReceipt)
-        #expect(await service.reviews.first?.excludedPaths == ["original"])
-        #expect(await service.reviews.first?.excludedPatterns == ["*.keep"])
+        #expect(await service.reviews.first?.excludedPaths == originalPreferences.excludedPaths)
+        #expect(await service.reviews.first?.excludedPatterns == originalPreferences.excludedPatterns)
         await remover.finish(0, CleanupOutcome(removedCount: 1, failed: ["survivor"], trashedCount: 1))
         await caller.value
         #expect(await service.reviewCancelled == [false])

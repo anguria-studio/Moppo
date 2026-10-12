@@ -23,6 +23,7 @@ extension PhotoDuplicateService: PhotoDuplicatesServicing {}
 @MainActor
 @Observable
 final class PhotoDuplicatesModel {
+    typealias Preferences = RemovalPreferences
     struct Preview: Identifiable {
         let groupID: String
         let asset: PhotoAsset
@@ -39,6 +40,7 @@ final class PhotoDuplicatesModel {
     @ObservationIgnored private let operations: OperationCoordinator
     @ObservationIgnored private let makeService: (Bool) -> any PhotoDuplicatesServicing
     @ObservationIgnored private let allowsNetworkFetch: () -> Bool
+    @ObservationIgnored private let preferences: () -> Preferences
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var service: any PhotoDuplicatesServicing
     @ObservationIgnored private var scanTask: Task<Void, Never>?
@@ -49,10 +51,12 @@ final class PhotoDuplicatesModel {
 
     @ObservationIgnored var canRequestAccess: () -> Bool = { true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
+    @ObservationIgnored var confirmRemoval: (RemovalConfirmation) async -> Bool = { _ in false }
 
     init(
         operations: OperationCoordinator,
         defaults: UserDefaults = .standard,
+        preferences: @escaping () -> Preferences = { Preferences() },
         allowsNetworkFetch: @escaping () -> Bool = { true },
         makeService: @escaping (Bool) -> any PhotoDuplicatesServicing = { allowsNetwork in
             PhotoDuplicateService(
@@ -63,6 +67,7 @@ final class PhotoDuplicatesModel {
     ) {
         self.operations = operations
         self.defaults = defaults
+        self.preferences = preferences
         self.allowsNetworkFetch = allowsNetworkFetch
         self.makeService = makeService
         self.service = makeService(allowsNetworkFetch())
@@ -324,14 +329,16 @@ final class PhotoDuplicatesModel {
         let removableIDs = Set(groups.flatMap(\.removable).map(\.id))
         let ids = Array(selection.intersection(removableIDs))
         guard !ids.isEmpty, let operation = operations.begin(.photoDeletion) else { return }
+        let settings = preferences()
         isDeleting = true
-        preview = nil
-        onEvent(.deletionStarted)
         let task = Task { [self] in
             defer {
                 isDeleting = false
                 operations.finish(operation)
             }
+            guard await settings.confirmRemoval(.photos(itemCount: ids.count), using: confirmRemoval) else { return }
+            preview = nil
+            onEvent(.deletionStarted)
             await performDeletion(ids)
         }
         await task.value
