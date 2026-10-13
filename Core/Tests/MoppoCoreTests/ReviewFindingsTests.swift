@@ -564,6 +564,26 @@ struct ReviewFindingsTests {
         }
     }
 
+    @Test("The runner drains large output from both pipes", arguments: [0, 1])
+    func largeProcessOutputIsRetained(status: Int) async throws {
+        let command = """
+        /bin/dd if=/dev/zero bs=65536 count=8 2>/dev/null &
+        /bin/dd if=/dev/zero bs=65536 count=8 1>&2 2>/dev/null &
+        wait
+        exit \(status)
+        """
+        let expected = Data(count: 65536 * 8)
+        do {
+            let output = try await ProcessRunner().run("/bin/sh", ["-c", command], timeout: .seconds(10))
+            #expect(status == 0)
+            #expect(output == expected)
+        } catch ProcessError.failed(_, let code, let stderr) {
+            #expect(status == 1)
+            #expect(code == 1)
+            #expect(Data(stderr.utf8) == expected)
+        }
+    }
+
     // MARK: - Follow symlinks
 
     @Test("the follow-symlinks option actually follows them")

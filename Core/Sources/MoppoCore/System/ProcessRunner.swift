@@ -53,11 +53,13 @@ public struct ProcessRunner: Sendable {
         // somebody else.
         let signals = ChildSignals(process)
 
-        // Draining starts immediately — a full pipe buffer would block the child
-        // before it could exit. Unstructured tasks rather than `async let`, which
-        // the cancellation handler below would not be allowed to capture.
-        let outputTask = Task { await Self.readToEnd(outputPipe) }
-        let errorTask = Task { await Self.readToEnd(errorPipe) }
+        // Drain both pipes immediately so a full buffer cannot block the child.
+        let outputReader = PipeReader(outputPipe)
+        let errorReader = PipeReader(errorPipe)
+        defer {
+            outputReader.stop()
+            errorReader.stop()
+        }
 
         // The watchdog owns the "took too long" verdict. A signal death alone is
         // not evidence of a timeout — crashes die by signal too — so the flag
@@ -98,18 +100,16 @@ public struct ProcessRunner: Sendable {
         signals.markReaped()
         escalation.disarm()
 
-        // The child is gone; anything still holding these pipes is not it. Give the
-        // readers a moment to finish normally, then close the read ends so they
-        // cannot wait on a grandchild forever. Only ever runs in that pathological
-        // case — a healthy child's pipes are at EOF the instant it exits.
+        // Stop unfinished reads after the child exits. Closing a FileHandle cannot
+        // reliably interrupt readToEnd when a descendant keeps the pipe open.
         let unblock = Task.detached {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            try? outputPipe.fileHandleForReading.close()
-            try? errorPipe.fileHandleForReading.close()
+            outputReader.stop()
+            errorReader.stop()
         }
-        let output = await outputTask.value
-        let errorOutput = await errorTask.value
+        let output = await outputReader.value()
+        let errorOutput = await errorReader.value()
         unblock.cancel()
 
         try Task.checkCancellation()
@@ -134,11 +134,60 @@ public struct ProcessRunner: Sendable {
         return output
     }
 
-    private static func readToEnd(_ pipe: Pipe) async -> Data {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-                continuation.resume(returning: data)
+}
+
+/// Reads a pipe through an I/O channel that supports cancellation.
+private final class PipeReader: @unchecked Sendable {
+    private let channel: DispatchIO
+    private let state = State()
+
+    init(_ pipe: Pipe) {
+        let handle = pipe.fileHandleForReading
+        let queue = DispatchQueue.global(qos: .utility)
+        channel = DispatchIO(type: .stream, fileDescriptor: handle.fileDescriptor, queue: queue) { _ in
+            try? handle.close()
+        }
+        channel.setLimit(lowWater: 1)
+        let state = self.state
+        channel.read(offset: 0, length: Int.max, queue: queue) { done, chunk, _ in
+            state.receive(chunk, done: done)
+        }
+    }
+
+    func stop() {
+        channel.close(flags: .stop)
+    }
+
+    func value() async -> Data {
+        await withCheckedContinuation { state.wait($0) }
+    }
+
+    private final class State: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        private var done = false
+        private var continuation: CheckedContinuation<Data, Never>?
+
+        func receive(_ chunk: DispatchData?, done: Bool) {
+            lock.lock()
+            if let chunk { data.append(contentsOf: chunk) }
+            self.done = done
+            let waiting = done ? continuation : nil
+            if done { continuation = nil }
+            let result = data
+            lock.unlock()
+            waiting?.resume(returning: result)
+        }
+
+        func wait(_ continuation: CheckedContinuation<Data, Never>) {
+            lock.lock()
+            if done {
+                let result = data
+                lock.unlock()
+                continuation.resume(returning: result)
+            } else {
+                self.continuation = continuation
+                lock.unlock()
             }
         }
     }
