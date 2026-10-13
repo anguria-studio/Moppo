@@ -34,7 +34,10 @@ struct RemovalOperationSurface: View {
                             showsActions: !completion.dismissesAutomatically,
                             canContinue: !model.isBusyWithDisk && !model.uninstaller.isLoadingApplicationLeftovers,
                             onContinue: model.dismissRemovalCompletion,
-                            onViewDashboard: { model.view = .dashboard }
+                            onViewDashboard: { model.view = .dashboard },
+                            onShowInFinder: completion.finderURLs.isEmpty ? nil : {
+                                NSWorkspace.shared.activateFileViewerSelecting(completion.finderURLs)
+                            }
                         )
                         .id(completion.id)
                         .task(id: completion.id) {

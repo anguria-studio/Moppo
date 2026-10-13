@@ -23,12 +23,8 @@ import Foundation
 /// The predecessor emitted one zero-size pseudo-entry per APFS snapshot into this
 /// category (`path: "snapshot:<name>"`, `size: 0`), and its cleaner deleted them by
 /// name through `tmutil`. Snapshots are now owned entirely by ``SnapshotService``,
-/// which enumerates only the Data volume and can mint a `DeletableSnapshot` for
-/// nothing else — so the sealed boot snapshot macOS is running from can never be
-/// offered for deletion. Listing snapshots here again, in a category whose entries
-/// are plain paths, would route them around that guard and reintroduce exactly the
-/// bug that work removed. The Dashboard's own snapshot disclosure row is the only
-/// place they appear.
+/// which lists snapshots as information in the Dashboard. Moppo does not delete
+/// snapshots. Snapshots do not appear as file removal entries.
 ///
 /// Nothing in this category is regenerable-by-definition, so `CategoryID.isSafe` is
 /// `false` for it: every entry here needs a human to look at it before removal.

@@ -47,6 +47,7 @@ struct RemovalCompletionView: View {
     var canContinue = true
     let onContinue: () -> Void
     let onViewDashboard: () -> Void
+    var onShowInFinder: (() -> Void)? = nil
 
     var body: some View {
         PageCompletionView(title: title, isSuccess: isSuccess) {
@@ -58,6 +59,9 @@ struct RemovalCompletionView: View {
                         .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
                         .disabled(!canContinue)
                     Button("View Dashboard", action: onViewDashboard)
+                    if let onShowInFinder {
+                        Button("Show in Finder", action: onShowInFinder)
+                    }
                 }
             }
         }

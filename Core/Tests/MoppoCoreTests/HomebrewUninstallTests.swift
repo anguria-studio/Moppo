@@ -165,7 +165,7 @@ struct HomebrewUninstallTests {
     func existingApplicationPreservesData() async throws {
         let fixture = try Fixture()
         let result = await CleanupService(log: fixture.log).removeRelatedFilesAfterHomebrew(
-            fixture.plan, privilegedFallback: false, keepReceipt: true
+            fixture.plan, keepReceipt: true
         )
         #expect(result.removedCount == 0)
         #expect(result.failed == [fixture.related.path])

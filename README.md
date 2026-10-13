@@ -87,6 +87,10 @@ With this setting off, those removals start without a Moppo confirmation.
 Homebrew uninstall always requires review because Put Back cannot restore the package.
 Empty Trash always requires confirmation because it permanently erases items.
 Moppo does not use `--zap`.
+Moppo uses normal file permissions for cleanup, Put Back, and Empty Trash.
+When macOS denies access, Moppo leaves those items and provides **Show in Finder**.
+Moppo does not delete APFS snapshots.
+
 If Homebrew needs administrator access, Moppo shows a password dialog.
 The password helper sends your login password directly to `sudo`.
 Moppo does not save the password or run Homebrew as root.

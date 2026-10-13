@@ -133,9 +133,6 @@ public struct CleanupService: Sendable {
     ///   - entries: what to remove. An entry's `children` go with it.
     ///   - trashFirst: Preferences › General "Always move to Trash". Some categories
     ///     insist on it regardless — see ``alwaysMovesToTrash(_:)``.
-    /// - Parameter privilegedFallback: whether a permission-denied removal may be
-    ///   retried with an administrator prompt. Off by default so no headless caller
-    ///   (tests, the CLI) can ever raise a password dialog; the app opts in.
     /// - Parameter keepReceipt: the sheet's "Keep a Put Back receipt" checkbox. Off
     ///   means nothing is written to the removal log — no paths, no destinations —
     ///   and so nothing from this run can be Put Back. That is the trade the user
@@ -151,21 +148,12 @@ public struct CleanupService: Sendable {
     public func remove(
         entries: [FileEntry],
         trashFirst: Bool,
-        privilegedFallback: Bool = false,
         keepReceipt: Bool = true,
         userDataRemovalOverrides: Set<FileEntry.ID> = [],
         appDataRemovalOverrides: Set<FileEntry.ID> = [],
         expectedIdentities: [FileEntry.ID: String] = [:]
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
-        // Targets refused for lack of permission, retried below in one privileged
-        // pass. App Store installs (iMovie, Pages) are owned by root:wheel, so an
-        // unprivileged `trashItem` cannot touch them even though Finder can, via
-        // exactly the admin prompt this fallback raises.
-        var privileged: [FileEntry] = []
-        /// Private size read at queue time for each privileged target, since the
-        /// batch moves them all at once and nothing can be measured afterwards.
-        var privilegedFreed: [FileEntry.ID: Int64?] = [:]
 
         for entry in entries {
             // Between entries, never mid-item: a half-removed app bundle is worse
@@ -313,26 +301,10 @@ public struct CleanupService: Sendable {
                     _ = error
                     continue
                 } catch {
-                    let permissionDenied = Self.isPermissionDenied(error)
-                    if privilegedFallback, permissionDenied,
-                       !Self.requiresAppDataAuthorization(target.url) {
-                        var queued = target
-                        queued.allocatedBytes = measured
-                        // Read now, before the batch runs. Two clones both queued
-                        // here each read zero, so a wholly-shared privileged batch
-                        // under-reports — the honest direction for a promise.
-                        privilegedFreed[target.id] = freed?.privateBytes
-                        privileged.append(queued)
-                    } else {
-                        // One unremovable file must not cost the user the rest of
-                        // the batch. The predecessor's cleanup stopped at the first
-                        // error and left the remaining selection untouched.
-                        outcome.failed.append(target.url.path)
-                        if permissionDenied {
-                            outcome.permissionDenied.append(target.url.path)
-                        }
-                        records.append(Self.failureRecord(for: target, bytes: measured))
-                    }
+                    let permissionDenied = FileAccessFailure.isPermissionDenied(error)
+                    outcome.failed.append(target.url.path)
+                    if permissionDenied { outcome.permissionDenied.append(target.url.path) }
+                    records.append(Self.failureRecord(for: target, bytes: measured))
                     continue
                 }
 
@@ -356,21 +328,6 @@ public struct CleanupService: Sendable {
             }
         }
 
-        if !privileged.isEmpty {
-            privileged = privileged.filter { target in
-                guard soundLibraryIsStillSafe(target) else {
-                    outcome.failed.append(target.url.path)
-                    if keepReceipt { try? log.append([Self.failureRecord(for: target)]) }
-                    return false
-                }
-                return true
-            }
-            await Self.removeWithPrivileges(
-                privileged, freedByID: privilegedFreed,
-                log: keepReceipt ? log : nil, outcome: &outcome
-            )
-        }
-
         return outcome
     }
 
@@ -383,13 +340,13 @@ public struct CleanupService: Sendable {
     /// Moves selected downloaded content while keeping the installed application.
     public func removeSoundLibraries(
         _ plan: AppUninstallPlan, itemPaths: Set<String>,
-        privilegedFallback: Bool = false, keepReceipt: Bool = true
+        keepReceipt: Bool = true
     ) async throws -> CleanupOutcome {
         let items = plan.soundLibraryItems.filter { itemPaths.contains($0.id) && $0.soundLibrary != nil }
         guard !items.isEmpty else { return CleanupOutcome() }
         return try await remove(
             entries: items.map(\.fileEntry), trashFirst: true,
-            privilegedFallback: privilegedFallback, keepReceipt: keepReceipt,
+            keepReceipt: keepReceipt,
             expectedIdentities: Dictionary(uniqueKeysWithValues: items.compactMap { item in
                 item.plannedIdentity.map { (item.id, $0) }
             })
@@ -398,16 +355,14 @@ public struct CleanupService: Sendable {
 
     /// Executes a dedicated application uninstall plan.
     ///
-    /// This path intentionally differs from aggregate cleanup in one crucial way:
-    /// the application bundle moves first. If that move fails or the administrator
-    /// prompt is cancelled, no cache, preference, profile, or helper is touched.
+    /// The application bundle moves first.
+    /// If that move fails, Moppo keeps its related files.
     /// Once the bundle is safely in the Trash, each reviewed related item follows
     /// independently and any survivor is reported in ``CleanupOutcome/failed``.
     /// Every item always goes to the Trash, regardless of the global cleanup
     /// preference.
     public func uninstall(
         _ plan: AppUninstallPlan,
-        privilegedFallback: Bool = false,
         keepReceipt: Bool = true
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
@@ -421,14 +376,13 @@ public struct CleanupService: Sendable {
             return outcome
         }
         return try await removeApplicationItems(
-            plan, includingApplication: true, privilegedFallback: privilegedFallback, keepReceipt: keepReceipt
+            plan, includingApplication: true, keepReceipt: keepReceipt
         )
     }
 
     /// Homebrew must finish package removal before this method can move related data.
     func removeRelatedFilesAfterHomebrew(
         _ plan: AppUninstallPlan,
-        privilegedFallback: Bool,
         keepReceipt: Bool
     ) async -> CleanupOutcome {
         guard plan.managedPackage != nil else {
@@ -437,7 +391,7 @@ public struct CleanupService: Sendable {
         // This mode records cancellation and measurement failures without losing completed results.
         do {
             return try await removeApplicationItems(
-                plan, includingApplication: false, privilegedFallback: privilegedFallback, keepReceipt: keepReceipt
+                plan, includingApplication: false, keepReceipt: keepReceipt
             )
         } catch {
             return CleanupOutcome(failed: plan.items.dropFirst().map { $0.url.path })
@@ -447,7 +401,6 @@ public struct CleanupService: Sendable {
     private func removeApplicationItems(
         _ plan: AppUninstallPlan,
         includingApplication: Bool,
-        privilegedFallback: Bool,
         keepReceipt: Bool
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
@@ -536,23 +489,9 @@ public struct CleanupService: Sendable {
                 _ = error
                 continue
             } catch {
-                guard privilegedFallback, Self.isPermissionDenied(error) else {
-                    recordFailure(item, bytes: measured)
-                    if includingApplication && index == 0 { return outcome }
-                    continue
-                }
-
-                var privilegedEntry = item.fileEntry
-                privilegedEntry.allocatedBytes = measured
-                let removedBefore = outcome.removedCount
-                await Self.removeWithPrivileges(
-                    [privilegedEntry], freedByID: [privilegedEntry.id: freed?.privateBytes],
-                    log: keepReceipt ? log : nil, outcome: &outcome
-                )
-                if outcome.removedCount == removedBefore {
-                    recordFailure(item)
-                    if includingApplication && index == 0 { return outcome }
-                }
+                recordFailure(item, bytes: measured)
+                if FileAccessFailure.isPermissionDenied(error) { outcome.permissionDenied.append(item.url.path) }
+                if includingApplication && index == 0 { return outcome }
             }
         }
 
@@ -574,7 +513,6 @@ public struct CleanupService: Sendable {
         bundleIdentifiers: Set<String>,
         itemPaths: Set<String>? = nil,
         registeredApplicationBundleIdentifiers: Set<String> = [],
-        privilegedFallback: Bool = false,
         keepReceipt: Bool = true
     ) async throws -> CleanupOutcome {
         var installed = AppUninstallPlanner.installedBundleIdentifiers(
@@ -603,7 +541,6 @@ public struct CleanupService: Sendable {
         let removed = try await remove(
             entries: safeEntries,
             trashFirst: true,
-            privilegedFallback: privilegedFallback,
             keepReceipt: keepReceipt,
             userDataRemovalOverrides: Set(safeEntries.map(\.id))
         )
@@ -611,7 +548,7 @@ public struct CleanupService: Sendable {
         return outcome
     }
 
-    // MARK: - Privileged fallback
+    // MARK: - Removal records
 
     private static func failureRecord(
         for entry: FileEntry,
@@ -623,137 +560,6 @@ public struct CleanupService: Sendable {
             bytes: max(0, bytes ?? entry.allocatedBytes),
             disposition: .failed
         )
-    }
-
-    /// True for the errors an admin retry can actually cure.
-    private static func isPermissionDenied(_ error: Error) -> Bool {
-        let nsError = error as NSError
-        if nsError.domain == NSCocoaErrorDomain,
-           nsError.code == CocoaError.fileWriteNoPermission.rawValue {
-            return true
-        }
-        let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
-        return underlying?.domain == NSPOSIXErrorDomain
-            && (underlying?.code == 1 || underlying?.code == 13)   // EPERM, EACCES
-    }
-
-    /// An administrator cannot override the privacy decision for another app's
-    /// sandbox data. macOS must authorize the signed Moppo application.
-    private static func requiresAppDataAuthorization(_ url: URL) -> Bool {
-        let library = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library", isDirectory: true)
-        return ["Containers", "Group Containers"].contains { name in
-            let root = library.appendingPathComponent(name, isDirectory: true)
-                .standardizedFileURL.path
-            let path = url.standardizedFileURL.path
-            return path == root || path.hasPrefix(root + "/")
-        }
-    }
-
-    /// Moves root-owned items to the user's Trash with admin rights, in one batch so
-    /// the password prompt appears once. The items are chowned to the user
-    /// afterwards, or the Trash would inherit files that emptying cannot remove.
-    /// A declined prompt fails every queued item, honestly.
-    ///
-    /// Every move stands alone. Chaining them with `&&` meant one failure abandoned
-    /// the rest *and* reported the items already moved as failures, leaving them in
-    /// the Trash with no receipt and so no Put Back. Each item now runs guarded by
-    /// its own `[ ! -e ]` test — `mv` would otherwise overwrite a file or nest a
-    /// directory inside an existing one — and prints a marker only when it really
-    /// moved. The script always exits 0; what happened is read from the markers,
-    /// never from the exit status.
-    ///
-    /// Destinations are also reserved as they are planned, so two items with the
-    /// same basename cannot be handed the same path.
-    private static func removeWithPrivileges(
-        _ targets: [FileEntry],
-        freedByID: [FileEntry.ID: Int64?],
-        log: RemovalLog?,
-        outcome: inout CleanupOutcome
-    ) async {
-        let trash = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".Trash")
-        let user = NSUserName()
-
-        func shellQuoted(_ path: String) -> String {
-            "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        }
-
-        var statements: [String] = []
-        var destinations: [String] = []
-        var reserved: Set<String> = []
-        for (index, target) in targets.enumerated() {
-            let destination = Self.freeTrashPath(
-                for: target.url, in: trash, reserved: &reserved
-            )
-            destinations.append(destination.path)
-            let quoted = shellQuoted(destination.path)
-            // `-e` follows symlinks, so a dangling link at the destination reads as
-            // absent and `mv` would quietly replace it; `-L` catches it.
-            //
-            // The marker is printed the moment the move succeeds, before the chown.
-            // Reporting them together meant a failed chown described a file that had
-            // already moved into the Trash as "could not be removed" — and wrote it
-            // no receipt, so it could not be put back either. Ownership is a repair
-            // to the Trash, not part of whether the item went.
-            statements.append(
-                "if [ ! -e \(quoted) ] && [ ! -L \(quoted) ]; then"
-                + " if mv \(shellQuoted(target.url.path)) \(quoted); then"
-                + " echo \(Self.moveMarker)\(index);"
-                + " /usr/sbin/chown -R \(shellQuoted(user)) \(quoted) || true;"
-                + " fi; fi"
-            )
-        }
-        // `; ` between statements, and a final `exit 0`: one item's failure must
-        // not abandon the batch, and the exit status is not the report.
-        let script = (statements + ["exit 0"]).joined(separator: "; ")
-        let output: String
-        do {
-            output = try await PrivilegedShell.run(script)
-        } catch {
-            // Declined prompt, or the shell never ran: nothing moved.
-            outcome.failed.append(contentsOf: targets.map(\.url.path))
-            outcome.permissionDenied.append(contentsOf: targets.map(\.url.path))
-            try? log?.append(targets.map { Self.failureRecord(for: $0) })
-            return
-        }
-
-        let moved = Set(output.split(whereSeparator: \.isNewline).compactMap { line -> Int? in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix(Self.moveMarker) else { return nil }
-            return Int(trimmed.dropFirst(Self.moveMarker.count))
-        })
-
-        var records: [RemovalRecord] = []
-        for (index, target) in targets.enumerated() {
-            guard moved.contains(index) else {
-                // Every item here was queued *because* the unprivileged attempt
-                // was denied. Root failing too means the denial is a privacy
-                // decision, not ownership — the one remedy is the access alert,
-                // which fires only for paths listed as permission-denied.
-                outcome.failed.append(target.url.path)
-                outcome.permissionDenied.append(target.url.path)
-                records.append(Self.failureRecord(for: target))
-                continue
-            }
-            let freed = freedByID[target.id] ?? nil
-            outcome.removedBytes += target.allocatedBytes
-            if let freed { outcome.freedBytes += freed }
-            else { outcome.unreportedFreedCount += 1 }
-            outcome.removedCount += 1
-            outcome.trashedCount += 1
-            let destination = destinations[index]
-            records.append(RemovalRecord(
-                timestamp: Date(),
-                originalPath: target.url.path,
-                bytes: target.allocatedBytes,
-                disposition: .trashed,
-                trashedPath: destination,
-                trashedIdentity: FileIdentity.of(URL(fileURLWithPath: destination)),
-                freedBytes: freed
-            ))
-        }
-        // Record each result. A failed row never receives a Trash destination.
-        if !records.isEmpty { try? log?.append(records) }
     }
 
     private static func dockerReceiptPath(for entry: FileEntry) -> String {
@@ -817,9 +623,6 @@ public struct CleanupService: Sendable {
             || entry.isGitWorktree || GitWorktreeDetector.isWorktree(entry.url)
             || entry.children.contains { $0.isGitWorktree || GitWorktreeDetector.isWorktree($0.url) }
     }
-
-    /// Printed by the privileged script for each item that really moved.
-    private static let moveMarker = "Moppo-moved:"
 
     /// A path in the Trash that is free on disk *and* not already promised to
     /// another item in this batch. `Report.pdf`, `Report 2.pdf`, `Report 3.pdf`…,

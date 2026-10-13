@@ -62,7 +62,6 @@ protocol CleanupRemoving: Sendable {
     func remove(
         entries: [FileEntry],
         trashFirst: Bool,
-        privilegedFallback: Bool,
         keepReceipt: Bool,
         userDataRemovalOverrides: Set<FileEntry.ID>,
         appDataRemovalOverrides: Set<FileEntry.ID>,
@@ -74,7 +73,6 @@ protocol CleanupRemoving: Sendable {
         bundleIdentifiers: Set<String>,
         itemPaths: Set<String>?,
         registeredApplicationBundleIdentifiers: Set<String>,
-        privilegedFallback: Bool,
         keepReceipt: Bool
     ) async throws -> CleanupOutcome
 }

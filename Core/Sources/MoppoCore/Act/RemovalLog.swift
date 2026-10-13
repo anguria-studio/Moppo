@@ -27,8 +27,7 @@ public struct RemovalRecord: Sendable, Equatable {
     /// Trash renames on collision, so the basename alone identifies nothing. Put
     /// Back matches on this, never on the name: a filename match once offered to
     /// restore an unrelated, Finder-trashed `Report.pdf` to an old record's folder.
-    /// `nil` for permanent deletions. A privileged move records the destination it
-    /// chose itself, since `mv` reports nothing back.
+    /// `nil` for permanent deletions. Git worktree moves record their selected destination.
     public var trashedPath: String?
     /// The trashed file's `device:inode`, which is what actually identifies it.
     /// A path is a location, not an identity: once the item leaves the Trash the

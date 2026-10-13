@@ -14,7 +14,8 @@ enum ApplicationIcons {
     private static let identifiers: [FileEntry.AITool: String] = [
         .codex: "com.openai.codex",
         .claude: "com.anthropic.claudefordesktop",
-        .cursor: "com.todesktop.230313mzl4w4u92"
+        .cursor: "com.todesktop.230313mzl4w4u92",
+        .grokBot: "com.anysphere.sand"
     ]
 
     static func icon(for url: URL) -> NSImage {

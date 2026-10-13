@@ -406,6 +406,18 @@ public struct ApplicationsScanner: CategoryScanner {
             remainderName: "Cursor settings and data"
         ),
 
+        // Grok Bot 0.70.2 uses Chromium partitions and rebuilds V8 caches from bundled JavaScript.
+        // Credentials, session state, and staged attachments remain outside these cache paths.
+        "com.anysphere.sand": AppDataCuration(
+            root: "Library/Application Support/Grok Bot",
+            regenerable: electronRegenerable + [
+                "Partitions/*/Cache", "Partitions/*/Code Cache", "Partitions/*/GPUCache",
+                "Partitions/*/DawnWebGPUCache", "Partitions/*/DawnGraphiteCache",
+                "Partitions/*/DawnCache", "v8-code-cache"
+            ],
+            remainderName: "Grok Bot settings and data"
+        ),
+
         // The ChatGPT desktop bundle currently identifies as `com.openai.codex`
         // and stores its Chromium profile under `Codex`; neither identifier nor
         // display name points to that folder.

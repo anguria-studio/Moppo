@@ -225,7 +225,7 @@ struct HomebrewUninstallFlowTests {
             try await render(
                 AppUninstallDetailView(model: model.uninstaller),
                 name: "review-\(dark ? "dark" : "light")", dark: dark,
-                size: NSSize(width: 600, height: 460)
+                size: NSSize(width: 520, height: 460)
             )
             try await render(AppUninstallerView(model: batchModel.uninstaller), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
             let failed = AppUninstallerModel.BatchUninstallOutcome(setAside: [result.setAside[0]])

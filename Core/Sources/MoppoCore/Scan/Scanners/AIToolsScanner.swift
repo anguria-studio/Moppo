@@ -35,7 +35,7 @@ public struct AIToolsScanner: CategoryScanner {
                 aiTool: root.tool
             )
             if let identifier = root.curationIdentifier,
-               let curation = ApplicationsScanner.curation(bundleID: identifier, baseName: "Cursor", home: home),
+               let curation = ApplicationsScanner.curation(bundleID: identifier, baseName: root.tool.rawValue, home: home),
                home.appendingPathComponent(curation.root).standardizedFileURL == url.standardizedFileURL {
                 for pattern in curation.regenerable {
                     for cache in ApplicationsScanner.expand(pattern, under: url) {

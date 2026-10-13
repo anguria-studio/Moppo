@@ -71,8 +71,7 @@ struct CleanupServiceTests {
         let last = try sandbox.writeFile("last.bin", bytes: oneMB)
 
         let log = RemovalLog(directory: sandbox.root.appendingPathComponent("logs"))
-        // `privilegedFallback` stays at its default of false: a permission failure in
-        // a test must fail, never raise an administrator password dialog.
+        // Access denial leaves the item in place. The batch continues.
         let outcome = try await CleanupService(log: log).remove(
             entries: [entry(first), entry(locked), entry(last)],
             trashFirst: false
@@ -617,6 +616,23 @@ struct TrashServiceTests {
         #expect(freed >= Int64(4 * oneMB))
         #expect(FileManager.default.fileExists(atPath: trashURL.path))
         #expect(remaining.isEmpty)
+    }
+
+    @Test("Empty Trash keeps denied items and reports their paths")
+    func emptyTrashReportsDeniedItems() async throws {
+        let sandbox = try Sandbox()
+        _ = try makeTrash(sandbox)
+        let locked = try sandbox.writeFile("home/.Trash/locked.bin", bytes: oneMB)
+        let removable = try sandbox.writeFile("home/.Trash/removable.bin", bytes: oneMB)
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: locked.path)
+        defer {
+            try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: locked.path)
+        }
+        let outcome = try await service(sandbox).empty()
+        #expect(outcome.skippedURLs.map { $0.resolvingSymlinksInPath() } == [locked.resolvingSymlinksInPath()])
+        #expect(outcome.freedBytes >= Int64(oneMB))
+        #expect(FileManager.default.fileExists(atPath: locked.path))
+        #expect(!FileManager.default.fileExists(atPath: removable.path))
     }
 
     @Test("an absent Trash summarises as empty rather than throwing")

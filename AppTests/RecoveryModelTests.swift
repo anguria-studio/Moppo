@@ -98,7 +98,7 @@ struct RecoveryModelTests {
         var failures: [String] = []
         var refreshCount = 0
         model.onEvent = { event in
-            if case .failure(let title, _) = event { failures.append(title) }
+            if case .failure(let title, _, _) = event { failures.append(title) }
         }
         model.refreshAfterMutation = { _ in refreshCount += 1 }
 
@@ -138,12 +138,12 @@ struct RecoveryModelTests {
         app.recovery.trashSummary = TrashSummary(totalBytes: 128, itemCount: 2)
         app.activeSheet = .emptyTrash
         let caller = Task { await app.recovery.emptyTrash() }
-        try await waitUntil { await trash.emptyRequests.count == 1 }
+        try await waitUntil { await trash.emptyRequests == 1 }
         caller.cancel()
         #expect(app.activeSheet == nil)
         #expect(app.activity == .emptyingTrash(itemCount: 2, totalBytes: 128))
         await app.recovery.emptyTrash()
-        #expect(await trash.emptyRequests == [true])
+        #expect(await trash.emptyRequests == 1)
         await trash.finishEmpty(freed: 64, skipped: 1)
         try await waitUntil { await trash.readLimits.count == 1 }
         #expect(app.isBusyWithDisk)
@@ -154,6 +154,7 @@ struct RecoveryModelTests {
         await caller.value
         #expect(app.removalCompletion?.title == "Some items remain in Trash")
         #expect(app.removalCompletion?.isSuccess == false)
+        #expect(app.removalCompletion?.finderURLs == [recoveryItem("Survivor-0").url])
         #expect(app.recovery.trashSummary?.itemCount == 1)
         #expect(app.recovery.cleanupHistory?.failedCount == 1)
         #expect(await trash.cancelled == [false])
@@ -169,7 +170,7 @@ struct RecoveryModelTests {
         await model.putBack(recoveryItem("Blocked"))
         await model.emptyTrash()
         #expect(await trash.restorations.isEmpty)
-        #expect(await trash.emptyRequests.isEmpty)
+        #expect(await trash.emptyRequests == 0)
         #expect(!model.isMutating)
         operations.finish(current)
     }
@@ -250,11 +251,11 @@ private actor HeldRecoveryTrash: TrashServicing {
     let holdReads: Bool
     private(set) var readLimits: [Int] = []
     private(set) var restorations: [TrashItem] = []
-    private(set) var emptyRequests: [Bool] = []
+    private(set) var emptyRequests = 0
     private(set) var cancelled: [Bool] = []
     private var reads: [Int: CheckedContinuation<TrashSummary, Error>] = [:]
     private var restore: CheckedContinuation<Void, Error>?
-    private var empty: CheckedContinuation<(freedBytes: Int64, skipped: Int), Error>?
+    private var empty: CheckedContinuation<EmptyTrashOutcome, Error>?
     init(holdReads: Bool = false) { self.holdReads = holdReads }
     func summary(limit: Int) async throws -> TrashSummary {
         let index = readLimits.count
@@ -262,8 +263,8 @@ private actor HeldRecoveryTrash: TrashServicing {
         if holdReads { return try await withCheckedThrowingContinuation { reads[index] = $0 } }
         return TrashSummary()
     }
-    func empty(privilegedFallback: Bool) async throws -> (freedBytes: Int64, skipped: Int) {
-        emptyRequests.append(privilegedFallback)
+    func empty() async throws -> EmptyTrashOutcome {
+        emptyRequests += 1
         let result = try await withCheckedThrowingContinuation { empty = $0 }
         cancelled.append(Task.isCancelled)
         return result
@@ -277,7 +278,7 @@ private actor HeldRecoveryTrash: TrashServicing {
     func failRead(_ index: Int) { reads.removeValue(forKey: index)?.resume(throwing: TrashError.unreadable("fixture")) }
     func finishRestoration() { restore?.resume(); restore = nil }
     func failRestoration(_ error: TrashError) { restore?.resume(throwing: error); restore = nil }
-    func finishEmpty(freed: Int64, skipped: Int) { empty?.resume(returning: (freed, skipped)); empty = nil }
+    func finishEmpty(freed: Int64, skipped: Int) { empty?.resume(returning: EmptyTrashOutcome(freedBytes: freed, skippedURLs: (0..<skipped).map { recoveryItem("Survivor-\($0)").url })); empty = nil }
 }
 
 private actor HeldRecoveryHistory: CleanupHistoryReading {

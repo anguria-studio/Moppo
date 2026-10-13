@@ -177,6 +177,7 @@ struct AppDataCurationTests {
         let cases = [
             ("com.microsoft.VSCode", "Visual Studio Code", "Code"),
             ("com.openai.codex", "ChatGPT", "Codex"),
+            ("com.anysphere.sand", "Grok Bot", "Grok Bot"),
             ("com.figma.Desktop", "Figma", "Figma"),
             ("org.ferdium.ferdium-app", "Ferdium", "Ferdium"),
             ("org.torproject.torbrowser", "Tor Browser", "TorBrowser-Data"),

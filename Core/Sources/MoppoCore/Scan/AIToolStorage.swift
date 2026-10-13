@@ -17,7 +17,7 @@ enum AIToolStorage {
         var parts: [Part] = []
     }
 
-    static let homeDotFolders: Set<String> = [".codex", ".claude"]
+    static let homeDotFolders: Set<String> = [".codex", ".claude", ".grokbot"]
     static let dotCacheFolders: Set<String> = ["codex-runtimes"]
 
     static let roots: [Root] = [
@@ -46,6 +46,11 @@ enum AIToolStorage {
              explanation: "Local conversations have no cloud backup. Moppo cannot verify inactive sessions and keeps this folder protected."),
         Root(path: ".cursor/worktrees", name: "Cursor worktrees", tool: .cursor),
         Root(path: ".cache/codex-runtimes", name: "Codex downloaded runtimes", tool: .codex),
+        Root(path: ".grokbot", name: "Grok Bot local computer data", tool: .grokBot,
+             explanation: "Local computer credentials, settings, and staged attachments remain protected. Use Grok Bot to manage these files.", parts: [
+            Part(path: "attachment-staging", name: "Grok Bot staged attachments", explanation: "Files prepared for upload can be the only local copies. Moppo keeps this folder protected.")
+        ]),
+        Root(path: "Library/Application Support/Grok Bot", name: "Grok Bot desktop data", tool: .grokBot, curationIdentifier: "com.anysphere.sand"),
         Root(path: "Library/Application Support/Codex", name: "ChatGPT desktop data", tool: .codex, curationIdentifier: "com.openai.codex"),
         Root(path: "Library/Application Support/Claude", name: "Claude desktop data", tool: .claude, curationIdentifier: "com.anthropic.claudefordesktop", parts: [
             Part(path: "vm_bundles/*/rootfs.img", name: "Claude VM system disk", explanation: "Linux system and installed tools. This disk can also contain task files. Use Claude to manage it."),

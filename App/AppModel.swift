@@ -341,6 +341,7 @@ final class AppModel {
         let title: String
         let detail: String
         var isSuccess = true
+        var finderURLs: [URL] = []
 
         var dismissesAutomatically: Bool {
             isSuccess && (destination == .storageExplorer || destination == .uninstaller || destination == .duplicates)
@@ -384,11 +385,15 @@ final class AppModel {
         if remaining > 0 {
             detail += "\n\(remaining) \(remaining == 1 ? "item was" : "items were") not removed."
         }
+        if !outcome.permissionDenied.isEmpty {
+            detail += "\nmacOS denied access to some items. Moppo left them in place. Review them in Finder."
+        }
         removalCompletion = RemovalCompletion(
             destination: destination,
             title: success ? "Moved to Trash" : (count > 0 ? "Some items were not removed" : "Nothing was removed"),
             detail: detail,
-            isSuccess: success
+            isSuccess: success,
+            finderURLs: outcome.failed.map { URL(fileURLWithPath: $0) }
         )
     }
 
@@ -429,12 +434,13 @@ final class AppModel {
         let id = UUID()
         var title: String
         var message: String
+        var finderURLs: [URL] = []
     }
 
     var notice: Notice?
 
-    func report(_ title: String, _ message: String) {
-        notice = Notice(title: title, message: message)
+    func report(_ title: String, _ message: String, finderURLs: [URL] = []) {
+        notice = Notice(title: title, message: message, finderURLs: finderURLs)
     }
 
     /// The disk operation in progress, if any. The window is covered while it
@@ -592,19 +598,18 @@ final class AppModel {
         guard !outcome.failed.isEmpty else { return nil }
         let count = outcome.failed.count
         let one = count == 1
-        if outcome.removedCount == 0 {
-            return Notice(
-                title: "Nothing Was Removed",
-                message: one
-                    ? "The selected item could not be removed. It is where it was."
-                    : "None of the \(count) selected items could be removed. "
-                        + "They are where they were."
-            )
+        var message = outcome.removedCount == 0
+            ? (one ? "The selected item could not be removed. The item remains in place."
+                : "None of the \(count) selected items could be removed. They remain in place.")
+            : "\(count) \(one ? "item" : "items") could not be removed. "
+                + "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
+        if !outcome.permissionDenied.isEmpty {
+            message += "\nmacOS denied access to some items. Review them in Finder."
         }
         return Notice(
-            title: "Some Items Could Not Be Removed",
-            message: "\(count) \(one ? "item" : "items") could not be removed. "
-                + "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
+            title: outcome.removedCount == 0 ? "Nothing Was Removed" : "Some Items Could Not Be Removed",
+            message: message,
+            finderURLs: outcome.failed.map { URL(fileURLWithPath: $0) }
         )
     }
 
@@ -681,15 +686,17 @@ final class AppModel {
             activeSheet = nil
             removalCompletion = nil
             activity = .emptyingTrash(itemCount: count, totalBytes: bytes)
-        case .emptiedTrash(let freedBytes, let skipped):
+        case .emptiedTrash(let freedBytes, let skippedURLs):
+            let skipped = skippedURLs.count
             if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             removalCompletion = RemovalCompletion(
                 destination: .trash,
                 title: skipped == 0 ? "Trash emptied" : "Some items remain in Trash",
                 detail: skipped == 0
                     ? "\(ByteFormatting.string(freedBytes)) recovered."
-                    : "\(skipped) \(skipped == 1 ? "item could" : "items could") not be removed.",
-                isSuccess: skipped == 0
+                    : "\(skipped) \(skipped == 1 ? "item could" : "items could") not be removed. Review the remaining items in Finder.",
+                isSuccess: skipped == 0,
+                finderURLs: skippedURLs
             )
         case .restoringTrashItem(let name):
             activity = .restoringTrashItem(name: name)
@@ -700,8 +707,8 @@ final class AppModel {
             cleanup.invalidateResults()
         case .operationFinished:
             activity = nil
-        case .failure(let title, let message):
-            report(title, message)
+        case .failure(let title, let message, let finderURLs):
+            report(title, message, finderURLs: finderURLs)
         }
     }
 

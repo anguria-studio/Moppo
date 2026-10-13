@@ -216,6 +216,8 @@ struct FileDuplicatesModelTests {
         #expect(files.groups.first?.removable.map(\.id) == ["/initial/copy-2"])
         #expect(app.removalCompletion?.destination == .duplicates)
         #expect(app.removalCompletion?.isSuccess == false)
+        #expect(app.removalCompletion?.finderURLs == [URL(fileURLWithPath: "/initial/copy-2")])
+        #expect(app.removalCompletion?.detail.contains("macOS denied access") == true)
 
         // A finished refresh cannot clear the operation started after removal.
         await scanner.hold()
@@ -335,7 +337,6 @@ struct FileDuplicatesModelTests {
         let task = Task { await files.removeSelected() }
         try await waitUntil { await removal.isPending }
         #expect(await removal.keepsReceipt == false)
-        #expect(await removal.usesPrivilegedFallback == true)
         await removal.finish(FileDuplicateRemovalOutcome(cleanup: CleanupOutcome(failed: Array(files.selection))))
         await task.value
     }
@@ -445,15 +446,13 @@ private actor HeldFileRemoval: FileDuplicatesRemoving {
     private var continuation: CheckedContinuation<FileDuplicateRemovalOutcome, any Error>?
     private(set) var requestCount = 0
     private(set) var keepsReceipt = true
-    private(set) var usesPrivilegedFallback = false
     var isPending: Bool { continuation != nil }
     func remove(
         selectedIDs: Set<DuplicateFile.ID>, from groups: [FileDuplicateGroup],
-        privilegedFallback: Bool, keepReceipt: Bool
+        keepReceipt: Bool
     ) async throws -> FileDuplicateRemovalOutcome {
         requestCount += 1
         keepsReceipt = keepReceipt
-        usesPrivilegedFallback = privilegedFallback
         return try await withCheckedThrowingContinuation { continuation = $0 }
     }
     func finish(_ outcome: FileDuplicateRemovalOutcome) {

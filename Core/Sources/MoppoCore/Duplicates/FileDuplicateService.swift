@@ -512,7 +512,6 @@ public struct FileDuplicateRemovalService: Sendable {
     public func remove(
         selectedIDs: Set<DuplicateFile.ID>,
         from groups: [FileDuplicateGroup],
-        privilegedFallback: Bool = false,
         keepReceipt: Bool = true
     ) async throws -> FileDuplicateRemovalOutcome {
         var entries: [FileEntry] = []
@@ -555,7 +554,6 @@ public struct FileDuplicateRemovalService: Sendable {
         var outcome = try await cleanup.remove(
             entries: entries,
             trashFirst: true,
-            privilegedFallback: privilegedFallback,
             keepReceipt: keepReceipt
         )
         outcome.failed.append(contentsOf: refused)

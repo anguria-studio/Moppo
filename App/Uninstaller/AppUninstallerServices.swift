@@ -45,11 +45,11 @@ struct AppUninstallerScanService: AppUninstallerScanning {
 protocol AppUninstallRemoving: Sendable {
     func removeSoundLibraries(
         _ plan: AppUninstallPlan, itemPaths: Set<String>,
-        privilegedFallback: Bool, keepReceipt: Bool
+        keepReceipt: Bool
     ) async throws -> CleanupOutcome
 
     func uninstall(
-        _ plan: AppUninstallPlan, privilegedFallback: Bool, keepReceipt: Bool
+        _ plan: AppUninstallPlan, keepReceipt: Bool
     ) async throws -> CleanupOutcome
 
     func removeOrphanedAppLeftovers(
@@ -57,14 +57,13 @@ protocol AppUninstallRemoving: Sendable {
         bundleIdentifiers: Set<String>,
         itemPaths: Set<String>?,
         registeredApplicationBundleIdentifiers: Set<String>,
-        privilegedFallback: Bool,
         keepReceipt: Bool
     ) async throws -> CleanupOutcome
 }
 
 protocol HomebrewUninstallRemoving: Sendable {
     func uninstall(
-        _ plan: AppUninstallPlan, privilegedFallback: Bool, keepReceipt: Bool
+        _ plan: AppUninstallPlan, keepReceipt: Bool
     ) async -> HomebrewUninstallOutcome
 }
 

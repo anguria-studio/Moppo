@@ -16,7 +16,6 @@ protocol FileDuplicatesRemoving: Sendable {
     func remove(
         selectedIDs: Set<DuplicateFile.ID>,
         from groups: [FileDuplicateGroup],
-        privilegedFallback: Bool,
         keepReceipt: Bool
     ) async throws -> FileDuplicateRemovalOutcome
 }
@@ -260,7 +259,7 @@ final class FileDuplicatesModel {
         presentation.extend(toShow: .deletion(bytes: bytes))
         do {
             let result = try await removalService.remove(
-                selectedIDs: selected, from: groups, privilegedFallback: true, keepReceipt: keepReceipt
+                selectedIDs: selected, from: groups, keepReceipt: keepReceipt
             )
             let outcome = result.cleanup
             let removed = selected.subtracting(outcome.failed)
