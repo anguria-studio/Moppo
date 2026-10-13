@@ -67,6 +67,8 @@ App/                          SwiftUI app
   Recovery/                  History, Trash, and Put Back model
   StorageExplorer/           Storage Explorer model and services
   Uninstaller/               App Uninstaller model and services
+  Updates/                   Sparkle controller, preferences, and installation guard
+  Support/                   Privacy information and reviewed support reports
 design/                       Archived design handoff, kept locally
 ```
 
@@ -88,7 +90,8 @@ It connects feature events, access checks, and requests to refresh other feature
 | `CleanupScheduler` | Periodic volume checks and automatic scan requests. |
 | `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
 | `StorageExplorerModel` | Folder measurements, navigation history, cached results, selection, and removal tasks. |
-| `OperationCoordinator` | Shared operation guards and operation identity for scans, reviews, removal, and recovery. |
+| `OperationCoordinator` | Shared operation guards and operation identity for scans, reviews, removal, recovery, and update installation. |
+| `UpdateController` | Sparkle checks, update preferences, and deferred installation. |
 
 Photo views receive `PhotoDuplicatesModel` directly.
 File duplicate views receive `FileDuplicatesModel` directly.
@@ -500,3 +503,20 @@ and Increase Contrast. Three literals survive, for shades AppKit has no name for
 Use ADS-STE100 Simplified Technical English for documentation, interface text,
 code comments, release notes, and support text. See [WRITING_STYLE.md](../WRITING_STYLE.md)
 for the project rules and the Vale command.
+
+## Updates and support
+
+[Update setup](updates.md) covers the update feed, signing key, and publishing commands.
+Sparkle 2.10.0 provides the standard update interface.
+Automatic checks are optional and initially disabled.
+Installation requires approval.
+The installation guard waits for the active operation and then prevents new disk work.
+App termination waits for disk work, including when an approved update is waiting.
+An unconfigured Debug build makes no update requests.
+Release builds require a valid HTTPS feed and Ed25519 public key.
+
+The Help menu provides Privacy Information and Report a Problem.
+The app includes [privacy information](../App/Resources/Privacy.md).
+Support reports include application and macOS versions.
+They exclude file paths, photos, removal logs, and stored measurements.
+Email Support opens a draft to `hello@anguria.studio` for user review.

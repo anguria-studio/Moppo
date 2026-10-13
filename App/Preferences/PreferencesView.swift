@@ -16,6 +16,7 @@ struct PreferencesView: View {
 
     let settings: SettingsStore
     let access: AccessModel
+    var updates: UpdateController? = nil
 
     /// Per-category sizes from the last scan. A category the caller has no figure for
     /// renders an em dash: `0 B` would claim it was measured and found clean.
@@ -31,6 +32,11 @@ struct PreferencesView: View {
         TabView {
             GeneralPane(settings: settings)
                 .tabItem { Label("General", systemImage: "gearshape") }
+
+            if let updates {
+                UpdatesPane(updates: updates)
+                    .tabItem { Label("Updates", systemImage: "arrow.down.circle") }
+            }
 
             AccessPane(access: access)
                 .tabItem { Label("Access", systemImage: "hand.raised") }
