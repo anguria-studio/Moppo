@@ -1,10 +1,55 @@
 import Foundation
+import Photos
 import MoppoCore
 import Testing
 
 @Suite("Photo feature ownership")
 @MainActor
 struct PhotoDuplicatesModelTests {
+    @Test("PhotoKit keeps unset access separate from denied access")
+    func photoKitAccessStates() {
+        #expect(PhotoLibraryAccess(PHAuthorizationStatus.notDetermined) == .notDetermined)
+        #expect(PhotoLibraryAccess(PHAuthorizationStatus.authorized) == .authorized)
+        #expect(PhotoLibraryAccess(PHAuthorizationStatus.denied) == .denied)
+        #expect(PhotoLibraryAccess(PHAuthorizationStatus.limited) == .limited)
+        #expect(PhotoLibraryAccess(PHAuthorizationStatus.restricted) == .restricted)
+        #expect(!PhotoLibraryAccess.notDetermined.canOpenSettings)
+        #expect(!PhotoLibraryAccess.restricted.canOpenSettings)
+        #expect(!PhotoLibraryAccess.unavailable.canOpenSettings)
+        #expect(PhotoLibraryAccess.denied.canOpenSettings)
+        #expect(PhotoLibraryAccess.limited.canOpenSettings)
+    }
+
+    @Test("Scene refreshes cannot replace an active native request", arguments: [
+        PhotoLibraryAccess.authorized, .denied, .limited, .restricted, .notDetermined
+    ])
+    func refreshDuringAccessRequest(access: PhotoLibraryAccess) async throws {
+        let fixture = ModelFixture()
+        let photos = fixture.model
+        photos.refreshAccess(.notDetermined)
+        await fixture.service.holdAccess()
+        let request = Task { await photos.requestAccess() }
+        try await waitUntil { await fixture.service.isAccessPending }
+
+        photos.refreshAccess(.denied)
+        photos.refreshAccess(.authorized)
+        #expect(photos.libraryAccess == .notDetermined)
+        #expect(photos.isRequestingAccess)
+        #expect(!photos.canAccessPhotos)
+        await photos.requestAccess()
+        photos.startScan()
+        await photos.deleteSelected()
+        #expect(await fixture.service.accessRequests == 1)
+
+        await fixture.service.finishAccess(access)
+        await request.value
+        #expect(photos.libraryAccess == access)
+        #expect(!photos.isRequestingAccess)
+        #expect(photos.canAccessPhotos == access.canSweep)
+        #expect(await fixture.service.scanRequests == 0)
+        #expect(await fixture.service.deletedIDs.isEmpty)
+    }
+
     @Test("Photo highlight follows grid rows without changing keeper order")
     func gridNavigation() throws {
         let first = DuplicateGroup(

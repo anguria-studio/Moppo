@@ -4,6 +4,19 @@ import Vision
 import AppKit
 import MoppoCore
 
+extension PhotoLibraryAccess {
+    init(_ status: PHAuthorizationStatus) {
+        self = switch status {
+        case .notDetermined: .notDetermined
+        case .authorized: .authorized
+        case .limited: .limited
+        case .denied: .denied
+        case .restricted: .restricted
+        @unknown default: .unavailable
+        }
+    }
+}
+
 /// `PhotoLibraryProviding` backed by the real photo library.
 ///
 /// Everything PhotoKit- and Vision-shaped is confined here so Core keeps its
@@ -41,12 +54,7 @@ final class PhotoKitLibrary: PhotoLibraryProviding, @unchecked Sendable {
     // MARK: - Access
 
     static var currentAccess: PhotoLibraryAccess {
-        switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
-        case .authorized: .authorized
-        case .limited: .limited
-        case .restricted: .restricted
-        default: .denied
-        }
+        PhotoLibraryAccess(PHPhotoLibrary.authorizationStatus(for: .readWrite))
     }
 
     func authorize() async -> PhotoLibraryAccess {
@@ -58,12 +66,7 @@ final class PhotoKitLibrary: PhotoLibraryProviding, @unchecked Sendable {
             status = current
         }
 
-        return switch status {
-        case .authorized: .authorized
-        case .limited:    .limited
-        case .restricted: .restricted
-        default:          .denied
-        }
+        return PhotoLibraryAccess(status)
     }
 
     // MARK: - Fetch

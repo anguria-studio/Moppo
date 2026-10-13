@@ -37,6 +37,8 @@ See [Apple notarization](https://developer.apple.com/documentation/security/cust
 ## Build and notarize
 
 Release builds use Developer ID signing, Hardened Runtime, secure timestamps, and no debug access entitlement.
+The main app includes the Photos Library entitlement and its access description.
+The package tool rejects an app if either item is missing.
 Debug builds keep their existing development signing settings.
 The archive export signs Sparkle and its embedded services with the application team.
 The package tool verifies the main app, Sparkle services, and Homebrew password helper before submission.

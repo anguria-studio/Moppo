@@ -49,6 +49,8 @@ def validate_app(app, version, build, team):
     for key, value in expected.items():
         if info.get(key) != value:
             raise RuntimeError(f"Unexpected release setting: {key}")
+    if not info.get("NSPhotoLibraryUsageDescription", "").strip():
+        raise RuntimeError("The Photos access description is missing")
     run("python3", ROOT / "scripts/validate-update-configuration.py",
         "--feed", info["SUFeedURL"], "--key", info.get("SUPublicEDKey", ""))
     run("codesign", "--verify", "--deep", "--strict", app)
@@ -68,6 +70,8 @@ def validate_app(app, version, build, team):
         entitlements = plistlib.loads(xml.encode()) if xml.strip() else {}
         if entitlements.get("com.apple.security.get-task-allow", False):
             raise RuntimeError(f"Debug access is enabled: {executable.name}")
+        if executable == app and entitlements.get("com.apple.security.personal-information.photos-library") is not True:
+            raise RuntimeError("The Photos Library entitlement is missing")
     for architecture in ("arm64", "x86_64"):
         for executable in (app / "Contents/MacOS/Moppo", app / "Contents/Helpers/MoppoHomebrewAskpass"):
             run("lipo", executable, "-verify_arch", architecture)

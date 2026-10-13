@@ -32,7 +32,7 @@ struct PhotoAccessTests {
     }
 
     @Test("Requesting access does not read, compare, or delete photos", arguments: [
-        PhotoLibraryAccess.authorized, .limited, .denied, .restricted
+        PhotoLibraryAccess.authorized, .limited, .denied, .restricted, .notDetermined, .unavailable
     ])
     func requestOnly(access: PhotoLibraryAccess) async {
         let library = Library(access: access)

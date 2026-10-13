@@ -109,6 +109,8 @@ final class PhotoDuplicatesModel {
 
     /// Refreshes system status without an authorization request.
     func refreshAccess(_ access: PhotoLibraryAccess) {
+        // The native prompt can activate the scene before its request returns.
+        guard !isRequestingAccess else { return }
         applyAccess(access)
     }
 

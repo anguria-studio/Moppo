@@ -122,8 +122,11 @@ Opening **Cleanup** starts its first scan, including with limited access.
 macOS can request access to folders during this scan.
 Scheduled scans and automatic storage measurements require Full Disk Access.
 
-Opening **Duplicates > Photos** requests Photos access.
+Open **Duplicates > Photos** to check Photos access.
+If access is not set, select **Allow** to show the macOS permission choice.
 Select **Find Duplicates** to start the photo scan.
+If access is off, select **Open Settings** to change Moppo access.
+If Moppo is missing from the Photos list, select **Recover Photos Access** for reset instructions.
 
 <details>
 <summary><strong>Photo downloads and removal</strong></summary>

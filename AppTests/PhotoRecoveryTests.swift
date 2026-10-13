@@ -155,7 +155,7 @@ struct PhotoRecoveryTests {
     }
 
     @Test("Revoked access clears photo review and requires a new scan", arguments: [
-        PhotoLibraryAccess.denied, .limited, .restricted
+        PhotoLibraryAccess.denied, .limited, .restricted, .notDetermined, .unavailable
     ])
     func revokedReview(access: PhotoLibraryAccess) async throws {
         let fixture = PhotoFixture()
@@ -168,7 +168,7 @@ struct PhotoRecoveryTests {
         model.photoDuplicates.setSelected(true, assetID: try #require(group.removable.first).id)
 
         await fixture.library.configure(access: access)
-        await model.photoDuplicates.requestAccess()
+        model.photoDuplicates.refreshAccess(access)
         #expect(!model.photoDuplicates.canAccessPhotos)
         #expect(model.photoDuplicates.results == nil)
         #expect(model.photoDuplicates.selection.isEmpty)
@@ -176,7 +176,7 @@ struct PhotoRecoveryTests {
         #expect(!model.isBusyWithDisk)
 
         await fixture.library.configure()
-        await model.photoDuplicates.requestAccess()
+        model.photoDuplicates.refreshAccess(.authorized)
         #expect(model.photoDuplicates.canAccessPhotos)
         #expect(model.photoDuplicates.results == nil)
         model.photoDuplicates.startScan()

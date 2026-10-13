@@ -1,5 +1,4 @@
 import AppKit
-import Photos
 import SwiftUI
 import MoppoCore
 
@@ -7,34 +6,34 @@ import MoppoCore
 struct PhotoDuplicatesView: View {
     @Bindable var model: PhotoDuplicatesModel
     @Environment(\.scenePhase) private var scenePhase
-    @State private var requiresAuthorization = false
+    @State private var showsAccessRecovery = false
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     @State private var review = PhotoReviewState()
     @FocusState private var gridIsFocused: Bool
+    @FocusState private var actionIsFocused: Bool
     private var thumbnails: PhotoThumbnailLoader { model.thumbnails }
 
     var body: some View {
         Group {
-            // Keep known content visible while a repeat access check runs.
-            if requiresAuthorization {
+            if model.libraryAccess == .notDetermined {
                 PageState(
                     title: "Allow Photos Access",
                     symbol: "photo",
-                    detail: "Allow access to find duplicate and similar photos. This does not start a scan."
+                    detail: model.isRequestingAccess
+                        ? "Complete the Photos permission choice in the macOS dialog. This does not start a scan."
+                        : model.libraryAccess?.unavailableReason
                 ) {
-                    Button("Allow") {
-                        Task {
-                            await model.requestAccess()
-                            requiresAuthorization = PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined
-                        }
+                    Button(model.isRequestingAccess ? "Waiting for macOS…" : "Allow") {
+                        Task { await model.requestAccess() }
                     }
                     .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+                    .focused($actionIsFocused)
                 }
             } else if model.libraryAccess == nil {
                 PageProgressView(title: "Checking Photos access")
             } else if let reason = model.libraryAccess?.unavailableReason {
-                unavailable(reason, canRetryScan: false)
+                accessUnavailable(reason)
             } else if model.isScanning {
                 sweeping
             } else if let reason = model.unavailableReason {
@@ -52,8 +51,13 @@ struct PhotoDuplicatesView: View {
         .operationResultAnimation(isRunning: model.isScanning)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
-            requiresAuthorization = PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined
             model.refreshAccess(PhotoKitLibrary.currentAccess)
+        }
+        .onChange(of: model.libraryAccess) { _, _ in
+            actionIsFocused = true
+        }
+        .sheet(isPresented: $showsAccessRecovery, onDismiss: { actionIsFocused = true }) {
+            PhotoAccessRecoveryView()
         }
         .onChange(of: model.isScanning, initial: true) { wasRunning, isRunning in
             if isRunning {
@@ -99,6 +103,7 @@ struct PhotoDuplicatesView: View {
             .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
             .controlSize(.large)
             .disabled(!model.canAccessPhotos || model.isBusyWithDisk)
+            .focused($actionIsFocused)
         }
     }
 
@@ -125,25 +130,40 @@ struct PhotoDuplicatesView: View {
         }
     }
 
-    private func unavailable(_ reason: String, canRetryScan: Bool = true) -> some View {
+    private func accessUnavailable(_ reason: String) -> some View {
         PageState(
-            title: canRetryScan ? "Photos are unavailable" : "Allow Photos access",
+            title: model.libraryAccess == .restricted ? "Photos access is restricted" : "Photos access is unavailable",
             symbol: "exclamationmark.triangle",
             detail: reason,
             iconColor: Token.textColor(.orange)
         ) {
-            Button {
-                if canRetryScan {
-                    model.startScan()
-                } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos") {
-                    NSWorkspace.shared.open(url)
+            if model.libraryAccess?.canOpenSettings == true {
+                VStack(spacing: 16) {
+                    Text("If Moppo is missing from the Photos list, select Recover Photos Access.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Token.Text.secondary)
+                    PageStateActions {
+                        Button("Open Settings") { PhotoAccessRecoveryView.openSettings() }
+                            .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
+                            .focused($actionIsFocused)
+                        Button("Recover Photos Access") { showsAccessRecovery = true }
+                    }
                 }
-            } label: {
-                Text(canRetryScan ? "Try Again" : "Open Settings")
             }
+        }
+    }
+
+    private func unavailable(_ reason: String) -> some View {
+        PageState(
+            title: "Photos are unavailable",
+            symbol: "exclamationmark.triangle",
+            detail: reason,
+            iconColor: Token.textColor(.orange)
+        ) {
+            Button("Try Again") { model.startScan() }
             .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
             .controlSize(.large)
-            .disabled(canRetryScan && (!model.canAccessPhotos || model.isBusyWithDisk))
+            .disabled(!model.canAccessPhotos || model.isBusyWithDisk)
         }
     }
 
