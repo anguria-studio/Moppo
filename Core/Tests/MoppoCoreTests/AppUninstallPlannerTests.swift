@@ -71,6 +71,26 @@ struct AppUninstallPlannerTests {
         }
     }
 
+    @Test("denied application removal keeps its related data")
+    func deniedApplicationKeepsRelatedData() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        let cache = try sandbox.write("Library/Caches/com.vendor.editor/blob")
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: sandbox.applications.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sandbox.applications.path)
+        }
+        let log = RemovalLog(directory: sandbox.root.appendingPathComponent("receipts"))
+        let outcome = try await CleanupService(log: log).uninstall(plan)
+        #expect(outcome.removedCount == 0)
+        #expect(outcome.failed == [app.path])
+        #expect(outcome.permissionDenied == [app.path])
+        #expect(FileManager.default.fileExists(atPath: app.path))
+        #expect(FileManager.default.fileExists(atPath: cache.path))
+        #expect(log.recentEntries().map(\.disposition) == [.failed])
+    }
+
     @Test("an untrusted bundle identifier creates an application-only plan")
     func untrustedIdentifierKeepsRelatedFiles() async throws {
         let sandbox = try Sandbox()

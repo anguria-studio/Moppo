@@ -20,6 +20,7 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Claude Code | `~/.claude` | Conversations, memories, attachments, file history, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
+| Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
 | Ollama, Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. |
 
 The scanner subtracts disclosed child sizes from each protected parent remainder.
@@ -128,6 +129,19 @@ Deleting exported project history or worktrees does not delete the desktop chat 
 Worktree removal keeps its separate Git checks.
 
 ## Preserved data and other tools
+
+Grok Bot desktop uses bundle identifier `com.anysphere.sand`.
+The installed Grok Bot 0.70.2 profile contains top-level Chromium caches and caches under `Partitions`.
+Its bundled startup code loads `v8-code-cache` when available.
+If this cache is missing or V8 rejects it, the app compiles its bundled JavaScript and saves a new cache.
+Moppo offers these cache paths with the existing running application protection.
+Cookies, local storage, session storage, shared dictionaries, service worker data, and other profile files stay protected.
+The separate `~/.grokbot` folder holds local computer credentials, settings, and staged attachments.
+Moppo keeps the whole folder protected, including when you disable AI Tools.
+Grok Bot runs its main computer in the cloud. Local storage cleanup cannot measure or remove that remote computer.
+See [Grok Bot computer and apps](https://docs.x.ai/grok-bot/computer-and-apps) for its cloud and local computer limits.
+
+Local file metadata and installed app source confirmed these Grok Bot paths on 13 October 2026.
 
 Ordinary AI cleanup cannot unlock protected Claude or Cursor history with a user-data override.
 Credentials, settings, memories, and active session state stay outside its removal targets.

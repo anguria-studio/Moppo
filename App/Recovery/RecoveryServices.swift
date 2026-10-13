@@ -2,7 +2,7 @@ import MoppoCore
 
 protocol TrashServicing: Sendable {
     func summary(limit: Int) async throws -> TrashSummary
-    func empty(privilegedFallback: Bool) async throws -> (freedBytes: Int64, skipped: Int)
+    func empty() async throws -> EmptyTrashOutcome
     func putBack(_ item: TrashItem) async throws
 }
 

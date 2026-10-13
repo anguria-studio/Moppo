@@ -725,7 +725,6 @@ final class CleanupModel {
             let ordinary = (try? await remover.remove(
                 entries: entries,
                 trashFirst: true,
-                privilegedFallback: true,
                 keepReceipt: plan.keepReceipt,
                 userDataRemovalOverrides: plan.userDataRemovalOverrides,
                 appDataRemovalOverrides: [],
@@ -743,7 +742,6 @@ final class CleanupModel {
                 bundleIdentifiers: plan.orphanedApplicationBundleIdentifiers,
                 itemPaths: plan.orphanedApplicationItemPaths,
                 registeredApplicationBundleIdentifiers: registered,
-                privilegedFallback: true,
                 keepReceipt: plan.keepReceipt
             )) ?? CleanupOutcome(failed: plan.orphanedApplicationItems.map { $0.url.path })
             outcome.merge(orphaned)

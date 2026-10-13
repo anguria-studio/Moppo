@@ -45,8 +45,8 @@ struct MainWindow: View {
             FloatingDialogWindowPresenter(
                 isPresented: showsAppUninstallDetail,
                 title: "Application details",
-                size: NSSize(width: 640, height: 720),
-                minimumSize: NSSize(width: 600, height: 460),
+                size: NSSize(width: 560, height: 720),
+                minimumSize: NSSize(width: 520, height: 460),
                 canClose: !model.uninstaller.isUninstallingApp,
                 onClose: model.uninstaller.resetAppUninstall
             ) {
@@ -98,7 +98,12 @@ struct MainWindow: View {
                 set: { if !$0 { model.notice = nil } }
             ),
             presenting: model.notice
-        ) { _ in
+        ) { notice in
+            if !notice.finderURLs.isEmpty {
+                Button("Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(notice.finderURLs)
+                }
+            }
             Button("OK", role: .cancel) {}
         } message: { notice in
             Text(notice.message)

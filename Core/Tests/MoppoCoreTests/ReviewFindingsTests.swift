@@ -342,10 +342,10 @@ struct ReviewFindingsTests {
                 "the child was killed, not awaited to its timeout")
     }
 
-    // MARK: - Privileged Trash moves
+    // MARK: - Trash destinations
 
     @Test("two items with one basename never plan the same Trash path")
-    func privilegedMovesReserveDistinctPaths() throws {
+    func trashMovesReserveDistinctPaths() throws {
         let trash = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("mc-trashplan-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: trash) }

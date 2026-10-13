@@ -280,7 +280,7 @@ clears it.
 
 ## AI storage
 
-AI Tools shows default Codex, Claude, and Cursor data paths.
+AI Tools shows default Codex, Claude, Cursor, and Grok Bot data paths.
 Tool rows use application icons. Child rows keep their file or folder icons.
 Bundled vendor icons identify tools when their desktop applications are absent.
 It also includes the existing Ollama, Hugging Face, and LM Studio model rows.
@@ -382,12 +382,20 @@ operating system. The predecessor rewrote its volume identifier (`disk3s1s1` →
 `disk3s1`) specifically to make it a valid delete target. Only SIP prevented
 disaster.
 
-Here, deleting it is **unrepresentable**. `SnapshotService.delete` accepts only a
-`DeletableSnapshot`. Its initializer is private to its source file. The code does
-not create values for the boot snapshot or the System volume. A runtime check and
-seven tests provide more protection.
+`SnapshotService` lists snapshots as information in the Dashboard.
+Moppo does not delete snapshots.
+The boot snapshot remains identified as part of macOS.
 
 ## Deliberate limitations
+
+**File operations use normal permissions.** Moppo does not request administrator access for cleanup, Put Back, or Empty Trash.
+When macOS denies access, Moppo reports the affected items and provides **Show in Finder**.
+Other selected items can still complete.
+If the application bundle cannot move, Moppo keeps its related data.
+
+**Homebrew manages package removal.** Homebrew applications keep their review and password flow in Moppo.
+The signed password helper sends the password directly to `sudo` when Homebrew requests it.
+Related file cleanup uses normal permissions after Homebrew removes the package.
 
 **Put Back only restores what Moppo trashed.** macOS exposes no API for the
 original location of a trashed item. Finder stores this location privately. Items

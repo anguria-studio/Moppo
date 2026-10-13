@@ -52,6 +52,17 @@ public struct TrashSummary: Sendable, Equatable {
     }
 }
 
+/// Reports completed removal and the items that remain in the Trash.
+public struct EmptyTrashOutcome: Sendable, Equatable {
+    public var freedBytes: Int64
+    public var skippedURLs: [URL]
+
+    public init(freedBytes: Int64 = 0, skippedURLs: [URL] = []) {
+        self.freedBytes = freedBytes
+        self.skippedURLs = skippedURLs
+    }
+}
+
 public enum TrashError: Error, Equatable {
     /// Nothing in ``RemovalLog`` records where this item came from.
     case putBackUnavailable(String)
@@ -121,10 +132,7 @@ public struct TrashService: Sendable {
         home.appendingPathComponent(".Trash", isDirectory: true)
     }
 
-    /// Every Trash Finder folds into the one it shows: the user's own, each mounted
-    /// volume's, and iCloud Drive's. Items admin-deleted from /Applications land in
-    /// a volume trash and iCloud deletions in CloudDocs, which is how files can sit
-    /// in Finder's Trash while `~/.Trash` reads empty.
+    /// Lists the user Trash, mounted volume Trash folders, and iCloud Drive Trash.
     private func trashDirectories() -> [URL] {
         var directories = [trashURL]
 
@@ -158,9 +166,6 @@ public struct TrashService: Sendable {
     /// How far back Put Back looks. Far enough to cover any Trash the user has not
     /// emptied in months, short of parsing a log that has been growing for years.
     private static let putBackLookback = 5_000
-
-    /// Printed by the privileged script for each item it really erased.
-    private static let eraseMarker = "Moppo-erased:"
 
     // MARK: - Reading
 
@@ -238,7 +243,7 @@ public struct TrashService: Sendable {
     /// rest of the Trash behind. Its bytes are simply not counted, which keeps the
     /// returned figure a report of what actually happened.
     @discardableResult
-    public func empty(privilegedFallback: Bool = false) async throws -> (freedBytes: Int64, skipped: Int) {
+    public func empty() async throws -> EmptyTrashOutcome {
         let fileManager = FileManager.default
         // A denied listing must throw, exactly as in `summary()`. The earlier `try?`
         // here read a Trash the app was not allowed to see as an empty one, removed
@@ -259,11 +264,7 @@ public struct TrashService: Sendable {
         }
 
         var freedBytes: Int64 = 0
-        var skipped = 0
-        // Finder's admin-delete keeps root ownership, so an unprivileged remove of
-        // such an item gets EPERM. Queued and erased in one admin pass, so the
-        // password prompt appears once however many items are stuck.
-        var stuck: [(url: URL, bytes: Int64)] = []
+        var skipped: [URL] = []
         for url in contents {
             try Task.checkCancellation()
             // Measured first, because after the removal there is nothing left to ask.
@@ -273,43 +274,13 @@ public struct TrashService: Sendable {
             } catch let error as CocoaError where error.code == .fileNoSuchFile {
                 continue
             } catch {
-                if privilegedFallback, PrivilegedShell.isPermissionDenied(error) {
-                    stuck.append((url, bytes))
-                } else {
-                    skipped += 1
-                }
+                skipped.append(url)
                 continue
             }
             freedBytes += bytes
         }
 
-        if !stuck.isEmpty {
-            // One statement per item, each announcing itself, and `exit 0` at the
-            // end. Chained with `&&`, one failure abandoned the rest *and* reported
-            // items that were already permanently erased as skipped, crediting the
-            // user none of the space they had just lost.
-            let statements = stuck.enumerated().map { index, item in
-                "if rm -rf \(PrivilegedShell.shellQuoted(item.url.path)); then"
-                    + " echo \(Self.eraseMarker)\(index); fi"
-            }
-            let script = (statements + ["exit 0"]).joined(separator: "; ")
-            do {
-                let output = try await PrivilegedShell.run(script)
-                let erased = Set(output.split(whereSeparator: \.isNewline)
-                    .compactMap { line -> Int? in
-                        let trimmed = line.trimmingCharacters(in: .whitespaces)
-                        guard trimmed.hasPrefix(Self.eraseMarker) else { return nil }
-                        return Int(trimmed.dropFirst(Self.eraseMarker.count))
-                    })
-                for (index, item) in stuck.enumerated() {
-                    if erased.contains(index) { freedBytes += item.bytes } else { skipped += 1 }
-                }
-            } catch {
-                // A declined prompt fails every queued item, honestly.
-                skipped += stuck.count
-            }
-        }
-        return (freedBytes, skipped)
+        return EmptyTrashOutcome(freedBytes: freedBytes, skippedURLs: skipped)
     }
 
     // MARK: - Put Back
@@ -366,8 +337,7 @@ public struct TrashService: Sendable {
     /// Keyed by the destination `trashItem` reported, never by name: the Trash
     /// renames on collision, and a bare filename once matched an unrelated item the
     /// user had trashed from Finder. Only `trashed` removals with a recorded
-    /// destination qualify — a `deleted` one left nothing to put back, and a
-    /// privileged move does not report where it landed.
+    /// destination qualify. A `deleted` record leaves nothing to restore.
     private func originalPaths() -> [String: RemovalRecord] {
         var byTrashPath: [String: RemovalRecord] = [:]
         var retired: Set<String> = []

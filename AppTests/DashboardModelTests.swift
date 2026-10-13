@@ -76,7 +76,7 @@ struct DashboardModelTests {
             .init(removedBytes: 300, removedCount: 1, trashedCount: 1), extraFailures: 0
         ))
         #expect(app.dashboard.trashNotice?.bytes == 300)
-        app.recovery.onEvent(.emptiedTrash(freedBytes: 500, skipped: 0))
+        app.recovery.onEvent(.emptiedTrash(freedBytes: 500, skippedURLs: []))
         #expect(app.dashboard.trashNotice == nil)
     }
     @Test("Limited access loads cached figures without starting background measurements")

@@ -479,7 +479,6 @@ struct CleanupModelTests {
         #expect(await removal.overrides == [protected.id])
         #expect(await removal.keepReceipt == false)
         #expect(await removal.trashFirst)
-        #expect(await removal.privilegedFallback)
         #expect(operations.isBusy)
         await removal.finish(CleanupOutcome(
             removedBytes: first.allocatedBytes, removedCount: 1,
@@ -840,11 +839,10 @@ private actor HeldCleanupRemoval: CleanupRemoving {
     private(set) var overrides: Set<FileEntry.ID> = []
     private(set) var keepReceipt = true
     private(set) var trashFirst = false
-    private(set) var privilegedFallback = false
     private var continuation: CheckedContinuation<CleanupOutcome, Never>?
     var isPending: Bool { continuation != nil }
     func remove(
-        entries: [FileEntry], trashFirst: Bool, privilegedFallback: Bool, keepReceipt: Bool,
+        entries: [FileEntry], trashFirst: Bool, keepReceipt: Bool,
         userDataRemovalOverrides: Set<FileEntry.ID>, appDataRemovalOverrides: Set<FileEntry.ID>,
         expectedIdentities: [FileEntry.ID: String]
     ) async throws -> CleanupOutcome {
@@ -853,12 +851,11 @@ private actor HeldCleanupRemoval: CleanupRemoving {
         self.overrides = userDataRemovalOverrides
         self.keepReceipt = keepReceipt
         self.trashFirst = trashFirst
-        self.privilegedFallback = privilegedFallback
         return await withCheckedContinuation { continuation = $0 }
     }
     func removeOrphanedAppLeftovers(
         _ plan: OrphanedAppLeftoverPlan, bundleIdentifiers: Set<String>, itemPaths: Set<String>?,
-        registeredApplicationBundleIdentifiers: Set<String>, privilegedFallback: Bool, keepReceipt: Bool
+        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool
     ) async throws -> CleanupOutcome {
         CleanupOutcome(failed: plan.items(for: bundleIdentifiers, itemPaths: itemPaths).map(\.id))
     }

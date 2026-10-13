@@ -184,7 +184,6 @@ struct AppUninstallerModelTests {
         let request = try #require(await remover.requests.first)
         #expect(request.plan == plan)
         #expect(!request.keepReceipt)
-        #expect(request.privilegedFallback)
         await remover.finish(0, CleanupOutcome(removedBytes: 128, removedCount: 1, trashedCount: 1))
         try await waitUntil { refreshes == 1 }
         #expect(await remover.cancelled == [false])
@@ -541,14 +540,13 @@ private actor HeldUninstallerScanner: AppUninstallerScanning {
 private actor HeldUninstallerRemoval: AppUninstallRemoving {
     func removeSoundLibraries(
         _ plan: AppUninstallPlan, itemPaths: Set<String>,
-        privilegedFallback: Bool, keepReceipt: Bool
+        keepReceipt: Bool
     ) async throws -> CleanupOutcome {
         soundRequests.append(SoundRequest(plan: plan, paths: itemPaths, keepReceipt: keepReceipt))
         return await withCheckedContinuation { soundReply = $0 }
     }
     struct Request: Sendable {
         let plan: AppUninstallPlan
-        let privilegedFallback: Bool
         let keepReceipt: Bool
     }
     struct LeftoverRequest: Sendable {
@@ -568,16 +566,16 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
     private var replies: [Int: CheckedContinuation<CleanupOutcome, Never>] = [:]
     private var leftoverReply: CheckedContinuation<CleanupOutcome, Never>?
     private var soundReply: CheckedContinuation<CleanupOutcome, Never>?
-    func uninstall(_ plan: AppUninstallPlan, privilegedFallback: Bool, keepReceipt: Bool) async throws -> CleanupOutcome {
+    func uninstall(_ plan: AppUninstallPlan, keepReceipt: Bool) async throws -> CleanupOutcome {
         let index = requests.count
-        requests.append(Request(plan: plan, privilegedFallback: privilegedFallback, keepReceipt: keepReceipt))
+        requests.append(Request(plan: plan, keepReceipt: keepReceipt))
         let result = await withCheckedContinuation { replies[index] = $0 }
         cancelled.append(Task.isCancelled)
         return result
     }
     func removeOrphanedAppLeftovers(
         _ plan: OrphanedAppLeftoverPlan, bundleIdentifiers: Set<String>, itemPaths: Set<String>?,
-        registeredApplicationBundleIdentifiers: Set<String>, privilegedFallback: Bool, keepReceipt: Bool
+        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool
     ) async throws -> CleanupOutcome {
         leftoverRequests.append(LeftoverRequest(registered: registeredApplicationBundleIdentifiers, paths: itemPaths, keepReceipt: keepReceipt))
         return await withCheckedContinuation { leftoverReply = $0 }

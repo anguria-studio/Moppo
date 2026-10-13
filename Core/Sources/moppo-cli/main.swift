@@ -432,11 +432,10 @@ struct CLI {
     static func snapshots() async throws {
         let service = SnapshotService()
         let all = try await service.listAll()
-        let deletable = try await service.deletableSnapshots()
 
-        print("snapshots: \(all.count) total, \(deletable.count) removable")
+        print("snapshots: \(all.count) total, information only")
         for snapshot in all {
-            let tag = snapshot.isBootSnapshot ? "BOOT (never removable)" : "removable"
+            let tag = snapshot.isBootSnapshot ? "BOOT" : "Data volume"
             print("  [\(tag)] \(snapshot.name)")
             print("           uuid \(snapshot.uuid)  volume \(snapshot.volumeDisk)")
         }

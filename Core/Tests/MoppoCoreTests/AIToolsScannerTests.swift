@@ -126,6 +126,66 @@ struct AIToolsScannerTests {
         #expect(inUse.entries.flatMap(\.children).filter(\.isRegenerable).allSatisfy { $0.inUseBy != nil })
     }
 
+    @Test("Grok Bot caches preserve desktop state and local computer data", arguments: [false, true])
+    func grokBotStorage(running: Bool) async throws {
+        let sandbox = try Sandbox()
+        let prefix = "Library/Application Support/Grok Bot/"
+        let cachePaths = [
+            "Cache/data", "Code Cache/js/data", "GPUCache/data",
+            "Partitions/sand-forever-box/Cache/data",
+            "Partitions/sand-forever-box/Code Cache/js/data",
+            "Partitions/sand-forever-box/GPUCache/data",
+            "Partitions/sand-forever-box/DawnWebGPUCache/data",
+            "Partitions/sand-forever-box/DawnGraphiteCache/data",
+            "v8-code-cache/main-app-build.v8"
+        ]
+        for path in cachePaths { try sandbox.file(prefix + path) }
+        let protectedPaths = [
+            "Cookies", "sand-secrets.json", "sand-client-persistence/task.json",
+            "Partitions/sand-forever-box/Local Storage/leveldb/CURRENT",
+            "Partitions/sand-forever-box/Session Storage/state",
+            "Partitions/sand-forever-box/Shared Dictionary/db",
+            "Partitions/sand-forever-box/Service Worker/ScriptCache/state",
+            "plugin-logo-cache/unknown-file"
+        ]
+        for path in protectedPaths { try sandbox.file(prefix + path) }
+        try sandbox.file(".grokbot/local-exec-daemon-credential.json", bytes: 4096)
+        try sandbox.file(".grokbot/settings.json", bytes: 4096)
+        try sandbox.file(".grokbot/attachment-staging/original.zip", bytes: 6 * 1024 * 1024)
+
+        var context = ScanContext()
+        if running {
+            context.runningApplications = [.init(
+                name: "Grok Bot", bundleIdentifier: "com.anysphere.sand", bundlePath: "/Applications/Grok Bot.app"
+            )]
+        }
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let desktop = try #require(ai.entries.first { $0.displayName == "Grok Bot desktop data" })
+        let local = try #require(ai.entries.first { $0.displayName == "Grok Bot local computer data" })
+        let caches = desktop.children.filter(\.isRegenerable)
+        #expect(caches.count == cachePaths.count)
+        #expect(caches.allSatisfy { $0.kind == .cache && !$0.isRemovalLocked })
+        #expect(caches.allSatisfy { ($0.inUseBy != nil) == running })
+        #expect(desktop.aiTool == .grokBot && local.aiTool == .grokBot)
+        for path in protectedPaths {
+            let url = sandbox.home.appendingPathComponent(prefix + path)
+            #expect(!caches.contains { ApplicationsScanner.overlaps($0.url.path, url.path) })
+        }
+        for row in [desktop, local] + local.children {
+            #expect(row.isRemovalLocked)
+            #expect(!CleanupService.removalAllowed(row, userDataRemovalOverrides: [row.id]))
+        }
+        #expect(local.children.map(\.displayName) == ["Grok Bot staged attachments"])
+        #expect(desktop.displayBytes == (try await context.measurer.measure(desktop.url)).allocatedBytes)
+        #expect(local.displayBytes == (try await context.measurer.measure(local.url)).allocatedBytes)
+        #expect(ai.totalBytes == desktop.displayBytes + local.displayBytes)
+        #expect(ai.safeToRemoveBytes == (running ? 0 : caches.reduce(0) { $0 + $1.allocatedBytes }))
+        #expect(ai.safeToRemoveBytes + ai.needsReviewBytes == ai.totalBytes)
+
+        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        #expect(hidden.entries.isEmpty)
+    }
+
     @Test("AI ownership removes duplicate rows and retains installed application bundles")
     func categoryOwnership() async throws {
         let sandbox = try Sandbox()
@@ -153,13 +213,13 @@ struct AIToolsScannerTests {
         #expect(guarded.last?.entries.isEmpty == true)
     }
 
-    @Test("Removed Cursor desktop data uses the leftover review and installed owners retain AI storage")
-    func cursorDesktopOwnership() async throws {
+    @Test("Removed AI desktop data uses the leftover review and installed owners retain AI storage", arguments: ["Cursor", "Grok Bot"])
+    func desktopOwnership(appName: String) async throws {
         let sandbox = try Sandbox()
-        let identifier = "com.todesktop.230313mzl4w4u92"
-        let desktop = sandbox.home.appendingPathComponent("Library/Application Support/Cursor", isDirectory: true)
-        try sandbox.file("Library/Application Support/Cursor/Cache/data")
-        try sandbox.file("Library/Application Support/Cursor/User/history.db")
+        let identifier = appName == "Cursor" ? "com.todesktop.230313mzl4w4u92" : "com.anysphere.sand"
+        let desktop = sandbox.home.appendingPathComponent("Library/Application Support/" + appName, isDirectory: true)
+        try sandbox.file("Library/Application Support/" + appName + "/Cache/data")
+        try sandbox.file("Library/Application Support/" + appName + "/User/history.db")
         try sandbox.file(".cursor/projects/task/state.json")
         let applications = sandbox.home.appendingPathComponent("Applications")
         let planner = OrphanedAppLeftoverPlanner(pathPlanner: AppUninstallPlanner(
@@ -189,9 +249,9 @@ struct AIToolsScannerTests {
         #expect(registered.categories.first { $0.categoryID == .applicationLeftovers }?.entries.isEmpty == true)
         #expect(registered.categories.first { $0.categoryID == .aiTools }?.entries.contains { $0.url == desktop } == true)
 
-        let plist: [String: Any] = ["CFBundleIdentifier": identifier, "CFBundleName": "Cursor",
+        let plist: [String: Any] = ["CFBundleIdentifier": identifier, "CFBundleName": appName,
                                    "CFBundlePackageType": "APPL", "CFBundleVersion": "1"]
-        let info = try sandbox.file("Applications/Cursor.app/Contents/Info.plist", bytes: 0)
+        let info = try sandbox.file("Applications/" + appName + ".app/Contents/Info.plist", bytes: 0)
         try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: info)
         let installed = try await coordinator.scan()
         #expect(installed.categories.first { $0.categoryID == .applicationLeftovers }?.entries.isEmpty == true)

@@ -9,11 +9,11 @@ final class RecoveryModel {
     enum Event {
         case showTrash
         case emptyingTrash(count: Int, bytes: Int64)
-        case emptiedTrash(freedBytes: Int64, skipped: Int)
+        case emptiedTrash(freedBytes: Int64, skippedURLs: [URL])
         case restoringTrashItem(name: String)
         case restored
         case operationFinished
-        case failure(title: String, message: String)
+        case failure(title: String, message: String, finderURLs: [URL] = [])
     }
     enum Mutation { case emptyTrash, putBack }
 
@@ -127,9 +127,9 @@ final class RecoveryModel {
             var presentation = OperationPresentationDuration()
             presentation.extend(toShow: .deletion(bytes: bytes))
             do {
-                let result = try await trashService.empty(privilegedFallback: true)
+                let result = try await trashService.empty()
                 try? await presentation.wait()
-                onEvent(.emptiedTrash(freedBytes: result.freedBytes, skipped: result.skipped))
+                onEvent(.emptiedTrash(freedBytes: result.freedBytes, skippedURLs: result.skippedURLs))
             } catch {
                 onEvent(.failure(
                     title: "The Trash Could Not Be Read",
@@ -156,26 +156,33 @@ final class RecoveryModel {
         let task = Task { [self] in
             var restored = false
             var failures: [(name: String, message: String)] = []
+            var finderURLs: [URL] = []
             for item in items {
                 onEvent(.restoringTrashItem(name: item.name))
                 do {
                     try await trashService.putBack(item)
                     restored = true
                 } catch TrashError.destinationOccupied {
+                    finderURLs.append(item.url)
                     failures.append((item.name,
                         "Something is already at the place it came from. "
                             + "Move that aside, or drag this out of the Trash yourself."))
                 } catch {
-                    failures.append((item.name, "It is still in the Trash."))
+                    finderURLs.append(item.url)
+                    let message = FileAccessFailure.isPermissionDenied(error)
+                        ? "macOS denied access. The item remains in the Trash. Review it in Finder."
+                        : "The item remains in the Trash."
+                    failures.append((item.name, message))
                 }
             }
             if restored { onEvent(.restored) }
             if failures.count == 1, let failure = failures.first {
-                onEvent(.failure(title: "\(failure.name) Was Not Put Back", message: failure.message))
+                onEvent(.failure(title: "\(failure.name) Was Not Put Back", message: failure.message, finderURLs: finderURLs))
             } else if !failures.isEmpty {
                 onEvent(.failure(
                     title: "\(failures.count) Items Were Not Put Back",
-                    message: failures.map { "\($0.name): \($0.message)" }.joined(separator: "\n\n")
+                    message: failures.map { "\($0.name): \($0.message)" }.joined(separator: "\n\n"),
+                    finderURLs: finderURLs
                 ))
             }
             await refreshListsAfterMutation()

@@ -258,7 +258,7 @@ final class AppUninstallerModel {
             var presentation = OperationPresentationDuration()
             presentation.extend(toShow: .deletion(bytes: bytes))
             let outcome = (try? await remover.removeSoundLibraries(
-                plan, itemPaths: paths, privilegedFallback: true, keepReceipt: keepReceipt
+                plan, itemPaths: paths, keepReceipt: keepReceipt
             )) ?? CleanupOutcome(failed: Array(paths).sorted())
             appUninstallPlan = nil
             selectedSoundLibraryIDs.removeAll()
@@ -378,7 +378,7 @@ final class AppUninstallerModel {
             let outcome = (try? await remover.removeOrphanedAppLeftovers(
                 leftovers, bundleIdentifiers: identifiers, itemPaths: paths,
                 registeredApplicationBundleIdentifiers: registered,
-                privilegedFallback: true, keepReceipt: keepReceipt
+                keepReceipt: keepReceipt
             )) ?? CleanupOutcome(failed: Array(paths).sorted())
             await refreshLeftovers(afterRemoving: identifiers, wait: true)
             try? await presentation.wait()
@@ -455,13 +455,13 @@ final class AppUninstallerModel {
         if plan.managedPackage != nil {
             onEvent(.uninstalling(name: applicationName, applicationOnly: true, waiting: false, homebrew: true))
             return .homebrew(await homebrewRemover.uninstall(
-                plan, privilegedFallback: true, keepReceipt: keepReceipt
+                plan, keepReceipt: keepReceipt
             ))
         }
 
         do {
             return .finished(try await remover.uninstall(
-                plan, privilegedFallback: true, keepReceipt: keepReceipt
+                plan, keepReceipt: keepReceipt
             ))
         } catch {
             return .interrupted

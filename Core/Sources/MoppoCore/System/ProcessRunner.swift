@@ -262,7 +262,6 @@ private final class ExpiryFlag: @unchecked Sendable {
 
 public enum SystemExecutable {
     public static let diskutil = "/usr/sbin/diskutil"
-    public static let osascript = "/usr/bin/osascript"
 
     /// Docker Desktop installs to several locations and is often absent entirely.
     public static let dockerCandidates = [

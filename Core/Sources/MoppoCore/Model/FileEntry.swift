@@ -5,7 +5,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
 
     /// Identifies the tool icon without changing storage ownership or removal rules.
     public enum AITool: String, Sendable {
-        case codex = "Codex", claude = "Claude", cursor = "Cursor"
+        case codex = "Codex", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
     }
 
