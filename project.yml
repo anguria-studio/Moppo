@@ -124,6 +124,7 @@ targets:
         # survive. Ad-hoc signing changed hash every build and macOS forgot the
         # grant each time.
         CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_ENTITLEMENTS: App/Moppo.entitlements
         DEVELOPMENT_TEAM: L2P2KC4C69
         CODE_SIGN_STYLE: Manual
 

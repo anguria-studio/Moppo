@@ -32,6 +32,7 @@ public protocol PhotoLibraryProviding: Sendable {
 }
 
 public enum PhotoLibraryAccess: Sendable, Equatable {
+    case notDetermined
     case authorized
     /// The user granted access to a chosen subset. Duplicate detection over a
     /// partial library would compare a photo against copies it cannot see, so the
@@ -39,23 +40,28 @@ public enum PhotoLibraryAccess: Sendable, Equatable {
     case limited
     case denied
     case restricted
+    case unavailable
 
     public var canSweep: Bool { self == .authorized }
+    public var canOpenSettings: Bool { self == .denied || self == .limited }
 
     /// User-facing copy naming the remedy, per the design's rule that an
     /// unavailable feature says how to fix itself.
     public var unavailableReason: String? {
         switch self {
+        case .notDetermined:
+            "Allow Photos access to find duplicate and similar photos. This does not start a scan."
         case .authorized:
             nil
         case .limited:
-            "Moppo can only see some of your photos, so it cannot tell which are "
-                + "duplicates. Grant full access in System Settings › Privacy & Security › Photos."
+            "Moppo can see only some photos. Duplicate scans require full access. "
+                + "Select full access for Moppo in System Settings > Privacy & Security > Photos."
         case .denied:
-            "Moppo needs access to your photo library. Turn it on in "
-                + "System Settings › Privacy & Security › Photos."
+            "Photos access is off. Turn on Moppo in System Settings > Privacy & Security > Photos."
         case .restricted:
-            "Access to the photo library is restricted on this Mac."
+            "This Mac restricts Photos access. Ask the person who manages this Mac to review the restriction."
+        case .unavailable:
+            "Moppo cannot read the Photos access state. Quit and reopen Moppo to try again."
         }
     }
 }

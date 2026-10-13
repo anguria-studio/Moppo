@@ -48,7 +48,7 @@ final class AccessModel {
                 openSettings: { permission in
                     let address = switch permission {
                     case .disk: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
-                    case .photos: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos"
+                    case .photos: PhotoAccessRecoveryView.settingsURL.absoluteString
                     case .notifications: "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
                     }
                     if let url = URL(string: address) { NSWorkspace.shared.open(url) }
