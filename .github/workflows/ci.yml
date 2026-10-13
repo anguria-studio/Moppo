@@ -26,8 +26,14 @@ jobs:
           persist-credentials: false
       - name: Install build and writing tools
         run: brew install xcodegen vale
+      - name: Run process timing tests
+        run: >-
+          swift test --package-path Core
+          --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)'
       - name: Run core tests
-        run: swift test --package-path Core
+        run: >-
+          swift test --package-path Core
+          --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)'
       - name: Generate the Xcode project
         run: xcodegen generate
       - name: Run app state tests
