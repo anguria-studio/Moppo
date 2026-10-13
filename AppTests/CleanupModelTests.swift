@@ -204,6 +204,35 @@ struct CleanupModelTests {
         #expect(group.unlockableChildren.isEmpty)
     }
 
+    @Test("Opening Cleanup starts one foreground scan with full or limited access", arguments: [false, true])
+    func initialScan(hasDiskAccess: Bool) async throws {
+        let scanner = HeldCleanupScanner()
+        let app = AppModel(
+            launchAccess: hasDiskAccess ? .ready : .limited,
+            hasFullDiskAccess: { hasDiskAccess }, cleanupScanner: scanner
+        )
+        app.view = .history
+        app.startInitialCleanupScan()
+        #expect(!app.cleanup.hasStartedInitialScan)
+        app.view = .scanner
+        app.startInitialCleanupScan()
+        app.startInitialCleanupScan()
+        try await waitUntil { await scanner.requestCount == 1 }
+        #expect(app.cleanup.isScanning)
+        #expect(app.cleanup.hasStartedInitialScan)
+        #expect(app.checkDiskAccess(automatic: true) == hasDiskAccess)
+        await scanner.report(0, percent: 32)
+        try await waitUntil { app.cleanup.scanProgress == 32 }
+        let results = cleanupResults([])
+        await scanner.finish(0, results: results)
+        try await waitUntil { !app.cleanup.isScanning }
+        #expect(app.cleanup.scanResults == results)
+        #expect(!app.isBusyWithDisk)
+        app.startInitialCleanupScan()
+        #expect(!app.cleanup.isScanning)
+        #expect(await scanner.requestCount == 1)
+    }
+
     @Test("Cancellation retains the guard and rejects old callbacks after a restart")
     func scanLifetime() async throws {
         let scanner = HeldCleanupScanner()

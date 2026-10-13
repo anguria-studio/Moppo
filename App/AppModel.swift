@@ -402,11 +402,11 @@ final class AppModel {
         view = .dashboard
     }
 
-    /// Starts a broad initial scan only with Full Disk Access.
+    /// Starts the first foreground scan when Cleanup opens.
     func startInitialCleanupScan() {
-        guard hasFullDiskAccess(), checkDiskAccess() else { return }
         guard view == .scanner, cleanup.scanResults == nil, !cleanup.hasStartedInitialScan,
               cleanupCompletion == nil, !isBusyWithDisk else { return }
+        guard checkDiskAccess() else { return }
         cleanup.startScan(refreshOverview: false)
     }
 

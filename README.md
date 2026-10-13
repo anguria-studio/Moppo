@@ -118,6 +118,8 @@ Use the [source build](#build-the-app) until a packaged release is available.
 On first launch, follow the welcome guide to review file access.
 Choose **Enable** for Full Disk Access, or **Continue with Limited Access** to enter the app.
 Limited access can leave protected folders unreadable.
+Opening **Cleanup** starts its first scan, including with limited access.
+macOS can request access to folders during this scan.
 Scheduled scans and automatic storage measurements require Full Disk Access.
 
 Opening **Duplicates > Photos** requests Photos access.

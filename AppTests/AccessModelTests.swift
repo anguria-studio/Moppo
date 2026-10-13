@@ -154,13 +154,12 @@ struct AccessModelTests {
         #expect(reopened.lowSpaceAlertsEnabled)
     }
 
-    @Test("Skipping disk access does not start a broad initial scan")
+    @Test("Skipping disk access opens Storage Explorer without a Cleanup scan")
     func limitedStart() {
         let model = AppModel(launchAccess: .welcome, hasFullDiskAccess: { false })
         model.finishWelcomeGuide()
         #expect(model.launchAccess == .limited)
         #expect(model.view == .storageExplorer)
-        model.view = .scanner
         model.startInitialCleanupScan()
         #expect(!model.cleanup.isScanning)
         #expect(!model.cleanup.hasStartedInitialScan)
