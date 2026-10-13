@@ -110,6 +110,75 @@ struct HomebrewUninstallFlowTests {
         #expect(result.title == "Removal needs attention")
     }
 
+    @Test("Application details keep the main scrollbar and receive removal confirmation")
+    func dialogConfirmation() async throws {
+        let fixture = try Fixture(extraApplications: 40)
+        let preferences = try RemovalSettingsFixture(confirm: true)
+        let model = fixture.model(settings: preferences.settings)
+        let application = try #require(fixture.applications["ordinary"])
+        let plan = try await fixture.planner().plan(applicationURL: application)
+        model.view = .uninstaller
+
+        _ = NSApplication.shared
+        let parent = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 1000, height: 640),
+            styleMask: [.borderless], backing: .buffered, defer: false
+        )
+        parent.contentView = NSHostingView(rootView: MainWindow(model: model)
+            .environment(\.scenePhase, .inactive))
+        defer {
+            model.finishRemovalConfirmation(false)
+            model.uninstaller.resetAppUninstall()
+            parent.contentView = nil
+            parent.orderOut(nil)
+        }
+        try await waitUntil { model.uninstaller.installedApplicationsMeasured }
+        parent.contentView?.layoutSubtreeIfNeeded()
+        let host = try #require(parent.contentView)
+        let libraryScroll = try #require(scrollViews(in: host).first {
+            $0.frame.width > Token.Size.sidebarWidth
+        })
+        libraryScroll.scrollerStyle = .legacy
+        libraryScroll.autohidesScrollers = false
+        libraryScroll.hasVerticalScroller = true
+        libraryScroll.tile()
+        libraryScroll.contentView.scroll(to: NSPoint(x: 0, y: 100))
+        libraryScroll.reflectScrolledClipView(libraryScroll.contentView)
+        let contentBounds = libraryScroll.contentView.bounds
+        #expect(contentBounds.origin.y > 0)
+        #expect(libraryScroll.documentView!.frame.height > contentBounds.height)
+
+        model.uninstaller.appUninstallPlan = plan
+        try await waitUntil {
+            NSApp.windows.contains { $0.title == "Application details" && $0.isVisible }
+        }
+        parent.contentView?.layoutSubtreeIfNeeded()
+        #expect(libraryScroll.hasVerticalScroller)
+        #expect(libraryScroll.contentView.bounds == contentBounds)
+        let panel = try #require(NSApp.windows.first { $0.title == "Application details" && $0.isVisible })
+        model.uninstaller.requestAppUninstall()
+        try await waitUntil { panel.attachedSheet != nil }
+        #expect(model.pendingRemovalConfirmation != nil)
+        #expect(parent.attachedSheet == nil)
+        #expect(model.uninstaller.isShowingAppUninstallDetail)
+
+        model.finishRemovalConfirmation(false)
+        try await waitUntil { panel.attachedSheet == nil && !model.uninstaller.isUninstallingApp }
+        #expect(panel.isVisible)
+        #expect(model.uninstaller.appUninstallPlan == plan)
+        #expect(FileManager.default.fileExists(atPath: application.path))
+        model.uninstaller.resetAppUninstall()
+        try await waitUntil { !panel.isVisible }
+        parent.contentView?.layoutSubtreeIfNeeded()
+        #expect(libraryScroll.hasVerticalScroller)
+        #expect(libraryScroll.contentView.bounds == contentBounds)
+    }
+
+    private func scrollViews(in view: NSView) -> [NSScrollView] {
+        let current = (view as? NSScrollView).map { [$0] } ?? []
+        return current + view.subviews.flatMap { scrollViews(in: $0) }
+    }
+
     @Test("Homebrew review and results render in both appearances")
     func renderLayouts() async throws {
         let fixture = try Fixture()
@@ -153,7 +222,11 @@ struct HomebrewUninstallFlowTests {
                 AppUninstallResultView(outcome: result, back: {}, review: { _ in }, reviewLeftovers: {}),
                 name: "mixed-\(dark ? "dark" : "light")", dark: dark
             )
-            try await render(AppUninstallerView(model: model.uninstaller), name: "review-\(dark ? "dark" : "light")", dark: dark)
+            try await render(
+                AppUninstallDetailView(model: model.uninstaller),
+                name: "review-\(dark ? "dark" : "light")", dark: dark,
+                size: NSSize(width: 600, height: 460)
+            )
             try await render(AppUninstallerView(model: batchModel.uninstaller), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
             let failed = AppUninstallerModel.BatchUninstallOutcome(setAside: [result.setAside[0]])
             try await render(
@@ -175,12 +248,14 @@ struct HomebrewUninstallFlowTests {
         }
     }
 
-    private func render(_ view: some View, name: String, dark: Bool) async throws {
+    private func render(
+        _ view: some View, name: String, dark: Bool,
+        size: NSSize = NSSize(width: 700, height: 540)
+    ) async throws {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: view
             .background(Token.pageBackground)
             .environment(\.colorScheme, dark ? .dark : .light))
-        let size = NSSize(width: 700, height: 540)
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         window.contentView = host
@@ -226,10 +301,12 @@ struct HomebrewUninstallFlowTests {
         let brew: Brew
         let log: MoppoCore.RemovalLog
 
-        init() throws {
+        init(extraApplications: Int = 0) throws {
             root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             var applications: [String: URL] = [:]
-            for token in ["managed", "denied", "ordinary", "changed"] {
+            let tokens = ["managed", "denied", "ordinary", "changed"]
+                + (0..<extraApplications).map { "extra-\($0)" }
+            for token in tokens {
                 let url = root.appendingPathComponent("Applications/\(token)-\(root.lastPathComponent).app")
                 try FileManager.default.createDirectory(at: url.appendingPathComponent("Contents"), withIntermediateDirectories: true)
                 let plist = try PropertyListSerialization.data(fromPropertyList: [

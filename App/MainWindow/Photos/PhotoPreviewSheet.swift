@@ -4,130 +4,27 @@ import SwiftUI
 import MoppoCore
 
 /// Presents a floating preview above the dimmed main window.
-struct PhotoPreviewWindowPresenter: NSViewRepresentable {
+struct PhotoPreviewWindowPresenter: View {
     let item: PhotoDuplicatesModel.Preview?
     let model: PhotoDuplicatesModel
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSView { NSView() }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.update(item: item, model: model, parent: nsView.window)
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.close()
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, NSWindowDelegate {
-        private var panel: PreviewPanel?
-        private var hostingView: NSHostingView<AnyView>?
-        private var itemID: String?
-        private var backdropClickMonitor: Any?
-        private weak var model: PhotoDuplicatesModel?
-        private weak var parentWindow: NSWindow?
-
-        func update(item: PhotoDuplicatesModel.Preview?, model: PhotoDuplicatesModel, parent: NSWindow?) {
-            self.model = model
-            guard let item else { close(); return }
-            guard let parent else { return }
-            parentWindow = parent
-            let identity = "\(item.groupID):\(item.id)"
-            guard itemID != identity else { return }
-            let content = AnyView(PhotoPreviewContent(
-                item: item,
-                model: model,
-                thumbnails: model.thumbnails,
-                onClose: { [weak self] in self?.dismiss() }
-            ).id(item.groupID))
-
-            if let panel, let hostingView {
-                hostingView.rootView = content
-                panel.makeKeyAndOrderFront(nil)
-            } else {
-                let panel = PreviewPanel(
-                    contentRect: NSRect(x: 0, y: 0, width: 790, height: 570),
-                    styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
-                    backing: .buffered,
-                    defer: false
+    var body: some View {
+        FloatingDialogWindowPresenter(
+            isPresented: item != nil,
+            title: "Photo preview",
+            size: NSSize(width: 790, height: 570),
+            minimumSize: NSSize(width: 680, height: 460),
+            onClose: { model.preview = nil }
+        ) {
+            if let item {
+                PhotoPreviewContent(
+                    item: item, model: model, thumbnails: model.thumbnails,
+                    onClose: { model.preview = nil }
                 )
-                panel.title = "Photo preview"
-                panel.titleVisibility = .hidden
-                panel.titlebarAppearsTransparent = true
-                panel.isFloatingPanel = true
-                panel.level = .floating
-                panel.hidesOnDeactivate = true
-                panel.isReleasedWhenClosed = false
-                panel.isMovableByWindowBackground = true
-                panel.contentMinSize = NSSize(width: 680, height: 460)
-                panel.collectionBehavior = [.fullScreenAuxiliary]
-                panel.appearance = parent.appearance
-                for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                    panel.standardWindowButton(button)?.isHidden = true
-                }
-                let hostingView = NSHostingView(rootView: content)
-                panel.contentView = hostingView
-                panel.delegate = self
-                self.hostingView = hostingView
-                self.panel = panel
-                let bounds = parent.screen?.visibleFrame ?? parent.frame
-                let x = min(max(parent.frame.midX - panel.frame.width / 2, bounds.minX), bounds.maxX - panel.frame.width)
-                let y = min(max(parent.frame.midY - panel.frame.height / 2, bounds.minY), bounds.maxY - panel.frame.height)
-                panel.setFrameOrigin(NSPoint(x: x, y: y))
-                panel.makeKeyAndOrderFront(nil)
-                installBackdropClickMonitor()
+                .id(item.groupID)
             }
-            itemID = identity
-        }
-
-        private func installBackdropClickMonitor() {
-            backdropClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-                let consumed = MainActor.assumeIsolated {
-                    guard let self, let panel = self.panel, event.window === self.parentWindow else { return false }
-                    panel.makeKeyAndOrderFront(nil)
-                    return true
-                }
-                // Keep keyboard focus in the preview when the user clicks the dimmed window.
-                return consumed ? nil : event
-            }
-        }
-
-        private func dismiss() {
-            model?.preview = nil
-            close()
-        }
-
-        func windowWillClose(_ notification: Notification) {
-            model?.preview = nil
-            removeMonitor()
-            panel = nil
-            hostingView = nil
-            itemID = nil
-            parentWindow = nil
-        }
-
-        func close() {
-            removeMonitor()
-            panel?.delegate = nil
-            panel?.close()
-            panel = nil
-            hostingView = nil
-            itemID = nil
-            parentWindow = nil
-        }
-
-        private func removeMonitor() {
-            if let backdropClickMonitor { NSEvent.removeMonitor(backdropClickMonitor) }
-            backdropClickMonitor = nil
         }
     }
-}
-
-private final class PreviewPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
 }
 
 /// Shows a photo in a movable preview window.

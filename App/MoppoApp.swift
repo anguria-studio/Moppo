@@ -241,7 +241,8 @@ private struct MoppoCommands: Commands {
         CommandMenu("Cleanup") {
             Button("Scan for Cleanup Items") { model.cleanup.startScan() }
                 .keyboardShortcut("r")
-                .disabled(model.isShowingWelcome || model.isBusyWithDisk)
+                .disabled(model.isShowingWelcome || model.isBusyWithDisk
+                          || model.uninstaller.isShowingAppUninstallDetail)
             Button(model.cleanup.isInterruptingScan ? ScanInterruptionView.title : "Stop Scan") { model.cleanup.cancelScan() }
                 .keyboardShortcut(".")
                 .disabled(!model.cleanup.isScanning || model.cleanup.isInterruptingScan)
@@ -250,14 +251,14 @@ private struct MoppoCommands: Commands {
         CommandGroup(replacing: .textEditing) {
             Button("Find") { model.requestFind() }
                 .keyboardShortcut("f")
-                .disabled(!model.canFind)
+                .disabled(!model.canFind || model.uninstaller.isShowingAppUninstallDetail)
         }
         CommandGroup(after: .appSettings) {
             Button("Show Welcome Guide") {
                 model.showWelcomeGuide()
                 MainWindowPresenter.present { openWindow(id: "main") }
             }
-            .disabled(model.isBusyWithDisk)
+            .disabled(model.isBusyWithDisk || model.uninstaller.isShowingAppUninstallDetail)
             Button("Grant Full Disk Access") {
                 let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
                 NSWorkspace.shared.open(url)
