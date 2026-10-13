@@ -208,9 +208,14 @@ struct AppUninstallDetailView: View {
                             if isOn { model.selectedSoundLibraryIDs.insert(item.id) }
                             else { model.selectedSoundLibraryIDs.remove(item.id) }
                         }
-                        Text(item.displayName).font(.mcBody)
+                        .fixedSize()
+                        Text(item.displayName)
+                            .font(.mcBody)
+                            .lineLimit(1)
                         Spacer(minLength: 8)
-                        Text(ByteFormatting.string(item.allocatedBytes)).font(.mcRowValue)
+                        Text(ByteFormatting.string(item.allocatedBytes))
+                            .font(.mcRowValue)
+                            .fixedSize()
                     }
                 }
             }
