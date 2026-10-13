@@ -160,8 +160,8 @@ struct ScannerView: View {
     private var scanProgress: some View {
         PageProgressView(
             title: "Scanning for cleanup items",
-            detail: "\(model.scanProgress)%",
-            progress: Double(model.scanProgress) / 100,
+            detail: model.scanProgress > 0 ? "\(model.scanProgress)%" : "Checking files",
+            progress: model.scanProgress > 0 ? Double(model.scanProgress) / 100 : nil,
             isInterrupting: model.isInterruptingScan,
             icon: .mascot(.scanning)
         )
