@@ -145,6 +145,15 @@ final class AppUninstallerModel {
     private(set) var isInterruptingAppUninstall = false
     /// The selected application remains visible while its review is prepared.
     private(set) var appUninstallPlanningURL: URL?
+    /// Keeps the selected application available after planning fails.
+    private(set) var appUninstallReviewURL: URL?
+
+    var isShowingAppUninstallDetail: Bool {
+        guard !isInterruptingAppUninstall,
+              appUninstallOutcome == nil, batchUninstallOutcome == nil else { return false }
+        return appUninstallPlan != nil
+            || (appUninstallReviewURL != nil && (isPlanningAppUninstall || appUninstallError != nil))
+    }
     private(set) var appUninstallError: String?
     private(set) var appUninstallOutcome: CleanupOutcome?
     private(set) var lastUninstalledApplicationName: String?
@@ -161,6 +170,7 @@ final class AppUninstallerModel {
         guard canPlan(), let operation = operations.begin(.appUninstallPlanning) else { return }
         resetAppUninstall()
         appUninstallPlanningURL = applicationURL.standardizedFileURL
+        appUninstallReviewURL = applicationURL.standardizedFileURL
         let context = makeContext()
         startPlanning(operation) { [self] planningID in
             let presentation = OperationPresentationDuration()
@@ -183,6 +193,7 @@ final class AppUninstallerModel {
 
     func resetAppUninstall() {
         guard !isUninstallingApp else { return }
+        appUninstallReviewURL = nil
         if isPlanningAppUninstall {
             guard !isInterruptingAppUninstall else { return }
             isInterruptingAppUninstall = true
@@ -510,7 +521,7 @@ final class AppUninstallerModel {
 
     /// Reviews and results supply their own actions.
     var isShowingUninstallerLibrary: Bool {
-        appUninstallPlan == nil && batchUninstallReview == nil
+        !isShowingAppUninstallDetail && batchUninstallReview == nil
             && appUninstallOutcome == nil && batchUninstallOutcome == nil
             && !isPlanningAppUninstall
     }

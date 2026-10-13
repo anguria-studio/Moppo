@@ -13,10 +13,14 @@ struct AppUninstallerModelTests {
         let plan = uninstallPlan("First")
         model.planAppUninstall(plan.applicationURL)
         try await waitUntil { await scanner.plans.count == 1 }
+        #expect(model.isShowingAppUninstallDetail)
+        #expect(model.appUninstallReviewURL == plan.applicationURL)
         #expect(app.view == .uninstaller)
         app.view = .history
         model.resetAppUninstall()
         #expect(model.isInterruptingAppUninstall)
+        #expect(!model.isShowingAppUninstallDetail)
+        #expect(model.appUninstallReviewURL == nil)
         #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.isBusyWithDisk)
         model.planAppUninstall(uninstallPlan("Blocked").applicationURL)
@@ -35,8 +39,11 @@ struct AppUninstallerModelTests {
         await scanner.finishPlan(1, next)
         try await waitUntil { !model.isPlanningAppUninstall }
         #expect(model.appUninstallPlan == next)
+        #expect(model.isShowingAppUninstallDetail)
         #expect(app.view == .trash)
         #expect(!app.isBusyWithDisk)
+        model.resetAppUninstall()
+        #expect(!model.isShowingAppUninstallDetail)
     }
 
     @Test("Another operation blocks review and uninstall")
@@ -73,7 +80,12 @@ struct AppUninstallerModelTests {
         try await waitUntil { !model.isPlanningAppUninstall }
         #expect(model.appUninstallError != nil)
         #expect(model.appUninstallPlan == nil)
+        #expect(model.isShowingAppUninstallDetail)
+        #expect(!model.isShowingUninstallerLibrary)
         #expect(!operations.isBusy)
+        model.resetAppUninstall()
+        #expect(!model.isShowingAppUninstallDetail)
+        #expect(model.appUninstallError == nil)
     }
 
     @Test("Replaced list loads cannot restore old applications or selection")
@@ -166,6 +178,7 @@ struct AppUninstallerModelTests {
         model.requestAppUninstall()
         model.resetAppUninstall()
         #expect(model.isUninstallingApp)
+        #expect(model.isShowingAppUninstallDetail)
         #expect(operations.isBusy)
         #expect(await remover.requests.count == 1)
         let request = try #require(await remover.requests.first)
@@ -179,6 +192,7 @@ struct AppUninstallerModelTests {
         #expect(model.appUninstallOutcome?.removedBytes == 128)
         #expect(model.appUninstallPlan == nil)
         #expect(!model.isUninstallingApp)
+        #expect(!model.isShowingAppUninstallDetail)
     }
 
     @Test("A quit refusal retains the review and prevents removal")

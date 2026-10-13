@@ -38,25 +38,23 @@ struct AppUninstallerView: View {
 
     var body: some View {
         Group {
-            if model.isInterruptingAppUninstall {
-                PageProgressView(title: ScanInterruptionView.title, isInterrupting: true)
-            } else if model.isPlanningAppUninstall, let url = model.appUninstallPlanningURL {
-                planningState(url)
-            } else if model.isPlanningAppUninstall {
-                busyState
+            if model.isPlanningAppUninstall, model.appUninstallPlanningURL == nil {
+                if model.isInterruptingAppUninstall {
+                    PageProgressView(title: ScanInterruptionView.title, isInterrupting: true)
+                } else {
+                    busyState
+                }
             } else if let outcome = model.batchUninstallOutcome {
                 batchDoneState(outcome)
             } else if let outcome = model.appUninstallOutcome {
                 doneState(outcome)
             } else if let review = model.batchUninstallReview {
                 batchReviewState(review)
-            } else if let plan = model.appUninstallPlan {
-                resultsState(plan)
             } else {
                 emptyState
             }
         }
-        .operationResultAnimation(isRunning: model.isPlanningAppUninstall)
+        .operationResultAnimation(isRunning: model.isPlanningAppUninstall && model.appUninstallPlanningURL == nil)
         .dropDestination(for: URL.self) { urls, _ in
             guard let application = urls.first(where: {
                 $0.pathExtension.lowercased() == "app"
@@ -64,15 +62,6 @@ struct AppUninstallerView: View {
             model.planAppUninstall(application)
             return true
         } isTargeted: { isDropTargeted = $0 }
-        .sheet(item: $model.pendingSoundLibraryRemoval) { review in
-            ConfirmationSheet(
-                variant: .soundLibrary(
-                    totalBytes: review.items.reduce(0) { $0 + $1.allocatedBytes }
-                ),
-                onConfirm: { Task { await model.confirmSoundLibraryRemoval() } },
-                onCancel: { model.pendingSoundLibraryRemoval = nil }
-            )
-        }
         .sheet(item: $model.pendingLeftoverRemoval) { review in
             ConfirmationSheet(
                 variant: .cleanUp(
@@ -94,12 +83,13 @@ struct AppUninstallerView: View {
     private var emptyState: some View {
         VStack(spacing: 0) {
             libraryHeader
-            HairlineDivider()
+                .disabled(model.isShowingAppUninstallDetail)
+            UninstallerDivider()
 
             GeometryReader { geometry in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        if let error = model.appUninstallError {
+                        if let error = model.appUninstallError, model.appUninstallReviewURL == nil {
                             Label(error, systemImage: "exclamationmark.triangle.fill")
                                 .font(.mcSubtitle)
                                 .foregroundStyle(Token.textColor(.orange))
@@ -219,12 +209,12 @@ struct AppUninstallerView: View {
                     VStack(spacing: 0) {
                         let groups = leftovers.groups.sorted { $0.totalBytes > $1.totalBytes }
                         ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                            if index > 0 { HairlineDivider() }
+                            if index > 0 { UninstallerDivider() }
                             leftoverRow(group)
                             if expandedLeftovers.contains(group.bundleIdentifier) {
                                 ForEach(group.items, id: \.id) { item in
-                                    HairlineDivider()
-                                    itemRow(item).padding(.leading, 28)
+                                    UninstallerDivider()
+                                    UninstallerItemRow(item: item).padding(.leading, 28)
                                 }
                             }
                         }
@@ -237,8 +227,8 @@ struct AppUninstallerView: View {
             GroupedBox {
                 VStack(spacing: 0) {
                     ForEach(0..<3, id: \.self) { index in
-                        if index > 0 { HairlineDivider() }
-                        skeletonRow(nameWidth: 180, pathWidth: 120).frame(height: 46)
+                        if index > 0 { UninstallerDivider() }
+                        UninstallerSkeletonRow(nameWidth: 180, pathWidth: 120).frame(height: 46)
                     }
                 }
             }
@@ -429,428 +419,6 @@ struct AppUninstallerView: View {
         )
     }
 
-    // MARK: Planning one application
-
-    /// The review's own frame, at once: the header is known from the bundle the
-    /// moment the chevron is pressed, and the close button cancels the planning.
-    /// Only what has to be found — sizes and related files — is bone.
-    private func planningState(_ url: URL) -> some View {
-        var name = url.deletingPathExtension().lastPathComponent
-        if name.isEmpty { name = url.lastPathComponent }
-        return VStack(spacing: 0) {
-            reviewHeader(
-                url: url, name: name,
-                identifier: Bundle(url: url)?.bundleIdentifier ?? " ",
-                identifierIsWarning: false
-            ) {
-                // The bundle's size is already on the card, so it is shown and named
-                // for what it is. The review's figure is a different one — the
-                // application plus everything found — and replaces it, with its own
-                // caption, when the plan lands.
-                VStack(alignment: .trailing, spacing: 2) {
-                    if let bytes = model.installedApplicationBytes[url.path] {
-                        Text(ByteFormatting.string(bytes))
-                            .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    } else {
-                        SkeletonBone(width: 64, height: 12).skeletonPulse().frame(height: 18)
-                    }
-                    Text("Application · finding related files…")
-                        .font(.mcCaption)
-                        .foregroundStyle(Token.Text.secondary)
-                }
-
-                // The review's button, in its place and disabled, so the figures do
-                // not slide left by its width when the plan lands. Nothing can be
-                // uninstalled before there is a plan, which is what disabled says.
-                // An application-only or Homebrew plan carries a longer label and
-                // will still shift; the ordinary one does not.
-                Button("Uninstall") {}
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
-                    .controlSize(.regular)
-                    .disabled(true)
-                    .fixedSize()
-            }
-            HairlineDivider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    GroupedBox { skeletonRow(nameWidth: 130, pathWidth: 250).frame(height: 58) }
-                    GroupedBox {
-                        VStack(spacing: 0) {
-                            ForEach(0..<6, id: \.self) { index in
-                                if index > 0 { HairlineDivider() }
-                                skeletonRow(
-                                    nameWidth: [150, 110, 170, 95, 140, 120][index],
-                                    pathWidth: [280, 240, 310, 220, 260, 300][index]
-                                )
-                                .frame(height: 42)
-                            }
-                        }
-                    }
-                }
-                .skeletonPulse()
-                .padding(.horizontal, Token.Size.pageGutter)
-                .padding(.vertical, 14)
-            }
-            .scrollDisabled(true)
-            .accessibilityLabel("Finding related files")
-        }
-    }
-
-    private func skeletonRow(nameWidth: CGFloat, pathWidth: CGFloat) -> some View {
-        HStack(spacing: 10) {
-            SkeletonBone(width: 20, height: 20)
-            VStack(alignment: .leading, spacing: 6) {
-                SkeletonBone(width: nameWidth, height: 10)
-                SkeletonBone(width: pathWidth, height: 8)
-            }
-            Spacer()
-            SkeletonBone(width: 54, height: 10)
-        }
-        .padding(.horizontal, 13)
-    }
-
-    // MARK: Results
-
-    private func resultsState(_ plan: AppUninstallPlan) -> some View {
-        VStack(spacing: 0) {
-            planHeader(plan)
-            HairlineDivider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    if let error = model.appUninstallError {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.mcSubtitle)
-                            .foregroundStyle(Token.textColor(.orange))
-                    }
-
-                    if let package = plan.managedPackage {
-                        managedPackageCard(package)
-                    }
-
-                    if plan.managedPackage == nil, let package = plan.installerPackage {
-                        installerPackageCard(package)
-                    }
-
-                    completeUninstallCard(plan)
-
-                    if !plan.soundLibraryItems.isEmpty { soundLibraryCard(plan) }
-                    if plan.soundLibraryUnreadableCount > 0 {
-                        Label("Some sound content could not be read. Check access, then review the application again.",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.mcSubtitle)
-                            .foregroundStyle(Token.textColor(.orange))
-                    }
-
-                    if !plan.preservedPaths.isEmpty {
-                        Label {
-                            Text(
-                                "\(plan.preservedPaths.count) excluded, protected, or shared "
-                                + (plan.preservedPaths.count == 1 ? "path will" : "paths will")
-                                + " stay on disk."
-                            )
-                        } icon: {
-                            Image(systemName: "shield.lefthalf.filled")
-                        }
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.textColor(.orange))
-                        .help(plan.preservedPaths.map(\.path).joined(separator: "\n"))
-                    }
-
-                    GroupedBox(fill: Token.Fill.cardContent) {
-                        VStack(spacing: 0) {
-                            let groups = groupedItems(plan)
-                            ForEach(Array(groups.enumerated()), id: \.element.category) { index, group in
-                                if index > 0 { HairlineDivider() }
-                                itemSection(group.category, items: group.items)
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
-                    }
-                }
-                .padding(.horizontal, Token.Size.pageGutter)
-                .padding(.vertical, 14)
-            }
-
-        }
-    }
-
-    private func planHeader(_ plan: AppUninstallPlan) -> some View {
-        reviewHeader(
-            url: plan.applicationURL, name: plan.applicationName,
-            identifier: plan.bundleIdentifier ?? "Bundle identifier unavailable",
-            identifierIsWarning: plan.isApplicationOnly
-        ) {
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(ByteFormatting.string(plan.totalBytes))
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                Text(plan.isApplicationOnly
-                    ? "Application only"
-                    : "\(plan.items.count - 1) related \(plan.items.count == 2 ? "item" : "items")")
-                    .font(.mcCaption)
-                    .foregroundStyle(Token.Text.secondary)
-            }
-
-            if plan.managedPackage != nil {
-                Button("Uninstall with Homebrew", action: model.requestAppUninstall)
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
-                .controlSize(.regular)
-                .disabled(model.isBusyWithDisk)
-                .fixedSize()
-            } else {
-                // The size is in the figures beside it, so the label does not
-                // repeat it.
-                Button(plan.isApplicationOnly ? "Uninstall Application" : "Uninstall",
-                       action: model.requestAppUninstall)
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
-                    .controlSize(.regular)
-                    .disabled(model.isBusyWithDisk)
-                    .fixedSize()
-            }
-        }
-    }
-
-    private func soundLibraryCard(_ plan: AppUninstallPlan) -> some View {
-        GroupedBox {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Downloaded Sound Content").font(.mcBody.weight(.medium))
-                Text("Complete uninstall keeps this content. Sound removal keeps your application and projects. Projects may need another sound download.")
-                    .font(.mcCaption)
-                    .foregroundStyle(Token.Text.secondary)
-                ForEach(plan.soundLibraryItems) { item in
-                    HStack(spacing: 10) {
-                        SelectionCheckbox(
-                            title: "Select \(item.displayName)",
-                            state: model.selectedSoundLibraryIDs.contains(item.id) ? .on : .off,
-                            isEnabled: !model.isBusyWithDisk, showsTitle: false
-                        ) { isOn in
-                            if isOn { model.selectedSoundLibraryIDs.insert(item.id) }
-                            else { model.selectedSoundLibraryIDs.remove(item.id) }
-                        }
-                        Text(item.displayName).font(.mcBody)
-                        Spacer(minLength: 8)
-                        Text(ByteFormatting.string(item.allocatedBytes)).font(.mcRowValue)
-                    }
-                }
-                HStack {
-                    Spacer()
-                    Button("Move Sounds to Trash") {
-                        let paths = model.selectedSoundLibraryIDs
-                        Task { await model.requestSoundLibraryRemoval(plan, itemPaths: paths) }
-                    }
-                    .disabled(model.isBusyWithDisk || model.selectedSoundLibraryIDs.isEmpty)
-                }
-            }
-            .padding(14)
-        }
-    }
-
-    /// One header for the review and for its loading state, so nothing moves when
-    /// the plan arrives.
-    private func reviewHeader<Figures: View>(
-        url: URL, name: String, identifier: String, identifierIsWarning: Bool,
-        @ViewBuilder figures: () -> Figures
-    ) -> some View {
-        HStack(spacing: 13) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                .resizable()
-                .frame(width: 44, height: 44)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(name)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Token.Text.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(identifier)
-                    .font(.mcMonoSmall)
-                    .foregroundStyle(identifierIsWarning
-                        ? Token.textColor(.orange) : Token.Text.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            // The figure and the action keep their width; the name beside them is
-            // what truncates when the window is narrow.
-            figures().fixedSize()
-
-            Button(action: model.resetAppUninstall) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Token.Text.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Back to all applications")
-        }
-        .padding(16)
-    }
-
-    private func completeUninstallCard(_ plan: AppUninstallPlan) -> some View {
-        GroupedBox {
-            HStack(spacing: 12) {
-                Image(systemName: plan.isApplicationOnly
-                    ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                    .font(.system(size: 17))
-                    .foregroundStyle(plan.isApplicationOnly
-                        ? Token.textColor(.orange) : Token.color(.green))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(plan.isApplicationOnly
-                        ? "Application-only uninstall" : "Complete uninstall")
-                        .font(.mcBody.weight(.medium))
-                        .foregroundStyle(Token.Text.primary)
-                    Text(
-                        plan.isApplicationOnly
-                            ? "Moppo cannot identify related files safely. Removal includes only the application."
-                            : plan.protectedItems.isEmpty
-                            ? "Every verified related file below will move to the Trash."
-                            : "Every verified related file below will move to the Trash, including profiles and settings."
-                    )
-                        .font(.mcCaption)
-                        .foregroundStyle(Token.Text.secondary)
-                }
-
-                Spacer()
-            }
-            .padding(12)
-        }
-    }
-
-    /// An application a `.pkg` put in place is often a part of what that installer
-    /// wrote — Python's leaves 468 MB of framework behind IDLE. Information, not a
-    /// gate, so it is drawn in the ordinary tone and not the Homebrew card's orange.
-    /// The words are Core's, where they are tested.
-    private func installerPackageCard(
-        _ package: InstallerReceipts.Package
-    ) -> some View {
-        GroupedBox {
-            HStack(alignment: .top, spacing: 11) {
-                Image(systemName: "shippingbox")
-                    .font(.system(size: 17))
-                    .foregroundStyle(Token.Text.secondary)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(package.reviewTitle)
-                        .font(.mcBody.weight(.medium))
-                        .foregroundStyle(Token.Text.primary)
-                    Text(package.reviewDetail)
-                        .font(.mcCaption)
-                        .foregroundStyle(Token.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(12)
-        }
-    }
-
-    private func managedPackageCard(
-        _ package: AppUninstallPlan.ManagedPackage
-    ) -> some View {
-        GroupedBox {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Homebrew package: \(package.name)", systemImage: "shippingbox")
-                    .font(.mcBody.weight(.medium))
-                HomebrewRemovalExplanation()
-                CopyHomebrewCommandButton(package: package)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-        }
-    }
-
-    private struct ItemGroup {
-        let category: AppUninstallPlan.Item.Category
-        let items: [AppUninstallPlan.Item]
-    }
-
-    private func groupedItems(_ plan: AppUninstallPlan) -> [ItemGroup] {
-        AppUninstallPlan.Item.Category.allCases.compactMap { category in
-            let items = plan.items.filter { $0.category == category }
-            return items.isEmpty ? nil : ItemGroup(category: category, items: items)
-        }
-    }
-
-    private func itemSection(
-        _ category: AppUninstallPlan.Item.Category,
-        items: [AppUninstallPlan.Item]
-    ) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(categoryTitle(category))
-                    .mcEyebrowStyle()
-                Spacer()
-                Text(ByteFormatting.string(items.reduce(0) { $0 + $1.allocatedBytes }))
-                    .font(.mcMonoSmall)
-                    .foregroundStyle(Token.Text.tertiary)
-            }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 7)
-            .background(Token.Fill.groupHeader, in: Rectangle())
-
-            HairlineDivider()
-
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                if index > 0 { HairlineDivider() }
-                itemRow(item)
-            }
-        }
-    }
-
-    private func itemRow(_ item: AppUninstallPlan.Item) -> some View {
-        HStack(spacing: 10) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
-                .resizable()
-                .frame(width: 20, height: 20)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(item.displayName)
-                        .font(.mcBody)
-                        .foregroundStyle(Token.Text.primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if item.isProtectedUserData {
-                        Badge(text: "user data").fixedSize()
-                    } else if item.content == .regenerable {
-                        Badge(text: "regenerable", style: .safe).fixedSize()
-                    } else if item.content == .appComponent {
-                        Badge(text: "app component").fixedSize()
-                    }
-                }
-
-                Text(FileEntry.abbreviate(item.url.path))
-                    .font(.mcMonoSmall)
-                    .foregroundStyle(Token.Text.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            Spacer()
-
-            Text(ByteFormatting.string(item.allocatedBytes))
-                .font(.mcRowValue)
-                .foregroundStyle(Token.Text.secondary)
-                .fixedSize()
-
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([item.url])
-            } label: {
-                Image(systemName: "arrow.up.forward.app")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Token.Text.tertiary)
-            }
-            .buttonStyle(.plain)
-            .help("Reveal in Finder")
-        }
-        .padding(.horizontal, 13)
-        .frame(height: 42)
-        .hoverHighlight()
-    }
-
     // MARK: Done state
 
     private func doneState(_ outcome: CleanupOutcome) -> some View {
@@ -882,7 +450,7 @@ struct AppUninstallerView: View {
     private func batchReviewState(_ review: AppUninstallerModel.BatchUninstallReview) -> some View {
         VStack(spacing: 0) {
             batchReviewHeader(review)
-            HairlineDivider()
+            UninstallerDivider()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -897,7 +465,7 @@ struct AppUninstallerView: View {
                         GroupedBox {
                             VStack(spacing: 0) {
                                 ForEach(Array(review.plans.enumerated()), id: \.element.applicationURL) { index, plan in
-                                    if index > 0 { HairlineDivider() }
+                                    if index > 0 { UninstallerDivider() }
                                     batchPlanRow(plan)
                                 }
                             }
@@ -1012,20 +580,7 @@ struct AppUninstallerView: View {
         }
     }
 
-    // MARK: Helpers
 
-    private func categoryTitle(_ category: AppUninstallPlan.Item.Category) -> String {
-        switch category {
-        case .application: "Application"
-        case .support: "Application Support"
-        case .caches: "Caches"
-        case .preferences: "Preferences"
-        case .containers: "Containers & Scripts"
-        case .logs: "Logs"
-        case .state: "Saved State"
-        case .helpers: "Helpers & Launch Items"
-        }
-    }
 }
 
 /// One installed application. The card toggles its tick; the chevron opens the
@@ -1119,11 +674,84 @@ private struct ApplicationCard: View {
     }
 }
 
-/// Local one-pixel rule. The scanner's identically purposed divider is private to
-/// its file so the Uninstaller keeps its own tiny spelling rather than widening
-/// that implementation detail into an app-wide API.
-private struct HairlineDivider: View {
+/// Separates content in the application list and detail dialog.
+struct UninstallerDivider: View {
     var body: some View {
         Rectangle().fill(Token.Fill.boxBorder).frame(height: Token.hairline)
+    }
+}
+
+/// Shows a shared loading row in the application list and detail dialog.
+struct UninstallerSkeletonRow: View {
+    let nameWidth: CGFloat
+    let pathWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: 10) {
+            SkeletonBone(width: 20, height: 20)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBone(width: nameWidth, height: 10)
+                SkeletonBone(width: pathWidth, height: 8)
+            }
+            Spacer()
+            SkeletonBone(width: 54, height: 10)
+        }
+        .padding(.horizontal, 13)
+    }
+}
+
+/// Shows a related file in the application detail dialog or leftovers list.
+struct UninstallerItemRow: View {
+    let item: AppUninstallPlan.Item
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
+                .resizable()
+                .frame(width: 20, height: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(item.displayName)
+                        .font(.mcBody)
+                        .foregroundStyle(Token.Text.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if item.isProtectedUserData {
+                        Badge(text: "user data").fixedSize()
+                    } else if item.content == .regenerable {
+                        Badge(text: "regenerable", style: .safe).fixedSize()
+                    } else if item.content == .appComponent {
+                        Badge(text: "app component").fixedSize()
+                    }
+                }
+
+                Text(FileEntry.abbreviate(item.url.path))
+                    .font(.mcMonoSmall)
+                    .foregroundStyle(Token.Text.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            Text(ByteFormatting.string(item.allocatedBytes))
+                .font(.mcRowValue)
+                .foregroundStyle(Token.Text.secondary)
+                .fixedSize()
+
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Token.Text.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
+        }
+        .padding(.horizontal, 13)
+        .frame(height: 42)
+        .hoverHighlight()
     }
 }

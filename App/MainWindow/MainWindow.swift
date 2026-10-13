@@ -21,17 +21,38 @@ struct MainWindow: View {
         // Traffic-light geometry, and the window's drag turned off — see
         // `WindowChrome`, which explains why a nested opt-out cannot do it.
         .background(WindowChrome(headerBand: Token.Size.headerBand))
-        .disabled(model.activity != nil || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil)
-        .accessibilityHidden(model.photoDuplicates.preview != nil)
+        .disabled(!showsAppUninstallDetail && (model.activity != nil
+                  || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil))
+        // Keep the scroll view enabled so its scrollbar keeps the same width.
+        .allowsHitTesting(!showsAppUninstallDetail)
+        .accessibilityHidden(model.photoDuplicates.preview != nil || showsAppUninstallDetail)
         .overlay {
-            if model.photoDuplicates.preview != nil {
+            if model.photoDuplicates.preview != nil || showsAppUninstallDetail {
                 Token.Fill.previewBackdrop
                     .contentShape(Rectangle())
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
             }
         }
+        .sheet(item: Binding(
+            get: { showsAppUninstallDetail ? nil : model.activeSheet },
+            set: { model.activeSheet = $0 }
+        ), onDismiss: finishRemovalConfirmation) { sheet in
+            confirmationSheet(sheet)
+        }
         .background(PhotoPreviewWindowPresenter(item: model.photoDuplicates.preview, model: model.photoDuplicates))
+        .background {
+            FloatingDialogWindowPresenter(
+                isPresented: showsAppUninstallDetail,
+                title: "Application details",
+                size: NSSize(width: 640, height: 720),
+                minimumSize: NSSize(width: 600, height: 460),
+                canClose: !model.uninstaller.isUninstallingApp,
+                onClose: model.uninstaller.resetAppUninstall
+            ) {
+                appUninstallDialog
+            }
+        }
         .onChange(of: model.duplicateKind) { _, _ in model.photoDuplicates.preview = nil }
         .task {
             if scenePhase == .active { model.startInitialCleanupScan() }
@@ -85,6 +106,28 @@ struct MainWindow: View {
     }
 
     // MARK: - Columns
+
+    private var showsAppUninstallDetail: Bool {
+        model.view == .uninstaller && model.uninstaller.isShowingAppUninstallDetail
+    }
+
+    private var appUninstallDialog: some View {
+        AppUninstallDetailView(model: model.uninstaller)
+            .disabled(model.uninstaller.isUninstallingApp)
+            .overlay {
+                if let activity = model.activity {
+                    ActivityOverlay(activity: activity)
+                }
+            }
+            .sheet(item: $model.activeSheet, onDismiss: finishRemovalConfirmation) { sheet in
+                confirmationSheet(sheet)
+            }
+            .environment(\.colorScheme, colorScheme)
+    }
+
+    private func finishRemovalConfirmation() {
+        if model.activeSheet == nil { model.finishRemovalConfirmation(false) }
+    }
 
     private var sidebar: some View {
         SidebarView(model: model, headerBand: Token.Size.headerBand)
@@ -169,66 +212,64 @@ struct MainWindow: View {
         .frame(minWidth: Token.Size.minimumContentWidth)
         // The page fills the space beside the sidebar.
         .background(Token.pageBackground)
-        // The header contains the actions for the current page.
-        // A real sheet, so macOS supplies the titlebar attachment, the entrance
-        // animation, and Escape/Return handling.
-        .sheet(item: $model.activeSheet, onDismiss: {
-            if model.activeSheet == nil { model.finishRemovalConfirmation(false) }
-        }) { sheet in
-            switch sheet {
-            case .cleanUp:
+    }
+
+    /// Keeps confirmation controls active above the detail dialog.
+    @ViewBuilder
+    private func confirmationSheet(_ sheet: AppModel.Sheet) -> some View {
+        switch sheet {
+        case .cleanUp:
+            ConfirmationSheet(
+                // Every figure from the captured plan, so the sheet describes
+                // the operation that will actually run.
+                variant: .cleanUp(
+                    itemCount: model.cleanup.pendingCleanUp?.itemCount ?? 0,
+                    totalBytes: model.cleanup.pendingCleanUp?.totalBytes ?? 0,
+                    protectedDataCount: model.cleanup.pendingCleanUp?.protectedDataCount ?? 0,
+                    // Absent until the private-size reading lands, a moment
+                    // after the sheet appears.
+                    saving: model.cleanup.pendingCleanUp?.freed.flatMap {
+                        // A reading with gaps in it is no reading: an item the
+                        // filesystem would not answer for could hold anything,
+                        // so the sheet says nothing rather than a partial total.
+                        $0.unreportedCount == 0
+                            ? ConfirmationSheet.CleanupSaving(
+                                freedBytes: $0.privateBytes,
+                                isMinimum: $0.containsSharedGroups
+                            )
+                            : nil
+                    }
+                ),
+                runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
+                includesSoundLibrary: model.cleanup.pendingCleanUp?.includesSoundLibrary ?? false,
+                worktreeWarning: model.cleanup.pendingCleanUp?.worktreeWarning,
+                dockerImageCount: model.cleanup.pendingCleanUp?.dockerImageCount ?? 0,
+                dockerImageBytes: model.cleanup.pendingCleanUp?.dockerImageBytes ?? 0,
+                codexSessionCount: model.cleanup.pendingCleanUp?.codexSessionCount ?? 0,
+                codexSessionWarning: model.cleanup.pendingCleanUp?.codexSessionWarning,
+                onConfirm: { Task { await model.cleanup.performCleanUp() } },
+                onQuitAndConfirm: {
+                    Task { await model.cleanup.performCleanUp(quittingOwners: true) }
+                },
+                onCancel: { model.cleanup.cancelCleanUp() }
+            )
+        case .removal:
+            if let request = model.pendingRemovalConfirmation {
                 ConfirmationSheet(
-                    // Every figure from the captured plan, so the sheet describes
-                    // the operation that will actually run.
-                    variant: .cleanUp(
-                        itemCount: model.cleanup.pendingCleanUp?.itemCount ?? 0,
-                        totalBytes: model.cleanup.pendingCleanUp?.totalBytes ?? 0,
-                        protectedDataCount: model.cleanup.pendingCleanUp?.protectedDataCount ?? 0,
-                        // Absent until the private-size reading lands, a moment
-                        // after the sheet appears.
-                        saving: model.cleanup.pendingCleanUp?.freed.flatMap {
-                            // A reading with gaps in it is no reading: an item the
-                            // filesystem would not answer for could hold anything,
-                            // so the sheet says nothing rather than a partial total.
-                            $0.unreportedCount == 0
-                                ? ConfirmationSheet.CleanupSaving(
-                                    freedBytes: $0.privateBytes,
-                                    isMinimum: $0.containsSharedGroups
-                                )
-                                : nil
-                        }
-                    ),
-                    runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
-                    includesSoundLibrary: model.cleanup.pendingCleanUp?.includesSoundLibrary ?? false,
-                    worktreeWarning: model.cleanup.pendingCleanUp?.worktreeWarning,
-                    dockerImageCount: model.cleanup.pendingCleanUp?.dockerImageCount ?? 0,
-                    dockerImageBytes: model.cleanup.pendingCleanUp?.dockerImageBytes ?? 0,
-                    codexSessionCount: model.cleanup.pendingCleanUp?.codexSessionCount ?? 0,
-                    codexSessionWarning: model.cleanup.pendingCleanUp?.codexSessionWarning,
-                    onConfirm: { Task { await model.cleanup.performCleanUp() } },
-                    onQuitAndConfirm: {
-                        Task { await model.cleanup.performCleanUp(quittingOwners: true) }
-                    },
-                    onCancel: { model.cleanup.cancelCleanUp() }
-                )
-            case .removal:
-                if let request = model.pendingRemovalConfirmation {
-                    ConfirmationSheet(
-                        variant: removalVariant(request),
-                        onConfirm: { model.finishRemovalConfirmation(true) },
-                        onCancel: { model.finishRemovalConfirmation(false) }
-                    )
-                }
-            case .emptyTrash:
-                ConfirmationSheet(
-                    variant: .emptyTrash(
-                        itemCount: model.recovery.trashSummary?.itemCount ?? 0,
-                        totalBytes: model.recovery.trashSummary?.totalBytes ?? 0
-                    ),
-                    onConfirm: { Task { await model.recovery.emptyTrash() } },
-                    onCancel: { model.activeSheet = nil }
+                    variant: removalVariant(request),
+                    onConfirm: { model.finishRemovalConfirmation(true) },
+                    onCancel: { model.finishRemovalConfirmation(false) }
                 )
             }
+        case .emptyTrash:
+            ConfirmationSheet(
+                variant: .emptyTrash(
+                    itemCount: model.recovery.trashSummary?.itemCount ?? 0,
+                    totalBytes: model.recovery.trashSummary?.totalBytes ?? 0
+                ),
+                onConfirm: { Task { await model.recovery.emptyTrash() } },
+                onCancel: { model.activeSheet = nil }
+            )
         }
     }
 
