@@ -104,6 +104,7 @@ The [development notes](docs/README.md#deliberate-limitations) explain the curre
 
 The app targets **macOS 15 or later**.
 Distribution packages, notarization, and updates remain in preparation.
+See [release packages](docs/distribution.md) for the release build and notarization commands.
 Use the [source build](#build-the-app) until a packaged release is available.
 
 On first launch, follow the welcome guide to review file access.

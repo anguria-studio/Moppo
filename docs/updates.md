@@ -36,6 +36,7 @@ xcodebuild -project Moppo.xcodeproj -scheme Moppo -configuration Release \
 Use increasing `CURRENT_PROJECT_VERSION` values for distributed builds.
 Use the same application name, bundle identifier, and signing team for updates.
 Issue #15 covers the final signed and notarized release package.
+Use the [package tool](distribution.md) to create notarized DMGs and signed update assets.
 
 ## Publish
 
@@ -58,7 +59,8 @@ Generate and sign the feed with the Moppo Keychain account:
 
 ```sh
 "$SPARKLE_BIN/generate_appcast" --account anguria-studio.Moppo \
-  --download-url-prefix "$UPDATE_DOWNLOAD_URL" "$UPDATE_ARCHIVES"
+  --download-url-prefix "$UPDATE_DOWNLOAD_URL" \
+  --release-notes-url-prefix "$UPDATE_DOWNLOAD_URL" "$UPDATE_ARCHIVES"
 ```
 
 Verify the generated feed:
