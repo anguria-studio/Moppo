@@ -6,10 +6,13 @@ import Testing
 @MainActor
 struct FloatingDialogWindowPresenterTests {
     @Test("Dialog updates keep the panel and guard dismissal during removal and confirmation")
-    func panelLifetime() throws {
+    func panelLifetime() async throws {
         _ = NSApplication.shared
+        let bounds = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1000, height: 640)
+        let size = NSSize(width: min(1000, bounds.width - 48), height: min(640, bounds.height - 48))
         let parent = NSWindow(
-            contentRect: NSRect(x: 100, y: 100, width: 1000, height: 640),
+            contentRect: NSRect(x: bounds.midX - size.width / 2, y: bounds.midY - size.height / 2,
+                                width: size.width, height: size.height),
             styleMask: [.borderless], backing: .buffered, defer: false
         )
         var dismissals = 0
@@ -52,13 +55,14 @@ struct FloatingDialogWindowPresenterTests {
             contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
             styleMask: [.titled], backing: .buffered, defer: false
         )
-        panel.beginSheet(confirmation)
+        panel.beginSheet(confirmation, completionHandler: nil)
         #expect(!coordinator.windowShouldClose(panel))
         panel.cancelOperation(nil)
         #expect(coordinator.panel === panel)
         #expect(dismissals == 0)
         panel.endSheet(confirmation)
         confirmation.orderOut(nil)
+        try await waitUntil { panel.attachedSheet == nil }
 
         #expect(coordinator.windowShouldClose(panel))
         panel.cancelOperation(nil)
