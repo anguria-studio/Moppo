@@ -138,6 +138,20 @@ Use Photos to review recovery and permanent deletion.
 
 Read the [permissions notes](docs/README.md#permissions) for local storage and development signing details.
 
+## Updates and support
+
+Use **Moppo > Check for Updates…** to check for a new version.
+Enable automatic checks in **Settings > Updates** if required.
+Moppo asks before it installs an update.
+Installation waits for active scans, removal, and Put Back.
+
+Use **Help > Privacy Information** to read the included privacy information.
+Use **Help > Report a Problem…** to prepare a support report.
+Review the email before you send it to `hello@anguria.studio`.
+The generated report excludes file paths, photos, and removal logs.
+
+See [update setup](docs/updates.md) for release configuration and pending distribution checks.
+
 ## Build the app
 
 <details>
@@ -247,7 +261,8 @@ Moppo uses cache-name and container protection lists from
 Purge also informed the original Ollama manifest reader in `LocalModelStores.swift`.
 The current reader uses different shared-model grouping logic.
 
-See [Third-party notices](THIRD_PARTY_NOTICES.md) for the source details and upstream MIT notice.
+Moppo uses [Sparkle](https://sparkle-project.org/) for application updates.
+See [Third-party notices](THIRD_PARTY_NOTICES.md) for source details and license notices.
 
 ## License
 

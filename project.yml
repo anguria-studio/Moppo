@@ -10,6 +10,9 @@ options:
   groupSortPosition: top
 
 packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
   MoppoCore:
     path: Core
 
@@ -31,6 +34,15 @@ targets:
         # administrator retry cannot bypass either privacy decision.
         NSAppDataUsageDescription: "Moppo needs access to data from removed apps so it can move files that you select to the Trash."
         NSAppBundlesUsageDescription: "Moppo needs permission to move applications that you select to the Trash."
+        SUFeedURL: "$(MOPPO_UPDATE_FEED_URL)"
+        SUPublicEDKey: "$(MOPPO_UPDATE_PUBLIC_KEY)"
+        SUEnableAutomaticChecks: false
+        SUAutomaticallyUpdate: false
+        SUAllowsAutomaticUpdates: false
+        SUEnableSystemProfiling: false
+        SUSendProfileInfo: false
+        SUVerifyUpdateBeforeExtraction: true
+        SURequireSignedFeed: true
         NSServices:
           - NSMenuItem:
               default: "Review Uninstall with Moppo"
@@ -58,6 +70,8 @@ targets:
       - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
     dependencies:
+      - package: Sparkle
+        product: Sparkle
       - package: MoppoCore
         product: MoppoCore
       - target: MoppoHomebrewAskpass
@@ -67,6 +81,13 @@ targets:
           destination: wrapper
           subpath: Contents/Helpers
     preBuildScripts:
+      - name: Validate release update settings
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        script: |
+          if [ "$CONFIGURATION" = "Release" ]; then
+            python3 "$SRCROOT/scripts/validate-update-configuration.py" --feed "$MOPPO_UPDATE_FEED_URL" --key "$MOPPO_UPDATE_PUBLIC_KEY"
+          fi
       - name: Require signed build
         basedOnDependencyAnalysis: false
         showEnvVars: false
@@ -85,6 +106,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tommasolaterza.Moppo
         PRODUCT_NAME: Moppo
+        MOPPO_UPDATE_FEED_URL: "https://anguria.studio/moppo/appcast.xml"
+        MOPPO_UPDATE_PUBLIC_KEY: "UR2YX2TLBED1cQO57OcTydSt21gEmOelgJeCXbbBmNE="
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "2"
         SWIFT_VERSION: "6.0"
@@ -139,6 +162,8 @@ targets:
         excludes:
           - HomebrewAskpassMain.swift
     dependencies:
+      - package: Sparkle
+        product: Sparkle
       - package: MoppoCore
         product: MoppoCore
     settings:

@@ -9,6 +9,7 @@ final class OperationCoordinator {
         case photoScan, photoDeletion, fileScan, fileRemoval, cleanupScan, cleanupRemoval, cleanupQuit
         case appUninstallPlanning, appUninstall, appLeftoverRemoval
         case emptyTrash, trashRestoration, storageMeasurement, storageRemoval
+        case updateInstallation
     }
 
     struct Operation: Equatable {

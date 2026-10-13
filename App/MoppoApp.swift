@@ -11,6 +11,7 @@ struct MoppoApp: App {
     @State private var model: AppModel
     @State private var settings: SettingsStore
     @State private var access: AccessModel
+    @State private var updates: UpdateController
 
     static var isRunningPreview: Bool {
         ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -22,6 +23,7 @@ struct MoppoApp: App {
             _settings = State(initialValue: settings)
             _model = State(initialValue: AppModel(launchAccess: .welcome, hasFullDiskAccess: { false }))
             _access = State(initialValue: .preview())
+            _updates = State(initialValue: UpdateController(operations: OperationCoordinator(), configuration: nil))
             return
         }
         AppIdentity.migratePreferences()
@@ -35,6 +37,8 @@ struct MoppoApp: App {
         _settings = State(initialValue: settings)
         _model = State(initialValue: model)
         _access = State(initialValue: AccessModel())
+        _updates = State(initialValue: UpdateController(operations: model.operations))
+        appDelegate.operations = model.operations
         FinderUninstallRequestCenter.shared.install { [weak model] applicationURL in
             model?.uninstaller.planAppUninstall(applicationURL)
         }
@@ -48,6 +52,9 @@ struct MoppoApp: App {
     var body: some Scene {
         Window("Moppo", id: "main") {
             WelcomeRoot(model: model, settings: settings, access: access)
+                .onChange(of: model.isShowingWelcome, initial: true) { _, showingWelcome in
+                    if !showingWelcome && !Self.isRunningPreview { updates.start() }
+                }
                 .frame(
                     minWidth: 1000, idealWidth: Token.Size.windowWidth,
                     minHeight: 640, idealHeight: Token.Size.windowHeight
@@ -58,10 +65,21 @@ struct MoppoApp: App {
         // The sidebar extends behind the window controls.
         .windowStyle(.hiddenTitleBar)
 
+        Window("Report a Problem", id: "support") {
+            SupportView()
+        }
+        .windowResizability(.contentSize)
+
+        Window("Privacy Information", id: "privacy") {
+            PrivacyView()
+        }
+        .windowResizability(.contentSize)
+
         Settings {
             PreferencesView(
                 settings: settings,
                 access: access,
+                updates: updates,
                 categorySizes: model.categorySizes,
                 onRebuildIndex: {
                     Task { await model.dashboard.rebuildSizeIndex() }
@@ -79,7 +97,7 @@ struct MoppoApp: App {
             MenuBarLabel(volume: model.dashboard.volume)
         }
         .menuBarExtraStyle(.window)
-        .commands { MoppoCommands(model: model) }
+        .commands { MoppoCommands(model: model, updates: updates) }
     }
 }
 
@@ -98,6 +116,7 @@ struct MoppoApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
 
     private let finderUninstallServiceProvider = FinderUninstallServiceProvider()
+    weak var operations: OperationCoordinator?
 
     /// True while a login launch is still settling: SwiftUI can present the
     /// restored window just after `applicationDidFinishLaunching`, and without this
@@ -144,6 +163,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         guard notification.request.identifier
             == LowDiskNotificationService.notificationIdentifier else { return [] }
         return [.banner, .list, .sound]
+    }
+
+    /// Keeps disk work active until it finishes. The reserved update operation can terminate the app.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let operations, operations.isBusy else { return .terminateNow }
+        return operations.activeOperation?.kind == .updateInstallation ? .terminateNow : .terminateCancel
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -234,9 +259,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 /// Keeps command updates separate from the application scene.
 private struct MoppoCommands: Commands {
     @Bindable var model: AppModel
+    @Bindable var updates: UpdateController
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…", action: updates.checkForUpdates)
+                .disabled(!updates.canCheckForUpdates)
+        }
         // Update menu availability without rebuilding the application scene.
         CommandMenu("Cleanup") {
             Button("Scan for Cleanup Items") { model.cleanup.startScan() }
@@ -252,6 +282,14 @@ private struct MoppoCommands: Commands {
             Button("Find") { model.requestFind() }
                 .keyboardShortcut("f")
                 .disabled(!model.canFind || model.uninstaller.isShowingAppUninstallDetail)
+        }
+        CommandGroup(after: .help) {
+            Button("Report a Problem…") {
+                openWindow(id: "support")
+            }
+            Button("Privacy Information") {
+                openWindow(id: "privacy")
+            }
         }
         CommandGroup(after: .appSettings) {
             Button("Show Welcome Guide") {
