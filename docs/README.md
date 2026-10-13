@@ -508,6 +508,7 @@ for the project rules and the Vale command.
 
 [Update setup](updates.md) covers the update feed, signing key, and publishing commands.
 [Release packages](distribution.md) covers Developer ID signing, notarization, and DMG preparation.
+[Changelog](../CHANGELOG.md) records changes for each public release.
 Sparkle 2.10.0 provides the standard update interface.
 Automatic checks are optional and initially disabled.
 Installation requires approval.

@@ -27,6 +27,13 @@
 **Moppo is in development.** A packaged release is not available yet.
 [Build the app from source](#build-the-app) to try the current version.
 
+[Website](https://anguria.studio/moppo/) ·
+[Privacy](https://anguria.studio/moppo/privacy/) ·
+[Changelog](CHANGELOG.md) ·
+[Releases](https://github.com/anguria-studio/Moppo/releases)
+
+The Moppo website and privacy page remain in preparation.
+
 ## Why Moppo?
 
 Disk usage, cleanup, duplicate review, and application removal in one Mac app.
@@ -105,6 +112,7 @@ The [development notes](docs/README.md#deliberate-limitations) explain the curre
 The app targets **macOS 15 or later**.
 Distribution packages, notarization, and updates remain in preparation.
 See [release packages](docs/distribution.md) for the release build and notarization commands.
+The planned [direct download](https://github.com/anguria-studio/Moppo/releases/latest/download/Moppo.dmg) becomes available after the first stable release.
 Use the [source build](#build-the-app) until a packaged release is available.
 
 On first launch, follow the welcome guide to review file access.
