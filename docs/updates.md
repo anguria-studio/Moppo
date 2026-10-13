@@ -45,8 +45,12 @@ Set `SPARKLE_BIN` to this folder.
 Set `UPDATE_ARCHIVES` to a local folder for release archives and notes.
 Set `UPDATE_DOWNLOAD_URL` to the HTTPS release archive folder.
 Paguro uses GitHub Releases for archives and its signed feed.
-Moppo uses the same signing checks with its feed on the selected Anguria website.
-If archives use GitHub Releases, their repository must allow public downloads before distribution.
+Moppo uses the same release structure in its public GitHub repository.
+The package tool signs versioned downloads and release notes under `releases/download/v<VERSION>/`.
+It adds `Moppo.dmg` after feed generation and writes `SHA256SUMS`.
+The fixed download address is `https://github.com/anguria-studio/Moppo/releases/latest/download/Moppo.dmg`.
+Configure the Anguria feed address to redirect to `https://github.com/anguria-studio/Moppo/releases/latest/download/appcast.xml`.
+This redirect keeps the app's existing feed address and uses the latest stable GitHub release.
 
 Create an archive that preserves framework symbolic links:
 
@@ -71,6 +75,7 @@ Verify the generated feed:
 
 The app requires signed update archives, feeds, and external release notes.
 Publish the generated appcast, archives, delta files, and release notes at their HTTPS addresses.
+Keep update archive and release notes addresses versioned, even when the website uses the fixed download.
 Do not change signed files after generation.
 Publish the included [privacy information](../App/Resources/Privacy.md) on the website.
 Keep `hello@anguria.studio` available for support and privacy requests.

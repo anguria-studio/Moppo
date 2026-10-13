@@ -45,8 +45,8 @@ Set `SPARKLE_BIN` to the pinned Sparkle package's `bin` folder.
 Run the package tool from the repository root:
 
 ```sh
-scripts/package-dmg.sh --version 0.2.0 --build 2 \
-  --output dist/releases/Moppo-0.2.0-2 \
+scripts/package-dmg.sh --version 0.2.0 --build 4 \
+  --output dist/releases/Moppo-0.2.0-4 \
   --sparkle-tools "$SPARKLE_BIN" \
   --notes docs/releases/0.2.0.md
 ```
@@ -54,13 +54,17 @@ scripts/package-dmg.sh --version 0.2.0 --build 2 \
 The output folder must not exist for a new build.
 Use `--package-cache` to reuse an existing Xcode package cache.
 Use `--download-url` to select another HTTPS folder for release downloads.
-The default download folder is `https://anguria.studio/moppo/releases/v<VERSION>/`.
+The default download folder is `https://github.com/anguria-studio/Moppo/releases/download/v<VERSION>/`.
 
 The tool submits the app to Apple and attaches its notarization ticket.
 It creates a signed DMG with the app and an Applications link.
 It submits the DMG to Apple and attaches its ticket.
 It then signs the Sparkle feed and release notes.
+The assets folder includes a versioned DMG and an identical `Moppo.dmg` for the fixed download address.
+Sparkle uses the versioned DMG.
+The tool adds `Moppo.dmg` after feed generation to prevent duplicate Sparkle versions.
 Each release asset has a matching `.sha256` file.
+`SHA256SUMS` lists checksums for the DMGs, release notes, and signed feed.
 The tool publishes no files.
 
 ## Prepare before credentials are available
@@ -69,16 +73,16 @@ An unnotarized candidate must remain local.
 Do not distribute a candidate until notarization and the required release checks pass.
 
 ```sh
-scripts/package-dmg.sh --prepare --version 0.2.0 --build 2 \
-  --output dist/releases/Moppo-0.2.0-2
+scripts/package-dmg.sh --prepare --version 0.2.0 --build 4 \
+  --output dist/releases/Moppo-0.2.0-4
 ```
 
 Use `--archive` to export an existing Release archive.
 Finish the prepared candidate with the same version, build, and output folder:
 
 ```sh
-scripts/package-dmg.sh --finish --version 0.2.0 --build 2 \
-  --output dist/releases/Moppo-0.2.0-2 \
+scripts/package-dmg.sh --finish --version 0.2.0 --build 4 \
+  --output dist/releases/Moppo-0.2.0-4 \
   --sparkle-tools "$SPARKLE_BIN" \
   --notes docs/releases/0.2.0.md
 ```
@@ -90,10 +94,18 @@ An Apple rejection leaves the submission result and log in the output folder.
 ## Versioning and publication
 
 Use three-part version numbers, such as `0.2.0`.
+Use patch versions for fixes, minor versions for compatible features, and major versions for incompatible changes.
+Give each public release a new version and tag.
+Local candidates can share a version with increasing build numbers.
 Increase the build number for every distributed build.
 Build numbers must increase even when the visible version stays the same.
+Keep `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` aligned with the release package.
+Builds 2 and 3 were local candidates. The next candidate is build 4.
 Keep the bundle identifier, signing team, update address, and update key stable.
-Update the release notes before each distribution.
+Record user changes under **Unreleased** in [CHANGELOG.md](../CHANGELOG.md).
+Before each release, move those changes to a version section with the release date and build number.
+Copy that section to the versioned release notes file and GitHub release description.
+After publication, set the changelog links to the release tag and the comparison with `main`.
 
 Before publication, complete the remaining checks in issues #15 and #16.
 Use two installed notarized versions for the Sparkle update check.
@@ -102,8 +114,26 @@ Check normal removal, denied access, partial results, and Put Back with disposab
 Check installation on a clean Mac.
 Issues #11 and #13 hold the other required acceptance and accessibility checks.
 
-Publish the versioned assets under the selected HTTPS download folder.
-Publish the signed `appcast.xml` at `https://anguria.studio/moppo/appcast.xml`.
-Publish privacy information before distribution.
+Build from the clean, merged release commit.
+Create a draft GitHub release with tag `v<VERSION>` at that commit.
+Attach all files from the verified package's `assets` folder.
+Keep `release.json`, the archive, and notarization receipts outside the release downloads.
+
+For version `0.2.0`, use the commit from the package manifest:
+
+```sh
+RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.2.0-4/release.json"))["source_commit"])')
+gh release create v0.2.0 dist/releases/Moppo-0.2.0-4/assets/* \
+  --repo anguria-studio/Moppo --draft --target "$RELEASE_COMMIT" \
+  --title 'Moppo 0.2.0' --notes-file docs/releases/0.2.0.md
+```
+
+Before publishing the draft, verify its signatures, checksums, versioned addresses, and remaining release checks.
+Keep old release downloads available. Do not replace a published version's DMG.
+After publication, check the downloads without GitHub credentials.
+The fixed download address is `https://github.com/anguria-studio/Moppo/releases/latest/download/Moppo.dmg`.
+Configure `https://anguria.studio/moppo/appcast.xml` to redirect to `https://github.com/anguria-studio/Moppo/releases/latest/download/appcast.xml`.
+The website and privacy links can remain unavailable while the website is in preparation.
+Publish privacy information before public distribution.
 Do not edit signed files after generation.
 Keep the website's Paguro redirects until the Moppo landing page is ready for publication.

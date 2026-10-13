@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ID = "com.tommasolaterza.Moppo"
 FEED = "https://anguria.studio/moppo/appcast.xml"
 ACCOUNT = "anguria-studio.Moppo"
+REPOSITORY = "anguria-studio/Moppo"
 
 
 def run(*command, capture=False):
@@ -120,6 +121,23 @@ def validate_update_assets(assets, tools, download_url):
             run(tools / "sign_update", "--account", ACCOUNT, "--verify", path, signature)
 
 
+def write_release_downloads(assets, dmg):
+    # Add the fixed download after feed generation to avoid duplicate Sparkle versions.
+    stable = assets / "Moppo.dmg"
+    if stable.exists():
+        raise RuntimeError("Moppo.dmg already exists in the assets folder.")
+    shutil.copy2(dmg, stable)
+    if digest(stable) != digest(dmg):
+        raise RuntimeError("Moppo.dmg differs from the versioned DMG.")
+    checksums = []
+    for path in sorted(assets.iterdir()):
+        if path.is_file() and path.suffix != ".sha256" and path.name != "SHA256SUMS":
+            checksum = f"{digest(path)}  {path.name}\n"
+            path.with_name(path.name + ".sha256").write_text(checksum)
+            checksums.append(checksum)
+    (assets / "SHA256SUMS").write_text("".join(checksums))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", required=True)
@@ -149,7 +167,7 @@ def main():
     if args.finish and args.archive:
         parser.error("Use --archive only when you prepare a new candidate.")
     output = args.output.resolve()
-    download_url = args.download_url or f"https://anguria.studio/moppo/releases/v{args.version}/"
+    download_url = args.download_url or f"https://github.com/{REPOSITORY}/releases/download/v{args.version}/"
     if not download_url.endswith("/") or urlsplit(download_url).query or urlsplit(download_url).fragment:
         parser.error("The download address must end with / and contain no query or fragment.")
     manifest = output / "release.json"
@@ -229,10 +247,11 @@ def main():
             "--download-url-prefix", download_url, "--release-notes-url-prefix", download_url,
             "--maximum-deltas", "0", assets)
         validate_update_assets(assets, tools, download_url)
-        record.update(notarized=True, feed=FEED, download_url=download_url)
-    for path in list(assets.iterdir()):
-        if path.is_file() and path.suffix != ".sha256":
-            path.with_name(path.name + ".sha256").write_text(f"{digest(path)}  {path.name}\n")
+        write_release_downloads(assets, dmg)
+        record.update(notarized=True, repository=REPOSITORY, tag=f"v{args.version}",
+                      feed=FEED, download_url=download_url)
+    if args.prepare:
+        dmg.with_name(dmg.name + ".sha256").write_text(f"{digest(dmg)}  {dmg.name}\n")
     if not args.prepare:
         manifest.write_text(json.dumps(record, indent=2) + "\n")
         print(f"Notarized release: {output}. No files were published.")

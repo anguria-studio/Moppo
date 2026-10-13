@@ -42,7 +42,14 @@ jobs:
           -project Moppo.xcodeproj
           -scheme MoppoAppTests
           -destination 'platform=macOS'
+          -resultBundlePath '${{ runner.temp }}/MoppoAppTests.xcresult'
           CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
           test
+      - name: Read app test results
+        if: always()
+        run: |
+          if [ -d "$RUNNER_TEMP/MoppoAppTests.xcresult" ]; then
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoppoAppTests.xcresult"
+          fi
       - name: Check writing
         run: vale README.md AGENTS.md WRITING_STYLE.md

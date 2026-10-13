@@ -109,7 +109,7 @@ targets:
         MOPPO_UPDATE_FEED_URL: "https://anguria.studio/moppo/appcast.xml"
         MOPPO_UPDATE_PUBLIC_KEY: "UR2YX2TLBED1cQO57OcTydSt21gEmOelgJeCXbbBmNE="
         MARKETING_VERSION: "0.2.0"
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "4"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
 
