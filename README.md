@@ -214,6 +214,7 @@ They do not launch Moppo or delete personal photos.
 GitHub Actions runs these tests and writing checks for pull requests that target `main`.
 Merging a pull request does not start another CI run.
 CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
+CI runs process timing tests separately to prevent other test fixtures from delaying their timers.
 CI does not build or launch the signed Moppo app.
 Pull request checks also validate branch names and Conventional Commit titles.
 
