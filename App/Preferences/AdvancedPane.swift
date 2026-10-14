@@ -66,7 +66,8 @@ struct AdvancedPane: View {
             PrefDivider()
             PrefToggleRow(
                 title: "Keep Put Back receipts",
-                description: "Save original locations so Moppo can put items back from the Trash.",
+                description: "Save original locations to restore items from the Trash within Moppo. "
+                    + "Without receipts, Moppo cannot put back newly removed items.",
                 isOn: $settings.keepReceipt
             )
             // "Follow symlinks while measuring" used to live here. It was removed
