@@ -30,6 +30,7 @@ struct MoppoApp: App {
         // One store, handed to the model so the engine actually receives the
         // preferences the panes edit.
         let settings = SettingsStore()
+        settings.appearance.apply()
         let model = AppModel(
             settings: settings, launchAccess: OnboardingView.launchAccess,
             onboardingProgress: OnboardingProgress(defaults: .standard)
@@ -43,11 +44,6 @@ struct MoppoApp: App {
             model?.uninstaller.planAppUninstall(applicationURL)
         }
     }
-
-    // No forced appearance. The handoff was authored dark and only dark, and the app
-    // used to pin `darkAqua` to match it. The light variant is now derived from that
-    // same design in `Token` rather than being absent, so the system decides which one
-    // a person sees and the app follows System Settings like any other Mac app.
 
     var body: some Scene {
         Window("Moppo", id: "main") {
@@ -64,6 +60,10 @@ struct MoppoApp: App {
         .defaultSize(width: Token.Size.windowWidth, height: Token.Size.windowHeight)
         // The sidebar extends behind the window controls.
         .windowStyle(.hiddenTitleBar)
+        .onChange(of: settings.appearance) { _, appearance in
+            guard !Self.isRunningPreview else { return }
+            appearance.apply()
+        }
 
         Window("Report a Problem", id: "support") {
             SupportView()
