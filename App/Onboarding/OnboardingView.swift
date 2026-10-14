@@ -69,7 +69,7 @@ struct OnboardingView: View {
         .background(Token.chrome.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
         .background {
-            if !access.isPreview { WindowChrome(headerBand: Token.Size.headerBand) }
+            if !access.isPreview { WindowChrome() }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await access.refresh() }

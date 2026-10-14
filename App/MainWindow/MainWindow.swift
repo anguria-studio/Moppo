@@ -18,9 +18,8 @@ struct MainWindow: View {
         .ignoresSafeArea(.container, edges: .top)
         // Under everything, through the title bar: the shell is the window.
         .background(Token.shell.ignoresSafeArea())
-        // Traffic-light geometry, and the window's drag turned off — see
-        // `WindowChrome`, which explains why a nested opt-out cannot do it.
-        .background(WindowChrome(headerBand: Token.Size.headerBand))
+        // Native title bar layout keeps the window controls aligned during resizing.
+        .background(WindowChrome())
         .disabled(!showsAppUninstallDetail && (model.activity != nil
                   || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil))
         // Keep the scroll view enabled so its scrollbar keeps the same width.
