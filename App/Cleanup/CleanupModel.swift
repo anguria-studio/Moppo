@@ -37,6 +37,7 @@ final class CleanupModel {
     @ObservationIgnored private var scanTask: Task<Bool, Never>?
     @ObservationIgnored private var scanID: UUID?
     @ObservationIgnored private var cleanUpSavingTask: Task<Void, Never>?
+    @ObservationIgnored private var applicationQuitTask: Task<[FileEntry.RunningOwner], Never>?
     @ObservationIgnored var canScan: (Bool) -> Bool = { _ in true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
@@ -81,6 +82,8 @@ final class CleanupModel {
     private(set) var lastScanFinishedAt: Date?
     private(set) var hasStartedInitialScan = false
     private(set) var isRemoving = false
+    private(set) var isWaitingForApplications = false
+    private(set) var isInterruptingApplicationQuit = false
     private(set) var cleanupOutcome: CleanupOutcome?
     private(set) var pendingCleanUp: CleanupPlan?
     var isBusyWithDisk: Bool { operations.isBusy }
@@ -715,8 +718,7 @@ final class CleanupModel {
             }
         }
         if quittingOwners, !plan.runningOwners.isEmpty {
-            onEvent(.waitingForApplications(names: plan.runningOwners.map(\.name)))
-            let stragglers = await applications.quit(plan.runningOwners)
+            guard let stragglers = await waitForApplicationsToQuit(plan.runningOwners) else { return false }
             guard stragglers.isEmpty else {
                 let names = ListFormatter.localizedString(byJoining: stragglers.map(\.name))
                 onEvent(.failure(
@@ -726,7 +728,6 @@ final class CleanupModel {
                 ))
                 return false
             }
-            clearInUse(of: plan.runningOwners)
         }
         onEvent(.removalStarted(count: plan.itemCount, bytes: plan.totalBytes))
         presentation.extend(toShow: .deletion(bytes: plan.totalBytes))
@@ -801,12 +802,8 @@ final class CleanupModel {
         let owners = cleanupRunningOwners
         guard !owners.isEmpty, let operation = operations.begin(.cleanupQuit) else { return }
         onEvent(.operationStarted)
-        onEvent(.waitingForApplications(names: owners.map(\.name)))
         let task = Task { [self] in
-            let stillOpen = await applications.quit(owners)
-            clearInUse(of: owners.filter { !stillOpen.contains($0) })
-            refreshCleanupRunningOwners()
-            if !stillOpen.isEmpty {
+            if let stillOpen = await waitForApplicationsToQuit(owners), !stillOpen.isEmpty {
                 let names = ListFormatter.localizedString(byJoining: stillOpen.map(\.name))
                 onEvent(.failure(
                     title: "Some Apps Are Still Open",
@@ -817,6 +814,32 @@ final class CleanupModel {
             operations.finish(operation)
         }
         await task.value
+    }
+
+    /// Keep the operation guard until the quit service returns.
+    func cancelApplicationQuit() {
+        guard isWaitingForApplications, !isInterruptingApplicationQuit else { return }
+        isInterruptingApplicationQuit = true
+        applicationQuitTask?.cancel()
+    }
+
+    private func waitForApplicationsToQuit(
+        _ owners: [FileEntry.RunningOwner]
+    ) async -> [FileEntry.RunningOwner]? {
+        let task = Task { await applications.quit(owners) }
+        applicationQuitTask = task
+        isWaitingForApplications = true
+        isInterruptingApplicationQuit = false
+        onEvent(.waitingForApplications(names: owners.map(\.name)))
+        let result = await task.value
+        let cancelled = task.isCancelled
+        let stillOpen = cancelled ? applications.stillRunning(owners) : result
+        clearInUse(of: owners.filter { !stillOpen.contains($0) })
+        refreshCleanupRunningOwners()
+        applicationQuitTask = nil
+        isWaitingForApplications = false
+        isInterruptingApplicationQuit = false
+        return cancelled ? nil : result
     }
 
     /// Disk changes invalidate the review and its protected-data authorizations.

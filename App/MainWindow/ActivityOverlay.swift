@@ -15,13 +15,24 @@ struct RemovalOperationSurface: View {
         showsActivity || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == model.view
     }
 
+    private var cancelApplicationQuit: (() -> Void)? {
+        guard model.cleanup.isWaitingForApplications else { return nil }
+        return { model.cleanup.cancelApplicationQuit() }
+    }
+
     var body: some View {
         Group {
             if isPresented {
                 ZStack {
                     Token.pageBackground
                     if showsActivity, let activity = model.activity {
-                        ActivityOverlay(activity: activity)
+                        ActivityOverlay(
+                            activity: activity,
+                            onCancel: cancelApplicationQuit,
+                            isCancelling: model.cleanup.isInterruptingApplicationQuit
+                        )
+                            // Keep operation controls active above the disabled page.
+                            .environment(\.isEnabled, true)
                             .transition(.opacity)
                     } else if model.photoDuplicates.isDeleting {
                         PageProgressView(title: "Deleting photos", detail: "Waiting for Photos to finish.")
@@ -60,11 +71,16 @@ struct RemovalOperationSurface: View {
 /// Blocks page input while a removal operation runs.
 struct ActivityOverlay: View {
     let activity: AppModel.Activity
+    var onCancel: (() -> Void)? = nil
+    var isCancelling = false
 
     var body: some View {
         ZStack {
             Token.pageBackground
-            PageProgressView(title: activity.title, detail: activity.detail, icon: activity.progressIcon)
+            PageProgressView(
+                title: activity.title, detail: activity.detail, icon: activity.progressIcon,
+                onCancel: onCancel, isCancelling: isCancelling
+            )
         }
         // The colour fill is what catches the clicks. Without a content shape the
         // ZStack would let a click on the transparent card margins fall through.
