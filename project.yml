@@ -142,6 +142,7 @@ targets:
     platform: macOS
     sources:
       - path: Helpers/HomebrewAskpass
+      - path: App/Preferences/AppAppearance.swift
     settings:
       base:
         PRODUCT_NAME: MoppoHomebrewAskpass

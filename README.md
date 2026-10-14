@@ -76,6 +76,11 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 
 ### ⚙️ Everyday controls
 
+Choose **System**, **Light**, or **Dark** in **Settings > General > Appearance**.
+Changes apply immediately and remain saved across launches.
+**System** follows macOS appearance changes and is the default.
+**Reset Settings** restores **System**.
+
 | Feature | What you can do |
 | --- | --- |
 | Cleanup history | Review removal results, failures, and saved receipts. |

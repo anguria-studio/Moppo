@@ -2,18 +2,29 @@ import Combine
 import SwiftUI
 import MoppoCore
 
-/// Shows startup, scan, alert, and iCloud settings.
+/// Shows appearance, startup, scan, alert, and iCloud settings.
 struct GeneralPane: View {
 
     @Bindable var settings: SettingsStore
 
     var body: some View {
         PrefPane {
+            appearance
             startup
             scanning
             iCloud
         }
 
+    }
+
+    private var appearance: some View {
+        PrefSection("Appearance") {
+            PrefPickerRow(
+                title: "Appearance",
+                selection: $settings.appearance,
+                label: \.displayName
+            )
+        }
     }
 
     // MARK: - Startup

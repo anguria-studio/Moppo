@@ -132,6 +132,7 @@ final class SettingsStore {
     /// The design's defaults, in one place so `resetToDefaults()` and first launch
     /// cannot drift apart.
     enum Defaults {
+        static let appearance = AppAppearance.system
         static let launchAtLogin = true
         static let showInMenuBar = true
         static let scanSchedule = ScanSchedule.weekly
@@ -202,6 +203,12 @@ final class SettingsStore {
         static let keepReceipt = "settings.keepReceipt"
         static let allowPhotoDownloads = "settings.allowPhotoDownloads"
         static let exclusions = "settings.exclusions"
+    }
+
+    // MARK: Appearance
+
+    var appearance: AppAppearance {
+        didSet { defaults.set(appearance.rawValue, forKey: AppAppearance.defaultsKey) }
     }
 
     // MARK: Startup
@@ -341,6 +348,7 @@ final class SettingsStore {
     init(defaults: UserDefaults = .standard, managesLoginItem: Bool = true) {
         self.defaults = defaults
         self.managesLoginItem = managesLoginItem
+        self.appearance = AppAppearance.saved(in: defaults)
 
         // `defaults.bool(forKey:)` answers `false` for a key that was never written,
         // which would silently turn every on-by-default switch off on first launch.
@@ -409,6 +417,7 @@ final class SettingsStore {
     /// Everything back to the design's defaults. Touches no files: the Advanced pane's
     /// alert says as much, and this is what makes that true.
     func resetToDefaults() {
+        appearance = Defaults.appearance
         launchAtLogin = Defaults.launchAtLogin
         showInMenuBar = Defaults.showInMenuBar
         scanSchedule = Defaults.scanSchedule

@@ -22,9 +22,14 @@ enum HomebrewPasswordPrompt {
     static func run(request: HomebrewAskpassRequest, applicationExecutable: String) -> Int32 {
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
-        let (alert, password) = makeAlert(package: request.package)
         let appURL = URL(fileURLWithPath: applicationExecutable)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let defaults = Bundle(url: appURL)?.bundleIdentifier.flatMap(UserDefaults.init(suiteName:))
+        let applyAppearance: @MainActor @Sendable () -> Void = {
+            if let defaults { AppAppearance.saved(in: defaults).apply(to: application) }
+        }
+        applyAppearance()
+        let (alert, password) = makeAlert(package: request.package)
         alert.icon = NSWorkspace.shared.icon(forFile: appURL.path)
         let editObserver = NotificationCenter.default.addObserver(
             forName: NSControl.textDidChangeNotification, object: password, queue: .main
@@ -35,6 +40,7 @@ enum HomebrewPasswordPrompt {
         // Close the dialog if Homebrew exits or the command reaches its time limit.
         let timer = Timer(timeInterval: 0.5, repeats: true) { _ in
             MainActor.assumeIsolated {
+                applyAppearance()
                 if !request.accepts(parentPID: getppid(), applicationExecutable: applicationExecutable) {
                     NSApp.abortModal()
                 }
