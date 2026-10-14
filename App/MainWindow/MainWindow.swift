@@ -491,7 +491,7 @@ struct MainWindow: View {
             if model.uninstaller.isShowingUninstallerLibrary {
                 Button {
                     if model.uninstaller.uninstallerTab == .installed {
-                        model.uninstaller.loadInstalledApplications()
+                        model.uninstaller.refreshInstalledApplications()
                     } else {
                         model.uninstaller.loadApplicationLeftovers()
                     }

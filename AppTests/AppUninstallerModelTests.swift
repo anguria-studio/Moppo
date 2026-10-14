@@ -5,6 +5,279 @@ import Testing
 @Suite("App Uninstaller feature ownership")
 @MainActor
 struct AppUninstallerModelTests {
+    @Test("Completed details reopen without planning and expire three minutes after completion")
+    func detailCacheLifetime() async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        var now = ContinuousClock.now
+        let operations = OperationCoordinator()
+        let model = AppUninstallerModel(
+            operations: operations, scanner: scanner,
+            detailCache: AppUninstallDetailCache(now: { now })
+        )
+        let plan = uninstallPlan("Disposable", at: fixture.application)
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 1 }
+        await scanner.finishPlan(0, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+        model.selectedSoundLibraryIDs = ["old selection"]
+        model.pendingSoundLibraryRemoval = .init(plan: plan, items: [], keepReceipt: false)
+        model.resetAppUninstall()
+        #expect(model.appUninstallPlan == nil)
+        now += .seconds(179)
+        let equivalent = fixture.application.deletingLastPathComponent()
+            .appendingPathComponent("../Applications/\(fixture.application.lastPathComponent)")
+        model.planAppUninstall(equivalent)
+        #expect(model.appUninstallPlan == plan)
+        #expect(model.appUninstallReviewURL?.path == fixture.application.path)
+        #expect(model.selectedSoundLibraryIDs.isEmpty)
+        #expect(model.pendingSoundLibraryRemoval == nil)
+        #expect(model.appUninstallError == nil)
+        #expect(model.appUninstallOutcome == nil)
+        #expect(!operations.isBusy)
+        #expect(await scanner.plans.count == 1)
+        model.resetAppUninstall()
+        now += .seconds(1)
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 2 }
+        await scanner.finishPlan(1, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+    }
+
+    enum CacheSetting: CaseIterable {
+        case paths, patterns, access
+    }
+
+    @Test("Changed exclusions or access require fresh details", arguments: CacheSetting.allCases)
+    func detailCacheSettings(_ change: CacheSetting) async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        var preferences = RemovalPreferences()
+        var access = false
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), scanner: scanner,
+            preferences: { preferences }, hasFullDiskAccess: { access }
+        )
+        let plan = uninstallPlan("Disposable", at: fixture.application)
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 1 }
+        await scanner.finishPlan(0, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+        model.resetAppUninstall()
+        switch change {
+        case .paths: preferences.excludedPaths = [fixture.profile.path]
+        case .patterns: preferences.excludedPatterns = ["*.keep"]
+        case .access: access = true
+        }
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 2 }
+        await scanner.finishPlan(1, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+    }
+
+    enum UncachedReview: CaseIterable {
+        case cancelled, failed, refreshed, settingsChanged, bundleChanged
+    }
+
+    @Test("Interrupted or invalidated calculations do not become reusable", arguments: UncachedReview.allCases)
+    func detailCacheInvalidatedPlanning(_ change: UncachedReview) async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        var preferences = RemovalPreferences()
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), scanner: scanner, preferences: { preferences }
+        )
+        let plan = uninstallPlan("Disposable", at: fixture.application)
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 1 }
+        switch change {
+        case .cancelled: model.resetAppUninstall()
+        case .failed: await scanner.failPlan(0)
+        case .refreshed:
+            model.refreshInstalledApplications()
+            try await waitUntil { await scanner.listCount == 1 }
+            await scanner.finishList(0, [])
+        case .settingsChanged: preferences.excludedPatterns = ["*.keep"]
+        case .bundleChanged:
+            try Data("Updated".utf8).write(to: fixture.application.appendingPathComponent("updated.txt"))
+        }
+        if change != .failed { await scanner.finishPlan(0, plan) }
+        try await waitUntil { !model.isPlanningAppUninstall }
+        model.resetAppUninstall()
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 2 }
+        await scanner.finishPlan(1, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+    }
+
+    @Test("Refresh Apps clears details for every application")
+    func detailCacheRefresh() async throws {
+        let fixtures = try [UninstallerFixture(), UninstallerFixture()]
+        let scanner = HeldUninstallerScanner()
+        let model = AppUninstallerModel(operations: OperationCoordinator(), scanner: scanner)
+        for (index, fixture) in fixtures.enumerated() {
+            model.planAppUninstall(fixture.application)
+            try await waitUntil { await scanner.plans.count == index + 1 }
+            await scanner.finishPlan(index, uninstallPlan("Disposable", at: fixture.application))
+            try await waitUntil { !model.isPlanningAppUninstall }
+            model.resetAppUninstall()
+        }
+        model.refreshInstalledApplications()
+        try await waitUntil { await scanner.listCount == 1 }
+        await scanner.finishList(0, [])
+        for (index, fixture) in fixtures.enumerated() {
+            model.planAppUninstall(fixture.application)
+            try await waitUntil { await scanner.plans.count == index + 3 }
+            await scanner.finishPlan(index + 2, uninstallPlan("Disposable", at: fixture.application))
+            try await waitUntil { !model.isPlanningAppUninstall }
+            model.resetAppUninstall()
+        }
+    }
+
+    @Test("A cached review still checks the running application before removal")
+    func cachedReviewRuntime() async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        let remover = HeldUninstallerRemoval()
+        let runtime = UninstallerRuntime()
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), scanner: scanner, remover: remover,
+            applications: AppUninstallApplications(
+                isRunning: { _ in runtime.isRunning }, quit: { _ in runtime.quitRequests += 1; return false }
+            )
+        )
+        let plan = uninstallPlan("Disposable", at: fixture.application)
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 1 }
+        await scanner.finishPlan(0, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+        model.resetAppUninstall()
+        runtime.isRunning = true
+        model.planAppUninstall(fixture.application)
+        #expect(model.appUninstallPlan == plan)
+        #expect(await scanner.plans.count == 1)
+        model.requestAppUninstall()
+        try await waitUntil { !model.isUninstallingApp }
+        #expect(runtime.quitRequests == 1)
+        #expect(await remover.requests.isEmpty)
+    }
+
+    @Test("Opening the application list keeps details prepared from another page")
+    func firstListRetainsDetails() async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        let model = AppUninstallerModel(operations: OperationCoordinator(), scanner: scanner)
+        let plan = uninstallPlan("Disposable", at: fixture.application)
+        model.planAppUninstall(fixture.application)
+        try await waitUntil { await scanner.plans.count == 1 }
+        model.loadInstalledApplications()
+        try await waitUntil { await scanner.listCount == 1 }
+        await scanner.finishList(0, [])
+        await scanner.finishPlan(0, plan)
+        try await waitUntil { !model.isPlanningAppUninstall }
+        model.resetAppUninstall()
+        model.planAppUninstall(fixture.application)
+        #expect(model.appUninstallPlan == plan)
+        #expect(await scanner.plans.count == 1)
+    }
+
+    enum BundleChange: CaseIterable {
+        case replaced, removed, version, executable, signature, symbolicLink
+    }
+
+    @Test("Missing, replaced, or updated bundles do not reuse details", arguments: BundleChange.allCases)
+    func changedCachedBundle(_ change: BundleChange) throws {
+        let fixture = try UninstallerFixture()
+        let application = fixture.application
+        let executable = application.appendingPathComponent("Contents/MacOS/fixture")
+        let signature = application.appendingPathComponent("Contents/_CodeSignature/CodeResources")
+        try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: signature.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("Executable".utf8).write(to: executable)
+        try Data("Signature".utf8).write(to: signature)
+        let infoURL = application.appendingPathComponent("Contents/Info.plist")
+        var properties = try #require(PropertyListSerialization.propertyList(
+            from: Data(contentsOf: infoURL), format: nil
+        ) as? [String: String])
+        properties["CFBundleExecutable"] = "fixture"
+        properties["CFBundleVersion"] = "1"
+        try PropertyListSerialization.data(fromPropertyList: properties, format: .xml, options: 0).write(to: infoURL)
+        var cache = AppUninstallDetailCache()
+        let settings = AppUninstallDetailCache.Settings(excludedPaths: [], excludedPatterns: [], hasFullDiskAccess: false)
+        let plan = uninstallPlan("Disposable", at: application)
+        cache.store(plan, stamp: try #require(.init(application)), settings: settings, generation: cache.generation)
+        #expect(cache.plan(for: application, settings: settings) == plan)
+        switch change {
+        case .replaced, .symbolicLink:
+            let old = fixture.root.appendingPathComponent("Old.app")
+            try FileManager.default.moveItem(at: application, to: old)
+            if change == .replaced {
+                try FileManager.default.copyItem(at: old, to: application)
+            } else {
+                try FileManager.default.createSymbolicLink(at: application, withDestinationURL: old)
+            }
+        case .removed: try FileManager.default.removeItem(at: application)
+        case .version:
+            properties["CFBundleVersion"] = "2"
+            try PropertyListSerialization.data(fromPropertyList: properties, format: .xml, options: 0).write(to: infoURL)
+        case .executable: try Data("New executable".utf8).write(to: executable)
+        case .signature: try Data("New signature".utf8).write(to: signature)
+        }
+        #expect(cache.plan(for: application, settings: settings) == nil)
+    }
+
+    @Test("Details stay separate, retain recent entries, and do not persist")
+    func detailCacheBound() throws {
+        let fixtures = try (0..<33).map { _ in try UninstallerFixture() }
+        var cache = AppUninstallDetailCache()
+        let settings = AppUninstallDetailCache.Settings(excludedPaths: [], excludedPatterns: [], hasFullDiskAccess: false)
+        for fixture in fixtures.prefix(32) {
+            let plan = uninstallPlan(fixture.application.lastPathComponent, at: fixture.application)
+            cache.store(plan, stamp: try #require(.init(fixture.application)), settings: settings, generation: cache.generation)
+        }
+        let first = fixtures[0].application
+        #expect(cache.plan(for: first, settings: settings)?.applicationURL.path == first.path)
+        let last = fixtures[32].application
+        cache.store(
+            uninstallPlan("Last", at: last), stamp: try #require(.init(last)),
+            settings: settings, generation: cache.generation
+        )
+        #expect(cache.plan(for: fixtures[1].application, settings: settings) == nil)
+        #expect(cache.plan(for: first, settings: settings)?.applicationURL.path == first.path)
+        #expect(cache.plan(for: last, settings: settings)?.applicationName == "Last")
+        var nextLaunch = AppUninstallDetailCache()
+        #expect(nextLaunch.plan(for: last, settings: settings) == nil)
+    }
+
+    @Test("Sound removal clears details for other sound owners")
+    func soundRemovalInvalidatesDetails() async throws {
+        let fixtures = try [UninstallerFixture(), UninstallerFixture()]
+        let scanner = HeldUninstallerScanner()
+        let remover = HeldUninstallerRemoval()
+        var cache = AppUninstallDetailCache()
+        let settings = AppUninstallDetailCache.Settings(excludedPaths: [], excludedPatterns: [], hasFullDiskAccess: false)
+        var plans = fixtures.map { uninstallPlan("Disposable", at: $0.application) }
+        let sound = soundLibraryItem()
+        plans[0].soundLibraryItems = [sound]
+        for plan in plans {
+            cache.store(plan, stamp: try #require(.init(plan.applicationURL)), settings: settings, generation: cache.generation)
+        }
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), scanner: scanner, remover: remover,
+            hasFullDiskAccess: { false }, detailCache: cache
+        )
+        model.planAppUninstall(fixtures[0].application)
+        #expect(model.appUninstallPlan == plans[0])
+        let removal = Task { await model.requestSoundLibraryRemoval(plans[0], itemPaths: [sound.id]) }
+        try await waitUntil { await remover.soundRequests.count == 1 }
+        await remover.finishSounds(CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
+        await removal.value
+        model.planAppUninstall(fixtures[1].application)
+        try await waitUntil { await scanner.plans.count == 1 }
+        await scanner.finishPlan(0, plans[1])
+        try await waitUntil { !model.isPlanningAppUninstall }
+    }
+
     @Test("Cancelled reviews retain the guard until the planner returns")
     func planningLifetime() async throws {
         let scanner = HeldUninstallerScanner()
@@ -343,10 +616,11 @@ struct AppUninstallerModelTests {
         let operations = OperationCoordinator()
         let remover = HeldUninstallerRemoval()
         var preferences = AppUninstallerModel.Preferences(confirmBeforeCleanup: confirm, keepReceipt: false)
-        var running = true
+        let runtime = UninstallerRuntime()
+        runtime.isRunning = true
         let model = AppUninstallerModel(
             operations: operations, remover: remover, preferences: { preferences },
-            applications: AppUninstallApplications(isRunning: { _ in running })
+            applications: AppUninstallApplications(isRunning: { _ in runtime.isRunning })
         )
         var plan = uninstallPlan("GarageBand")
         let sound = soundLibraryItem()
@@ -360,7 +634,7 @@ struct AppUninstallerModelTests {
         await model.requestSoundLibraryRemoval(plan, itemPaths: [sound.id])
         #expect(await remover.soundRequests.isEmpty)
         #expect(!operations.isBusy)
-        running = false
+        runtime.isRunning = false
         var result: CleanupOutcome?
         model.onEvent = { if case .removed(let outcome) = $0 { result = outcome } }
         var caller = Task { await model.requestSoundLibraryRemoval(plan, itemPaths: [sound.id, plan.applicationURL.path]) }
@@ -469,6 +743,10 @@ struct AppUninstallerModelTests {
         model.planAppUninstall(fixture.application)
         try await waitUntil { !model.isPlanningAppUninstall }
         let plan = try #require(model.appUninstallPlan)
+        model.resetAppUninstall()
+        model.planAppUninstall(fixture.application)
+        #expect(model.appUninstallPlan == plan)
+        #expect(!model.isPlanningAppUninstall)
         #expect(plan.items.contains { $0.url == fixture.profile.deletingLastPathComponent() })
         let support = fixture.profile.deletingLastPathComponent()
         try FileManager.default.moveItem(at: support, to: fixture.root.appendingPathComponent("old-profile"))
@@ -497,21 +775,32 @@ struct AppUninstallerModelTests {
         #expect(app.cleanup.scanResults == nil)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.recovery.cleanupHistory?.items.first { $0.originalURL.path == receipt.originalPath }?.state == .restored)
+        model.planAppUninstall(fixture.application)
+        #expect(model.isPlanningAppUninstall)
+        try await waitUntil { !model.isPlanningAppUninstall }
+        model.resetAppUninstall()
     }
+}
+
+@MainActor
+private final class UninstallerRuntime {
+    var isRunning = false
+    var quitRequests = 0
 }
 
 private func installedApplication(_ name: String) -> InstalledApplication {
     InstalledApplication(url: URL(fileURLWithPath: "/moppo-fixture/\(name).app"), name: name, bundleIdentifier: "org.moppo.\(name)")
 }
 
-private func uninstallPlan(_ name: String) -> AppUninstallPlan {
+private func uninstallPlan(_ name: String, at applicationURL: URL? = nil) -> AppUninstallPlan {
     let application = installedApplication(name)
+    let url = applicationURL ?? application.url
     return AppUninstallPlan(
-        applicationURL: application.url, applicationName: name, bundleIdentifier: application.bundleIdentifier,
-        items: [.init(url: application.url, category: .application, content: .application,
+        applicationURL: url, applicationName: name, bundleIdentifier: application.bundleIdentifier,
+        items: [.init(url: url, category: .application, content: .application,
                       allocatedBytes: 64, ownerBundleIdentifier: application.bundleIdentifier)],
         managedPackage: nil, preservedPaths: [], candidateBundleIdentifiers: [application.bundleIdentifier!],
-        applicationRoots: [application.url.deletingLastPathComponent()], allowedRelatedRoots: []
+        applicationRoots: [url.deletingLastPathComponent()], allowedRelatedRoots: []
     )
 }
 

@@ -103,7 +103,8 @@ final class AppModel {
             scanner: uninstallerScanner ?? AppUninstallerScanService(planner: appUninstallPlanner),
             remover: uninstallerRemover ?? cleanupService,
             homebrewRemover: homebrewUninstallService,
-            preferences: { [weak settings] in RemovalPreferences(settings: settings) }
+            preferences: { [weak settings] in RemovalPreferences(settings: settings) },
+            hasFullDiskAccess: hasFullDiskAccess
         )
         self.storageExplorer = StorageExplorerModel(
             operations: operations, service: storageExplorerService, removalService: storageExplorerRemover,
@@ -571,6 +572,7 @@ final class AppModel {
     /// wrong. They run together: the Trash read is usually quick and feeds the
     /// sidebar count, and it should not queue behind a 20-second walk.
     private func refreshAfterRemoval(invalidateCleanup: Bool = true, invalidateFileDuplicates: Bool = true) async {
+        uninstaller.invalidateDetailCache()
         if invalidateFileDuplicates { fileDuplicates.invalidateResults() }
         if invalidateCleanup { cleanup.invalidateResults() }
         // Every cached Explorer level is stale too: a folder measured before a
@@ -704,6 +706,7 @@ final class AppModel {
         case .restoringTrashItem(let name):
             activity = .restoringTrashItem(name: name)
         case .restored:
+            uninstaller.invalidateDetailCache()
             if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             fileDuplicates.invalidateResults()
             storageExplorer.invalidateCache()
