@@ -22,7 +22,7 @@ struct ByteFormattingTests {
         #expect(ByteFormatting.string(0) == "0 B")
     }
 
-    @Test("values at or above 1 GB use two decimals and base 1000")
+    @Test("Values from 1 GB to below 1 TB use two decimal places")
     func gigabytes() {
         #expect(ByteFormatting.string(ByteFormatting.bytesPerGB) == "1.00 GB")
         // 8.42 GB — the Xcode_16.2.xip row in the Scanner table
@@ -42,5 +42,29 @@ struct ByteFormattingTests {
     @Test("one byte below the GB threshold still renders as MB")
     func boundary() {
         #expect(ByteFormatting.string(ByteFormatting.bytesPerGB - 1) == "1000.0 MB")
+    }
+
+    @Test("TB selection uses the byte threshold before rounding", arguments: [
+        (999_994_000_000 as Int64, "999.99 GB"),
+        (999_999_999_999, "1000.00 GB"),
+        (1_000_000_000_000, "1.00 TB"),
+        (1_000_000_000_001, "1.00 TB"),
+        (1_004_000_000_000, "1.00 TB"),
+        (1_006_000_000_000, "1.01 TB"),
+        (1_823_470_000_000, "1.82 TB"),
+        (1_995_170_000_000, "2.00 TB"),
+        (Int64.max, "9223372.04 TB")
+    ])
+    func terabytes(bytes: Int64, expected: String) {
+        #expect(ByteFormatting.string(bytes) == expected)
+    }
+
+    @Test("Small values keep the existing KB format", arguments: [
+        (1 as Int64, "0 KB"),
+        (1_000, "1 KB"),
+        (999_999, "1000 KB")
+    ])
+    func kilobytes(bytes: Int64, expected: String) {
+        #expect(ByteFormatting.string(bytes) == expected)
     }
 }

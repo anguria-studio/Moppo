@@ -164,9 +164,7 @@ struct SidebarView: View {
         return Double(volume.usedBytes) / Double(volume.capacityBytes)
     }
 
-    /// "220.36 of 245.11 GB used". The unit is written once when both figures land
-    /// in it, which on any real startup volume they do; a pair that somehow split
-    /// units keeps both, since dropping one would then be a lie about the smaller.
+    /// Shows a shared unit once. Shows both units when they differ.
     private var usedSummary: String? {
         guard let volume = model.dashboard.volume else { return nil }
         let used = ByteFormatting.string(volume.usedBytes)

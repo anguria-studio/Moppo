@@ -1,32 +1,22 @@
 import Foundation
 
-/// Byte rendering, defined by the design handoff rather than by `ByteCountFormatter`.
-///
-/// The handoff fixes the format exactly:
-///
-///     >= 1 GB  ->  "%.2f GB"
-///      < 1 GB  ->  "%.1f MB"
-///        zero  ->  "0 B"
-///
-/// Storage figures use decimal units, as macOS does. One GB is 1,000,000,000 bytes.
-/// `ByteCountFormatter` is not used because it can change units and precision.
+/// Formats storage figures with decimal units and fixed precision.
+/// TB and GB values have two decimal places. MB values have one decimal place.
+/// Smaller nonzero values use whole KB. Zero is "0 B".
 public enum ByteFormatting {
 
     public static let bytesPerMB: Int64 = 1_000_000
     public static let bytesPerGB: Int64 = 1_000_000_000
+    public static let bytesPerTB: Int64 = 1_000_000_000_000
 
     public static let bytesPerKB: Int64 = 1_000
 
-    /// Renders a byte count as the design specifies.
-    ///
-    /// The spec gives two branches plus zero, because every value it displays is at
-    /// least 1 MB. Taken literally that renders a 200 KB item as `"0.0 MB"`, which a
-    /// live scan duly produced. A KB branch is added below 1 MB: it cannot change any
-    /// value the design actually shows, and it removes a rendering that reads like a
-    /// bug. Sub-megabyte entries are separately filtered out of scan results — see
-    /// `ScanCategoryResult.filteringNoise(below:)` — so this is a backstop.
+    /// Selects the unit before rounding the value.
     public static func string(_ bytes: Int64) -> String {
         if bytes == 0 { return "0 B" }
+        if bytes >= bytesPerTB {
+            return Self.fixed(Double(bytes) / Double(bytesPerTB), decimals: 2) + " TB"
+        }
         if bytes >= bytesPerGB {
             return Self.fixed(Double(bytes) / Double(bytesPerGB), decimals: 2) + " GB"
         }
