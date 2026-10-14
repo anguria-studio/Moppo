@@ -9,6 +9,7 @@ struct SidebarView: View {
     /// Shows selection before the destination finishes its first layout.
     @State private var pendingView: AppModel.View?
     @FocusState private var focusedView: AppModel.View?
+    @AccessibilityFocusState(for: .voiceOver) private var voiceOverView: AppModel.View?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,10 +44,20 @@ struct SidebarView: View {
                 if views.indices.contains(next) { select(views[next]) }
                 return .handled
             }
+            .onKeyPress(keys: [.space, .return]) { _ in
+                guard let focusedView else { return .ignored }
+                select(focusedView)
+                return .handled
+            }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Sidebar")
         }
-        .onChange(of: model.view) { pendingView = nil }
+        .onChange(of: model.view) { _, view in
+            pendingView = nil
+            // Page actions and menu commands use the same focus destination as sidebar navigation.
+            focusedView = view
+            voiceOverView = view
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) { capacityFooter }
     }
 
@@ -82,12 +93,13 @@ struct SidebarView: View {
         .focusable()
         .focusEffectDisabled()
         .focused($focusedView, equals: view)
+        .accessibilityFocused($voiceOverView, equals: view)
         .background(
             RoundedRectangle(cornerRadius: Token.Radius.sidebarRow, style: .continuous)
                 .fill(isSelected(view) ? Token.Fill.sidebarSelection : .clear)
         )
         .overlay {
-            if focusedView == view, !isSelected(view) {
+            if focusedView == view {
                 RoundedRectangle(cornerRadius: Token.Radius.sidebarRow, style: .continuous)
                     .strokeBorder(Token.color(.accent), lineWidth: 2)
             }
