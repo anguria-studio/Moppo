@@ -333,6 +333,8 @@ struct SignedByteFormattingTests {
     func signs() {
         #expect(ByteFormatting.signedString(11_200_000_000) == "+11.20 GB")
         #expect(ByteFormatting.signedString(-340_000_000) == "\u{2212}340.0 MB")
+        #expect(ByteFormatting.signedString(1_823_470_000_000) == "+1.82 TB")
+        #expect(ByteFormatting.signedString(-1_823_470_000_000) == "\u{2212}1.82 TB")
         #expect(ByteFormatting.signedString(0) == "0 B")
     }
 
