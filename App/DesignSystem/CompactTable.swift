@@ -361,7 +361,7 @@ struct CompactTableActionStyle: ButtonStyle {
                     : (highlighted ? Token.Fill.buttonHover : Token.Fill.buttonOnCard),
                 in: Capsule()
             )
-            .overlay(Capsule().strokeBorder(isSelected || !isEnabled ? .clear : Token.Fill.buttonBorder, lineWidth: 1))
+            .overlay(Capsule().strokeBorder(isSelected ? .clear : Token.Fill.controlBorder, lineWidth: Token.hairline))
             .opacity(!isEnabled ? 0.5 : (configuration.isPressed ? 0.7 : 1))
             .contentShape(Capsule())
             .onHover { isHovering = isEnabled && $0 }

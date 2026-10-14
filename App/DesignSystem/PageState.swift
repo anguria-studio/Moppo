@@ -103,6 +103,8 @@ struct PageStateSymbol: View {
 
 /// Keeps short actions equal in width and allows longer labels to grow.
 struct PageStateButtonStyle: ButtonStyle {
+    static let primary = Self(tint: Token.Fill.buttonPrimary, foreground: Token.Text.onPrimaryButton)
+
     var tint: Color? = nil
     var foreground: Color? = nil
     @Environment(\.pageStateActionsStacked) private var isStacked

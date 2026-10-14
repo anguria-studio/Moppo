@@ -121,6 +121,7 @@ enum Token {
         static let primary = Token.dynamic(
             light: NSColor(srgbRed: 0.090, green: 0.125, blue: 0.200, alpha: 1), dark: .labelColor
         )
+        static let onPrimaryButton = Token.dynamic(light: .white, dark: .black)
         static let secondary = Token.dynamic(
             light: NSColor(srgbRed: 0.278, green: 0.333, blue: 0.412, alpha: 1), dark: .white.withAlphaComponent(0.62)
         )
@@ -265,16 +266,16 @@ enum Token {
         static let button = Token.dynamic(
             light: NSColor(white: 244 / 255, alpha: 1), dark: .white.withAlphaComponent(0.09)
         )
+        static let buttonPrimary = Token.dynamic(
+            light: NSColor(white: 32 / 255, alpha: 1), dark: .white
+        )
         static let buttonOnCard = Token.dynamic(
             light: .white, dark: .white.withAlphaComponent(0.09)
         )
         static let buttonHover = Token.dynamic(
-            light: NSColor(white: 225 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
+            light: NSColor(white: 234 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
         )
-        /// Action borders stay visible on page and card backgrounds.
-        static let buttonBorder = Token.ink(light: 0.46, dark: 0.34)
-        static let cardActionHover = Token.ink(light: 0.06, dark: 0.08)
-        static let cardActionPressed = Token.ink(light: 0.12, dark: 0.16)
+        static let buttonBorder = Token.dynamic(light: .black.withAlphaComponent(0.10), dark: .clear)
         /// Disabled controls have less contrast than active controls.
         static let controlDisabled = Token.ink(light: 0.035, dark: 0.04)
         /// Hover slightly darkens neutral surfaces in light mode.

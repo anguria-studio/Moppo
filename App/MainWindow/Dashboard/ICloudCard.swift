@@ -38,7 +38,7 @@ struct ICloudCard: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: Token.Radius.card))
         }
-        .buttonStyle(CardPressButtonStyle(showsActionBorder: true))
+        .buttonStyle(CardPressButtonStyle())
         .accessibilityLabel("iCloud")
         .accessibilityValue(summary + (storage.planWasInferred ? ". Plan size is estimated." : ""))
         .accessibilityHint("Open iCloud settings")

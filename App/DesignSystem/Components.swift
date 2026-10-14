@@ -28,43 +28,22 @@ struct HoverHelpIcon: View {
     }
 }
 
-/// Gives cards press feedback and an optional action border with hover feedback.
+/// Gives cards immediate feedback while the mouse button is held.
 struct CardPressButtonStyle: ButtonStyle {
     var cornerRadius: CGFloat = Token.Radius.card
-    var showsActionBorder = false
-    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isHovering = false
 
     func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        let hovered = isEnabled && showsActionBorder && isHovering
-        let pressed = isEnabled && configuration.isPressed
-        return configuration.label
+        configuration.label
             .overlay {
-                shape
-                    .fill(pressed
-                        ? (showsActionBorder ? Token.Fill.cardActionPressed : Token.Text.primary.opacity(0.08))
-                        : (hovered ? Token.Fill.cardActionHover : .clear))
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Token.Text.primary.opacity(configuration.isPressed ? 0.08 : 0))
                     .allowsHitTesting(false)
             }
-            .overlay {
-                shape.strokeBorder(
-                    isEnabled && showsActionBorder ? Token.Fill.buttonBorder : .clear,
-                    lineWidth: 1
-                )
-                .allowsHitTesting(false)
-            }
-            .opacity(showsActionBorder && !isEnabled ? 0.5 : 1)
-            .onHover { isHovering = showsActionBorder && isEnabled && $0 }
-            .onChange(of: isEnabled) { _, enabled in
-                if !enabled { isHovering = false }
-            }
             .animation(
-                reduceMotion || pressed ? nil : .easeOut(duration: 0.12),
-                value: pressed
+                reduceMotion || configuration.isPressed ? nil : .easeOut(duration: 0.12),
+                value: configuration.isPressed
             )
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovered)
     }
 }
 
@@ -342,7 +321,7 @@ struct SecondaryButtonStyle: ButtonStyle {
                 in: Capsule()
             )
             .overlay {
-                Capsule().strokeBorder(isEnabled ? Token.Fill.buttonBorder : .clear, lineWidth: 1)
+                Capsule().strokeBorder(isEnabled ? Token.Fill.buttonBorder : .clear, lineWidth: Token.hairline)
             }
             .contentShape(Capsule())
             .opacity(isEnabled && configuration.isPressed ? 0.8 : 1)
@@ -780,7 +759,7 @@ struct PageActionSurface: ViewModifier {
             .overlay {
                 Capsule().strokeBorder(
                     isEnabled && tint == nil ? border : .clear,
-                    lineWidth: 1
+                    lineWidth: Token.hairline
                 )
             }
             .contentShape(Capsule())

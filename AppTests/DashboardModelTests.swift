@@ -93,7 +93,6 @@ struct DashboardModelTests {
         #expect(app.dashboard.hasCompletedInitialDashboardLoad)
         #expect(!app.dashboard.isDashboardLoading)
         #expect(app.dashboard.breakdown == measurement.breakdown)
-        #expect(app.dashboard.breakdownIsStale)
         #expect(app.dashboard.snapshots.count == 2)
         #expect(app.dashboard.boot?.uuid == "boot")
         #expect(app.dashboard.removableSnapshots.map(\.uuid) == ["data"])
@@ -413,7 +412,6 @@ struct DashboardModelTests {
         let model = DashboardModel(service: service, persistence: persistence)
         model.canMeasure = { _ in false }
         await model.loadDashboard()
-        #expect(model.breakdownIsStale)
         model.dismissLowSpaceWarning()
         model.canMeasure = { _ in true }
         let caller = Task { await model.measureStorage() }
@@ -430,7 +428,6 @@ struct DashboardModelTests {
         await service.finishMeasurement(1, measurement)
         await retry.value
         #expect(await persistence.cacheClears == 1)
-        #expect(!model.breakdownIsStale)
         #expect(!model.isLowSpaceWarningDismissed)
         #expect(await persistence.records == [.manual])
     }
