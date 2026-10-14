@@ -45,6 +45,12 @@ struct AIToolsScannerTests {
         let context = ScanContext()
         let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
         #expect(ai.entries.count == 5)
+        let taskData = try #require(ai.entries.first { $0.url.lastPathComponent == ".codex" })
+        let runtimes = try #require(ai.entries.first { $0.url.lastPathComponent == "codex-runtimes" })
+        #expect(taskData.aiStorageSection?.owner == .codex)
+        #expect(taskData.aiStorageSection?.title == "Task data")
+        #expect(runtimes.aiStorageSection?.owner == .codex)
+        #expect(runtimes.aiStorageSection?.title == "Downloaded tools")
         for entry in ai.entries {
             #expect(entry.displayBytes == (try await context.measurer.measure(entry.url)).allocatedBytes)
             #expect(entry.reclaimableBytes == 0)
@@ -58,6 +64,7 @@ struct AIToolsScannerTests {
         #expect(ai.needsReviewBytes == ai.totalBytes)
         #expect(ai.totalBytes == (try await context.measurer.measure(sandbox.home)).allocatedBytes)
         let claude = try #require(ai.entries.first { $0.displayName == "Claude Code data" })
+        #expect(claude.aiStorageSection?.owner == .claudeCode)
         #expect(claude.children.count == 6)
         #expect(claude.children.first { $0.url.lastPathComponent == "projects" }?.protectionExplanation?.contains("persistent memories") == true)
         let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
@@ -105,6 +112,7 @@ struct AIToolsScannerTests {
         let context = ScanContext()
         let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
         let row = try #require(ai.entries.first)
+        #expect(row.aiStorageSection?.owner == .claude)
         #expect(row.children.filter(\.isRegenerable).count == 3)
         #expect(row.children.filter { $0.protectionReason == .inventory }.count == 4)
         #expect(row.children.first { $0.url.lastPathComponent == "local-agent-mode-sessions" }?.protectionExplanation?.contains("persistent memories") == true)
@@ -167,6 +175,7 @@ struct AIToolsScannerTests {
         #expect(caches.allSatisfy { $0.kind == .cache && !$0.isRemovalLocked })
         #expect(caches.allSatisfy { ($0.inUseBy != nil) == running })
         #expect(desktop.aiTool == .grokBot && local.aiTool == .grokBot)
+        #expect(desktop.aiStorageSection?.owner == .grokBot && local.aiStorageSection?.owner == .grokBot)
         for path in protectedPaths {
             let url = sandbox.home.appendingPathComponent(prefix + path)
             #expect(!caches.contains { ApplicationsScanner.overlaps($0.url.path, url.path) })
@@ -196,6 +205,8 @@ struct AIToolsScannerTests {
         let cache = try #require(root.children.first)
         let app = FileEntry(url: sandbox.home.appendingPathComponent("Applications/ChatGPT.app"), kind: .appBundle,
                             allocatedBytes: 2_000_000, children: [cache, root])
+        #expect(root.aiStorageSection?.owner == .chatGPT)
+        #expect(root.aiTool == .chatGPT)
         let hidden = FileEntry(url: root.url.appendingPathComponent("vm.img"), kind: .diskImage, allocatedBytes: 3_000_000)
         let results = ScanCoordinator.removingAIToolOverlaps(from: [
             ai, ScanCategoryResult(categoryID: .applications, entries: [app]),

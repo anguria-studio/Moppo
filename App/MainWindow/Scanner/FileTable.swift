@@ -10,6 +10,7 @@ import MoppoCore
 /// `Table` would have contributed for free, column alignment, is a fixed-width frame
 /// here and costs three constants.
 struct FileTable: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let entries: [FileEntry]
     /// Which top-level rows wear the green "safe to remove" — the category's own
     /// answer, `ScanCategoryResult.isCountedSafe`, so the badge and the tile cannot
@@ -34,6 +35,7 @@ struct FileTable: View {
 
     /// Rows disclosed to show their associated files (an app's leftovers).
     @State private var expandedRows: Set<FileEntry.ID> = []
+    @State var expandedGroups: Set<AIStorageSection.Owner> = []
     /// The user-data row whose lock was clicked. Confirmation is local to the table
     /// because this is permission to select a row, not permission to run cleanup yet.
     @State private var pendingUserDataOverride: FileEntry?
@@ -45,7 +47,7 @@ struct FileTable: View {
     /// The rows as displayed. Shift-click ranges span this order, not the scanner's,
     /// because a range selection over an order the user cannot see selects files
     /// they did not point at.
-    private var sortedEntries: [FileEntry] {
+    private var sortedRows: [FileEntry] {
         switch sortKey {
         case .name:
             entries.sorted {
@@ -68,6 +70,14 @@ struct FileTable: View {
                                  : $0.rowDisplayBytes > $1.rowDisplayBytes
             }
         }
+    }
+
+    private var groups: [FileTableGroup] {
+        FileTableGroup.make(from: sortedRows, sortKey: sortKey, ascending: ascending)
+    }
+
+    private var sortedEntries: [FileEntry] {
+        groups.flatMap { $0.visibleEntries(expandedOwners: expandedGroups) }
     }
 
     /// Adopting a column starts from its natural direction — names read A→Z, dates
@@ -143,7 +153,8 @@ struct FileTable: View {
             )
             .fixedSize()
             .frame(width: Metrics.checkbox)
-            Color.clear.frame(width: Metrics.icon, height: 0)
+            Color.clear.frame(width: Metrics.icon
+                + (entries.contains { $0.aiStorageSection != nil } ? Metrics.childIndent : 0), height: 0)
             SortableColumnHeader(
                 title: "Name",
                 isActive: sortKey == .name,
@@ -196,67 +207,93 @@ struct FileTable: View {
     /// Lazy because a category can expand into hundreds of entries, and every one of
     /// them carries a live checkbox and a hover tracker.
     private var rows: some View {
-        let visible = sortedEntries
+        let displayedGroups = groups
+        let visible = displayedGroups.flatMap { $0.visibleEntries(expandedOwners: expandedGroups) }
+        let indices = Dictionary(uniqueKeysWithValues: visible.enumerated().map { ($0.element.id, $0.offset) })
         return LazyVStack(spacing: 0) {
-            ForEach(Array(visible.enumerated()), id: \.element.id) { index, entry in
-                if index > 0 { Hairline() }
-                FileRow(
-                    entry: entry,
-                    isSafeToRemove: showsSafeToRemoveBadges && isSafeToRemove(entry),
-                    isSelected: selection.contains(entry.id),
-                    selectionState: selectionState(for: entry),
-                    hasUserDataOverride: userDataRemovalOverrides.contains(entry.id),
-                    isExpanded: expandedRows.contains(entry.id),
-                    onToggle: { isOn in setSelected(isOn, at: index) },
-                    onRequestUserDataOverride: { requestUserDataOverride(entry) },
-                    onDisclose: { toggleDisclosure(entry.id) },
-                    onUninstallApplication: onUninstallApplication.map { action in
-                        { action(entry) }
-                    },
-                    onReviewWorktree: onReviewWorktree.map { action in { action(entry) } },
-                    hasUnlockedChildren: !entry.unlockableChildren.isEmpty
-                        && entry.unlockableChildren.allSatisfy { userDataRemovalOverrides.contains($0.id) },
-                    onUnlockChildren: onUnlockChildren != nil && !entry.unlockableChildren.isEmpty
-                        ? { pendingUserDataOverride = entry } : nil,
-                    onToggleChildren: onToggleChildren.map { action in { action($0, entry) } }
-                )
-                // A parent discloses targets that can be removed separately. An app
-                // still uses the complete uninstall review for its parent action.
-                if expandedRows.contains(entry.id) {
-                    ForEach(entry.children) { child in
-                        Hairline()
-                        ChildRow(
-                            entry: child,
-                            showsSafeToRemoveBadges: showsSafeToRemoveBadges,
-                            isSelected: selection.contains(child.id),
-                            hasUserDataOverride: userDataRemovalOverrides.contains(child.id),
-                            // A leftover group and a model are each one thing: their
-                            // children are shown, never ticked on their own.
-                            isReadOnly: entry.removalAction != nil
-                                || entry.removesAsUnit
-                                || selection.contains(entry.id),
-                            onToggle: { isOn in
-                                if isOn { selection.insert(child.id) }
-                                else {
-                                    selection.remove(child.id)
-                                    if entry.unlockableChildren.isEmpty {
-                                        userDataRemovalOverrides.remove(child.id)
-                                    }
-                                }
-                            },
-                            onRequestUserDataOverride: { requestUserDataOverride(child) },
-                            onReviewWorktree: onReviewWorktree.map { action in { action(child) } }
-                        )
-                    }
+            ForEach(Array(displayedGroups.enumerated()), id: \.element.id) { groupIndex, group in
+                if groupIndex > 0 { Hairline() }
+                if let owner = group.owner {
+                    AIStorageGroupHeader(owner: owner, totalBytes: group.totalBytes,
+                        isExpanded: expandedGroups.contains(owner), onToggle: { toggleGroup(owner) })
+                    if expandedGroups.contains(owner) { Hairline() }
+                }
+                ForEach(Array(group.visibleEntries(expandedOwners: expandedGroups).enumerated()), id: \.element.id) { rowIndex, entry in
+                    if rowIndex > 0 { Hairline() }
+                    entryRows(entry, at: indices[entry.id]!,
+                        indentation: group.owner == nil ? 0 : Metrics.childIndent)
                 }
             }
         }
     }
 
+    @ViewBuilder
+    private func entryRows(_ entry: FileEntry, at index: Int, indentation: CGFloat) -> some View {
+        FileRow(
+            entry: entry,
+            indentation: indentation,
+            isSafeToRemove: showsSafeToRemoveBadges && isSafeToRemove(entry),
+            isSelected: selection.contains(entry.id),
+            selectionState: selectionState(for: entry),
+            hasUserDataOverride: userDataRemovalOverrides.contains(entry.id),
+            isExpanded: expandedRows.contains(entry.id),
+            onToggle: { isOn in setSelected(isOn, at: index) },
+            onRequestUserDataOverride: { requestUserDataOverride(entry) },
+            onDisclose: { toggleDisclosure(entry.id) },
+            onUninstallApplication: onUninstallApplication.map { action in
+                { action(entry) }
+            },
+            onReviewWorktree: onReviewWorktree.map { action in { action(entry) } },
+            hasUnlockedChildren: !entry.unlockableChildren.isEmpty
+                && entry.unlockableChildren.allSatisfy { userDataRemovalOverrides.contains($0.id) },
+            onUnlockChildren: onUnlockChildren != nil && !entry.unlockableChildren.isEmpty
+                ? { pendingUserDataOverride = entry } : nil,
+            onToggleChildren: onToggleChildren.map { action in { action($0, entry) } }
+        )
+        // A parent discloses targets that can be removed separately. An app
+        // still uses the complete uninstall review for its parent action.
+        if expandedRows.contains(entry.id) {
+            ForEach(entry.children) { child in
+                Hairline()
+                ChildRow(
+                    entry: child,
+                    indentation: indentation,
+                    showsSafeToRemoveBadges: showsSafeToRemoveBadges,
+                    isSelected: selection.contains(child.id),
+                    hasUserDataOverride: userDataRemovalOverrides.contains(child.id),
+                    // A leftover group and a model are each one thing: their
+                    // children are shown, never ticked on their own.
+                    isReadOnly: entry.removalAction != nil
+                        || entry.removesAsUnit
+                        || selection.contains(entry.id),
+                    onToggle: { isOn in
+                        if isOn { selection.insert(child.id) }
+                        else {
+                            selection.remove(child.id)
+                            if entry.unlockableChildren.isEmpty {
+                                userDataRemovalOverrides.remove(child.id)
+                            }
+                        }
+                    },
+                    onRequestUserDataOverride: { requestUserDataOverride(child) },
+                    onReviewWorktree: onReviewWorktree.map { action in { action(child) } }
+                )
+            }
+        }
+    }
+
     private func toggleDisclosure(_ id: FileEntry.ID) {
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
             if expandedRows.contains(id) { expandedRows.remove(id) }
             else { expandedRows.insert(id) }
+        }
+    }
+
+    private func toggleGroup(_ owner: AIStorageSection.Owner) {
+        lastClickedIndex = nil
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            if expandedGroups.contains(owner) { expandedGroups.remove(owner) }
+            else { expandedGroups.insert(owner) }
         }
     }
 
@@ -349,10 +386,74 @@ struct FileTable: View {
     }
 }
 
+/// Shows measured storage without offering application selection or removal.
+struct AIStorageGroupHeader: View {
+    let owner: AIStorageSection.Owner
+    let totalBytes: Int64
+    let isExpanded: Bool
+    let onToggle: () -> Void
+
+    var body: some View {
+        Button(action: onToggle) { rowContent }
+            .buttonStyle(.plain)
+            .hoverHighlight(fill: Token.Fill.cleanupRowHover)
+            .accessibilityLabel("\(owner.rawValue), storage shown, \(ByteFormatting.string(totalBytes))")
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityHint("Shows or hides storage sections. Selection stays unchanged.")
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: Metrics.gap) {
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Token.Text.secondary)
+                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                .frame(width: Metrics.disclosureSlot)
+                .frame(width: Metrics.disclosureSlot + Metrics.childIndent, alignment: .leading)
+                .accessibilityHidden(true)
+            Group {
+                if let icon = ApplicationIcons.icon(for: owner.tool) {
+                    Image(nsImage: icon.image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: icon.size, height: icon.size)
+                } else {
+                    Image(systemName: "app")
+                        .foregroundStyle(Token.Text.secondary)
+                }
+            }
+            .frame(width: Metrics.checkbox)
+            .accessibilityHidden(true)
+            Text(owner.rawValue)
+                .font(.mcRowTitle)
+                .foregroundStyle(Token.Text.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Color.clear.frame(width: Metrics.regenerable)
+            Text("Storage shown")
+                .font(.mcCaption)
+                .foregroundStyle(Token.Text.secondary)
+                .frame(width: Metrics.lastOpened, alignment: .leading)
+            Text(ByteFormatting.string(totalBytes))
+                .font(.mcRowValue)
+                .foregroundStyle(Token.Text.primary)
+                .fixedSize()
+                .frame(width: Metrics.size, alignment: .trailing)
+            Color.clear.frame(width: Metrics.action)
+        }
+        .padding(.horizontal, Metrics.sidePadding)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - One row
 
 private struct FileRow: View {
     let entry: FileEntry
+    var indentation: CGFloat = 0
     var isSafeToRemove = false
     let isSelected: Bool
     var selectionState: NSControl.StateValue? = nil
@@ -390,13 +491,14 @@ private struct FileRow: View {
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Show child items in \(entry.displayName)")
+                    .accessibilityLabel("\(isExpanded ? "Hide" : "Show") child items in \(entry.displayName)")
+                    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
                     .help(disclosureHelp)
                 } else {
                     Color.clear
                 }
             }
-            .frame(width: Metrics.disclosureSlot)
+            .frame(width: Metrics.disclosureSlot + indentation, alignment: .trailing)
 
             Group {
                 if entry.kind == .appBundle, let onUninstallApplication {
@@ -578,7 +680,7 @@ private struct FileRow: View {
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(entry.displayName)
+                    Text(entry.aiStorageSection?.title ?? entry.displayName)
                         .font(.mcRowTitle)
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
@@ -620,10 +722,10 @@ private struct FileRow: View {
                     }
                 }
 
-                Text(presentation.summary)
+                Text(entry.aiStorageSection?.summary ?? presentation.summary)
                     .font(.mcBody)
                     .foregroundStyle(Token.Text.secondary)
-                    .lineLimit(1)
+                    .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
                     .truncationMode(.tail)
                     .help(entry.url.path)
             }
@@ -657,6 +759,7 @@ private struct FileRow: View {
 /// it is protected or already covered by the parent selection.
 private struct ChildRow: View {
     let entry: FileEntry
+    var indentation: CGFloat = 0
     var showsSafeToRemoveBadges = true
     let isSelected: Bool
     let hasUserDataOverride: Bool
@@ -670,7 +773,7 @@ private struct ChildRow: View {
     var body: some View {
         HStack(spacing: Metrics.gap) {
             // Indent child content while the trailing columns keep their positions.
-            Color.clear.frame(width: Metrics.disclosureSlot + Metrics.childIndent, height: 0)
+            Color.clear.frame(width: Metrics.disclosureSlot + Metrics.childIndent + indentation, height: 0)
 
             Group {
                 if isReadOnly {
@@ -1185,7 +1288,7 @@ struct FileEntryIcon: View {
         if entry.kind == .appBundle || entry.kind == .downloadedApp {
             return .init(image: ApplicationIcons.icon(for: entry.url), includesPadding: true)
         }
-        if let tool = entry.aiTool { return ApplicationIcons.icon(for: tool) }
+        if entry.aiStorageSection == nil, let tool = entry.aiTool { return ApplicationIcons.icon(for: tool) }
         if let identifier = entry.orphanedApplicationBundleIdentifier {
             return ApplicationIcons.icon(for: identifier)
         }

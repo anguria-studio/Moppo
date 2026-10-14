@@ -5,7 +5,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
 
     /// Identifies the tool icon without changing storage ownership or removal rules.
     public enum AITool: String, Sendable {
-        case codex = "Codex", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
+        case codex = "Codex", chatGPT = "ChatGPT", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
     }
 
@@ -182,6 +182,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// The identities and owners checked before downloaded sound content moves.
     public var soundLibrary: AppleSoundLibrary.Inventory?
     public var aiTool: AITool?
+    public var aiStorageSection: AIStorageSection?
     public var codexSession: CodexSessionReview?
 
     /// Child items that support separate removal after a user data review.
@@ -240,6 +241,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         removalAction: RemovalAction? = nil,
         soundLibrary: AppleSoundLibrary.Inventory? = nil,
         aiTool: AITool? = nil,
+        aiStorageSection: AIStorageSection? = nil,
         codexSession: CodexSessionReview? = nil,
         childCount: Int? = nil,
         children: [FileEntry] = []
@@ -262,6 +264,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.removalAction = removalAction
         self.soundLibrary = soundLibrary
         self.aiTool = aiTool
+        self.aiStorageSection = aiStorageSection
         self.codexSession = codexSession
         self.childCount = childCount
         self.children = children

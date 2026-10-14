@@ -23,6 +23,19 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
 | Ollama, Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. |
 
+Cleanup groups related storage under application headings.
+Codex and ChatGPT have separate headings because their displayed storage has different owners.
+Claude Code and Claude also have separate headings.
+Each heading shows the storage in its displayed rows. Filters can change this total.
+Application headings start collapsed.
+Expand a heading to show its storage sections.
+Expand a section to show its children when they are available.
+Collapsing a heading keeps the selection unchanged.
+Range selection includes only visible sections.
+A heading has no selection or removal action.
+Section descriptions identify task data, downloaded tools, desktop data, and other storage.
+Child selection, session deletion, cache protection, and worktree review keep their existing rules.
+
 The scanner subtracts disclosed child sizes from each protected parent remainder.
 Child rows do not add the same bytes a second time.
 Allocated bytes include shared APFS storage. They do not prove how much a removal will free.
