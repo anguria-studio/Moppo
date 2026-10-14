@@ -19,7 +19,7 @@ struct CleanupOperationView: View {
                     Button(action: onScanAgain) {
                         Label("Scan Again", systemImage: "magnifyingglass")
                     }
-                    .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
+                    .buttonStyle(PageStateButtonStyle())
                     .disabled(!canScan)
                     Button("View Dashboard", action: onViewDashboard)
                 }
@@ -56,7 +56,7 @@ struct RemovalCompletionView: View {
             if showsActions {
                 PageStateActions {
                     Button("Continue", action: onContinue)
-                        .buttonStyle(PageStateButtonStyle(tint: .white, foreground: .black))
+                        .buttonStyle(PageStateButtonStyle())
                         .disabled(!canContinue)
                     Button("View Dashboard", action: onViewDashboard)
                     if let onShowInFinder {

@@ -269,9 +269,12 @@ enum Token {
             light: .white, dark: .white.withAlphaComponent(0.09)
         )
         static let buttonHover = Token.dynamic(
-            light: NSColor(white: 234 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
+            light: NSColor(white: 225 / 255, alpha: 1), dark: .white.withAlphaComponent(0.14)
         )
-        static let buttonBorder = Token.dynamic(light: .black.withAlphaComponent(0.07), dark: .clear)
+        /// Action borders stay visible on page and card backgrounds.
+        static let buttonBorder = Token.ink(light: 0.46, dark: 0.34)
+        static let cardActionHover = Token.ink(light: 0.06, dark: 0.08)
+        static let cardActionPressed = Token.ink(light: 0.12, dark: 0.16)
         /// Disabled controls have less contrast than active controls.
         static let controlDisabled = Token.ink(light: 0.035, dark: 0.04)
         /// Hover slightly darkens neutral surfaces in light mode.

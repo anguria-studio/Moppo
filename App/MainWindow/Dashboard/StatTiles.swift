@@ -103,9 +103,9 @@ struct StatTiles: View {
                     description: description,
                     showsChevron: true
                 )
-                    .contentShape(Rectangle())
+                    .contentShape(RoundedRectangle(cornerRadius: Token.Radius.card))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CardPressButtonStyle(showsActionBorder: true))
             .help(value == nil ? "Run a new scan" : "Show these items")
         } else {
             StatTile(
