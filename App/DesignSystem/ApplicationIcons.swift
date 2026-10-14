@@ -4,6 +4,8 @@ import MoppoCore
 /// Shares cached application icons across cleanup rows and uninstall cards.
 @MainActor
 enum ApplicationIcons {
+    private final class BundleToken {}
+
     struct Icon {
         let image: NSImage
         let includesPadding: Bool
@@ -12,7 +14,7 @@ enum ApplicationIcons {
 
     private static let cache = NSCache<NSString, NSImage>()
     private static let identifiers: [FileEntry.AITool: String] = [
-        .codex: "com.openai.codex",
+        .chatGPT: "com.openai.codex",
         .claude: "com.anthropic.claudefordesktop",
         .cursor: "com.todesktop.230313mzl4w4u92",
         .grokBot: "com.anysphere.sand"
@@ -31,7 +33,10 @@ enum ApplicationIcons {
            FileManager.default.fileExists(atPath: url.path) {
             return Icon(image: icon(for: url), includesPadding: true)
         }
-        guard let image = NSImage(named: tool.rawValue + "ToolIcon") else { return nil }
+        let fallback = tool == .chatGPT
+            ? NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
+            : Bundle(for: BundleToken.self).image(forResource: tool.rawValue + "ToolIcon")
+        guard let image = fallback else { return nil }
         return Icon(image: image, includesPadding: tool == .codex)
     }
 

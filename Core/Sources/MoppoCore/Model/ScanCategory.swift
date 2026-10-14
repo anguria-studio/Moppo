@@ -169,7 +169,16 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
             if entry.removalAction != nil || entry.removesAsUnit { return wantSafe ? [] : [entry] }
 
             let safeChildren = entry.children.filter(Self.isSafeChild)
-            if wantSafe { return safeChildren }
+            if wantSafe {
+                return safeChildren.map { child in
+                    var child = child
+                    if child.aiStorageSection == nil, let section = entry.aiStorageSection {
+                        child.aiStorageSection = .init(owner: section.owner, title: child.displayName,
+                            summary: FileEntryPresentation(entry: child).summary)
+                    }
+                    return child
+                }
+            }
             guard !safeChildren.isEmpty else { return [entry] }
 
             var remainder = entry

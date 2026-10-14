@@ -215,7 +215,10 @@ struct CodexSessions: Sendable {
             groups[name] = FileEntry(url: url,
                 displayName: name == "sessions" ? "Codex sessions" : "Codex archived sessions", kind: .folder,
                 allocatedBytes: size.allocatedBytes, protectionReason: .inventory,
-                protectionExplanation: "Review inactive conversations below. Active sessions and unknown files stay protected.", aiTool: .codex)
+                protectionExplanation: "Review inactive conversations below. Active sessions and unknown files stay protected.", aiTool: .codex,
+                aiStorageSection: .init(owner: .codex,
+                    title: name == "sessions" ? "Sessions" : "Archived sessions",
+                    summary: name == "sessions" ? "Saved conversations and task history." : "Archived conversations and task history."))
         }
         let childIDs = Set(snapshot.children.values.flatMap { $0 })
         let roots = snapshot.records.keys.filter { !childIDs.contains($0) }.sorted()

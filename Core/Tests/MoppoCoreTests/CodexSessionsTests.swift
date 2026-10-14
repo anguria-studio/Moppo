@@ -109,6 +109,8 @@ struct CodexSessionsTests {
         let result = try await fixture.scan()
         let rows = result.entries.flatMap(\.children).filter { $0.codexSession != nil }
         #expect(rows.count == 2)
+        #expect(result.entries.filter { $0.url.lastPathComponent != ".codex" }
+            .allSatisfy { $0.aiStorageSection?.owner == .codex })
         let parent = try #require(rows.first { $0.codexSession?.threadID == fixture.parent })
         #expect(parent.displayName == "Parent session")
         #expect(parent.codexSession?.members.count == 2)

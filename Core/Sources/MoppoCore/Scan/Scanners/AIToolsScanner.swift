@@ -32,7 +32,7 @@ public struct AIToolsScanner: CategoryScanner {
                 allocatedBytes: total.allocatedBytes, lastOpened: lastOpenedDate(for: url),
                 protectionReason: .inventory,
                 protectionExplanation: root.explanation,
-                aiTool: root.tool
+                aiTool: root.tool, aiStorageSection: root.section
             )
             if let identifier = root.curationIdentifier,
                let curation = ApplicationsScanner.curation(bundleID: identifier, baseName: root.tool.rawValue, home: home),
@@ -172,11 +172,15 @@ public struct AIToolsScanner: CategoryScanner {
                 children: children
             )
             row.removesAsUnit = true
-            row.aiTool = switch model.runtime {
+            let owner: AIStorageSection.Owner? = switch model.runtime {
             case "Ollama": .ollama
             case "Hugging Face": .huggingFace
             case "LM Studio": .lmStudio
             default: nil
+            }
+            if let owner {
+                row.aiTool = owner.tool
+                row.aiStorageSection = .init(owner: owner, title: model.name, summary: qualifier)
             }
             found.entries.append(row)
         }
@@ -192,7 +196,9 @@ public struct AIToolsScanner: CategoryScanner {
                 kind: .folder, allocatedBytes: measurement.allocatedBytes,
                 lastOpened: lastOpenedDate(for: child), protectionReason: .inventory,
                 protectionExplanation: "Additional model store files. Use Hugging Face tools to manage them.",
-                aiTool: .huggingFace
+                aiTool: .huggingFace,
+                aiStorageSection: .init(owner: .huggingFace, title: child.lastPathComponent,
+                    summary: "Additional model store files. Use Hugging Face tools to manage them.")
             ))
         }
     }
