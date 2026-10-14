@@ -588,6 +588,115 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection == [item.id])
     }
 
+    @Test("Cancelling the app quit wait rejects delayed success and preserves the review", arguments: [false, true])
+    func cancelApplicationQuit(beforeRemoval: Bool) async throws {
+        let removal = HeldCleanupRemoval()
+        let gate = TestGate()
+        let open = FileEntry.RunningOwner(name: "Open", bundleIdentifier: "test.open", bundlePath: "/open.app")
+        let closed = FileEntry.RunningOwner(name: "Closed", bundleIdentifier: "test.closed", bundlePath: "/closed.app")
+        var first = cleanupEntry("open-cache")
+        first.inUseBy = open
+        var second = cleanupEntry("closed-cache")
+        second.inUseBy = closed
+        var running = [open, closed]
+        var quitWasCancelled = false
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(
+            operations: operations, remover: removal,
+            applications: CleanupApplications(stillRunning: { owners in owners.filter { running.contains($0) } }, quit: { _ in
+                await gate.wait()
+                quitWasCancelled = Task.isCancelled
+                return []
+            }, registeredIdentifiers: { _ in [] }),
+            measureSaving: { _ in nil }
+        )
+        var failures = 0
+        var finishes = 0
+        var removals = 0
+        cleanup.onEvent = { event in
+            switch event {
+            case .failure: failures += 1
+            case .operationFinished: finishes += 1
+            case .removalStarted: removals += 1
+            default: break
+            }
+        }
+        cleanup.scanResults = cleanupResults([first, second])
+        cleanup.scannerSelection = [first.id, second.id]
+        let scannedAt = cleanup.scanResults?.finishedAt
+        if beforeRemoval { cleanup.requestCleanUp(in: .all) }
+        let caller = Task {
+            if beforeRemoval { await cleanup.performCleanUp(quittingOwners: true) }
+            else { await cleanup.quitAppsForCleanup() }
+        }
+        try await waitUntil { await gate.isPending }
+        #expect(cleanup.isWaitingForApplications)
+        #expect(!cleanup.isInterruptingApplicationQuit)
+        caller.cancel()
+        running = [open]
+        cleanup.cancelApplicationQuit()
+        cleanup.cancelApplicationQuit()
+        #expect(cleanup.isInterruptingApplicationQuit)
+        #expect(operations.isBusy)
+        cleanup.startScan()
+        await cleanup.quitAppsForCleanup()
+        #expect(!cleanup.isScanning)
+        #expect(await gate.count == 1)
+        await gate.finish()
+        await caller.value
+        #expect(quitWasCancelled)
+        #expect(!operations.isBusy)
+        #expect(!cleanup.isWaitingForApplications)
+        #expect(!cleanup.isInterruptingApplicationQuit)
+        #expect(!cleanup.isRemoving)
+        #expect(cleanup.pendingCleanUp == nil)
+        #expect(cleanup.cleanupOutcome == nil)
+        #expect(cleanup.scanResults?.finishedAt == scannedAt)
+        #expect(cleanup.scannerSelection == [first.id, second.id])
+        #expect(cleanup.allEntries.first { $0.id == first.id }?.inUseBy == open)
+        #expect(cleanup.allEntries.first { $0.id == second.id }?.inUseBy == nil)
+        #expect(cleanup.cleanupRunningOwners == [open])
+        #expect(await removal.requestCount == 0)
+        #expect(failures == 0)
+        #expect(removals == 0)
+        #expect(finishes == 1)
+        cleanup.cancelApplicationQuit()
+        #expect(!cleanup.isInterruptingApplicationQuit)
+    }
+
+    @Test("Quit Apps completes or reports refusal without removing files", arguments: [false, true])
+    func quitAppsCompletion(refuses: Bool) async throws {
+        let gate = TestGate()
+        let removal = HeldCleanupRemoval()
+        let owner = FileEntry.RunningOwner(name: "Fixture", bundleIdentifier: "test.cleanup", bundlePath: "/fixture.app")
+        var item = cleanupEntry("running-cache")
+        item.inUseBy = owner
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(
+            operations: operations, remover: removal,
+            applications: CleanupApplications(stillRunning: { $0 }, quit: { owners in
+                await gate.wait()
+                return refuses ? owners : []
+            }, registeredIdentifiers: { _ in [] })
+        )
+        var failure: String?
+        cleanup.onEvent = { if case .failure(let title, _) = $0 { failure = title } }
+        cleanup.scanResults = cleanupResults([item])
+        cleanup.scannerSelection = [item.id]
+        let caller = Task { await cleanup.quitAppsForCleanup() }
+        try await waitUntil { await gate.isPending }
+        caller.cancel()
+        #expect(operations.isBusy)
+        await gate.finish()
+        await caller.value
+        #expect(!operations.isBusy)
+        #expect(!cleanup.isWaitingForApplications)
+        #expect(failure == (refuses ? "Some Apps Are Still Open" : nil))
+        #expect(cleanup.allEntries.first?.inUseBy == (refuses ? owner : nil))
+        #expect(cleanup.scannerSelection == [item.id])
+        #expect(await removal.requestCount == 0)
+    }
+
     @Test("Partial cleanup retains its receipt and Put Back invalidates later results")
     func partialRemovalAndRecovery() async throws {
         let fixture = try CleanupFixture()

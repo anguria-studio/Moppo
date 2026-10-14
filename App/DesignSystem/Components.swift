@@ -963,8 +963,13 @@ struct PageProgressView: View {
     var isInterrupting = false
     var icon: Icon = .hourglass
     var onStop: (() -> Void)? = nil
+    var onCancel: (() -> Void)? = nil
+    var isCancelling = false
 
-    private var displayedTitle: String { isInterrupting ? ScanInterruptionView.title : title }
+    private var displayedTitle: String {
+        if isCancelling { return "Stopping the wait" }
+        return isInterrupting ? ScanInterruptionView.title : title
+    }
 
     var body: some View {
         PageStateLayout(title: displayedTitle) {
@@ -989,6 +994,11 @@ struct PageProgressView: View {
             if let onStop {
                 Button(action: onStop) { Label("Stop", systemImage: "stop.fill") }
                     .disabled(isInterrupting)
+            }
+            if let onCancel {
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(isCancelling)
             }
         }
     }

@@ -45,6 +45,7 @@ final class AppModel {
         storageExplorerService: any StorageExplorerScanning = StorageExplorerService(),
         storageExplorerRemover: any StorageExplorerRemoving = StorageExplorerRemovalService(),
         cleanupScanner: any CleanupScanning = CleanupScanService(),
+        cleanupApplications: CleanupApplications = CleanupApplications(),
         cleanupRemover: (any CleanupRemoving)? = nil,
         fileDuplicateService: any FileDuplicatesScanning = FileDuplicateService(),
         fileDuplicateRemovalService: any FileDuplicatesRemoving = FileDuplicateRemovalService(),
@@ -77,7 +78,8 @@ final class AppModel {
                     confirmBeforeCleanup: removal.confirmBeforeCleanup,
                     keepReceipt: removal.keepReceipt
                 )
-            }
+            },
+            applications: cleanupApplications
         )
         self.photoDuplicates = PhotoDuplicatesModel(
             operations: operations,
@@ -504,7 +506,7 @@ final class AppModel {
                 return "\(ByteFormatting.string(bytes)). Each copy and its keeper are "
                     + "verified byte for byte before it goes, so large files take a moment."
             case .waitingForApplicationsToQuit:
-                return "Save your work if an app asks. Moppo waits for the apps to close."
+                return "Save your work if an app asks. Cancel stops the wait. Apps that already closed stay closed."
             case .reviewingStorageItems:
                 return "Moppo is checking the selected items before moving them to the Trash."
             case .restoringTrashItem:

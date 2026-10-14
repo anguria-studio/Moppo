@@ -59,10 +59,14 @@ enum ApplicationRuntime {
 
     static func quit(_ owners: [FileEntry.RunningOwner]) async -> [FileEntry.RunningOwner] {
         for owner in owners {
-            for process in processes(of: owner) { process.terminate() }
+            for process in processes(of: owner) {
+                guard !Task.isCancelled else { return stillRunning(owners) }
+                process.terminate()
+            }
         }
         for _ in 0..<300 where !stillRunning(owners).isEmpty {
-            try? await Task.sleep(for: .milliseconds(100))
+            do { try await Task.sleep(for: .milliseconds(100)) }
+            catch { break }
         }
         return stillRunning(owners)
     }
