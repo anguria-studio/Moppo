@@ -2,7 +2,7 @@ import Foundation
 
 /// Progress for the toolbar's `Measuring {n}%` readout.
 public struct ScanProgress: Sendable, Equatable {
-    /// 0...100, weighted so slow categories do not make the bar stall.
+    /// 0...100, weighted by completed categories.
     public var percent: Int
     public var completedCategories: Int
     public var totalCategories: Int
@@ -107,11 +107,14 @@ public actor ScanCoordinator {
     ///   - onProgress: weighted 0...100 for the toolbar.
     ///   - onCategory: fired as each category finishes so its row fills in
     ///     incrementally rather than everything appearing at the end.
+    ///   - onCategoryTiming: reports elapsed time, including failed or cancelled categories.
+    ///     This callback can run concurrently.
     public func scan(
         enabled: Set<CategoryID>? = nil,
         context: ScanContext = ScanContext(),
         onProgress: (@Sendable (ScanProgress) -> Void)? = nil,
-        onCategory: (@Sendable (ScanCategoryResult) -> Void)? = nil
+        onCategory: (@Sendable (ScanCategoryResult) -> Void)? = nil,
+        onCategoryTiming: (@Sendable (CategoryID, Duration) -> Void)? = nil
     ) async throws -> ScanResults {
         try Task.checkCancellation()
         if let runningTask { return try await runningTask.value }
@@ -122,7 +125,8 @@ public actor ScanCoordinator {
                 active,
                 context: context,
                 onProgress: onProgress,
-                onCategory: onCategory
+                onCategory: onCategory,
+                onCategoryTiming: onCategoryTiming
             )
         }
         runningTask = task
@@ -145,7 +149,8 @@ public actor ScanCoordinator {
         _ scanners: [any CategoryScanner],
         context: ScanContext,
         onProgress: (@Sendable (ScanProgress) -> Void)?,
-        onCategory: (@Sendable (ScanCategoryResult) -> Void)?
+        onCategory: (@Sendable (ScanCategoryResult) -> Void)?,
+        onCategoryTiming: (@Sendable (CategoryID, Duration) -> Void)?
     ) async throws -> ScanResults {
         let startedAt = Date()
         let totalWeight = scanners.reduce(0.0) { $0 + (weights[$1.id] ?? 1.0) }
@@ -156,6 +161,8 @@ public actor ScanCoordinator {
         try await withThrowingTaskGroup(of: ScanCategoryResult.self) { group in
             for scanner in scanners {
                 group.addTask {
+                    let started = ContinuousClock.now
+                    defer { onCategoryTiming?(scanner.id, started.duration(to: .now)) }
                     do {
                         return try await scanner.scan(context: context)
                     } catch is CancellationError {

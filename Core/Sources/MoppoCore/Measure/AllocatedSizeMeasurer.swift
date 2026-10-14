@@ -95,17 +95,20 @@ public struct AllocatedSizeMeasurer: Sendable {
     /// Adds iCloud residency checks. Storage Explorer enables this safety scan.
     public var detectCloudOnlyItems: Bool
 
-    /// How often to check for cancellation, in entries.
-    private let cancellationCheckInterval = 512
+    /// Reports completed measurements for local profiling. The URL can contain private paths.
+    /// This callback can run concurrently across measurements.
+    public var onMeasurement: (@Sendable (URL, Duration, SizeMeasurement) -> Void)?
 
     public init(
         followSymlinks: Bool = false,
         protectedPatterns: [String] = [],
-        detectCloudOnlyItems: Bool = false
+        detectCloudOnlyItems: Bool = false,
+        onMeasurement: (@Sendable (URL, Duration, SizeMeasurement) -> Void)? = nil
     ) {
         self.followSymlinks = followSymlinks
         self.protectedPatterns = protectedPatterns
         self.detectCloudOnlyItems = detectCloudOnlyItems
+        self.onMeasurement = onMeasurement
     }
 
     fileprivate static let keys: [URLResourceKey] = [
@@ -153,7 +156,8 @@ public struct AllocatedSizeMeasurer: Sendable {
         let protectedPatterns = self.protectedPatterns
         let keys = Self.keys(detectingCloudItems: detectCloudOnlyItems)
         let cancelled = CancellationFlag()
-        return try await withTaskCancellationHandler {
+        let started = ContinuousClock.now
+        let result: SizeMeasurement = try await withTaskCancellationHandler {
             try await Task.detached(priority: .utility) {
                 // Path resolution and metadata reads can block on a network mount.
                 // Keep both off Swift's cooperative executor.
@@ -195,6 +199,8 @@ public struct AllocatedSizeMeasurer: Sendable {
         } onCancel: {
             cancelled.cancel()
         }
+        onMeasurement?(inputURL, started.duration(to: .now), result)
+        return result
     }
 
     /// Measures every descendant directory down to `depth`, in a **single** traversal.
@@ -218,7 +224,8 @@ public struct AllocatedSizeMeasurer: Sendable {
         let keys = Self.keys(detectingCloudItems: detectCloudOnlyItems)
         let cancelled = CancellationFlag()
 
-        return try await withTaskCancellationHandler {
+        let started = ContinuousClock.now
+        let result = try await withTaskCancellationHandler {
             try await Task.detached(priority: .utility) {
                 let standardRoot = root.standardizedFileURL
                 let rootValues = try? standardRoot.resourceValues(forKeys: Set(keys))
@@ -243,6 +250,8 @@ public struct AllocatedSizeMeasurer: Sendable {
         } onCancel: {
             cancelled.cancel()
         }
+        onMeasurement?(root, started.duration(to: .now), result[root.standardizedFileURL] ?? .zero)
+        return result
     }
 
     /// Measures every immediate child of `url` in one traversal.
@@ -258,7 +267,8 @@ public struct AllocatedSizeMeasurer: Sendable {
         let protectedPatterns = self.protectedPatterns
         let keys = Self.keys(detectingCloudItems: detectCloudOnlyItems)
         let cancelled = CancellationFlag()
-        return try await withTaskCancellationHandler {
+        let started = ContinuousClock.now
+        let result = try await withTaskCancellationHandler {
             try await Task.detached(priority: .utility) {
                 let children = (try? FileManager.default.contentsOfDirectory(
                     at: url,
@@ -342,6 +352,8 @@ public struct AllocatedSizeMeasurer: Sendable {
         } onCancel: {
             cancelled.cancel()
         }
+        onMeasurement?(url, started.duration(to: .now), result.values.reduce(.zero, +))
+        return result
     }
 
     /// APFS-aware size, most accurate first.

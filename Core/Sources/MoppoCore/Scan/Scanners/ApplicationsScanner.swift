@@ -68,7 +68,9 @@ public struct ApplicationsScanner: CategoryScanner {
         var entries: [FileEntry] = []
         var unreadableCount = 0
         var readAnyDirectory = false
-        let installed = AppUninstallPlanner.installedBundleIdentifiers(in: applicationDirectories)
+        let installed = try AppUninstallPlanner.installedBundleIdentifiers(
+            in: applicationDirectories, checkCancellation: { try Task.checkCancellation() }
+        )
             .union(context.registeredApplicationBundleIdentifiers)
 
         for directory in applicationDirectories {

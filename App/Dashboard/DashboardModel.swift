@@ -109,7 +109,7 @@ final class DashboardModel {
     }
 
     /// Keep launch loading active until the complete refresh finishes.
-    func loadDashboard() async {
+    func loadDashboard(beforeMeasurement: @escaping () async -> Void = {}) async {
         guard canLoad() else { return }
         if let dashboardTask { await dashboardTask.value; return }
         hasCompletedInitialDashboardLoad = false
@@ -132,6 +132,7 @@ final class DashboardModel {
                 storageHistory = history
                 recomputeGrowth()
             }
+            if canMeasure(true) { await beforeMeasurement() }
             if canMeasure(true) {
                 await measureStorage(trigger: .launch)
             } else {

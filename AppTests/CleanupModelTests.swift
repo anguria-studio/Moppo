@@ -841,26 +841,6 @@ private func cleanupResults(_ entries: [FileEntry]) -> ScanResults {
     )], startedAt: .now, finishedAt: .now)
 }
 
-private actor HeldCleanupScanner: CleanupScanning {
-    private(set) var preferences: [CleanupModel.Preferences] = []
-    private var scans: [Int: CheckedContinuation<ScanResults, any Error>] = [:]
-    private var reports: [Int: @Sendable (ScanProgress) -> Void] = [:]
-    var requestCount: Int { preferences.count }
-    func scan(
-        preferences: CleanupModel.Preferences,
-        onProgress: @escaping @Sendable (ScanProgress) -> Void
-    ) async throws -> ScanResults {
-        let index = requestCount
-        self.preferences.append(preferences)
-        reports[index] = onProgress
-        return try await withCheckedThrowingContinuation { scans[index] = $0 }
-    }
-    func report(_ index: Int, percent: Int) {
-        reports[index]?(ScanProgress(percent: percent, completedCategories: 1, totalCategories: 2))
-    }
-    func finish(_ index: Int, results: ScanResults) { scans.removeValue(forKey: index)?.resume(returning: results) }
-    func fail(_ index: Int) { scans.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadUnknown)) }
-}
 
 private actor HeldCleanupRemoval: CleanupRemoving {
     private(set) var requestCount = 0

@@ -213,6 +213,47 @@ struct AppUninstallPlannerTests {
         #expect(!plan.items.contains { $0.url.path.contains("com.unrelated.helper") })
     }
 
+    @Test("Cancellation interrupts an ownership walk without returning partial identifiers")
+    func cancelledOwnershipWalk() throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        let resources = app.appendingPathComponent("Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
+        for index in 0..<64 {
+            try Data([0]).write(to: resources.appendingPathComponent("resource-\(index)"))
+        }
+        var checkpoints = 0
+        #expect(throws: CancellationError.self) {
+            try AppUninstallPlanner.installedBundleIdentifiers(
+                in: [sandbox.applications],
+                checkCancellation: {
+                    checkpoints += 1
+                    if checkpoints == 8 { throw CancellationError() }
+                }
+            )
+        }
+        #expect(checkpoints == 8)
+    }
+
+    @Test("Cleanup ownership scans reject cancellation before traversal", arguments: [
+        CategoryID.applications, .applicationLeftovers
+    ])
+    func cancelledOwnershipScans(category: CategoryID) async throws {
+        let sandbox = try Sandbox()
+        try sandbox.application("Editor", identifier: "com.vendor.editor")
+        let task = Task<Void, Error> {
+            withUnsafeCurrentTask { $0?.cancel() }
+            if category == .applications {
+                _ = try await ApplicationsScanner(
+                    applicationDirectories: [sandbox.applications], home: sandbox.home, soundLibraries: nil
+                ).scan(context: ScanContext())
+            } else {
+                _ = try await OrphanedAppLeftoverPlanner(pathPlanner: sandbox.planner()).plan()
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+
     @Test("known nonstandard Electron roots split caches from profiles")
     func knownCurationIsSharedWithTheScanner() async throws {
         let sandbox = try Sandbox()

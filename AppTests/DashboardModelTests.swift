@@ -126,6 +126,40 @@ struct DashboardModelTests {
         #expect(app.view == .history)
     }
 
+    @Test("Launch shows cached figures and waits for Cleanup workers", arguments: [false, true])
+    func launchWaitsForCleanup(stopScan: Bool) async throws {
+        let scanner = HeldCleanupScanner()
+        let service = HeldDashboardMeasurements()
+        let measurement = dashboardMeasurement()
+        let cache = BreakdownCache(volume: measurement.volume, breakdown: measurement.breakdown, measuredAt: .now)
+        let persistence = HeldDashboardPersistence(cache: cache)
+        let app = AppModel(
+            hasFullDiskAccess: { true }, dashboardService: service,
+            dashboardPersistence: persistence, cleanupScanner: scanner
+        )
+        app.startInitialCleanupScan()
+        try await waitUntil { await scanner.requestCount == 1 }
+        let launch = Task { await app.loadDashboard() }
+        try await waitUntil { app.dashboard.breakdown == cache.breakdown }
+        try await waitUntil { await persistence.historyLoads == 1 }
+        #expect(await persistence.historyLoads == 1)
+        #expect(await service.measurementCount == 0)
+        app.view = .dashboard
+        if stopScan { app.cleanup.cancelScan() }
+        await Task.yield()
+        #expect(app.isBusyWithDisk)
+        #expect(await service.measurementCount == 0)
+        await scanner.finish(0, results: ScanResults(categories: [], startedAt: .now, finishedAt: .now))
+        try await waitUntil { await service.measurementCount == 1 }
+        #expect(!app.cleanup.isScanning)
+        #expect(!app.isBusyWithDisk)
+        await service.finishMeasurement(0, measurement)
+        await launch.value
+        #expect(app.view == .dashboard)
+        #expect(app.dashboard.hasCompletedInitialDashboardLoad)
+        #expect(await persistence.records == [.launch])
+    }
+
     @Test("Concurrent removal refreshes produce one additional cleanup baseline")
     func removalBaseline() async throws {
         let service = HeldDashboardMeasurements()

@@ -43,6 +43,49 @@ The photo scan starts only when you select Find Duplicates.
 Use **Moppo > Show Welcome Guide** to read the guide again.
 Photo download controls and guidance are available in **Settings > Advanced**.
 
+## Scan profiling
+
+Build the release command before you measure scan duration:
+
+```sh
+swift build --package-path Core -c release
+Core/.build/release/moppo-cli profile-scan cleanup --skip-docker
+Core/.build/release/moppo-cli profile-scan dashboard
+Core/.build/release/moppo-cli profile-scan concurrent --skip-docker
+Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --cancel-after 2
+```
+
+Each command compares two runs in the same process.
+The first run can use existing macOS file caches.
+The report does not claim a cold disk cache.
+Use `--skip-docker` when the Docker category is off.
+The cancellation report measures the time from the stop request until the operation returns.
+
+The JSON output includes category times, progress gaps, disk capacity, and completed measurement counts.
+File visits include repeated walks of the same files.
+Subtree totals count each file once per measurement.
+Repeated roots and overlapping root pairs show possible repeated work.
+They do not measure the exact number of repeated files.
+Location times add concurrent measurements and can exceed elapsed time.
+Cancelled reports include only completed measurements.
+The output excludes account names, file names, and file paths.
+The command does not save results or change preferences.
+
+The command enables all categories unless `--skip-docker` is present.
+It does not import application exclusions or file access settings.
+Terminal access can differ from signed application access.
+Record the Mac model, macOS version, access settings, and application build beside the report.
+Check progress, navigation, and Stop Scan in the signed application separately.
+Keep pending checks in the GitHub ticket.
+
+At launch, Dashboard loads cached figures while Cleanup scans.
+Its initial storage measurement waits until Cleanup workers finish.
+This also applies when you stop the initial Cleanup scan.
+During application ownership checks, Cleanup checks cancellation for each filesystem entry.
+A cancelled ownership check throws before it can return an incomplete owner set.
+Hidden & System Data checks cancellation before and after each archive discovery entry.
+A filesystem read already in progress can still delay cancellation.
+
 ## Layout
 
 ```

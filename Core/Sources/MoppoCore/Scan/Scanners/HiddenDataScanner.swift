@@ -96,7 +96,6 @@ public struct HiddenDataScanner: CategoryScanner {
 
     /// `find "$HOME" -maxdepth 6`.
     private static let maximumSearchDepth = 6
-    private static let cancellationCheckInterval = 512
 
     // MARK: - Scanning
 
@@ -264,20 +263,21 @@ public struct HiddenDataScanner: CategoryScanner {
         to found: inout Found
     ) async throws {
         let root = home
-        let state = WalkState()
+        let cancelled = CancellationFlag()
 
-        let candidates: [URL] = try await withTaskCancellationHandler {
-            // `Task.detached` keeps the blocking enumeration off the cooperative pool
-            // but does not inherit cancellation, which is what `state` bridges.
+        let discovered = try await withTaskCancellationHandler {
+            // The flag carries cancellation into the detached filesystem walk.
             try await Task.detached(priority: .utility) {
-                try Self.discoverLargeArchives(below: root, skipping: skipPrefixes, state: state)
+                try Self.discoverLargeArchives(below: root, skipping: skipPrefixes) {
+                    if cancelled.isCancelled { throw CancellationError() }
+                }
             }.value
         } onCancel: {
-            state.cancel()
+            cancelled.cancel()
         }
-        found.unreadableCount += state.unreadableCount
+        found.unreadableCount += discovered.unreadableCount
 
-        for candidate in candidates {
+        for candidate in discovered.candidates {
             // `makeEntry` measures through `context.measurer` and applies the
             // exclusion list. A regular file's measurement has no unreadable count to
             // lose, so the protocol's helper is lossless here.
@@ -300,11 +300,13 @@ public struct HiddenDataScanner: CategoryScanner {
     /// comes back from `context.measurer`. Measuring each of the tens of thousands of
     /// files under `$HOME` individually would cost more than the rest of the scan
     /// combined, so the enumerator's prefetched resource values pick the candidates.
-    private static func discoverLargeArchives(
+    static func discoverLargeArchives(
         below root: URL,
         skipping skipPrefixes: [String],
-        state: WalkState
-    ) throws -> [URL] {
+        checkCancellation: () throws -> Void
+    ) throws -> (candidates: [URL], unreadableCount: Int) {
+        try checkCancellation()
+        let state = WalkState()
         let keys: [URLResourceKey] = [
             .isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey,
             .totalFileAllocatedSizeKey, .fileSizeKey
@@ -337,17 +339,17 @@ public struct HiddenDataScanner: CategoryScanner {
             }
         ) else {
             state.noteUnreadable()
-            return []
+            try checkCancellation()
+            return ([], state.unreadableCount)
         }
 
         var candidates: [URL] = []
-        var seen = 0
 
-        while let entry = enumerator.nextObject() as? URL {
-            seen += 1
-            if seen % cancellationCheckInterval == 0, state.isCancelled {
-                throw CancellationError()
-            }
+        while true {
+            try checkCancellation()
+            let next = enumerator.nextObject() as? URL
+            try checkCancellation()
+            guard let entry = next else { break }
 
             let path = entry.path
             if skipPrefixes.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
@@ -379,7 +381,7 @@ public struct HiddenDataScanner: CategoryScanner {
             let approximateBytes = Int64(values.totalFileAllocatedSize ?? values.fileSize ?? 0)
             if approximateBytes >= Threshold.largeArchive { candidates.append(entry) }
         }
-        return candidates
+        return (candidates, state.unreadableCount)
     }
 
     private static let largeFileExtensions = diskImageExtensions.union(archiveExtensions)
@@ -458,21 +460,10 @@ public struct HiddenDataScanner: CategoryScanner {
 
 // MARK: - Support
 
-/// Bridges structured-concurrency cancellation into the detached archive sweep and
-/// gives the enumerator's `@Sendable` error handler somewhere safe to record what it
-/// could not read.
+/// Records unreadable entries from the enumerator's concurrent error handler.
 private final class WalkState: @unchecked Sendable {
     private let lock = NSLock()
-    private var cancelledFlag = false
     private var unreadable = 0
-
-    func cancel() {
-        lock.lock(); cancelledFlag = true; lock.unlock()
-    }
-
-    var isCancelled: Bool {
-        lock.lock(); defer { lock.unlock() }; return cancelledFlag
-    }
 
     func noteUnreadable() {
         lock.lock(); unreadable += 1; lock.unlock()

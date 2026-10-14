@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import MoppoCore
 
@@ -6,8 +7,11 @@ struct ScanCancellationTests {
     @Test("A stop request waits for the cancelled worker to finish", arguments: [false, true])
     func cancellationReachesWorker(cancelCaller: Bool) async throws {
         let gate = ScanGate()
+        let timings = TimingRecorder()
         let coordinator = ScanCoordinator(scanners: [DelayedScanner(gate: gate)])
-        let task = Task { try await coordinator.scan() }
+        let task = Task {
+            try await coordinator.scan(onCategoryTiming: { timings.record($0, $1) })
+        }
         await gate.waitForStart()
 
         if cancelCaller { task.cancel() }
@@ -17,10 +21,58 @@ struct ScanCancellationTests {
         await #expect(throws: CancellationError.self) { try await task.value }
         #expect(await gate.sawCancellation)
         #expect(!(await coordinator.isScanning))
+        #expect(timings.result.map(\.0) == [.documentsAndFiles])
+        #expect(timings.result.allSatisfy { $0.1 >= .zero })
 
         let next = try await coordinator.scan()
         #expect(next.categories.count == 1)
         #expect(!(await coordinator.isScanning))
+    }
+
+    @Test("Category timing includes failures and excludes disabled categories")
+    func categoryTiming() async throws {
+        let timings = TimingRecorder()
+        let coordinator = ScanCoordinator(scanners: [
+            FixedScanner(id: .documentsAndFiles, fails: false),
+            FixedScanner(id: .applications, fails: true),
+            FixedScanner(id: .docker, fails: false)
+        ])
+        let result = try await coordinator.scan(
+            enabled: [.documentsAndFiles, .applications],
+            onCategoryTiming: { timings.record($0, $1) }
+        )
+        #expect(result.categories.first { $0.categoryID == .applications }?.availability
+                == .unavailable(reason: "Could not be measured."))
+        #expect(Set(timings.result.map(\.0)) == [.documentsAndFiles, .applications])
+        #expect(timings.result.count == 2)
+        #expect(timings.result.allSatisfy { $0.1 >= .zero })
+    }
+
+    private struct FixedScanner: CategoryScanner {
+        let id: CategoryID
+        let fails: Bool
+
+        func scan(context: ScanContext) async throws -> ScanCategoryResult {
+            if fails { throw CocoaError(.fileReadUnknown) }
+            return .empty(id)
+        }
+    }
+
+    private final class TimingRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var timings: [(CategoryID, Duration)] = []
+
+        func record(_ category: CategoryID, _ duration: Duration) {
+            lock.lock()
+            defer { lock.unlock() }
+            timings.append((category, duration))
+        }
+
+        var result: [(CategoryID, Duration)] {
+            lock.lock()
+            defer { lock.unlock() }
+            return timings
+        }
     }
 
     @Test("A stop request before startup prevents a new scan")

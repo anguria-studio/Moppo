@@ -56,7 +56,7 @@ struct MainWindow: View {
         .onChange(of: model.duplicateKind) { _, _ in model.photoDuplicates.preview = nil }
         .task {
             if scenePhase == .active { model.startInitialCleanupScan() }
-            await model.dashboard.loadDashboard()
+            await model.loadDashboard()
         }
         .onChange(of: model.view) { _, view in
             model.photoDuplicates.preview = nil

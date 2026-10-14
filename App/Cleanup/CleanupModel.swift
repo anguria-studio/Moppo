@@ -664,6 +664,11 @@ final class CleanupModel {
         scanTask?.cancel()
     }
 
+    /// Wait until the active scan releases its workers and operation guard.
+    func waitForScan() async {
+        await scanTask?.value
+    }
+
     func cancelCleanUp() {
         cleanUpSavingTask?.cancel()
         cleanUpSavingTask = nil

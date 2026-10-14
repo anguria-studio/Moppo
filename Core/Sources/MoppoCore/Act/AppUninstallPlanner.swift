@@ -822,14 +822,23 @@ public struct AppUninstallPlanner: Sendable {
     static func installedApplications(
         in roots: [URL], fileManager: FileManager
     ) -> [URL] {
+        (try? installedApplications(in: roots, fileManager: fileManager, checkCancellation: {})) ?? []
+    }
+
+    private static func installedApplications(
+        in roots: [URL], fileManager: FileManager, checkCancellation: () throws -> Void
+    ) throws -> [URL] {
+        try checkCancellation()
         var result: [URL] = []
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         for root in roots where fileManager.fileExists(atPath: root.path) {
+            try checkCancellation()
             guard let enumerator = fileManager.enumerator(
                 at: root, includingPropertiesForKeys: keys,
                 options: [.skipsHiddenFiles], errorHandler: nil
             ) else { continue }
             for case let url as URL in enumerator {
+                try checkCancellation()
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 if values?.isSymbolicLink == true {
                     enumerator.skipDescendants()
@@ -848,6 +857,13 @@ public struct AppUninstallPlanner: Sendable {
     static func allBundleIdentifiers(
         in applicationURL: URL, fileManager: FileManager
     ) -> Set<String> {
+        (try? allBundleIdentifiers(in: applicationURL, fileManager: fileManager, checkCancellation: {})) ?? []
+    }
+
+    private static func allBundleIdentifiers(
+        in applicationURL: URL, fileManager: FileManager, checkCancellation: () throws -> Void
+    ) throws -> Set<String> {
+        try checkCancellation()
         var result = Set<String>()
         if let identifier = verifiedBundleIdentifier(Bundle(url: applicationURL)?.bundleIdentifier) {
             result.insert(identifier)
@@ -858,6 +874,7 @@ public struct AppUninstallPlanner: Sendable {
             options: [.skipsHiddenFiles], errorHandler: nil
         ) else { return result }
         for case let url as URL in enumerator {
+            try checkCancellation()
             let values = try? url.resourceValues(forKeys: Set(keys))
             if values?.isSymbolicLink == true {
                 enumerator.skipDescendants()
@@ -884,9 +901,22 @@ public struct AppUninstallPlanner: Sendable {
     static func installedBundleIdentifiers(
         in roots: [URL], fileManager: FileManager = .default
     ) -> Set<String> {
-        installedApplications(in: roots, fileManager: fileManager).reduce(into: Set<String>()) {
-            $0.formUnion(allBundleIdentifiers(in: $1, fileManager: fileManager))
+        (try? installedBundleIdentifiers(in: roots, fileManager: fileManager, checkCancellation: {})) ?? []
+    }
+
+    /// Stops scan ownership checks before they can return an incomplete owner set.
+    static func installedBundleIdentifiers(
+        in roots: [URL], fileManager: FileManager = .default, checkCancellation: () throws -> Void
+    ) throws -> Set<String> {
+        var result = Set<String>()
+        for application in try installedApplications(
+            in: roots, fileManager: fileManager, checkCancellation: checkCancellation
+        ) {
+            result.formUnion(try allBundleIdentifiers(
+                in: application, fileManager: fileManager, checkCancellation: checkCancellation
+            ))
         }
+        return result
     }
 
     static func ownerIsInstalled(
