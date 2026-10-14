@@ -306,6 +306,7 @@ struct SidebarRowButtonStyle: ButtonStyle {
 
 /// A compact action for controls inside cards and rows.
 struct SecondaryButtonStyle: ButtonStyle {
+    var fill: Color = Token.Fill.button
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
@@ -317,7 +318,7 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .frame(minHeight: 28)
             .background(
-                isEnabled ? (isHovering ? Token.Fill.buttonHover : Token.Fill.button) : Token.Fill.controlDisabled,
+                isEnabled ? (isHovering ? Token.Fill.buttonHover : fill) : Token.Fill.controlDisabled,
                 in: Capsule()
             )
             .overlay {
