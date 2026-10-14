@@ -714,6 +714,11 @@ final class AppModel {
 
     // MARK: - Cleanup presentation
 
+    /// Load cached Dashboard figures before waiting for the initial Cleanup scan.
+    func loadDashboard() async {
+        await dashboard.loadDashboard { [cleanup] in await cleanup.waitForScan() }
+    }
+
     private func handleCleanupEvent(_ event: CleanupModel.Event) {
         switch event {
         case .scanStarted(let automatic, let refreshOverview):

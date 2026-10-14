@@ -39,6 +39,8 @@ struct CLI {
                 try growth(baseline: arguments.dropFirst().first)
             case "scan":
                 try await scan()
+            case "profile-scan":
+                try await profileScan(arguments: Array(arguments.dropFirst()))
             case "ai":
                 try await ai()
             case "apps":
@@ -69,6 +71,7 @@ struct CLI {
                       + " | installer <app>"
                       + " | measure <path>"
                       + " | reclaim <path>")
+                print("          profile-scan [cleanup|dashboard|concurrent] [--skip-docker] [--cancel-after <seconds>]")
             }
         } catch {
             FileHandle.standardError.write(Data("error: \(error)\n".utf8))

@@ -49,6 +49,44 @@ struct AllocatedSizeMeasurerTests {
 
     private static let oneMB = 1024 * 1024
 
+    private final class MeasurementRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var observations: [(URL, Duration, SizeMeasurement)] = []
+
+        func record(_ url: URL, _ duration: Duration, _ measurement: SizeMeasurement) {
+            lock.lock()
+            defer { lock.unlock() }
+            observations.append((url, duration, measurement))
+        }
+
+        var result: [(URL, Duration, SizeMeasurement)] {
+            lock.lock()
+            defer { lock.unlock() }
+            return observations
+        }
+    }
+
+    @Test("Profiling counts each measured file once across subtree and child totals")
+    func measurementObservations() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.writeFile("a/nested/file.bin", bytes: Self.oneMB)
+        try sandbox.writeFile("b/file.bin", bytes: Self.oneMB)
+        let recorder = MeasurementRecorder()
+        let measurer = AllocatedSizeMeasurer(onMeasurement: { recorder.record($0, $1, $2) })
+        let total = try await measurer.measure(sandbox.root)
+        let subtrees = try await measurer.measureSubtrees(of: sandbox.root, depth: 2)
+        let children = try await measurer.measureChildren(of: sandbox.root)
+        #expect(subtrees[sandbox.root.standardizedFileURL] == total)
+        #expect(children.values.reduce(.zero, +) == total)
+        #expect(recorder.result.count == 3)
+        for (root, duration, observation) in recorder.result {
+            #expect(root == sandbox.root)
+            #expect(duration >= .zero)
+            #expect(observation == total)
+            #expect(observation.fileCount == 2)
+        }
+    }
+
     private final class ProgressRecorder: @unchecked Sendable {
         private let lock = NSLock()
         private var activeCallbacks = 0

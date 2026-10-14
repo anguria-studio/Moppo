@@ -9,6 +9,23 @@ import Testing
 @Suite("Hidden & System Data")
 struct HiddenDataScanTests {
 
+    @Test("Archive discovery cancels before startup and during a small walk", arguments: [1, 8])
+    func archiveDiscoveryCancellation(cancelAt: Int) throws {
+        let sandbox = try Sandbox()
+        for index in 0..<20 {
+            try sandbox.file("folder/file-\(index).txt", bytes: 1)
+        }
+        var checkpoints = 0
+
+        #expect(throws: CancellationError.self) {
+            try HiddenDataScanner.discoverLargeArchives(below: sandbox.home, skipping: []) {
+                checkpoints += 1
+                if checkpoints == cancelAt { throw CancellationError() }
+            }
+        }
+        #expect(checkpoints == cancelAt)
+    }
+
     private final class Sandbox {
         let home: URL
         init() throws {
