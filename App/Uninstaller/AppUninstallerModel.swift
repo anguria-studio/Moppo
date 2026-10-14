@@ -181,13 +181,7 @@ final class AppUninstallerModel {
 
     /// Open a review for an application selected from any page.
     func planAppUninstall(_ applicationURL: URL) {
-        guard !isBusyWithDisk else {
-            report(
-                "Wait for the Current Operation",
-                "Finish or stop the current operation before you review another application."
-            )
-            return
-        }
+        guard !operations.explainBlockedAction() else { return }
         guard canPlan(), let operation = operations.begin(.appUninstallPlanning) else { return }
         resetAppUninstall()
         appUninstallReviewURL = applicationURL.standardizedFileURL
@@ -579,7 +573,7 @@ final class AppUninstallerModel {
     private(set) var selectedApplicationIDs: Set<String> = []
 
     func toggleApplicationSelection(_ application: InstalledApplication) {
-        guard !isBusyWithDisk else { return }
+        guard !operations.explainBlockedAction() else { return }
         if selectedApplicationIDs.remove(application.id) == nil {
             selectedApplicationIDs.insert(application.id)
         }

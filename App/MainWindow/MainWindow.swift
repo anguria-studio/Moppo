@@ -137,6 +137,7 @@ struct MainWindow: View {
     private var contentColumn: some View {
         VStack(spacing: 0) {
             contentHeader
+                .zIndex(1)
             detail
         }
     }
@@ -165,6 +166,32 @@ struct MainWindow: View {
         .padding(Token.Size.pageGutter)
         // Empty header space moves the window. Controls keep their own actions.
         .background(WindowDragHandle())
+        .overlay(alignment: .bottom) {
+            if let feedback = model.operations.blockedAction {
+                OperationBlockedToast(message: feedback.message) {
+                    model.operations.dismissBlockedAction(feedback.id)
+                }
+                    .padding(.horizontal, Token.Size.pageGutter)
+                    .padding(.top, 4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: 0, alignment: .top)
+                    .transition(.opacity)
+                    .task(id: feedback.id) {
+                        NSAccessibility.post(
+                            element: NSApplication.shared, notification: .announcementRequested,
+                            userInfo: [
+                                .announcement: feedback.message,
+                                .priority: NSAccessibilityPriorityLevel.medium.rawValue
+                            ]
+                        )
+                        do {
+                            try await Task.sleep(until: feedback.expiresAt, clock: .continuous)
+                            model.operations.dismissBlockedAction(feedback.id)
+                        } catch {}
+                    }
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: model.operations.blockedAction?.id)
     }
 
     @ViewBuilder

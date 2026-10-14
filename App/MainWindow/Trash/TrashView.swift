@@ -20,7 +20,7 @@ struct TrashView: View {
                     findRequest: findRequest,
                     isBusyWithDisk: model.isBusyWithDisk,
                     selectedItemIDs: $model.selectedTrashItemIDs,
-                    onPutBack: { items in Task { await model.putBack(items) } }
+                    onPutBack: model.requestPutBack
                 )
             } else if model.hasLoadedTrash {
                 unreadableNote
@@ -137,8 +137,9 @@ private struct TrashContent: View {
                     if item.canPutBack {
                         Button("Put Back") { onPutBack([item]) }
                             .buttonStyle(CompactTableActionStyle(isSelected: selected))
-                            .disabled(isBusyWithDisk)
-                            .help("Restore this item to its original folder.")
+                            .help(isBusyWithDisk
+                                  ? "Explain why Put Back must wait for the current operation."
+                                  : "Restore this item to its original folder.")
                     }
                 }
             ],
@@ -149,7 +150,7 @@ private struct TrashContent: View {
                 let restorable = selected.filter(\.canPutBack)
                 let title = restorable.isEmpty || restorable.count == selected.count
                     ? "Put Back" : "Put Back \(restorable.count) \(restorable.count == 1 ? "Item" : "Items")"
-                return [CompactTableMenuAction(title: title, isEnabled: !isBusyWithDisk && !restorable.isEmpty) {
+                return [CompactTableMenuAction(title: title, isEnabled: !restorable.isEmpty) {
                     onPutBack(restorable)
                 }]
             }

@@ -186,17 +186,17 @@ final class FileDuplicatesModel {
     }
 
     func selectAll() {
-        guard !isBusyWithDisk else { return }
+        guard !operations.explainBlockedAction() else { return }
         selection = removableIDs
     }
 
     func deselectAll() {
-        guard !isBusyWithDisk else { return }
+        guard !operations.explainBlockedAction() else { return }
         selection.removeAll()
     }
 
     func toggle(_ fileID: DuplicateFile.ID) {
-        guard !isBusyWithDisk, removableIDs.contains(fileID) else { return }
+        guard removableIDs.contains(fileID), !operations.explainBlockedAction() else { return }
         if selection.contains(fileID) { selection.remove(fileID) }
         else { selection.insert(fileID) }
     }
@@ -207,17 +207,19 @@ final class FileDuplicatesModel {
     }
 
     func toggleGroup(_ groupID: FileDuplicateGroup.ID) {
-        guard !isBusyWithDisk, let group = groups.first(where: { $0.id == groupID }) else { return }
+        guard let group = groups.first(where: { $0.id == groupID }),
+              !operations.explainBlockedAction() else { return }
         let ids = group.removable.map(\.id)
         if isGroupSelected(groupID) { selection.subtract(ids) }
         else { selection.formUnion(ids) }
     }
 
     func keepInstead(groupID: FileDuplicateGroup.ID, fileID: DuplicateFile.ID) {
-        guard !isBusyWithDisk, groups.contains(where: { $0.id == groupID }),
+        guard groups.contains(where: { $0.id == groupID }),
               var results,
               let index = results.groups.firstIndex(where: { $0.id == groupID }),
-              let promoted = results.groups[index].promoting(fileID)
+              let promoted = results.groups[index].promoting(fileID),
+              !operations.explainBlockedAction()
         else { return }
         let groupWasSelected = results.groups[index].removable.contains { selection.contains($0.id) }
         let previousKeeper = results.groups[index].keeper.id
