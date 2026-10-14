@@ -117,13 +117,8 @@ struct MainWindow: View {
     }
 
     private var appUninstallDialog: some View {
-        AppUninstallDetailView(model: model.uninstaller)
+        AppUninstallDetailView(model: model.uninstaller, activity: model.activity)
             .disabled(model.uninstaller.isUninstallingApp)
-            .overlay {
-                if let activity = model.activity {
-                    ActivityOverlay(activity: activity)
-                }
-            }
             .sheet(item: $model.activeSheet, onDismiss: finishRemovalConfirmation) { sheet in
                 confirmationSheet(sheet)
             }

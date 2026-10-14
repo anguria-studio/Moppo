@@ -222,11 +222,46 @@ struct HomebrewUninstallFlowTests {
                 AppUninstallResultView(outcome: result, back: {}, review: { _ in }, reviewLeftovers: {}),
                 name: "mixed-\(dark ? "dark" : "light")", dark: dark
             )
-            try await render(
+            let review = try await render(
                 AppUninstallDetailView(model: model.uninstaller),
                 name: "review-\(dark ? "dark" : "light")", dark: dark,
                 size: NSSize(width: 520, height: 460)
             )
+            for waiting in [false, true] {
+                let progress = try await render(
+                    AppUninstallDetailView(model: model.uninstaller, activity: .uninstalling(
+                        applicationName: plan.applicationName, applicationOnly: false,
+                        waitingToQuit: waiting, usingHomebrew: true
+                    ))
+                    .disabled(true),
+                    name: "progress-\(waiting ? "waiting" : "homebrew")-\(dark ? "dark" : "light")", dark: dark,
+                    size: NSSize(width: 520, height: 460)
+                )
+                expectFixedRegions(review, progress)
+            }
+
+            var ordinaryPlan = try await fixture.planner().plan(applicationURL: fixture.applications["ordinary"]!)
+            ordinaryPlan.soundLibraryItems = [soundLibraryItem()]
+            model.uninstaller.appUninstallPlan = ordinaryPlan
+            let soundReview = try await render(
+                AppUninstallDetailView(model: model.uninstaller),
+                name: "sound-review-\(dark ? "dark" : "light")", dark: dark,
+                size: NSSize(width: 520, height: 460)
+            )
+            for sounds in [false, true] {
+                let activity: AppModel.Activity = sounds
+                    ? .cleaningUp(itemCount: 1, totalBytes: 64)
+                    : .uninstalling(applicationName: ordinaryPlan.applicationName,
+                                    applicationOnly: false, waitingToQuit: false)
+                let progress = try await render(
+                    AppUninstallDetailView(model: model.uninstaller, activity: activity)
+                        .disabled(true),
+                    name: "progress-\(sounds ? "sounds" : "ordinary")-\(dark ? "dark" : "light")", dark: dark,
+                    size: NSSize(width: 520, height: 460)
+                )
+                expectFixedRegions(soundReview, progress)
+            }
+            model.uninstaller.appUninstallPlan = plan
             try await render(AppUninstallerView(model: batchModel.uninstaller), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
             let failed = AppUninstallerModel.BatchUninstallOutcome(setAside: [result.setAside[0]])
             try await render(
@@ -248,10 +283,29 @@ struct HomebrewUninstallFlowTests {
         }
     }
 
+    /// Checks the header and footer summary, apart from controls that become dimmed.
+    private func expectFixedRegions(_ review: NSBitmapImageRep, _ progress: NSBitmapImageRep) {
+        #expect(review.pixelsWide == progress.pixelsWide && review.pixelsHigh == progress.pixelsHigh)
+        let scale = review.pixelsWide / 520
+        let regions = [
+            NSRect(x: 0, y: 0, width: 460, height: 76),
+            NSRect(x: 0, y: 392, width: 110, height: 68),
+        ]
+        for region in regions {
+            let matches = (Int(region.minY) * scale..<Int(region.maxY) * scale).allSatisfy { y in
+                (Int(region.minX) * scale..<Int(region.maxX) * scale).allSatisfy { x in
+                    review.colorAt(x: x, y: y) == progress.colorAt(x: x, y: y)
+                }
+            }
+            #expect(matches, "The fixed dialog area changed during removal: \(region).")
+        }
+    }
+
+    @discardableResult
     private func render(
         _ view: some View, name: String, dark: Bool,
         size: NSSize = NSSize(width: 700, height: 540)
-    ) async throws {
+    ) async throws -> NSBitmapImageRep {
         _ = NSApplication.shared
         let host = NSHostingView(rootView: view
             .background(Token.pageBackground)
@@ -271,6 +325,7 @@ struct HomebrewUninstallFlowTests {
         try png.write(to: folder.appendingPathComponent("\(name).png"))
         #expect(bitmap.pixelsWide > 0 && bitmap.pixelsHigh > 0)
         window.contentView = nil
+        return bitmap
     }
 
     actor Brew {

@@ -5,6 +5,7 @@ import MoppoCore
 /// Shows the existing application review inside the centered dialog.
 struct AppUninstallDetailView: View {
     @Bindable var model: AppUninstallerModel
+    var activity: AppModel.Activity? = nil
     @FocusState private var isCloseFocused: Bool
 
     private var plan: AppUninstallPlan? {
@@ -21,11 +22,16 @@ struct AppUninstallDetailView: View {
                         ?? "Bundle identifier unavailable",
                     identifierIsWarning: plan?.isApplicationOnly ?? false
                 )
+                .fixedSize(horizontal: false, vertical: true)
             }
             UninstallerDivider()
 
             Group {
-                if model.isPlanningAppUninstall {
+                if let activity {
+                    PageProgressView(title: activity.title, detail: activity.detail, icon: activity.progressIcon)
+                        // Keep progress readable and scrollable while removal disables the controls.
+                        .environment(\.isEnabled, true)
+                } else if model.isPlanningAppUninstall {
                     planningContent
                 } else if let plan {
                     resultsContent(plan)
@@ -42,6 +48,7 @@ struct AppUninstallDetailView: View {
 
             UninstallerDivider()
             footer
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Token.pageBackground)
