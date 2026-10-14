@@ -40,6 +40,11 @@ struct SidebarFocusTests {
         try sendKey("\u{F700}", code: 126, to: window)
         try await waitUntil { model.view == .duplicates }
 
+        // Finish the navigation layout before the user moves focus into the page.
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        // Other native tests can open key windows. Keep this window's responder independent.
+        window.orderOut(nil)
         let field = try #require(textField(in: host))
         #expect(window.makeFirstResponder(field))
         let responder = try #require(window.firstResponder)
