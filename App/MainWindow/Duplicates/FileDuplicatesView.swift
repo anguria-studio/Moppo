@@ -314,18 +314,37 @@ struct FileDuplicatesView: View {
     }
 
     private func fileRow(_ file: DuplicateFile, group: FileDuplicateGroup) -> some View {
+        FileDuplicateRow(
+            model: model, file: file, group: group,
+            isHighlighted: review.highlightedID == file.id,
+            onHighlight: { highlight(file) }, onPreview: { showPreview(file) },
+            onReveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) }
+        )
+    }
+
+}
+
+/// Selects copies while keeping preview and row controls separate.
+struct FileDuplicateRow: View {
+    @Bindable var model: FileDuplicatesModel
+    let file: DuplicateFile
+    let group: FileDuplicateGroup
+    let isHighlighted: Bool
+    let onHighlight: () -> Void
+    let onPreview: () -> Void
+    let onReveal: () -> Void
+
+    var body: some View {
         let isKeeper = file.id == group.keeper.id
         let selected = model.selection.contains(file.id)
-        let highlighted = review.highlightedID == file.id
 
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             if isKeeper {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(Token.Fill.keepIndicator)
                     .frame(width: 24, height: 28)
                     .help("This copy will remain")
-                    .onTapGesture(count: 2) { showPreview(file) }
-                    .onTapGesture { highlight(file) }
+                    .allowsHitTesting(false)
             } else {
                 SelectionCheckbox(
                     title: "Select \(file.url.lastPathComponent) in \(group.locationLabel(for: file))",
@@ -355,12 +374,12 @@ struct FileDuplicatesView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 48)
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) { showPreview(file) }
-            .onTapGesture { highlight(file) }
+            .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(highlighted ? [.isSelected, .isButton] : .isButton)
-            .accessibilityAction { highlight(file) }
-            .accessibilityAction(named: "Quick Look") { showPreview(file) }
+            .accessibilityAddTraits(isHighlighted ? [.isSelected, .isButton] : .isButton)
+            .accessibilityValue(isKeeper ? "Kept copy" : (selected ? "Selected for removal" : "Not selected for removal"))
+            .accessibilityAction { selectCopy() }
+            .accessibilityAction(named: "Quick Look") { onPreview() }
 
             if !isKeeper {
                 Button("Keep instead") {
@@ -382,12 +401,9 @@ struct FileDuplicatesView: View {
             .frame(width: 80, alignment: .trailing)
             .frame(height: 48)
             .contentShape(Rectangle())
-            .onTapGesture(count: 2) { showPreview(file) }
-            .onTapGesture { highlight(file) }
+            .allowsHitTesting(false)
 
-            Button {
-                NSWorkspace.shared.activateFileViewerSelecting([file.url])
-            } label: {
+            Button(action: onReveal) {
                 Image(systemName: "arrow.up.forward.square")
                     .foregroundStyle(Token.Text.secondary)
                     .frame(width: 24, height: 28)
@@ -398,23 +414,27 @@ struct FileDuplicatesView: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 48)
-        .contentShape(Rectangle())
+        .background {
+            PreviewClickTarget(onClick: selectCopy, onPreview: onPreview)
+        }
         .hoverHighlight(
-            fill: highlighted ? Token.Fill.rowSelection : Token.Fill.rowHover,
-            restingFill: highlighted ? Token.Fill.rowSelection : .clear
+            fill: isHighlighted ? Token.Fill.rowSelection : Token.Fill.rowHover,
+            restingFill: isHighlighted ? Token.Fill.rowSelection : .clear
         )
         .contextMenu {
-            Button("Quick Look") { showPreview(file) }
+            Button("Quick Look") { onPreview() }
             if !isKeeper {
                 Button("Keep instead") { model.keepInstead(groupID: group.id, fileID: file.id) }
                     .disabled(model.isBusyWithDisk)
             }
-            Button("Show in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([file.url])
-            }
+            Button("Show in Finder", action: onReveal)
         }
     }
 
+    private func selectCopy() {
+        onHighlight()
+        model.toggle(file.id)
+    }
 }
 
 /// Filters completed scan results by file size.

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import MoppoCore
@@ -105,4 +106,11 @@ actor HeldCleanupScanner: CleanupScanning {
     }
     func finish(_ index: Int, results: ScanResults) { scans.removeValue(forKey: index)?.resume(returning: results) }
     func fail(_ index: Int) { scans.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadUnknown)) }
+}
+
+/// Finds native buttons in a hosted view.
+@MainActor
+func nativeButtons(in view: NSView) -> [NSButton] {
+    if let button = view as? NSButton { return [button] }
+    return view.subviews.flatMap(nativeButtons)
 }

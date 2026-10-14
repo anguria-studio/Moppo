@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import MoppoCore
 
@@ -395,9 +397,126 @@ struct FileDuplicatesModelTests {
     }
 }
 
-private func fileResults(_ id: String, bytes: Int64 = 10) -> FileDuplicateResults {
+@Suite("File duplicate row controls", .serialized)
+@MainActor
+struct FileDuplicateRowTests {
+    @Test("Row clicks select once and leave preview and controls separate", arguments: [false, true])
+    func rowInteraction(dark: Bool) async throws {
+        let operations = OperationCoordinator()
+        let model = FileDuplicatesModel(operations: operations, service: HeldFileScanner(results: fileResults("row", modificationDate: Date(timeIntervalSince1970: 1_700_000_000))))
+        model.minimumBytes = 0
+        model.startScan(roots: [URL(filePath: "/row")])
+        try await waitUntil { !model.isScanning }
+        let group = try #require(model.groups.first)
+        let copy = try #require(group.removable.first)
+        var highlights = 0
+        var previews = 0
+        var reveals = 0
+        let row = FileDuplicateRow(model: model, file: copy, group: group, isHighlighted: false,
+            onHighlight: { highlights += 1 }, onPreview: { previews += 1 }, onReveal: { reveals += 1 })
+        let host = NSHostingView(rootView: row.background(Token.Fill.cardContent).environment(\.colorScheme, dark ? .dark : .light))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 780, height: 48),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentView = host
+        defer { window.orderOut(nil); window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        host.layoutSubtreeIfNeeded()
+
+        // Check the name, path, date, margins, and spaces between controls.
+        for point in [NSPoint(x: 80, y: 34), NSPoint(x: 80, y: 14), NSPoint(x: 700, y: 24),
+                      NSPoint(x: 2, y: 24), NSPoint(x: 38, y: 24), NSPoint(x: 22, y: 3)] {
+            let target = try #require(host.hitTest(point) as? PreviewClickTarget.ClickView)
+            let event = try mouseEvent(in: target, window: window, clickCount: 1)
+            let wasSelected = model.selection.contains(copy.id)
+            target.mouseDown(with: event)
+            #expect(model.selection.contains(copy.id) != wasSelected)
+        }
+        #expect(highlights == 6)
+        #expect(previews == 0)
+
+        let target = try #require(host.hitTest(NSPoint(x: 80, y: 24)) as? PreviewClickTarget.ClickView)
+        target.mouseDown(with: try mouseEvent(in: target, window: window, clickCount: 1))
+        #expect(model.selection == [copy.id])
+        target.mouseDown(with: try mouseEvent(in: target, window: window, clickCount: 2))
+        #expect(model.selection == [copy.id])
+        #expect(highlights == 7)
+        #expect(previews == 1)
+
+        let checkbox = try #require(nativeButtons(in: host).first)
+        #expect(checkbox.isEnabled)
+        let center = host.convert(NSPoint(x: checkbox.bounds.midX, y: checkbox.bounds.midY), from: checkbox)
+        #expect(host.hitTest(center) === checkbox)
+        checkbox.performClick(nil)
+        #expect(model.selection.isEmpty)
+        #expect(highlights == 7)
+        checkbox.performClick(nil)
+        #expect(model.selection == [copy.id])
+
+        // The nested action buttons must not hit the row click target.
+        for x: CGFloat in [600, 756] {
+            #expect(!(host.hitTest(NSPoint(x: x, y: 24)) is PreviewClickTarget.ClickView))
+        }
+
+        let operation = try #require(operations.begin(.cleanupScan))
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(!checkbox.isEnabled)
+        target.mouseDown(with: try mouseEvent(in: target, window: window, clickCount: 1))
+        #expect(model.selection == [copy.id])
+        #expect(highlights == 8)
+        operations.finish(operation)
+        target.mouseDown(with: try mouseEvent(in: target, window: window, clickCount: 1))
+        #expect(model.selection.isEmpty)
+
+        host.rootView = FileDuplicateRow(model: model, file: group.keeper, group: group, isHighlighted: true,
+            onHighlight: { highlights += 1 }, onPreview: { previews += 1 }, onReveal: { reveals += 1 })
+            .background(Token.Fill.cardContent).environment(\.colorScheme, dark ? .dark : .light)
+        try await Task.sleep(for: .milliseconds(100))
+        host.layoutSubtreeIfNeeded()
+        let keeperTarget = try #require(host.hitTest(NSPoint(x: 80, y: 24)) as? PreviewClickTarget.ClickView)
+        keeperTarget.mouseDown(with: try mouseEvent(in: keeperTarget, window: window, clickCount: 1))
+        #expect(model.selection.isEmpty)
+        #expect(highlights == 10)
+
+        host.rootView = row.background(Token.Fill.cardContent).environment(\.colorScheme, dark ? .dark : .light)
+        try await Task.sleep(for: .milliseconds(100))
+        host.layoutSubtreeIfNeeded()
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: URL(filePath: "/tmp/moppo-139-row-\(dark ? "dark" : "light").png"))
+        window.makeKeyAndOrderFront(nil)
+        for x: CGFloat in [756, 600] {
+            let location = host.convert(NSPoint(x: x, y: 24), to: nil)
+            let up = try #require(NSEvent.mouseEvent(with: .leftMouseUp, location: location,
+                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+            let down = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: location,
+                modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+            window.sendEvent(down)
+            window.sendEvent(up)
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(model.selection.isEmpty)
+            #expect(highlights == 10)
+        }
+        #expect(reveals == 1)
+        #expect(model.groups.first?.keeper.id == copy.id)
+
+    }
+
+    private func mouseEvent(in view: NSView, window: NSWindow, clickCount: Int) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(with: .leftMouseDown,
+            location: view.convert(NSPoint(x: view.bounds.midX, y: view.bounds.midY), to: nil),
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1))
+    }
+}
+
+private func fileResults(_ id: String, bytes: Int64 = 10, modificationDate: Date? = nil) -> FileDuplicateResults {
     let file: (String) -> DuplicateFile = { name in
-        DuplicateFile(url: URL(fileURLWithPath: "/\(id)/\(name)"), logicalBytes: bytes, allocatedBytes: bytes)
+        DuplicateFile(url: URL(fileURLWithPath: "/\(id)/\(name)"), logicalBytes: bytes, allocatedBytes: bytes, modificationDate: modificationDate)
     }
     return FileDuplicateResults(groups: [FileDuplicateGroup(
         id: id, keeper: file("keeper"), removable: [file("copy-1"), file("copy-2")], contentDigest: "fixture"

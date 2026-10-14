@@ -519,6 +519,39 @@ struct SortableColumnHeader: View {
 
 // MARK: - Rows
 
+/// Keeps preview clicks separate from single-click actions.
+struct PreviewClickTarget: NSViewRepresentable {
+    let onClick: () -> Void
+    let onPreview: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeNSView(context: Context) -> ClickView {
+        let view = ClickView()
+        view.setAccessibilityElement(false)
+        return view
+    }
+
+    func updateNSView(_ nsView: ClickView, context: Context) {
+        nsView.isEnabled = isEnabled
+        nsView.onClick = onClick
+        nsView.onPreview = onPreview
+    }
+
+    final class ClickView: NSView {
+        var isEnabled = true
+        var onClick: (() -> Void)?
+        var onPreview: (() -> Void)?
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func mouseDown(with event: NSEvent) {
+            guard isEnabled else { return }
+            if event.clickCount == 1 { onClick?() }
+            else if event.clickCount == 2 { onPreview?() }
+        }
+    }
+}
+
 /// Applies the design's hover fill to a list row.
 struct HoverHighlight: ViewModifier {
     var radius: CGFloat = 0
