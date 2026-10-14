@@ -24,6 +24,8 @@ final class AppUninstallerModel {
     @ObservationIgnored private let homebrewRemover: any HomebrewUninstallRemoving
     @ObservationIgnored private let preferences: () -> Preferences
     @ObservationIgnored private let applications: AppUninstallApplications
+    @ObservationIgnored private let hasFullDiskAccess: () -> Bool
+    @ObservationIgnored private var detailCache: AppUninstallDetailCache
     @ObservationIgnored private var installedID: UUID?
     @ObservationIgnored private var leftoversID: UUID?
     @ObservationIgnored var canPlan: () -> Bool = { true }
@@ -39,7 +41,9 @@ final class AppUninstallerModel {
         remover: any AppUninstallRemoving = CleanupService(),
         homebrewRemover: any HomebrewUninstallRemoving = HomebrewAuthentication.service(),
         preferences: @escaping () -> Preferences = { Preferences() },
-        applications: AppUninstallApplications = AppUninstallApplications()
+        applications: AppUninstallApplications = AppUninstallApplications(),
+        hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
+        detailCache: AppUninstallDetailCache = AppUninstallDetailCache()
     ) {
         self.operations = operations
         self.scanner = scanner
@@ -47,6 +51,8 @@ final class AppUninstallerModel {
         self.homebrewRemover = homebrewRemover
         self.preferences = preferences
         self.applications = applications
+        self.hasFullDiskAccess = hasFullDiskAccess
+        self.detailCache = detailCache
     }
 
     private func makeContext() -> ScanContext {
@@ -62,12 +68,26 @@ final class AppUninstallerModel {
         onEvent(.failure(title: title, message: message))
     }
 
+    private func detailCacheSettings() -> AppUninstallDetailCache.Settings {
+        let settings = preferences()
+        return .init(
+            excludedPaths: settings.excludedPaths, excludedPatterns: settings.excludedPatterns,
+            hasFullDiskAccess: hasFullDiskAccess()
+        )
+    }
+
+    /// Prevent an earlier calculation from restoring results after invalidation.
+    func invalidateDetailCache() {
+        detailCache.invalidate()
+    }
+
     /// Keep the task and guard until the removal service returns.
     @discardableResult
     private func startRemoval(
         _ operation: OperationCoordinator.Operation,
         execute: @escaping @MainActor () async -> Bool
     ) -> Task<Void, Never> {
+        invalidateDetailCache()
         isUninstallingApp = true
         onEvent(.operationStarted)
         return Task { [self] in
@@ -170,8 +190,17 @@ final class AppUninstallerModel {
         }
         guard canPlan(), let operation = operations.begin(.appUninstallPlanning) else { return }
         resetAppUninstall()
-        appUninstallPlanningURL = applicationURL.standardizedFileURL
         appUninstallReviewURL = applicationURL.standardizedFileURL
+        let settings = detailCacheSettings()
+        if let plan = detailCache.plan(for: applicationURL, settings: settings) {
+            appUninstallPlan = plan
+            operations.finish(operation)
+            onEvent(.planningStarted)
+            return
+        }
+        appUninstallPlanningURL = applicationURL.standardizedFileURL
+        let generation = detailCache.generation
+        let stamp = AppUninstallDetailCache.BundleStamp(applicationURL)
         let context = makeContext()
         startPlanning(operation) { [self] planningID in
             let presentation = OperationPresentationDuration()
@@ -188,6 +217,10 @@ final class AppUninstallerModel {
                 appUninstallError = error.localizedDescription
             }
             try? await presentation.wait()
+            guard !Task.isCancelled, appUninstallPlanningID == planningID,
+                  let plan = appUninstallPlan, let stamp,
+                  settings == detailCacheSettings() else { return }
+            detailCache.store(plan, stamp: stamp, settings: settings, generation: generation)
         }
         onEvent(.planningStarted)
     }
@@ -387,6 +420,11 @@ final class AppUninstallerModel {
             return true
         }
         await task.value
+    }
+
+    func refreshInstalledApplications() {
+        invalidateDetailCache()
+        loadInstalledApplications()
     }
 
     func loadInstalledApplications() {

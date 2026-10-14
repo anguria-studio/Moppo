@@ -507,6 +507,13 @@ persists that state across launches, and limits repeated crossings to one per da
 **Complete uninstall requires an existing application bundle.** App Uninstaller
 attributes related files from the selected app's verified identity.
 
+Application details keep completed results in memory for three minutes, with a limit of 32 applications.
+Reopening details checks the application identity and bundle metadata before reusing a result.
+Refresh Apps clears these results.
+Removal and Put Back also clear them.
+Changed exclusions or Full Disk Access require a new calculation.
+Each removal still checks the reviewed files before it moves them.
+
 **Finder only starts an uninstall review.** Select one application in Finder. Then
 choose Services › Review Uninstall with Moppo. Moppo opens the existing
 App Uninstaller review. The Finder action never removes files.
