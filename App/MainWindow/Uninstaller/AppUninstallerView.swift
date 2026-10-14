@@ -571,7 +571,7 @@ struct AppUninstallerView: View {
                 model.resetAppUninstall()
                 model.loadInstalledApplications()
             }
-            .buttonStyle(PageStateButtonStyle())
+            .buttonStyle(PageStateButtonStyle.primary)
             Button("View Dashboard") {
                 model.resetAppUninstall()
                 onViewDashboard()

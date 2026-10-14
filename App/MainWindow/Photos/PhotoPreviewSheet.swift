@@ -250,7 +250,8 @@ struct PhotoPreviewContent: View {
                     .buttonStyle(PageActionButtonStyle(
                         tint: isSelected ? nil : Token.color(.accent),
                         size: .small,
-                        fill: Token.Fill.buttonOnCard
+                        fill: Token.Fill.buttonOnCard,
+                        border: Token.Fill.controlBorder
                     ))
             }
         }

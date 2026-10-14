@@ -23,7 +23,6 @@ final class DashboardModel {
     @ObservationIgnored var canLoad: () -> Bool = { true }
     @ObservationIgnored var canMeasure: (Bool) -> Bool = { _ in true }
     @ObservationIgnored var beforeMeasurement: () async -> Bool = { true }
-    @ObservationIgnored var hasLimitedAccess: () -> Bool = { false }
     @ObservationIgnored var onVolumeChanged: (VolumeInfo) async -> Void = { _ in }
 
     init(
@@ -58,10 +57,6 @@ final class DashboardModel {
     var boot: SnapshotInfo? { snapshots.first(where: \.isBootSnapshot) }
     var removableSnapshots: [SnapshotInfo] { snapshots.filter { !$0.isBootSnapshot } }
     private(set) var measuredAt: Date?
-    var breakdownIsStale: Bool {
-        guard !hasLimitedAccess(), let measuredAt else { return true }
-        return now().timeIntervalSince(measuredAt) > BreakdownCache.freshnessWindow
-    }
     private(set) var iCloudStorage: ICloudStorage?
     var iCloudPlanBytes: Int64?
     private(set) var growth: GrowthComparison?

@@ -40,9 +40,6 @@ struct DashboardView: View {
                     CapacityCardSkeleton()
                 } else if let volume = model.volume, let breakdown = model.breakdown {
                     CapacityCard(volume: volume, breakdown: breakdown, warnBelowGB: warnBelowGB)
-                    if model.breakdownIsStale {
-                        staleNote
-                    }
                 } else {
                     unmeasuredPlaceholder
                 }
@@ -161,21 +158,6 @@ struct DashboardView: View {
             }
             Spacer(minLength: 4)
         }
-    }
-
-    /// Says plainly that the figures are remembered rather than fresh. Showing a
-    /// stale number as if it were current is the same dishonesty as mislabelling
-    /// unattributed space.
-    private var staleNote: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "clock")
-            Text(model.measuredAt.map { "Measured \($0.formatted(.relative(presentation: .named)))" }
-                 ?? "Figures are from an earlier session")
-        }
-        .font(.mcSubtitle)
-        .foregroundStyle(Token.Text.tertiary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
     }
 
     /// Keeps the Dashboard ready for a manual measurement when no saved figures exist.

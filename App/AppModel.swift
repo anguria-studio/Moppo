@@ -123,7 +123,6 @@ final class AppModel {
         dashboard.canLoad = { [weak self] in self?.isShowingWelcome == false }
         dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
         dashboard.beforeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
-        dashboard.hasLimitedAccess = { [weak self] in self?.launchAccess == .limited }
         dashboard.onVolumeChanged = { [weak self] volume in
             guard let self, let settings = self.settings, settings.lowSpaceAlertsEnabled else { return }
             await self.lowDiskNotifications.observe(

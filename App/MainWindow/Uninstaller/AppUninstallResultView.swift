@@ -146,7 +146,7 @@ struct AppUninstallResultView: View {
     @ViewBuilder
     private var completionActions: some View {
         Button("Back to Applications", action: back)
-            .buttonStyle(PageStateButtonStyle())
+            .buttonStyle(PageStateButtonStyle.primary)
         if outcome.survivorCount > 0 || outcome.setAside.contains(where: { $0.kind == .failed && $0.applicationURL == nil }) {
             Button("Review Leftovers", action: reviewLeftovers)
         }
