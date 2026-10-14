@@ -42,7 +42,7 @@ struct PermissionRow: View {
                 .strokeBorder(Token.Fill.boxBorder, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: Token.Radius.card))
         }
-        .buttonStyle(CardPressButtonStyle(cornerRadius: Token.Radius.card))
+        .buttonStyle(CardPressButtonStyle(showsActionBorder: true))
         .accessibilityLabel(title)
         .accessibilityValue(accessibilityStatus ?? status)
         .accessibilityHint(settingsHint)
