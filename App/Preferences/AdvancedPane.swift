@@ -92,7 +92,7 @@ struct AdvancedPane: View {
                 descriptionIsPath: true
             ) {
                 Button("Reveal in Finder") { RemovalLog.reveal() }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
             }
             PrefDivider()
             PrefRow(
@@ -103,7 +103,7 @@ struct AdvancedPane: View {
                 description: "Discards the cached measurements and measures every folder again."
             ) {
                 Button("Rebuild") { onRebuildIndex?() }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
                     .disabled(onRebuildIndex == nil)
             }
             PrefDivider()
@@ -115,7 +115,7 @@ struct AdvancedPane: View {
                     + "compares. The next two measurements start a new history."
             ) {
                 Button("Clear") { onClearMeasurementHistory?() }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
                     .disabled(onClearMeasurementHistory == nil)
             }
         }
