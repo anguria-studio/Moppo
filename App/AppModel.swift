@@ -303,7 +303,10 @@ final class AppModel {
     /// is two things for one control, and those now live in that view's own bar.
     var view: View = .scanner {
         didSet {
-            if oldValue != view { removalCompletion = nil }
+            if oldValue != view {
+                removalCompletion = nil
+                operations.dismissBlockedAction()
+            }
             if oldValue == .scanner, view != .scanner {
                 cleanupCompletion = nil
             }
@@ -311,7 +314,10 @@ final class AppModel {
     }
     var duplicateKind: DuplicateKind = .files {
         didSet {
-            if oldValue != duplicateKind { removalCompletion = nil }
+            if oldValue != duplicateKind {
+                removalCompletion = nil
+                operations.dismissBlockedAction()
+            }
         }
     }
 

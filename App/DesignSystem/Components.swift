@@ -112,7 +112,11 @@ struct SelectionCheckbox: NSViewRepresentable {
         button.isEnabled = isEnabled && environmentEnabled
         button.invalidateIntrinsicContentSize()
         button.needsDisplay = true
-        context.coordinator.onChange = { onChange(state != .on) }
+        context.coordinator.onChange = { [weak button] in
+            // The model sets the checkbox state after accepting the action.
+            button?.state = state
+            onChange(state != .on)
+        }
     }
 
     final class Coordinator: NSObject {

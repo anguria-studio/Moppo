@@ -147,10 +147,16 @@ final class RecoveryModel {
         await putBack([item])
     }
 
+    /// Rejects a blocked button or menu attempt before starting an asynchronous task.
+    func requestPutBack(_ items: [TrashItem]) {
+        guard items.contains(where: \.canPutBack), !operations.explainBlockedAction() else { return }
+        Task { await putBack(items) }
+    }
+
     /// Restore the requested items under one operation, then refresh the lists once.
     func putBack(_ items: [TrashItem]) async {
         let items = items.filter(\.canPutBack)
-        guard !items.isEmpty, !Task.isCancelled,
+        guard !items.isEmpty, !Task.isCancelled, !operations.explainBlockedAction(),
               let operation = operations.begin(.trashRestoration) else { return }
         isMutating = true
         let task = Task { [self] in

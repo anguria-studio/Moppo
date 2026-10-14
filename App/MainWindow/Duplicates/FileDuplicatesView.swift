@@ -133,7 +133,7 @@ struct FileDuplicatesView: View {
                     title: "Select All",
                     detail: "\(selectable.count) \(selectable.count == 1 ? "item" : "items")",
                     state: !selectable.isEmpty && selectable.isSubset(of: model.selection) ? .on : .off,
-                    isEnabled: !selectable.isEmpty && !model.isBusyWithDisk
+                    isEnabled: !selectable.isEmpty
                 ) { isOn in
                     if isOn { model.selectAll() }
                     else { model.deselectAll() }
@@ -292,7 +292,6 @@ struct FileDuplicatesView: View {
                         model.toggleGroup(group.id)
                     }
                     .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
-                    .disabled(model.isBusyWithDisk)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -349,7 +348,6 @@ struct FileDuplicateRow: View {
                 SelectionCheckbox(
                     title: "Select \(file.url.lastPathComponent) in \(group.locationLabel(for: file))",
                     state: selected ? .on : .off,
-                    isEnabled: !model.isBusyWithDisk,
                     showsTitle: false
                 ) { _ in model.toggle(file.id) }
                 .frame(width: 24, height: 28)
@@ -386,7 +384,6 @@ struct FileDuplicateRow: View {
                     model.keepInstead(groupID: group.id, fileID: file.id)
                 }
                 .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
-                .disabled(model.isBusyWithDisk)
             }
 
             Group {
@@ -425,13 +422,16 @@ struct FileDuplicateRow: View {
             Button("Quick Look") { onPreview() }
             if !isKeeper {
                 Button("Keep instead") { model.keepInstead(groupID: group.id, fileID: file.id) }
-                    .disabled(model.isBusyWithDisk)
             }
             Button("Show in Finder", action: onReveal)
         }
     }
 
     private func selectCopy() {
+        if model.isBusyWithDisk, file.id != group.keeper.id {
+            model.toggle(file.id)
+            return
+        }
         onHighlight()
         model.toggle(file.id)
     }

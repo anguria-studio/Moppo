@@ -216,7 +216,9 @@ struct OperationFlowTests {
         model.uninstaller.planAppUninstall(URL(fileURLWithPath: "/unused-fixture.app"))
 
         #expect(!model.uninstaller.isPlanningAppUninstall)
-        #expect(model.notice?.title == "Wait for the Current Operation")
+        #expect(model.notice == nil)
+        #expect(model.operations.blockedAction?.message
+                == "Duplicate file scan is running. Wait for it to finish, or stop the scan.")
     }
 
     @Test("History selects the recorded Trash item and rejects a replacement")

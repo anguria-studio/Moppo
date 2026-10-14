@@ -267,6 +267,16 @@ The shared guard stays active until the operation and updated list reads finish.
 The model then releases the guard and requests a Dashboard refresh through an explicit callback.
 Successful Put Back actions also invalidate Cleanup, file duplicate, and Storage Explorer results.
 
+Scans and Put Back cannot run together under the shared operation guard.
+Concurrent restoration requires path conflict checks and scan result invalidation rules before this guard can change.
+Blocked app selection, duplicate file selection, and Put Back attempts show a toast below the page header.
+The toast names the active operation and explains when the action can continue.
+Repeated attempts reuse the toast for eight seconds without changing selection or queuing the action.
+The toast announces its message for VoiceOver.
+Its close button dismisses it with a short fade.
+Reduce Motion disables the fade.
+Page changes also dismiss the toast.
+
 Storage Explorer captures exclusions before each measurement and removal review.
 Removal captures the selected rows, parent folder, and receipt setting before the review starts.
 The review checks current file identities and protection rules before removal.
