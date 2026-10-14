@@ -367,8 +367,8 @@ struct PhotoDuplicatesView: View {
             isKeeper: isKeeper, isSelected: selected, isHighlighted: highlighted
         )
         .overlay {
-            PhotoThumbnailClickTarget(
-                onHighlight: { highlight(asset) },
+            PreviewClickTarget(
+                onClick: { highlight(asset) },
                 onPreview: { showPreview(asset, in: group) }
             )
         }
@@ -469,39 +469,6 @@ private struct PhotoKeepButtonSurface<Label: View>: View {
             .background(Color.black.opacity(isPressed ? 0.9 : (isHovering ? 0.8 : 0.6)), in: Capsule())
             .contentShape(Capsule())
             .onHover { isHovering = $0 }
-    }
-}
-
-/// Handles photo clicks without changing the deletion selection.
-private struct PhotoThumbnailClickTarget: NSViewRepresentable {
-    let onHighlight: () -> Void
-    let onPreview: () -> Void
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeNSView(context: Context) -> ClickView {
-        let view = ClickView()
-        view.setAccessibilityElement(false)
-        return view
-    }
-
-    func updateNSView(_ nsView: ClickView, context: Context) {
-        nsView.isEnabled = isEnabled
-        nsView.onHighlight = onHighlight
-        nsView.onPreview = onPreview
-    }
-
-    final class ClickView: NSView {
-        var isEnabled = true
-        var onHighlight: (() -> Void)?
-        var onPreview: (() -> Void)?
-
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-        override func mouseDown(with event: NSEvent) {
-            guard isEnabled else { return }
-            if event.clickCount == 1 { onHighlight?() }
-            else if event.clickCount == 2 { onPreview?() }
-        }
     }
 }
 

@@ -83,9 +83,4 @@ struct ProtectedSelectionControlTests {
             }
         }
     }
-
-    private func nativeButtons(in view: NSView) -> [NSButton] {
-        if let button = view as? NSButton { return [button] }
-        return view.subviews.flatMap(nativeButtons)
-    }
 }
