@@ -48,6 +48,7 @@ struct MoppoApp: App {
     var body: some Scene {
         Window("Moppo", id: "main") {
             WelcomeRoot(model: model, settings: settings, access: access)
+                .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
                 .onChange(of: model.isShowingWelcome, initial: true) { _, showingWelcome in
                     if !showingWelcome && !Self.isRunningPreview { updates.start() }
                 }

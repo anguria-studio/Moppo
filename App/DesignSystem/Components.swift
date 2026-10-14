@@ -665,69 +665,34 @@ struct SidebarBackground: View {
     }
 }
 
-/// Aligns the window controls with the header after size and full-screen changes.
-/// WindowDragHandle limits dragging to empty header space.
+/// Uses native title bar layout to align the window controls with the header.
+/// Native title bar dragging and WindowDragHandle keep empty header space movable.
 struct WindowChrome: NSViewRepresentable {
-    let headerBand: CGFloat
+    func makeNSView(context: Context) -> ChromeView { ChromeView() }
+    func updateNSView(_ nsView: ChromeView, context: Context) {}
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        let band = headerBand
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
-            context.coordinator.configure(window: window, headerBand: band)
-        }
-        return view
-    }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-
-    @MainActor
-    final class Coordinator {
+    final class ChromeView: NSView {
+        private static let toolbarIdentifier = NSToolbar.Identifier("MoppoWindowChrome")
         private weak var configured: NSWindow?
-        private var tokens: [NSObjectProtocol] = []
 
-        func configure(window: NSWindow, headerBand: CGFloat) {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, configured !== window else { return }
+            configured = window
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
-            window.isMovable = false
-            Self.placeTrafficLights(in: window, headerBand: headerBand)
-
-            guard configured !== window else { return }
-            configured = window
-            for token in tokens { NotificationCenter.default.removeObserver(token) }
-            tokens = [
-                NSWindow.didResizeNotification,
-                NSWindow.didEnterFullScreenNotification,
-                NSWindow.didExitFullScreenNotification,
-            ].map { name in
-                NotificationCenter.default.addObserver(
-                    forName: name, object: window, queue: .main
-                ) { [weak window] _ in
-                    DispatchQueue.main.async {
-                        guard let window else { return }
-                        MainActor.assumeIsolated {
-                            Self.placeTrafficLights(in: window, headerBand: headerBand)
-                        }
-                    }
-                }
-            }
-        }
-
-        private static func placeTrafficLights(in window: NSWindow, headerBand: CGFloat) {
-            let firstCentreX: CGFloat = 26
-            let centreGap: CGFloat = 23
-            let centreY = headerBand / 2
-            let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
-
-            for (index, type) in buttons.enumerated() {
-                guard let button = window.standardWindowButton(type),
-                      let container = button.superview
-                else { continue }
-                button.setFrameOrigin(NSPoint(
-                    x: firstCentreX + CGFloat(index) * centreGap - button.frame.width / 2,
-                    y: container.bounds.height - centreY - button.frame.height / 2
-                ))
+            window.isMovable = true
+            window.isMovableByWindowBackground = false
+            window.toolbarStyle = .unified
+            window.titlebarSeparatorStyle = .none
+            // The empty toolbar gives AppKit control of button placement during resizing and full-screen transitions.
+            if window.toolbar?.identifier != Self.toolbarIdentifier {
+                let toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
+                // Icon-only mode keeps the native title bar within the header band.
+                toolbar.displayMode = .iconOnly
+                toolbar.allowsUserCustomization = false
+                toolbar.allowsDisplayModeCustomization = false
+                window.toolbar = toolbar
             }
         }
     }
