@@ -26,7 +26,7 @@ public struct ICloudStorageService: Sendable {
     ///   nil, because macOS exposes no API for it.
     public func storage(planBytes: Int64? = nil) async throws -> ICloudStorage {
         let free = try await freeBytes()
-        let drive = measureDrive()
+        let drive = try measureDrive()
         let total = planBytes ?? Self.inferPlan(freeBytes: free)
 
         return ICloudStorage(
@@ -98,7 +98,8 @@ public struct ICloudStorageService: Sendable {
     /// but still occupies the account's quota, and the quota is what this card is
     /// about. Measured live, one account held 6.08 GB in iCloud Drive of which only
     /// 105 MB was on the Mac — a gap invisible to any `du`-style measurement.
-    private func measureDrive() -> DriveMeasurement {
+    private func measureDrive() throws -> DriveMeasurement {
+        try Task.checkCancellation()
         let keys: Set<URLResourceKey> = [
             .isUbiquitousItemKey, .isDirectoryKey, .fileSizeKey, .totalFileAllocatedSizeKey
         ]
@@ -115,7 +116,10 @@ public struct ICloudStorageService: Sendable {
             }
         ) else { return measurement }
 
-        for case let url as URL in enumerator {
+        while true {
+            try Task.checkCancellation()
+            guard let url = enumerator.nextObject() as? URL else { break }
+            try Task.checkCancellation()
             guard let values = try? url.resourceValues(forKeys: keys) else {
                 measurement.unreadable += 1
                 continue
@@ -124,6 +128,7 @@ public struct ICloudStorageService: Sendable {
             measurement.inCloud += Int64(values.fileSize ?? 0)
             measurement.onDisk += Int64(values.totalFileAllocatedSize ?? 0)
         }
+        try Task.checkCancellation()
         return measurement
     }
 }

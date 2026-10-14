@@ -83,6 +83,15 @@ public struct SizeMeasurement: Sendable, Equatable {
 /// external drive under the scan root cannot inflate a local category.
 public struct AllocatedSizeMeasurer: Sendable {
 
+    public struct WorkerActivity: Sendable, Encodable {
+        public let limit: Int
+        public let active: Int
+        public let queued: Int
+    }
+
+    /// Reports shared filesystem workers without file paths.
+    public static var workerActivity: WorkerActivity { MeasurementWorkerPool.shared.activity }
+
     /// Available for specialized callers. App scans keep this off to prevent
     /// linked targets from counting under paths that do not own those bytes.
     public var followSymlinks: Bool
@@ -802,13 +811,20 @@ private final class MeasurementWorkerPool: @unchecked Sendable {
     private let condition = NSCondition()
     private var jobs: [Job] = []
     private var workers: [Thread] = []
+    private var activeJobs = 0
+
+    var activity: AllocatedSizeMeasurer.WorkerActivity {
+        condition.lock()
+        defer { condition.unlock() }
+        return .init(limit: width, active: activeJobs, queued: jobs.count)
+    }
 
     var workerIdentities: [ObjectIdentifier] {
         workers.map(ObjectIdentifier.init)
     }
 
     private init() {
-        width = max(2, min(8, ProcessInfo.processInfo.activeProcessorCount))
+        width = max(2, min(4, ProcessInfo.processInfo.activeProcessorCount))
 
         for _ in 0..<width {
             let worker = Thread { [weak self] in
@@ -833,9 +849,13 @@ private final class MeasurementWorkerPool: @unchecked Sendable {
             condition.lock()
             while jobs.isEmpty { condition.wait() }
             let job = jobs.removeFirst()
+            activeJobs += 1
             condition.unlock()
 
             autoreleasepool { job() }
+            condition.lock()
+            activeJobs -= 1
+            condition.unlock()
         }
     }
 }

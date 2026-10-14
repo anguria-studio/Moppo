@@ -111,6 +111,30 @@ struct AppUninstallerModelTests {
         #expect(await scanner.measurements.count == 1)
     }
 
+    @Test("Application size walks wait for Cleanup and remain paused after Stop Scan", arguments: [false, true])
+    func sizesWaitForCleanup(stopScan: Bool) async throws {
+        let scanner = HeldUninstallerScanner()
+        let cleanup = HeldCleanupScanner()
+        let app = AppModel(hasFullDiskAccess: { true }, uninstallerScanner: scanner, cleanupScanner: cleanup)
+        app.cleanup.startScan(refreshOverview: false)
+        try await waitUntil { await cleanup.requestCount == 1 }
+        app.uninstaller.loadInstalledApplications()
+        try await waitUntil { await scanner.listCount == 1 }
+        await scanner.finishList(0, [installedApplication("Current")])
+        try await waitUntil { app.uninstaller.installedApplications?.isEmpty == false }
+        #expect(await scanner.measurements.isEmpty)
+        if stopScan { app.cleanup.cancelScan() }
+        await cleanup.finish(0, results: ScanResults(categories: [], startedAt: .now, finishedAt: .now))
+        try await waitUntil { !app.cleanup.isScanning }
+        if !stopScan {
+            try await waitUntil { await scanner.measurements.count == 1 }
+            await scanner.finishMeasurement(0, 99)
+            try await waitUntil { app.uninstaller.installedApplicationsMeasured }
+        }
+        #expect(await scanner.measurements.count == (stopScan ? 0 : 1))
+        #expect(app.uninstaller.installedApplicationsMeasured == !stopScan)
+    }
+
     @Test("Measurements from a replaced load cannot overwrite current sizes")
     func replacedMeasurements() async throws {
         let scanner = HeldUninstallerScanner()

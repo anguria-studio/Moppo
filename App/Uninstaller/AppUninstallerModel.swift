@@ -29,6 +29,7 @@ final class AppUninstallerModel {
     @ObservationIgnored var canPlan: () -> Bool = { true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
+    @ObservationIgnored var beforeSizeMeasurement: () async -> Bool = { true }
     private(set) var isUninstallingApp = false
     var isBusyWithDisk: Bool { operations.isBusy }
 
@@ -408,6 +409,7 @@ final class AppUninstallerModel {
             selectedApplicationIDs.formIntersection(listed)
             installedApplicationsMeasured = applications.allSatisfy { installedApplicationBytes[$0.id] != nil }
             for application in applications where installedApplicationBytes[application.id] == nil {
+                guard await beforeSizeMeasurement() else { return }
                 guard !Task.isCancelled, installedID == id else { return }
                 guard let bytes = try? await scanner.allocatedBytes(at: application.url, context: context)
                 else { continue }

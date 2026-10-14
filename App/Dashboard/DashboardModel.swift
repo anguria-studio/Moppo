@@ -22,6 +22,7 @@ final class DashboardModel {
     @ObservationIgnored private var storageHistory: [StorageSnapshot] = []
     @ObservationIgnored var canLoad: () -> Bool = { true }
     @ObservationIgnored var canMeasure: (Bool) -> Bool = { _ in true }
+    @ObservationIgnored var beforeMeasurement: () async -> Bool = { true }
     @ObservationIgnored var hasLimitedAccess: () -> Bool = { false }
     @ObservationIgnored var onVolumeChanged: (VolumeInfo) async -> Void = { _ in }
 
@@ -109,7 +110,7 @@ final class DashboardModel {
     }
 
     /// Keep launch loading active until the complete refresh finishes.
-    func loadDashboard(beforeMeasurement: @escaping () async -> Void = {}) async {
+    func loadDashboard() async {
         guard canLoad() else { return }
         if let dashboardTask { await dashboardTask.value; return }
         hasCompletedInitialDashboardLoad = false
@@ -132,7 +133,6 @@ final class DashboardModel {
                 storageHistory = history
                 recomputeGrowth()
             }
-            if canMeasure(true) { await beforeMeasurement() }
             if canMeasure(true) {
                 await measureStorage(trigger: .launch)
             } else {
@@ -147,6 +147,7 @@ final class DashboardModel {
     func measureStorage(trigger: SnapshotTrigger = .manual) async {
         let automatic = trigger == .launch || trigger == .scheduled || trigger == .removal
         guard canMeasure(automatic) else { return }
+        guard await beforeMeasurement(), !Task.isCancelled, canMeasure(automatic) else { return }
         if let measurementTask {
             if trigger == .removal { needsPostCleanupMeasurement = true }
             await measurementTask.value
@@ -155,9 +156,14 @@ final class DashboardModel {
         isLoadingBreakdown = true
         let task = Task { [self] in
             defer { isLoadingBreakdown = false; measurementTask = nil }
-            var next = trigger
+            var next = needsPostCleanupMeasurement ? .removal : trigger
+            needsPostCleanupMeasurement = false
             while true {
                 await performMeasurement(trigger: next)
+                guard !Task.isCancelled else {
+                    if next == .removal { needsPostCleanupMeasurement = true }
+                    break
+                }
                 guard needsPostCleanupMeasurement else { break }
                 needsPostCleanupMeasurement = false
                 guard canMeasure(true) else { break }
@@ -168,17 +174,32 @@ final class DashboardModel {
         await task.value
     }
 
+    /// Release active filesystem workers before Cleanup starts.
+    func pauseMeasurementForScan() async {
+        let measurement = measurementTask
+        let cloud = cloudTask
+        measurement?.cancel()
+        cloud?.cancel()
+        await measurement?.value
+        await cloud?.value
+    }
+
     private func performMeasurement(trigger: SnapshotTrigger) async {
         let revision = historyRevision
         let presentation = OperationPresentationDuration()
         startCloudLoad()
         await refreshVolumeInfo()
+        guard !Task.isCancelled else { return }
         guard let measured = try? await service.measure() else {
             try? await presentation.wait()
             return
         }
-        breakdown = measured.breakdown
+        guard !Task.isCancelled else { return }
         await refreshVolumeInfo()
+        guard !Task.isCancelled else { return }
+        breakdown = volume.map {
+            measured.breakdown.reconcilingVolume(capacityBytes: $0.capacityBytes, freeBytes: $0.freeBytes)
+        } ?? measured.breakdown
         measuredAt = now()
         isLowSpaceWarningDismissed = false
         if let volume, let breakdown, let measuredAt {

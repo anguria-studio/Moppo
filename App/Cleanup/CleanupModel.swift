@@ -34,12 +34,13 @@ final class CleanupModel {
     @ObservationIgnored private let measureSaving: ([URL]) async throws -> PrivateSizeMeasurement?
     @ObservationIgnored private let scanDocker: (Preferences) async throws -> ScanCategoryResult
     @ObservationIgnored private let defaults: UserDefaults
-    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var scanTask: Task<Bool, Never>?
     @ObservationIgnored private var scanID: UUID?
     @ObservationIgnored private var cleanUpSavingTask: Task<Void, Never>?
     @ObservationIgnored var canScan: (Bool) -> Bool = { _ in true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
+    @ObservationIgnored var beforeScan: () async -> Void = {}
     @ObservationIgnored var refreshLeftovers: (Set<String>) async -> Void = { _ in }
 
     init(
@@ -620,6 +621,7 @@ final class CleanupModel {
         onEvent(.scanStarted(automatic: automatic, refreshOverview: refreshOverview))
         scanTask = Task { [self] in
             let presentation = OperationPresentationDuration()
+            var completed = false
             defer {
                 if self.scanID == scanID {
                     isScanning = false
@@ -630,6 +632,8 @@ final class CleanupModel {
                 operations.finish(operation)
             }
             do {
+                await beforeScan()
+                try Task.checkCancellation()
                 let results = try await scanner.scan(preferences: preferences) { [weak self] progress in
                     Task { @MainActor in
                         guard let self, self.scanID == scanID, !self.isInterruptingScan else { return }
@@ -637,23 +641,25 @@ final class CleanupModel {
                     }
                 }
                 try Task.checkCancellation()
-                guard self.scanID == scanID else { return }
+                guard self.scanID == scanID else { return false }
                 scanResults = results
                 lastScanFinishedAt = results.finishedAt
                 defaults.set(results.finishedAt, forKey: "lastScanFinishedAt")
                 openCategories = []
                 seedSafeToRemoveSelection()
                 refreshCleanupRunningOwners()
+                completed = true
             } catch is CancellationError {
                 // Keep the previous results when the user stops the scan.
             } catch {
-                guard self.scanID == scanID, !Task.isCancelled else { return }
+                guard self.scanID == scanID, !Task.isCancelled else { return false }
                 onEvent(.failure(
                     title: "The Scan Did Not Finish",
                     message: "Moppo could not finish measuring. Nothing was removed; try scanning again."
                 ))
             }
             try? await presentation.wait()
+            return completed && !Task.isCancelled
         }
     }
 
@@ -664,9 +670,9 @@ final class CleanupModel {
         scanTask?.cancel()
     }
 
-    /// Wait until the active scan releases its workers and operation guard.
-    func waitForScan() async {
-        await scanTask?.value
+    /// Wait for scan workers. Return false if the active scan stops or fails.
+    func waitForScan() async -> Bool {
+        await scanTask?.value ?? true
     }
 
     func cancelCleanUp() {
