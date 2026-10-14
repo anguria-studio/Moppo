@@ -313,7 +313,8 @@ struct AllocatedSizeMeasurerTests {
         let secondWorkers = AllocatedSizeMeasurer.sharedWorkerIdentities
 
         #expect(!firstWorkers.isEmpty)
-        #expect(firstWorkers.count <= 8)
+        #expect(firstWorkers.count <= 4)
+        #expect(AllocatedSizeMeasurer.workerActivity.limit == firstWorkers.count)
         #expect(firstWorkers == secondWorkers)
     }
 

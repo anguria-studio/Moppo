@@ -62,6 +62,15 @@ Use `--skip-docker` when the Docker category is off.
 The cancellation report measures the time from the stop request until the operation returns.
 
 The JSON output includes category times, progress gaps, disk capacity, and completed measurement counts.
+Each run also reports process CPU time, disk activity, and peak active filesystem workers.
+Moppo uses at most four shared filesystem workers across concurrent measurements.
+Process CPU time adds user time and system time across all process threads.
+These process totals do not identify CPU time for each category or include child processes.
+CPU seconds can exceed elapsed seconds when several cores run concurrently.
+Do not compare these totals directly with a monitor percentage that uses an unknown definition.
+Disk activity reports process read and write bytes from macOS.
+Cached filesystem reads can produce no disk activity.
+Each run waits two seconds before reporting idle CPU time and remaining filesystem workers.
 File visits include repeated walks of the same files.
 Subtree totals count each file once per measurement.
 Repeated roots and overlapping root pairs show possible repeated work.
@@ -77,6 +86,13 @@ Terminal access can differ from signed application access.
 Record the Mac model, macOS version, access settings, and application build beside the report.
 Check progress, navigation, and Stop Scan in the signed application separately.
 Keep pending checks in the GitHub ticket.
+
+Dashboard measurements wait for active Cleanup workers.
+Cleanup cancels an active Dashboard measurement before it starts category work.
+An interrupted removal measurement remains pending for the next authorized refresh.
+Stop Scan also prevents waiting Dashboard measurements from starting.
+App Uninstaller pauses new application size walks while Cleanup runs.
+A size walk already in progress can finish before that pause.
 
 At launch, Dashboard loads cached figures while Cleanup scans.
 Its initial storage measurement waits until Cleanup workers finish.

@@ -150,14 +150,71 @@ struct DashboardModelTests {
         #expect(app.isBusyWithDisk)
         #expect(await service.measurementCount == 0)
         await scanner.finish(0, results: ScanResults(categories: [], startedAt: .now, finishedAt: .now))
-        try await waitUntil { await service.measurementCount == 1 }
+        if !stopScan {
+            try await waitUntil { await service.measurementCount == 1 }
+            await service.finishMeasurement(0, measurement)
+        }
+        await launch.value
         #expect(!app.cleanup.isScanning)
         #expect(!app.isBusyWithDisk)
-        await service.finishMeasurement(0, measurement)
-        await launch.value
+        #expect(await service.measurementCount == (stopScan ? 0 : 1))
         #expect(app.view == .dashboard)
         #expect(app.dashboard.hasCompletedInitialDashboardLoad)
-        #expect(await persistence.records == [.launch])
+        #expect(await persistence.records == (stopScan ? [] : [.launch]))
+    }
+
+    @Test("Manual and scheduled scans defer refreshes and discard stopped requests", arguments: [false, true], [false, true])
+    func scanRefreshWaitsForCleanup(automatic: Bool, stopScan: Bool) async throws {
+        let scanner = HeldCleanupScanner()
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let app = AppModel(
+            hasFullDiskAccess: { true }, dashboardService: service,
+            dashboardPersistence: persistence, cleanupScanner: scanner
+        )
+        app.cleanup.startScan(automatic: automatic)
+        try await waitUntil { await scanner.requestCount == 1 }
+        let refresh = Task { await app.dashboard.measureStorage() }
+        await Task.yield()
+        #expect(await service.measurementCount == 0)
+        app.view = .history
+        if stopScan { app.cleanup.cancelScan() }
+        await scanner.finish(0, results: ScanResults(categories: [], startedAt: .now, finishedAt: .now))
+        if !stopScan {
+            try await waitUntil { await service.measurementCount == 1 }
+            await service.finishMeasurement(0, dashboardMeasurement())
+        }
+        await refresh.value
+        try await waitUntil { !app.cleanup.isScanning && !app.dashboard.isLoadingBreakdown }
+        #expect(await service.measurementCount == (stopScan ? 0 : 1))
+        #expect(app.view == .history)
+        #expect(await persistence.records.count == (stopScan ? 0 : 1))
+    }
+
+    @Test("Cleanup drains an active Dashboard measurement and retains a pending removal baseline", arguments: [SnapshotTrigger.manual, .removal])
+    func scanDrainsDashboard(trigger: SnapshotTrigger) async throws {
+        let scanner = HeldCleanupScanner()
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let app = AppModel(
+            hasFullDiskAccess: { true }, dashboardService: service,
+            dashboardPersistence: persistence, cleanupScanner: scanner
+        )
+        let refresh = Task { await app.dashboard.measureStorage(trigger: trigger) }
+        try await waitUntil { await service.measurementCount == 1 }
+        app.cleanup.startScan()
+        await Task.yield()
+        #expect(await scanner.requestCount == 0)
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await refresh.value
+        try await waitUntil { await scanner.requestCount == 1 }
+        #expect(await service.cancelled == [true])
+        #expect(await persistence.records.isEmpty)
+        await scanner.finish(0, results: ScanResults(categories: [], startedAt: .now, finishedAt: .now))
+        try await waitUntil { await service.measurementCount == 2 }
+        await service.finishMeasurement(1, dashboardMeasurement())
+        try await waitUntil { !app.dashboard.isLoadingBreakdown }
+        #expect(await persistence.records == [trigger == .removal ? .removal : .scan])
     }
 
     @Test("Concurrent removal refreshes produce one additional cleanup baseline")
@@ -218,6 +275,24 @@ struct DashboardModelTests {
         await first.value
         #expect(model.volume?.freeBytes == 300)
         #expect(notified == [300])
+    }
+
+    @Test("A completed measurement uses the final volume read for displayed and cached totals")
+    func measurementUsesFinalVolume() async throws {
+        let service = HeldDashboardMeasurements(holdVolume: true)
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence)
+        let refresh = Task { await model.measureStorage() }
+        try await waitUntil { await service.volumeCount == 1 }
+        await service.finishVolume(0, dashboardVolume(free: 200))
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, dashboardMeasurement(free: 200))
+        try await waitUntil { await service.volumeCount == 2 }
+        await service.finishVolume(1, dashboardVolume(free: 100))
+        await refresh.value
+        #expect(model.breakdown?.freeBytes == 100)
+        #expect(model.breakdown?.usedBytes == 900)
+        #expect(await persistence.cache?.breakdown == model.breakdown)
     }
 
     @Test("An older history read cannot remove a newly recorded cleanup baseline")

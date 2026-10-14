@@ -121,6 +121,7 @@ final class AppModel {
         dashboard.iCloudPlanBytes = settings?.iCloudPlan.bytes
         dashboard.canLoad = { [weak self] in self?.isShowingWelcome == false }
         dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
+        dashboard.beforeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
         dashboard.hasLimitedAccess = { [weak self] in self?.launchAccess == .limited }
         dashboard.onVolumeChanged = { [weak self] volume in
             guard let self, let settings = self.settings, settings.lowSpaceAlertsEnabled else { return }
@@ -151,6 +152,8 @@ final class AppModel {
             self?.checkDiskAccess(automatic: automatic) ?? false
         }
         cleanup.onEvent = { [weak self] event in self?.handleCleanupEvent(event) }
+        cleanup.beforeScan = { [weak dashboard] in await dashboard?.pauseMeasurementForScan() }
+        uninstaller.beforeSizeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
         cleanup.refreshAfterRemoval = { [weak self] in
             await self?.refreshAfterRemoval(invalidateCleanup: false)
         }
@@ -716,7 +719,7 @@ final class AppModel {
 
     /// Load cached Dashboard figures before waiting for the initial Cleanup scan.
     func loadDashboard() async {
-        await dashboard.loadDashboard { [cleanup] in await cleanup.waitForScan() }
+        await dashboard.loadDashboard()
     }
 
     private func handleCleanupEvent(_ event: CleanupModel.Event) {

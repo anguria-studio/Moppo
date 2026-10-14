@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import MoppoCore
 
 extension CLI {
@@ -32,6 +33,16 @@ extension CLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         var outputs: [ScanProfileOutput] = []
         for run in 1...2 {
+            let resources = ScanProcessResources.capture()
+            let started = ContinuousClock.now
+            let workers = ScanWorkerRecorder()
+            let workerSampling = Task {
+                while !Task.isCancelled {
+                    workers.record()
+                    do { try await Task.sleep(for: .milliseconds(50)) }
+                    catch { break }
+                }
+            }
             let cleanup = ScanProfileRecorder()
             let dashboard = ScanProfileRecorder()
             let selectedMode = mode
@@ -91,9 +102,21 @@ extension CLI {
             }
             let reports = await task.value
             cancellation.cancel()
+            workerSampling.cancel()
+            await workerSampling.value
+            let completedResources = ScanProcessResources.capture()
+            let wallSeconds = ScanProcessResources.seconds(started.duration(to: .now))
+            let idleStarted = ContinuousClock.now
+            try await Task.sleep(for: .seconds(2))
             let output = ScanProfileOutput(
                 run: run, mode: mode, capacityBytes: volume.capacityBytes,
-                usedBytes: volume.usedBytes, skipDocker: skipDocker, operations: reports
+                usedBytes: volume.usedBytes, skipDocker: skipDocker, operations: reports,
+                processResources: completedResources.difference(from: resources, wallSeconds: wallSeconds),
+                idleResources: ScanProcessResources.capture().difference(
+                    from: completedResources,
+                    wallSeconds: ScanProcessResources.seconds(idleStarted.duration(to: .now))
+                ),
+                peakActiveWorkers: workers.peak, workersAfterIdle: AllocatedSizeMeasurer.workerActivity
             )
             outputs.append(output)
         }
@@ -108,6 +131,61 @@ private struct ScanProfileOutput: Encodable {
     let usedBytes: Int64
     let skipDocker: Bool
     let operations: [ScanProfileRecorder.Report]
+    let processResources: ScanProcessResources
+    let idleResources: ScanProcessResources
+    let peakActiveWorkers: Int
+    let workersAfterIdle: AllocatedSizeMeasurer.WorkerActivity
+}
+
+private struct ScanProcessResources: Encodable {
+    let wallSeconds: Double
+    let userCPUSeconds: Double
+    let systemCPUSeconds: Double
+    let diskReadBytes: UInt64?
+    let diskWrittenBytes: UInt64?
+
+    static func capture() -> Self {
+        var cpu = rusage()
+        getrusage(RUSAGE_SELF, &cpu)
+        var io = rusage_info_v2()
+        let result = withUnsafeMutablePointer(to: &io) {
+            proc_pid_rusage(getpid(), RUSAGE_INFO_V2,
+                           UnsafeMutableRawPointer($0).assumingMemoryBound(to: rusage_info_t?.self))
+        }
+        return Self(
+            wallSeconds: 0,
+            userCPUSeconds: Double(cpu.ru_utime.tv_sec) + Double(cpu.ru_utime.tv_usec) / 1e6,
+            systemCPUSeconds: Double(cpu.ru_stime.tv_sec) + Double(cpu.ru_stime.tv_usec) / 1e6,
+            diskReadBytes: result == 0 ? io.ri_diskio_bytesread : nil,
+            diskWrittenBytes: result == 0 ? io.ri_diskio_byteswritten : nil
+        )
+    }
+
+    func difference(from previous: Self, wallSeconds: Double) -> Self {
+        Self(
+            wallSeconds: wallSeconds,
+            userCPUSeconds: userCPUSeconds - previous.userCPUSeconds,
+            systemCPUSeconds: systemCPUSeconds - previous.systemCPUSeconds,
+            diskReadBytes: diskReadBytes.flatMap { value in previous.diskReadBytes.map { value - $0 } },
+            diskWrittenBytes: diskWrittenBytes.flatMap { value in previous.diskWrittenBytes.map { value - $0 } }
+        )
+    }
+
+    static func seconds(_ duration: Duration) -> Double {
+        let parts = duration.components
+        return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
+    }
+}
+
+private final class ScanWorkerRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var maximum = 0
+    var peak: Int { lock.withLock { maximum } }
+
+    func record() {
+        let activity = AllocatedSizeMeasurer.workerActivity
+        lock.withLock { maximum = max(maximum, activity.active) }
+    }
 }
 
 private final class ScanProfileRecorder: @unchecked Sendable {
@@ -159,13 +237,13 @@ private final class ScanProfileRecorder: @unchecked Sendable {
         roots[path, default: 0] += 1
         fileVisits += measurement.fileCount
         unreadableVisits += measurement.unreadableCount
-        locationSeconds[location, default: 0] += Self.seconds(duration)
+        locationSeconds[location, default: 0] += ScanProcessResources.seconds(duration)
     }
 
     func recordTiming(_ category: CategoryID, _ duration: Duration) {
         lock.lock()
         defer { lock.unlock() }
-        categorySeconds[category.rawValue] = Self.seconds(duration)
+        categorySeconds[category.rawValue] = ScanProcessResources.seconds(duration)
     }
 
     func recordCategory(_ category: ScanCategoryResult) {
@@ -184,7 +262,7 @@ private final class ScanProfileRecorder: @unchecked Sendable {
     func recordProgress(_ percent: Int) {
         lock.lock()
         defer { lock.unlock() }
-        progress.append(Progress(percent: percent, seconds: Self.seconds(started.duration(to: .now))))
+        progress.append(Progress(percent: percent, seconds: ScanProcessResources.seconds(started.duration(to: .now))))
     }
 
     func recordCancellation() {
@@ -201,24 +279,19 @@ private final class ScanProfileRecorder: @unchecked Sendable {
         let overlapCount = paths.enumerated().reduce(0) { count, item in
             count + paths.dropFirst(item.offset + 1).filter { $0.hasPrefix(item.element + "/") }.count
         }
-        let elapsed = Self.seconds(started.duration(to: finished))
+        let elapsed = ScanProcessResources.seconds(started.duration(to: finished))
         let times = [0] + progress.map(\.seconds) + [elapsed]
         let gap = zip(times, times.dropFirst()).map { $1 - $0 }.max() ?? 0
         return Report(
             operation: operation, outcome: outcome, wallSeconds: elapsed,
             cancellationSeconds: outcome == "cancelled"
-                ? cancelledAt.map { Self.seconds($0.duration(to: finished)) } : nil, bytes: bytes,
+                ? cancelledAt.map { ScanProcessResources.seconds($0.duration(to: finished)) } : nil, bytes: bytes,
             measurementCalls: roots.values.reduce(0, +), measuredFileVisits: fileVisits,
             unreadableVisits: unreadableVisits, repeatedRoots: roots.values.filter { $0 > 1 }.count,
             overlappingRootPairs: overlapCount, measurementSecondsByLocation: locationSeconds,
             categorySeconds: categorySeconds, categories: categories,
             longestProgressGapSeconds: gap, progress: progress
         )
-    }
-
-    private static func seconds(_ duration: Duration) -> Double {
-        let parts = duration.components
-        return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
     }
 
     /// Use fixed location names so the report excludes account and file names.
