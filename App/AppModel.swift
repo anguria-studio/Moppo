@@ -95,7 +95,7 @@ final class AppModel {
             removalService: fileDuplicateRemovalService,
             preferences: { [weak settings] in RemovalPreferences(settings: settings) }
         )
-        self.dashboard = DashboardModel(service: dashboardService, persistence: dashboardPersistence)
+        self.dashboard = DashboardModel(service: dashboardService, persistence: dashboardPersistence, settings: settings)
         self.recovery = RecoveryModel(
             operations: operations, trashService: trashService,
             historyService: historyReader ?? CleanupHistoryReader(service: cleanupHistoryService)
@@ -123,6 +123,7 @@ final class AppModel {
         storageExplorer.refreshAfterRemoval = { [weak self] in await self?.refreshAfterRemoval() }
         dashboard.iCloudPlanBytes = settings?.iCloudPlan.bytes
         dashboard.canLoad = { [weak self] in self?.isShowingWelcome == false }
+        dashboard.hasICloudAccess = hasFullDiskAccess
         dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
         dashboard.beforeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
         dashboard.onVolumeChanged = { [weak self] volume in
@@ -181,6 +182,7 @@ final class AppModel {
             )
         }
         cleanupScheduler.startScan = { [weak cleanup] in cleanup?.startScan(automatic: true) }
+        if dashboard.hasPendingICloudSetup, !launchAccess.requiresOnboarding { view = .dashboard }
         if settings != nil { cleanupScheduler.start() }
     }
 
@@ -195,6 +197,8 @@ final class AppModel {
         if let folder {
             view = .storageExplorer
             storageExplorer.selectLocation(folder)
+        } else if dashboard.hasPendingICloudSetup {
+            view = .dashboard
         } else if launchAccess == .limited {
             view = .storageExplorer
         }

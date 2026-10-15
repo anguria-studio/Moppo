@@ -7,7 +7,10 @@ struct StatTiles: View {
     private let safeToRemoveBytes: Int64?
     private let needsReviewBytes: Int64?
     private let lastScanAt: Date?
-    private let iCloudStorage: ICloudStorage?
+    private let iCloudState: DashboardModel.ICloudState?
+    private let onICloudSetup: () -> Void
+    private let onICloudRetry: () -> Void
+    private let onICloudHide: () -> Void
     /// Tap targets for the two counting tiles. A first-run placeholder stays inert.
     /// A saved scan time gives both tiles a fresh-scan action.
     private let onSafeTap: (() -> Void)?
@@ -20,7 +23,10 @@ struct StatTiles: View {
     init(
         results: ScanResults?,
         lastScanAt: Date? = nil,
-        iCloudStorage: ICloudStorage? = nil,
+        iCloudState: DashboardModel.ICloudState? = nil,
+        onICloudSetup: @escaping () -> Void = {},
+        onICloudRetry: @escaping () -> Void = {},
+        onICloudHide: @escaping () -> Void = {},
         onSafeTap: (() -> Void)? = nil,
         onReviewTap: (() -> Void)? = nil,
         onScan: (() -> Void)? = nil
@@ -28,7 +34,10 @@ struct StatTiles: View {
         self.safeToRemoveBytes = results?.safeToRemoveBytes
         self.needsReviewBytes = results?.needsReviewBytes
         self.lastScanAt = results?.finishedAt ?? lastScanAt
-        self.iCloudStorage = iCloudStorage
+        self.iCloudState = iCloudState
+        self.onICloudSetup = onICloudSetup
+        self.onICloudRetry = onICloudRetry
+        self.onICloudHide = onICloudHide
         self.onSafeTap = onSafeTap
         self.onReviewTap = onReviewTap
         self.onScan = onScan
@@ -44,7 +53,10 @@ struct StatTiles: View {
         self.safeToRemoveBytes = safeToRemoveBytes
         self.needsReviewBytes = needsReviewBytes
         self.lastScanAt = lastScanAt
-        self.iCloudStorage = nil
+        self.iCloudState = nil
+        self.onICloudSetup = {}
+        self.onICloudRetry = {}
+        self.onICloudHide = {}
         self.onSafeTap = nil
         self.onReviewTap = nil
         self.onScan = nil
@@ -70,8 +82,11 @@ struct StatTiles: View {
                         action: onReviewTap,
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
-                    if let iCloudStorage {
-                        ICloudCard(storage: iCloudStorage)
+                    if let iCloudState {
+                        ICloudDashboardCard(
+                            state: iCloudState, onSetup: onICloudSetup,
+                            onRetry: onICloudRetry, onHide: onICloudHide
+                        )
                     }
                 }
             }

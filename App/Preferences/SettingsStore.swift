@@ -198,6 +198,8 @@ final class SettingsStore {
         static let warnBelowGB = "settings.warnBelowGB"
         static let lowSpaceAlertsEnabled = "settings.lowSpaceAlertsEnabled"
         static let iCloudPlan = "settings.iCloudPlan"
+        static let showICloudOnDashboard = "settings.showICloudOnDashboard"
+        static let hasPendingICloudSetup = "settings.hasPendingICloudSetup"
         static let categoryEnabled = "settings.categoryEnabled"
         static let confirmBeforeCleanup = "settings.confirmBeforeCleanup"
         static let keepReceipt = "settings.keepReceipt"
@@ -245,6 +247,17 @@ final class SettingsStore {
     }
 
     // MARK: iCloud
+
+    var showICloudOnDashboard: Bool {
+        didSet {
+            defaults.set(showICloudOnDashboard, forKey: Key.showICloudOnDashboard)
+            if !showICloudOnDashboard { hasPendingICloudSetup = false }
+        }
+    }
+
+    var hasPendingICloudSetup: Bool {
+        didSet { defaults.set(hasPendingICloudSetup, forKey: Key.hasPendingICloudSetup) }
+    }
 
     var iCloudPlan: ICloudPlan {
         didSet { defaults.set(iCloudPlan.rawValue, forKey: Key.iCloudPlan) }
@@ -375,6 +388,9 @@ final class SettingsStore {
         self.scanSchedule = (defaults.string(forKey: Key.scanSchedule)
             .flatMap(ScanSchedule.init(rawValue:))) ?? Defaults.scanSchedule
         self.idleOnly = bool(Key.idleOnly, or: Defaults.idleOnly)
+        let showsICloud = bool(Key.showICloudOnDashboard, or: true)
+        self.showICloudOnDashboard = showsICloud
+        self.hasPendingICloudSetup = showsICloud && bool(Key.hasPendingICloudSetup, or: false)
         self.iCloudPlan = (defaults.string(forKey: Key.iCloudPlan)
             .flatMap(ICloudPlan.init(rawValue:))) ?? .automatic
         self.warnBelowGB = (defaults.object(forKey: Key.warnBelowGB) as? Int)
@@ -425,6 +441,8 @@ final class SettingsStore {
         warnBelowGB = Defaults.warnBelowGB
         lowSpaceAlertsEnabled = Defaults.lowSpaceAlertsEnabled
         iCloudPlan = .automatic
+        showICloudOnDashboard = true
+        hasPendingICloudSetup = false
         categoryEnabled = Dictionary(
             uniqueKeysWithValues: CategoryID.allCases.map { ($0, Defaults.categoryEnabled($0)) }
         )

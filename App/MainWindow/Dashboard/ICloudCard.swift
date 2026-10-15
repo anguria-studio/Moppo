@@ -2,6 +2,72 @@ import SwiftUI
 import AppKit
 import MoppoCore
 
+/// Keeps setup and recovery actions visible until storage is available.
+struct ICloudDashboardCard: View {
+    let state: DashboardModel.ICloudState
+    let onSetup: () -> Void
+    let onRetry: () -> Void
+    let onHide: () -> Void
+
+    var body: some View {
+        if case .available(let storage) = state {
+            ICloudCard(storage: storage)
+        } else {
+            GroupedBox(radius: Token.Radius.card) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("iCloud")
+                            .font(.mcSectionHeader)
+                            .foregroundStyle(Token.Text.secondary)
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer()
+                        Button(action: onHide) {
+                            Image(systemName: "xmark")
+                                .frame(width: 24, height: 24)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Hide iCloud from Dashboard")
+                        .help("Hide iCloud from Dashboard")
+                    }
+                    if state == .loading {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Reading storage…")
+                        }
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        Text(state == .unavailable
+                             ? "Storage information is unavailable."
+                             : "See your iCloud storage here.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 8) {
+                        Spacer(minLength: 0)
+                        if state == .unavailable {
+                            Button("Try Again", action: onRetry)
+                                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent), size: .compact))
+                        }
+                        if state != .loading {
+                            Button("Set Up", action: onSetup)
+                                .buttonStyle(PageActionButtonStyle(
+                                    tint: state == .unavailable ? nil : Token.color(.accent),
+                                    size: .compact, fill: Token.Fill.buttonOnCard
+                                ))
+                        }
+                    }
+                }
+                .font(.mcSubtitle)
+                .foregroundStyle(Token.Text.secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .accessibilityElement(children: .contain)
+        }
+    }
+}
+
 /// Compact iCloud usage beside the cleanup totals.
 struct ICloudCard: View {
     let storage: ICloudStorage
