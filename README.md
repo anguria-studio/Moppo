@@ -32,7 +32,7 @@
 [Changelog](CHANGELOG.md) ·
 [Releases](https://github.com/anguria-studio/Moppo/releases)
 
-The Moppo website and privacy page remain in preparation.
+The website includes the [privacy policy](https://anguria.studio/moppo/privacy/) and [terms of use](https://anguria.studio/moppo/terms/).
 
 ## Why Moppo?
 
@@ -280,7 +280,6 @@ See the [development notes](docs/README.md) for the command-line scanner, source
 | [Writing style](WRITING_STYLE.md) | Rules for documentation, interface text, and code comments |
 | [Project instructions](AGENTS.md) | Repository guidance and required writing checks |
 | [Issues](https://github.com/anguria-studio/Moppo/issues) | Bug reports, feature requests, and release work |
-| [Project board](https://github.com/orgs/anguria-studio/projects/1) | Backlog, release phases, and historical work |
 
 Open an issue before a large change.
 For a bug report, include the expected behavior and steps to reproduce the problem.
