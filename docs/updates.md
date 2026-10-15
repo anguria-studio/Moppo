@@ -14,7 +14,7 @@ A key loss can prevent existing installations from accepting later updates.
 The update feed address is `https://anguria.studio/moppo/appcast.xml`.
 The landing page is `https://anguria.studio/moppo/`.
 Publish privacy information at `https://anguria.studio/moppo/privacy/` before distribution.
-The website currently redirects the Moppo landing page to Paguro.
+The landing page, privacy policy, and terms of use are available on the Moppo website.
 Website publication must preserve Paguro routes.
 Release builds reject missing or invalid update settings.
 Debug builds without update settings make no update requests.
@@ -51,6 +51,8 @@ It adds `Moppo.dmg` after feed generation and writes `SHA256SUMS`.
 The fixed download address is `https://github.com/anguria-studio/Moppo/releases/latest/download/Moppo.dmg`.
 Configure the Anguria feed address to redirect to `https://github.com/anguria-studio/Moppo/releases/latest/download/appcast.xml`.
 This redirect keeps the app's existing feed address and uses the latest stable GitHub release.
+An unpublished draft cannot provide public update downloads.
+Before distribution, check the feed and its referenced files without GitHub credentials.
 
 Create an archive that preserves framework symbolic links:
 

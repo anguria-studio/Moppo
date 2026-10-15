@@ -47,8 +47,8 @@ Set `SPARKLE_BIN` to the pinned Sparkle package's `bin` folder.
 Run the package tool from the repository root:
 
 ```sh
-scripts/package-dmg.sh --version 0.2.0 --build 4 \
-  --output dist/releases/Moppo-0.2.0-4 \
+scripts/package-dmg.sh --version 0.2.0 --build 14 \
+  --output dist/releases/Moppo-0.2.0-14 \
   --sparkle-tools "$SPARKLE_BIN" \
   --notes docs/releases/0.2.0.md
 ```
@@ -75,16 +75,16 @@ An unnotarized candidate must remain local.
 Do not distribute a candidate until notarization and the required release checks pass.
 
 ```sh
-scripts/package-dmg.sh --prepare --version 0.2.0 --build 4 \
-  --output dist/releases/Moppo-0.2.0-4
+scripts/package-dmg.sh --prepare --version 0.2.0 --build 14 \
+  --output dist/releases/Moppo-0.2.0-14
 ```
 
 Use `--archive` to export an existing Release archive.
 Finish the prepared candidate with the same version, build, and output folder:
 
 ```sh
-scripts/package-dmg.sh --finish --version 0.2.0 --build 4 \
-  --output dist/releases/Moppo-0.2.0-4 \
+scripts/package-dmg.sh --finish --version 0.2.0 --build 14 \
+  --output dist/releases/Moppo-0.2.0-14 \
   --sparkle-tools "$SPARKLE_BIN" \
   --notes docs/releases/0.2.0.md
 ```
@@ -102,7 +102,7 @@ Local candidates can share a version with increasing build numbers.
 Increase the build number for every distributed build.
 Build numbers must increase even when the visible version stays the same.
 Keep `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` aligned with the release package.
-Builds 2 and 3 were local candidates. The next candidate is build 4.
+Use a build number greater than every earlier candidate.
 Keep the bundle identifier, signing team, update address, and update key stable.
 Record user changes under **Unreleased** in [CHANGELOG.md](../CHANGELOG.md).
 Before each release, move those changes to a version section with the release date and build number.
@@ -124,18 +124,18 @@ Keep `release.json`, the archive, and notarization receipts outside the release 
 For version `0.2.0`, use the commit from the package manifest:
 
 ```sh
-RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.2.0-4/release.json"))["source_commit"])')
-gh release create v0.2.0 dist/releases/Moppo-0.2.0-4/assets/* \
+RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.2.0-14/release.json"))["source_commit"])')
+gh release create v0.2.0 dist/releases/Moppo-0.2.0-14/assets/* \
   --repo anguria-studio/Moppo --draft --target "$RELEASE_COMMIT" \
   --title 'Moppo 0.2.0' --notes-file docs/releases/0.2.0.md
 ```
 
 Before publishing the draft, verify its signatures, checksums, versioned addresses, and remaining release checks.
+If the draft already exists, check its source commit and assets before you update it.
 Keep old release downloads available. Do not replace a published version's DMG.
 After publication, check the downloads without GitHub credentials.
 The fixed download address is `https://github.com/anguria-studio/Moppo/releases/latest/download/Moppo.dmg`.
 Configure `https://anguria.studio/moppo/appcast.xml` to redirect to `https://github.com/anguria-studio/Moppo/releases/latest/download/appcast.xml`.
-The website and privacy links can remain unavailable while the website is in preparation.
-Publish privacy information before public distribution.
+Check the website, privacy policy, and support contact before public distribution.
 Do not edit signed files after generation.
-Keep the website's Paguro redirects until the Moppo landing page is ready for publication.
+Keep existing Paguro routes when you change the Moppo website.
