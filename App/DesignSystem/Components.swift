@@ -932,6 +932,7 @@ struct ScanInterruptionView: View {
 /// Shows progress in the content area with an optional stop action.
 struct PageProgressView: View {
     enum Icon {
+        /// Moppo turns into an hourglass. With Reduce Motion on, the static hourglass symbol shows.
         case hourglass
         case mascot(MoppoMascotView.Mode)
 
@@ -958,10 +959,8 @@ struct PageProgressView: View {
     var body: some View {
         PageStateLayout(title: displayedTitle) {
             switch icon {
-            case .hourglass: PageStateSymbol(name: "hourglass")
-            case .mascot(let mode):
-                MoppoMascotView(mode: mode)
-                    .frame(width: PageStateMetrics.iconAreaSize, height: PageStateMetrics.iconAreaSize)
+            case .hourglass: PageStateMascot(mode: .hourglass)
+            case .mascot(let mode): PageStateMascot(mode: mode)
             }
         } detail: {
             VStack(spacing: 18) {
