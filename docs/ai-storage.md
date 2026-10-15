@@ -36,6 +36,16 @@ A heading has no selection or removal action.
 Section descriptions identify task data, downloaded tools, desktop data, and other storage.
 Child selection, session deletion, cache protection, and worktree review keep their existing rules.
 
+Protected parent rows with child items do not show a protected badge.
+Child rows keep their own protection and review badges.
+Moppo blocks removal of the whole folder to keep protected files.
+Closing the owning application does not remove this protection.
+Child items use separate removal checks. A selectable item can still need review.
+Worktrees with local files stay outside automatic Safe to Remove selection.
+The parent size shows Total storage. It includes child items and other protected files.
+Selected items have a separate total.
+Other storage sections have separate totals.
+
 The scanner subtracts disclosed child sizes from each protected parent remainder.
 Child rows do not add the same bytes a second time.
 Allocated bytes include shared APFS storage. They do not prove how much a removal will free.

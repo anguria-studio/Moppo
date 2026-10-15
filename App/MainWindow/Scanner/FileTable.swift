@@ -477,6 +477,10 @@ private struct FileRow: View {
         FileEntryPresentation(entry: entry, project: project)
     }
 
+    private var isProtectedParent: Bool {
+        entry.protectionReason == .inventory && !entry.children.isEmpty && entry.codexSession == nil
+    }
+
     var body: some View {
         HStack(spacing: Metrics.gap) {
             // The slot the category row's triangle occupies, so file names stay
@@ -539,12 +543,23 @@ private struct FileRow: View {
             // `fixedSize` before the frame: the column is wide enough for every value
             // the formatter produces, and a truncated size would be a lie rather than
             // an abbreviation.
-            Text(ByteFormatting.string(entry.rowDisplayBytes))
-                .font(.mcRowValue)
-                .foregroundStyle(Token.Text.primary)
-                .lineLimit(1)
-                .fixedSize()
-                .frame(width: Metrics.size, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(ByteFormatting.string(entry.rowDisplayBytes))
+                    .font(.mcRowValue)
+                    .foregroundStyle(Token.Text.primary)
+                    .lineLimit(1)
+                    .fixedSize()
+                if isProtectedParent {
+                    Text("Total storage")
+                        .font(.mcCaption)
+                        .foregroundStyle(Token.Text.secondary)
+                }
+            }
+            .frame(width: Metrics.size, alignment: .trailing)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(isProtectedParent
+                ? "Total storage, \(ByteFormatting.string(entry.rowDisplayBytes)). Includes child items and other protected files. This is not removable space."
+                : ByteFormatting.string(entry.rowDisplayBytes))
 
             if entry.url.isFileURL {
                 RevealButton(url: entry.url, name: entry.displayName, isRowHovered: isRowHovered)
@@ -617,6 +632,11 @@ private struct FileRow: View {
             return hasUnlockedChildren
                 ? "Use this checkbox to select child items. The parent folder stays protected."
                 : "Use the lock to review and unlock child items. Unlocking does not select items."
+        }
+        if isProtectedParent {
+            return "Moppo blocks removal of the whole folder to keep protected files, even after you close the application. "
+                + "Child items have separate removal checks. "
+                + (entry.protectionExplanation ?? "")
         }
         if let image = entry.dockerImage {
             if let count = image.containerCount, count > 0 {
@@ -705,7 +725,7 @@ private struct FileRow: View {
                         if entry.protectionReason == .inventory {
                             Badge(text: "in use").fixedSize()
                         }
-                    } else if let reason = entry.protectionReason {
+                    } else if let reason = entry.protectionReason, !isProtectedParent {
                         // Says *why* the checkbox is locked without hovering anything,
                         // and says the true thing: "in use" on an app that was merely
                         // opened last week reads as a lie.
@@ -1003,7 +1023,7 @@ struct ProtectedSelectionControl: View {
             return entry.protectionExplanation ?? session.warning
         }
         if entry.protectionReason == .inventory {
-            return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+            return help
         }
         if entry.protectionReason == .userData {
             return "This item can contain profiles, logins, history, and settings. "

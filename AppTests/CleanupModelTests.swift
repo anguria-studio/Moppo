@@ -64,6 +64,8 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection == [cache.id])
         cleanup.scanFilter = .all
         #expect(cleanup.selectableIDs(in: category) == [cache.id])
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        #expect(cleanup.selectAllState(in: category) == .on)
         cleanup.scannerSelection = [root.id, history.id, cache.id]
         cleanup.userDataRemovalOverrides = [root.id, history.id]
         #expect(cleanup.selectedEntries.map(\.id) == [cache.id])
@@ -370,8 +372,11 @@ struct CleanupModelTests {
         let second = cleanupEntry("second-cache")
         var review = cleanupEntry("review-file")
         review.isRegenerable = false
+        var locked = cleanupEntry("locked-file")
+        locked.protectionReason = .inventory
+        locked.isRegenerable = false
         let cleanup = CleanupModel(operations: OperationCoordinator())
-        cleanup.scanResults = cleanupResults([first, second, review])
+        cleanup.scanResults = cleanupResults([first, second, review, locked])
         #expect(cleanup.selectAllStateInCurrentView == .off)
         cleanup.scannerSelection = [first.id]
         #expect(cleanup.selectAllStateInCurrentView == .mixed)
@@ -381,6 +386,7 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection == [first.id, second.id])
         #expect(cleanup.selectAllStateInCurrentView == .mixed)
         cleanup.selectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [first.id, second.id, review.id])
         #expect(cleanup.selectAllStateInCurrentView == .on)
         cleanup.scanFilter = .needsReview
         #expect(cleanup.selectAllStateInCurrentView == .on)
@@ -421,7 +427,7 @@ struct CleanupModelTests {
         cleanup.setSelected(true, in: category)
         #expect(cleanup.scannerSelection == [unrelated.id, parent.id, appCache.id])
         #expect(cleanup.userDataRemovalOverrides.isEmpty)
-        #expect(cleanup.selectAllState(in: category) == .mixed)
+        #expect(cleanup.selectAllState(in: category) == .on)
         cleanup.scannerSelection.insert(locked.id)
         cleanup.userDataRemovalOverrides = [locked.id, unrelated.id]
         cleanup.setSelected(false, in: category)
@@ -440,7 +446,7 @@ struct CleanupModelTests {
         operations.finish(operation)
     }
 
-    @Test("Selected application caches keep the All headers partially selected")
+    @Test("Selected application caches fully select All headers without selecting the application")
     func applicationCacheSelectionState() {
         let cache = cleanupEntry("application-cache")
         var app = cleanupEntry("Application.app")
@@ -455,12 +461,12 @@ struct CleanupModelTests {
         #expect(cleanup.selectAllStateInCurrentView == .on)
         #expect(cleanup.selectAllState(in: category.filtered(safeToRemove: true)) == .on)
         cleanup.scanFilter = .all
-        #expect(cleanup.selectAllStateInCurrentView == .mixed)
-        #expect(cleanup.selectAllState(in: category) == .mixed)
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        #expect(cleanup.selectAllState(in: category) == .on)
         #expect(!cleanup.canSelectAllInCurrentView)
         #expect(cleanup.selectedBytes(in: .applications) == cache.allocatedBytes)
         cleanup.openCategories.insert(.applications)
-        #expect(cleanup.selectAllState(in: category) == .mixed)
+        #expect(cleanup.selectAllState(in: category) == .on)
         cleanup.setSelected(false, in: category)
         #expect(cleanup.scannerSelection.isEmpty)
         #expect(cleanup.selectAllStateInCurrentView == .off)

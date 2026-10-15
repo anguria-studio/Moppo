@@ -325,12 +325,12 @@ final class CleanupModel {
     }
 
     func selectAllState(in category: ScanCategoryResult) -> NSControl.StateValue {
-        selectAllState(in: category.entries, selected: selectedIDs(in: category))
+        selectAllState(in: selectableEntries(in: category), selected: selectedIDs(in: category))
     }
 
-    private func selectAllState(in rows: [FileEntry], selected: Set<FileEntry.ID>) -> NSControl.StateValue {
+    private func selectAllState(in selectable: [FileEntry], selected: Set<FileEntry.ID>) -> NSControl.StateValue {
         guard !selected.isEmpty else { return .off }
-        return !rows.isEmpty && rows.allSatisfy { selected.contains($0.id) } ? .on : .mixed
+        return !selectable.isEmpty && selectable.allSatisfy { selected.contains($0.id) } ? .on : .mixed
     }
 
     func setSelected(_ isSelected: Bool, in category: ScanCategoryResult) {
@@ -365,7 +365,7 @@ final class CleanupModel {
     }
 
     var selectAllStateInCurrentView: NSControl.StateValue {
-        selectAllState(in: rowsInCurrentView, selected: cleanupSelection(in: scanFilter))
+        selectAllState(in: selectableInCurrentView, selected: cleanupSelection(in: scanFilter))
     }
 
     var canSelectAllInCurrentView: Bool {
