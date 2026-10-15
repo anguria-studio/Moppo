@@ -81,6 +81,19 @@ Changes apply immediately and remain saved across launches.
 **System** follows macOS appearance changes and is the default.
 **Reset Settings** restores **System**.
 
+The Dashboard shows an iCloud setup card when storage information is unavailable.
+Select **Set Up** to check access and open iCloud settings.
+To hide the card, select its **X** button.
+This choice remains saved across launches.
+To restore it, enable **Settings > General > iCloud > Show on Dashboard**.
+The same section contains **Set Up** and the storage plan control.
+Moppo requires Full Disk Access for iCloud measurements.
+If macOS restarts Moppo during setup, Moppo returns to Dashboard and checks storage.
+The setup guide returns only if access or storage information remains unavailable.
+The guide shows account settings after a failed measurement.
+It does not require a separate Moppo sign-in or report the iCloud Drive switch state.
+When a measurement fails, select **Try Again** or check the setup guide.
+
 | Feature | What you can do |
 | --- | --- |
 | Cleanup history | Review removal results, failures, and saved receipts. |

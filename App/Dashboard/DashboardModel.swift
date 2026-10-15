@@ -9,6 +9,7 @@ final class DashboardModel {
     @ObservationIgnored private let service: any DashboardMeasuring
     @ObservationIgnored private let persistence: any DashboardPersisting
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let settings: SettingsStore?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var dashboardTask: Task<Void, Never>?
     @ObservationIgnored private var measurementTask: Task<Void, Never>?
@@ -16,12 +17,14 @@ final class DashboardModel {
     @ObservationIgnored private var volumeID: UUID?
     @ObservationIgnored private var cloudTask: Task<Void, Never>?
     @ObservationIgnored private var cloudID: UUID?
+    @ObservationIgnored private var cloudPlanBytes: Int64?
     @ObservationIgnored private var historyClearTask: Task<Void, Never>?
     @ObservationIgnored private var historyRevision = UUID()
     @ObservationIgnored private var needsPostCleanupMeasurement = false
     @ObservationIgnored private var storageHistory: [StorageSnapshot] = []
     @ObservationIgnored var canLoad: () -> Bool = { true }
     @ObservationIgnored var canMeasure: (Bool) -> Bool = { _ in true }
+    @ObservationIgnored var hasICloudAccess: () -> Bool = { true }
     @ObservationIgnored var beforeMeasurement: () async -> Bool = { true }
     @ObservationIgnored var onVolumeChanged: (VolumeInfo) async -> Void = { _ in }
 
@@ -29,11 +32,13 @@ final class DashboardModel {
         service: any DashboardMeasuring = DashboardMeasurementService(),
         persistence: any DashboardPersisting = DashboardPersistence(),
         defaults: UserDefaults = .standard,
+        settings: SettingsStore? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.service = service
         self.persistence = persistence
         self.defaults = defaults
+        self.settings = settings
         self.now = now
         preferredGrowthBaseline = defaults.string(forKey: "growthBaseline")
             .flatMap(GrowthBaseline.init(rawValue:))
@@ -57,7 +62,21 @@ final class DashboardModel {
     var boot: SnapshotInfo? { snapshots.first(where: \.isBootSnapshot) }
     var removableSnapshots: [SnapshotInfo] { snapshots.filter { !$0.isBootSnapshot } }
     private(set) var measuredAt: Date?
-    private(set) var iCloudStorage: ICloudStorage?
+    enum ICloudState: Equatable {
+        case idle, requiresAccess, loading, unavailable
+        case available(ICloudStorage)
+    }
+    private(set) var iCloudState: ICloudState = .idle
+    var iCloudStorage: ICloudStorage? {
+        if case .available(let storage) = iCloudState { return storage }
+        return nil
+    }
+    var showsICloudOnDashboard: Bool { settings?.showICloudOnDashboard ?? true }
+    var hasPendingICloudSetup: Bool { settings?.hasPendingICloudSetup ?? false }
+    var shouldResumeICloudSetup: Bool {
+        hasPendingICloudSetup && showsICloudOnDashboard
+            && (iCloudState == .requiresAccess || iCloudState == .unavailable)
+    }
     var iCloudPlanBytes: Int64?
     private(set) var growth: GrowthComparison?
     private(set) var hasCleanupGrowthBaseline = false
@@ -217,20 +236,53 @@ final class DashboardModel {
         await task.value
     }
 
+    func beginICloudSetup() {
+        guard showsICloudOnDashboard else { return }
+        settings?.hasPendingICloudSetup = true
+    }
+
+    func finishICloudSetup() {
+        settings?.hasPendingICloudSetup = false
+    }
+
     @discardableResult
     private func startCloudLoad() -> Task<Void, Never>? {
-        guard canMeasure(true) else { return nil }
+        let planBytes: Int64? = if let settings { settings.iCloudPlan.bytes } else { iCloudPlanBytes }
+        let isVisible = canLoad() && showsICloudOnDashboard
+        let hasAccess = hasICloudAccess()
+        if isVisible, hasAccess, let cloudTask, !cloudTask.isCancelled, cloudPlanBytes == planBytes {
+            return cloudTask
+        }
         cloudTask?.cancel()
+        cloudTask = nil
+        cloudID = nil
+        guard isVisible else {
+            iCloudState = .idle
+            return nil
+        }
+        guard hasAccess else {
+            iCloudState = .requiresAccess
+            return nil
+        }
         let id = UUID()
         cloudID = id
-        let planBytes = iCloudPlanBytes
+        cloudPlanBytes = planBytes
+        let previous = iCloudState == .loading ? .idle : iCloudState
+        if iCloudStorage == nil { iCloudState = .loading }
         let task = Task { [self] in
             defer {
-                if cloudID == id { cloudTask = nil; cloudID = nil }
+                if cloudID == id {
+                    if iCloudState == .loading { iCloudState = previous }
+                    cloudTask = nil
+                    cloudID = nil
+                }
             }
             let storage = try? await service.iCloudStorage(planBytes: planBytes)
             guard cloudID == id, !Task.isCancelled else { return }
-            iCloudStorage = storage
+            guard showsICloudOnDashboard else { iCloudState = .idle; return }
+            guard hasICloudAccess() else { iCloudState = .requiresAccess; return }
+            iCloudState = storage.map(ICloudState.available) ?? .unavailable
+            if storage != nil { finishICloudSetup() }
         }
         cloudTask = task
         return task

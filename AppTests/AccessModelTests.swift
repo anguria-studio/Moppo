@@ -143,15 +143,23 @@ struct AccessModelTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
         #expect(settings.lowSpaceAlertsEnabled)
+        #expect(settings.showICloudOnDashboard)
+        settings.showICloudOnDashboard = false
         settings.lowSpaceAlertsEnabled = false
         settings.showInMenuBar = false
         settings.scanSchedule = .daily
         let reopened = SettingsStore(defaults: defaults, managesLoginItem: false)
         #expect(!reopened.lowSpaceAlertsEnabled)
         #expect(!reopened.showInMenuBar)
+        #expect(!reopened.showICloudOnDashboard)
         #expect(reopened.scanSchedule == .daily)
+        reopened.hasPendingICloudSetup = true
         reopened.resetToDefaults()
         #expect(reopened.lowSpaceAlertsEnabled)
+        #expect(reopened.showICloudOnDashboard)
+        #expect(!reopened.hasPendingICloudSetup)
+        #expect(!SettingsStore(defaults: defaults, managesLoginItem: false).hasPendingICloudSetup)
+        #expect(SettingsStore(defaults: defaults, managesLoginItem: false).showICloudOnDashboard)
     }
 
     @Test("Skipping disk access opens Storage Explorer without a Cleanup scan")

@@ -258,6 +258,188 @@ struct DashboardModelTests {
         #expect(await service.cloudPlans == [100, 200])
     }
 
+    @Test("Missing cloud access has setup guidance without starting a measurement")
+    func cloudRequiresAccess() async {
+        let service = HeldDashboardMeasurements()
+        let app = AppModel(launchAccess: .limited, hasFullDiskAccess: { false }, dashboardService: service)
+        await app.dashboard.loadICloud()
+        #expect(app.dashboard.iCloudState == .requiresAccess)
+        #expect(await service.cloudPlans.isEmpty)
+        #expect(app.launchAccess == .limited)
+    }
+
+    @Test("Cloud refreshes retain measured storage until the replacement arrives")
+    func cloudRefreshKeepsMeasuredCard() async throws {
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        let initial = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        let measured = ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80)
+        await service.finishCloud(0, measured)
+        await initial.value
+
+        let refresh = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 2 }
+        #expect(model.iCloudState == .available(measured))
+        #expect(model.iCloudStorage == measured)
+        let updated = ICloudStorage(totalBytes: 200, freeBytes: 30, documentsBytes: 90)
+        await service.finishCloud(1, updated)
+        await refresh.value
+        #expect(model.iCloudState == .available(updated))
+    }
+
+    enum ICloudSetupResult: CaseIterable { case missingAccess, failure, success }
+
+    @Test("Pending cloud setup returns to Dashboard after restart and reopens only when needed", arguments: ICloudSetupResult.allCases)
+    func cloudSetupRestart(result: ICloudSetupResult) async throws {
+        let suite = "DashboardCloudTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        #expect(!settings.hasPendingICloudSetup)
+        let original = DashboardModel(service: HeldDashboardMeasurements(), settings: settings)
+        original.beginICloudSetup()
+
+        let reopenedDefaults = try #require(UserDefaults(suiteName: suite))
+        let reopenedSettings = SettingsStore(defaults: reopenedDefaults, managesLoginItem: false)
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let hasAccess = result != .missingAccess
+        let reopened = AppModel(
+            settings: reopenedSettings, launchAccess: hasAccess ? .ready : .limited,
+            hasFullDiskAccess: { hasAccess }, dashboardService: service,
+            dashboardPersistence: HeldDashboardPersistence()
+        )
+        #expect(reopened.view == .dashboard)
+        #expect(reopened.dashboard.hasPendingICloudSetup)
+        #expect(!reopened.dashboard.shouldResumeICloudSetup)
+        reopened.startInitialCleanupScan()
+        #expect(!reopened.cleanup.hasStartedInitialScan)
+        let check = Task { await reopened.dashboard.loadICloud() }
+        if hasAccess {
+            try await waitUntil { await service.cloudPlans.count == 1 }
+            #expect(!reopened.dashboard.shouldResumeICloudSetup)
+            if result == .success {
+                await service.finishCloud(0, ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80))
+            } else {
+                await service.failCloud(0)
+            }
+        }
+        await check.value
+        #expect(await service.cloudPlans.count == (hasAccess ? 1 : 0))
+        #expect(reopened.dashboard.shouldResumeICloudSetup == (result != .success))
+        #expect(reopenedSettings.hasPendingICloudSetup == (result != .success))
+        #expect(SettingsStore(defaults: reopenedDefaults, managesLoginItem: false).hasPendingICloudSetup == (result != .success))
+
+        reopened.dashboard.finishICloudSetup()
+        let finishedSettings = SettingsStore(defaults: reopenedDefaults, managesLoginItem: false)
+        #expect(!finishedSettings.hasPendingICloudSetup)
+        let later = AppModel(settings: finishedSettings, hasFullDiskAccess: { hasAccess }, dashboardService: service)
+        #expect(later.view == .scanner)
+        #expect(!later.dashboard.shouldResumeICloudSetup)
+    }
+
+    @Test("Cloud failures remain visible and a retry restores measured storage")
+    func cloudFailureAndRetry() async throws {
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        #expect(model.iCloudState == .idle)
+        let first = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        #expect(model.iCloudState == .loading)
+        await service.failCloud(0)
+        await first.value
+        #expect(model.iCloudState == .unavailable)
+        #expect(model.iCloudStorage == nil)
+        let retry = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 2 }
+        let storage = ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80)
+        await service.finishCloud(1, storage)
+        await retry.value
+        #expect(model.iCloudState == .available(storage))
+    }
+
+    @Test("Hidden cloud cards skip measurements and reject an active result")
+    func hiddenCloud() async throws {
+        let suite = "DashboardCloudTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence(), settings: settings)
+        settings.showICloudOnDashboard = false
+        await model.loadICloud()
+        #expect(await service.cloudPlans.isEmpty)
+        settings.showICloudOnDashboard = true
+        model.beginICloudSetup()
+        #expect(model.hasPendingICloudSetup)
+        let caller = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        settings.showICloudOnDashboard = false
+        await model.loadICloud()
+        await service.finishCloud(0, ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80))
+        await caller.value
+        #expect(model.iCloudState == .idle)
+        #expect(!model.showsICloudOnDashboard)
+        #expect(!model.hasPendingICloudSetup)
+    }
+
+    @Test("Revoked cloud access rejects an active measurement without reopening onboarding")
+    func revokedCloudAccess() async throws {
+        var hasAccess = true
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let app = AppModel(hasFullDiskAccess: { hasAccess }, dashboardService: service)
+        let caller = Task { await app.dashboard.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        hasAccess = false
+        await service.finishCloud(0, ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80))
+        await caller.value
+        #expect(app.dashboard.iCloudState == .requiresAccess)
+        #expect(!app.isShowingWelcome)
+    }
+
+    @Test("Interrupted cloud measurements return to a state with a recovery action")
+    func interruptedCloud() async throws {
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence(), settings: .preview())
+        model.beginICloudSetup()
+        let caller = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        let pause = Task { await model.pauseMeasurementForScan() }
+        await Task.yield()
+        await service.finishCloud(0, ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80))
+        await pause.value
+        await caller.value
+        #expect(model.iCloudState == .idle)
+        #expect(model.hasPendingICloudSetup)
+        #expect(!model.shouldResumeICloudSetup)
+    }
+
+    @Test("Concurrent cloud reads share a request and automatic plan selection clears the override")
+    func cloudSettingsPlan() async throws {
+        let suite = "DashboardCloudTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        settings.iCloudPlan = .gb200
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence(), settings: settings)
+        model.iCloudPlanBytes = 123
+        let first = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        let duplicate = Task { await model.loadICloud() }
+        await Task.yield()
+        settings.iCloudPlan = .automatic
+        let automatic = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 2 }
+        await service.finishCloud(1, ICloudStorage(totalBytes: 100, freeBytes: 40, documentsBytes: 20))
+        await automatic.value
+        await service.failCloud(0)
+        await first.value
+        await duplicate.value
+        #expect(await service.cloudPlans == [ICloudPlan.gb200.bytes, nil])
+        #expect(model.iCloudStorage?.totalBytes == 100)
+    }
+
     @Test("Late volume reads cannot restore older totals or send stale notifications")
     func volumeReplacement() async throws {
         let service = HeldDashboardMeasurements(holdVolume: true)
@@ -454,7 +636,7 @@ private actor HeldDashboardMeasurements: DashboardMeasuring {
     private(set) var volumeCount = 0
     private(set) var cancelled: [Bool] = []
     private var measurements: [Int: CheckedContinuation<StorageMeasurement, Error>] = [:]
-    private var clouds: [Int: CheckedContinuation<ICloudStorage, Never>] = [:]
+    private var clouds: [Int: CheckedContinuation<ICloudStorage, Error>] = [:]
     private var volumes: [Int: CheckedContinuation<VolumeInfo, Never>] = [:]
     init(holdCloud: Bool = false, holdVolume: Bool = false) {
         self.holdCloud = holdCloud
@@ -482,12 +664,13 @@ private actor HeldDashboardMeasurements: DashboardMeasuring {
     func iCloudStorage(planBytes: Int64?) async throws -> ICloudStorage {
         let index = cloudPlans.count
         cloudPlans.append(planBytes)
-        if holdCloud { return await withCheckedContinuation { clouds[index] = $0 } }
+        if holdCloud { return try await withCheckedThrowingContinuation { clouds[index] = $0 } }
         return ICloudStorage(totalBytes: planBytes ?? 100, freeBytes: 20, documentsBytes: 40)
     }
     func finishMeasurement(_ index: Int, _ value: StorageMeasurement) { measurements.removeValue(forKey: index)?.resume(returning: value) }
     func failMeasurement(_ index: Int) { measurements.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadNoPermission)) }
     func finishCloud(_ index: Int, _ value: ICloudStorage) { clouds.removeValue(forKey: index)?.resume(returning: value) }
+    func failCloud(_ index: Int) { clouds.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadNoPermission)) }
     func finishVolume(_ index: Int, _ value: VolumeInfo) { volumes.removeValue(forKey: index)?.resume(returning: value) }
 }
 

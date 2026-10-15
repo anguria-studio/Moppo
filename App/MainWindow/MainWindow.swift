@@ -5,6 +5,7 @@ import MoppoCore
 struct MainWindow: View {
     @Bindable var model: AppModel
     var settings: SettingsStore?
+    var access: AccessModel?
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -203,7 +204,7 @@ struct MainWindow: View {
                     model: model.dashboard,
                     scanResults: model.cleanup.scanResults, lastScanAt: model.cleanup.lastScanFinishedAt,
                     onShowScanner: model.showScanner, onScan: { model.cleanup.startScan() },
-                    onRevealGrowth: model.revealGrowth, settings: settings
+                    onRevealGrowth: model.revealGrowth, settings: settings, access: access
                 )
             case .scanner:
                 ScannerView(

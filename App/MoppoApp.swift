@@ -81,6 +81,7 @@ struct MoppoApp: App {
                 settings: settings,
                 access: access,
                 updates: updates,
+                dashboard: model.dashboard,
                 categorySizes: model.categorySizes,
                 onRebuildIndex: {
                     Task { await model.dashboard.rebuildSizeIndex() }
@@ -318,7 +319,7 @@ private struct WelcomeRoot: View {
                     model.finishWelcomeGuide(folder: folder)
                 }
             } else {
-                MainWindow(model: model, settings: settings)
+                MainWindow(model: model, settings: settings, access: access)
             }
         }
     }

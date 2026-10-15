@@ -16,6 +16,8 @@ struct DashboardView: View {
     var onRevealGrowth: (GrowthAttribution) -> Void = { _ in }
     /// Optional so previews and the Scanner's empty state need not supply one.
     var settings: SettingsStore?
+    var access: AccessModel?
+    @State private var showsICloudSetup = false
 
     var body: some View {
         ScrollView {
@@ -47,7 +49,10 @@ struct DashboardView: View {
                 StatTiles(
                     results: scanResults,
                     lastScanAt: lastScanAt,
-                    iCloudStorage: model.iCloudStorage,
+                    iCloudState: model.showsICloudOnDashboard ? model.iCloudState : nil,
+                    onICloudSetup: { showsICloudSetup = true },
+                    onICloudRetry: { Task { await model.loadICloud() } },
+                    onICloudHide: { settings?.showICloudOnDashboard = false },
                     // The tiles are a summary of the scan; the scan's own page is
                     // where its rows live, so a tile opens the Scanner on the list
                     // it counted rather than a page of its own.
@@ -88,6 +93,14 @@ struct DashboardView: View {
         .task(id: settings?.iCloudPlan) {
             model.iCloudPlanBytes = settings?.iCloudPlan.bytes
             await model.loadICloud()
+            guard !Task.isCancelled else { return }
+            if model.shouldResumeICloudSetup { showsICloudSetup = true }
+        }
+        .onChange(of: model.showsICloudOnDashboard) { _, _ in
+            Task { await model.loadICloud() }
+        }
+        .sheet(isPresented: $showsICloudSetup) {
+            ICloudSetupView(model: model, access: access)
         }
     }
 
