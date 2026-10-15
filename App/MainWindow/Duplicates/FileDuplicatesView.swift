@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 /// Reviews files that match by size, hashes, and a final byte comparison.
 struct FileDuplicatesView: View {
     @Bindable var model: FileDuplicatesModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     @State private var review = FileDuplicateReviewState()
@@ -246,7 +247,9 @@ struct FileDuplicatesView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Button {
-                        review.toggleGroup(group)
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                            review.toggleGroup(group)
+                        }
                         if !isCollapsed, files.contains(where: { $0.url == previewURL }) {
                             previewURL = nil
                         }
@@ -298,14 +301,17 @@ struct FileDuplicatesView: View {
                 .background(Token.Fill.groupHeader, in: Rectangle())
 
                 if !isCollapsed {
-                    Divider()
-                    ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
-                        fileRow(file, group: group)
-                            .id(file.id)
-                        if index < files.count - 1 {
-                            Rectangle().fill(Token.Fill.boxBorder).frame(height: Token.hairline)
+                    VStack(spacing: 0) {
+                        Divider()
+                        ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
+                            fileRow(file, group: group)
+                                .id(file.id)
+                            if index < files.count - 1 {
+                                Rectangle().fill(Token.Fill.boxBorder).frame(height: Token.hairline)
+                            }
                         }
                     }
+                    .transition(reduceMotion ? .identity : .opacity)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
