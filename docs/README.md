@@ -119,6 +119,9 @@ App/                          SwiftUI app
   Cleanup/                   Cleanup model, services, and scheduler
   Dashboard/                 Dashboard model and measurement services
   DesignSystem/              Shared controls, colors, text styles, and application icons
+    Mascot/                  Moppo motion, beams, and acts
+      Beams/                 Scan beams, deletion rays, and floor light
+      Acts/                  One file for each act, and the act protocol
   Duplicates/                File duplicate model
   MainWindow/                Main views, sidebar, and sheets
   Photos/                    Photo model, PhotoKit access, and thumbnails
@@ -573,6 +576,34 @@ unified toolbar, and `.bar` in a `safeAreaInset`. The app does not draw gradient
 
 Colours resolve to `NSColor` semantics so the app follows the user's accent choice
 and Increase Contrast. Three literals survive, for shades AppKit has no name for.
+
+## Moppo acts
+
+Moppo can play a short act during some scans.
+Most scans show one act.
+`MascotActScheduler` applies these rules:
+
+- An act never starts in the first 5 seconds of an operation.
+- Each operation has a 3 in 4 chance to get an act.
+- Each operation gets one act at most.
+- An act starts only after the beams have been off for a pause.
+- After an act ends, no other act starts in the app for 30 seconds.
+- After an act, the beams wait for a full rest before they fire again.
+- With Reduce Motion on, Moppo does not move, and no act plays.
+
+Each scan has its own set of acts:
+
+| Screen | Acts |
+| --- | --- |
+| Cleanup scan | Magnifying lens, radar ping, peek, barcode, binoculars, and a rare Sauron eye |
+| Photo duplicate scan | Duplicates split, yawn after 60 seconds, binoculars, magnifying lens, and peek |
+| File duplicate scan | Duplicates split and peek |
+| Large deletion | None |
+
+The beams are not acts. They fire on their normal schedule.
+Short operations show the hourglass mode.
+In this mode, Moppo turns into an hourglass until the operation ends.
+With Reduce Motion on, these operations show the static hourglass symbol.
 
 ## Writing
 

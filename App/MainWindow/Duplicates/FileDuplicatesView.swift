@@ -86,6 +86,7 @@ struct FileDuplicatesView: View {
             detail: progressLabel,
             progress: model.progress?.fractionCompleted,
             isInterrupting: model.isInterrupting,
+            icon: .mascot(.fileDuplicateScanning),
             onStop: { model.cancelScan() }
         )
     }

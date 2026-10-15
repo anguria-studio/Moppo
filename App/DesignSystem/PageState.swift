@@ -25,6 +25,16 @@ extension PageState where Actions == EmptyView {
     }
 }
 
+/// Shows Moppo in the icon area of a page state.
+struct PageStateMascot: View {
+    let mode: MoppoMascotView.Mode
+
+    var body: some View {
+        MoppoMascotView(mode: mode)
+            .frame(width: PageStateMetrics.iconAreaSize, height: PageStateMetrics.iconAreaSize)
+    }
+}
+
 /// Supports longer messages and short windows without hiding actions.
 struct PageStateLayout<Icon: View, Detail: View, Actions: View>: View {
     let title: String

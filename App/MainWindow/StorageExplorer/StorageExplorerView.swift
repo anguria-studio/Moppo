@@ -129,10 +129,13 @@ struct StorageExplorerView: View {
         if model.currentURL == nil {
             startView
         } else if model.needsRefresh {
-            PageState(
-                title: "Waiting for the Current Operation", symbol: "hourglass",
-                detail: "Finish or stop the current operation to measure this folder again."
-            )
+            PageStateLayout(title: "Waiting for the Current Operation") {
+                PageStateMascot(mode: .hourglass)
+            } detail: {
+                Text("Finish or stop the current operation to measure this folder again.")
+            } actions: {
+                EmptyView()
+            }
         } else if model.wasCancelled {
             cancelledView
         } else if let error = model.error {
