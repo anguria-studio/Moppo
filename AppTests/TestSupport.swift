@@ -18,6 +18,42 @@ func waitUntil(
     try #require(await condition(), "The operation did not finish before the deadline.", sourceLocation: sourceLocation)
 }
 
+/// Sends a keyboard event to a test window.
+@MainActor
+func sendKey(
+    _ characters: String, code: UInt16, to window: NSWindow
+) throws {
+    let event = try #require(NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: window.windowNumber, context: nil,
+        characters: characters, charactersIgnoringModifiers: characters,
+        isARepeat: false, keyCode: code
+    ))
+    NSApp.sendEvent(event)
+}
+
+/// Counts focus pixels with the accent color at the sidebar edge.
+@MainActor
+func sidebarFocusRingPixels(in host: NSView) throws -> Int {
+    host.layoutSubtreeIfNeeded()
+    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+    host.cacheDisplay(in: host.bounds, to: bitmap)
+    var accent: NSColor?
+    host.effectiveAppearance.performAsCurrentDrawingAppearance {
+        accent = NSColor.controlAccentColor.usingColorSpace(bitmap.colorSpace)
+    }
+    let color = try #require(accent)
+    let x = Int(11 * CGFloat(bitmap.pixelsWide) / host.bounds.width)
+    return (0..<bitmap.pixelsHigh).count { y in
+        guard let pixel = bitmap.colorAt(x: x, y: y) else { return false }
+        return pixel.alphaComponent > 0.9
+            && abs(pixel.redComponent - color.redComponent) < 0.06
+            && abs(pixel.greenComponent - color.greenComponent) < 0.06
+            && abs(pixel.blueComponent - color.blueComponent) < 0.06
+    }
+}
+
+
 /// Holds an asynchronous call until the test releases it.
 actor TestGate {
     private var continuation: CheckedContinuation<Void, Never>?

@@ -21,6 +21,7 @@ struct MainWindow: View {
         .background(Token.shell.ignoresSafeArea())
         // Native title bar layout keeps the window controls aligned during resizing.
         .background(WindowChrome())
+        .modifier(KeyboardFocusVisibility())
         .disabled(!showsAppUninstallDetail && (model.activity != nil
                   || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil))
         // Keep the scroll view enabled so its scrollbar keeps the same width.

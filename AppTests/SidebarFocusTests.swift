@@ -15,6 +15,7 @@ struct SidebarFocusTests {
             SidebarView(model: model).frame(width: Token.Size.sidebarWidth)
             Color.clear.frame(width: 200, height: 640)
         }
+        .modifier(KeyboardFocusVisibility())
         .background(dark ? Color.black : Color.white)
         .environment(\.colorScheme, dark ? .dark : .light))
         let window = NSWindow(
@@ -31,52 +32,52 @@ struct SidebarFocusTests {
         window.makeKeyAndOrderFront(nil)
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
-        #expect(try focusRingPixels(in: host) == 0)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
 
         // Programmatic navigation moves focus without starting keyboard navigation.
         model.view = .scanner
         try await Task.sleep(for: .milliseconds(100))
-        #expect(try focusRingPixels(in: host) == 0)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
         try sendKey("\u{F701}", code: 125, to: window)
         try await waitUntil { model.view == .storageExplorer }
         try await Task.sleep(for: .milliseconds(100))
-        #expect(try focusRingPixels(in: host) > 20)
+        #expect(try sidebarFocusRingPixels(in: host) > 20)
 
         try click(NSPoint(x: Token.Size.sidebarWidth + 100, y: 320), in: host, window: window)
         model.view = .scanner
         try await waitUntil { model.view == .scanner }
         try await Task.sleep(for: .milliseconds(100))
-        #expect(try focusRingPixels(in: host) == 0)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
 
         model.cleanup.startScan(automatic: true, refreshOverview: false)
         try await waitUntil { await scanner.requestCount == 1 }
         await scanner.report(0, percent: 42)
         try await waitUntil { model.cleanup.scanProgress == 42 }
-        #expect(try focusRingPixels(in: host) == 0)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
         await scanner.finish(0, results: .init(categories: [], startedAt: Date(), finishedAt: Date()))
         _ = await model.cleanup.waitForScan()
-        #expect(try focusRingPixels(in: host) == 0)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
 
         // Tab starts keyboard navigation even when the page changes on the next turn.
         try sendKey("\t", code: 48, to: window)
         model.view = .dashboard
         try await Task.sleep(for: .milliseconds(100))
-        #expect(try focusRingPixels(in: host) > 20)
+        #expect(try sidebarFocusRingPixels(in: host) > 20)
         for (characters, code) in [(" ", UInt16(49)), ("\r", UInt16(36))] {
             try sendKey(characters, code: code, to: window)
             try await Task.sleep(for: .milliseconds(100))
             #expect(model.view == .dashboard)
-            #expect(try focusRingPixels(in: host) > 20)
+            #expect(try sidebarFocusRingPixels(in: host) > 20)
         }
 
         // A click on the selected row must also clear keyboard focus styling.
         try click(NSPoint(x: 100, y: 244), in: host, window: window)
         try await Task.sleep(for: .milliseconds(100))
         #expect(model.view == .dashboard)
-        #expect(try focusRingPixels(in: host) == 0)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
     }
 
-    @Test("Page navigation moves keyboard input, and scan progress keeps the current responder")
+    @Test("Sidebar traversal reaches page input and preserves its focus")
     func pageNavigation() async throws {
         _ = NSApplication.shared
         let scanner = HeldCleanupScanner()
@@ -86,7 +87,8 @@ struct SidebarFocusTests {
         let host = NSHostingView(rootView: VStack {
             SidebarView(model: model)
             TextField("Test input", text: Binding(get: { text }, set: { text = $0 }))
-        }.frame(width: Token.Size.sidebarWidth))
+        }.frame(width: Token.Size.sidebarWidth)
+        .modifier(KeyboardFocusVisibility()))
         let window = NSWindow(
             contentRect: NSRect(x: 100, y: 100, width: Token.Size.sidebarWidth, height: 640),
             styleMask: [.titled], backing: .buffered, defer: false
@@ -114,34 +116,66 @@ struct SidebarFocusTests {
         // Finish the navigation layout before the user moves focus into the page.
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
-        // Other native tests can open key windows. Keep this window's responder independent.
+        // Native key view actions also work when another test has the key window.
         window.orderOut(nil)
+        window.selectNextKeyView(nil)
+        try await Task.sleep(for: .milliseconds(100))
         let field = try #require(textField(in: host))
-        #expect(window.makeFirstResponder(field))
-        let responder = try #require(window.firstResponder)
+        let responder = try #require(field.currentEditor())
+        #expect(window.firstResponder === responder)
+        model.view = .history
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(window.firstResponder === responder)
         model.cleanup.startScan(automatic: true, refreshOverview: false)
         try await waitUntil { await scanner.requestCount == 1 }
         await scanner.report(0, percent: 42)
         try await waitUntil { model.cleanup.scanProgress == 42 }
         #expect(window.firstResponder === responder)
-        #expect(model.view == .duplicates)
+        #expect(model.view == .history)
         model.cleanup.cancelScan()
         await scanner.fail(0)
         _ = await model.cleanup.waitForScan()
         #expect(window.firstResponder === responder)
-        #expect(model.view == .duplicates)
+        #expect(model.view == .history)
     }
 
-    private func sendKey(
-        _ characters: String, code: UInt16, to window: NSWindow
-    ) throws {
-        let event = try #require(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-            windowNumber: window.windowNumber, context: nil,
-            characters: characters, charactersIgnoringModifiers: characters,
-            isARepeat: false, keyCode: code
-        ))
-        NSApp.sendEvent(event)
+    @Test("Mouse input hides a page outline without clearing keyboard focus")
+    func pageFocusVisibility() async throws {
+        _ = NSApplication.shared
+        var showsFocus = false
+        let host = NSHostingView(rootView: PageFocusProbe(
+            onVisibility: { showsFocus = $0 }
+        ).modifier(KeyboardFocusVisibility()))
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 320, height: 200),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        window.makeKeyAndOrderFront(nil)
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(!showsFocus)
+        let responder = try #require(window.firstResponder as? NSView)
+
+        try sendKey("\t", code: 48, to: window)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(showsFocus)
+        #expect(window.firstResponder === responder)
+
+        try click(NSPoint(x: 300, y: 180), in: host, window: window)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(!showsFocus)
+        #expect(window.firstResponder === responder)
+
+        try sendKey("\t", code: 48, to: window)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(showsFocus)
+        #expect(window.firstResponder === responder)
     }
 
     private func click(_ point: NSPoint, in host: NSView, window: NSWindow) throws {
@@ -155,27 +189,23 @@ struct SidebarFocusTests {
         }
     }
 
-    private func focusRingPixels(in host: NSView) throws -> Int {
-        host.layoutSubtreeIfNeeded()
-        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: bitmap)
-        var accent: NSColor?
-        host.effectiveAppearance.performAsCurrentDrawingAppearance {
-            accent = NSColor.controlAccentColor.usingColorSpace(bitmap.colorSpace)
-        }
-        let color = try #require(accent)
-        let x = Int(11 * CGFloat(bitmap.pixelsWide) / host.bounds.width)
-        return (0..<bitmap.pixelsHigh).count { y in
-            guard let pixel = bitmap.colorAt(x: x, y: y) else { return false }
-            return pixel.alphaComponent > 0.9
-                && abs(pixel.redComponent - color.redComponent) < 0.06
-                && abs(pixel.greenComponent - color.greenComponent) < 0.06
-                && abs(pixel.blueComponent - color.blueComponent) < 0.06
-        }
-    }
-
     private func textField(in view: NSView) -> NSTextField? {
         if let field = view as? NSTextField { return field }
         return view.subviews.lazy.compactMap { textField(in: $0) }.first
+    }
+}
+
+private struct PageFocusProbe: View {
+    let onVisibility: (Bool) -> Void
+    @Environment(\.isFocusEffectEnabled) private var showsFocus
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        Button("Page action") {}
+            .buttonStyle(PageActionButtonStyle())
+            .focused($isFocused)
+            .frame(width: 320, height: 200, alignment: .topLeading)
+            .onAppear { isFocused = true }
+            .onChange(of: showsFocus, initial: true) { _, value in onVisibility(value) }
     }
 }

@@ -207,6 +207,12 @@ private final class CompactNativeTable: NSTableView {
     var contextActions: (IndexSet) -> [CompactTableMenuAction] = { _ in [] }
     private var actions: [CompactTableMenuAction] = []
 
+    override func mouseDown(with event: NSEvent) {
+        // Row clicks must transfer keyboard input from SwiftUI navigation.
+        window?.makeFirstResponder(self)
+        super.mouseDown(with: event)
+    }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let row = row(at: convert(event.locationInWindow, from: nil))
         guard row >= 0 else { return nil }
