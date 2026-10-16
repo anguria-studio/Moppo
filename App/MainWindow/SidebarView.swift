@@ -8,9 +8,9 @@ struct SidebarView: View {
 
     /// Shows selection before the destination finishes its first layout.
     @State private var pendingView: AppModel.View?
-    @FocusState private var focusedView: AppModel.View?
+    @FocusState private var sidebarIsFocused: Bool
     @AccessibilityFocusState(for: .voiceOver) private var voiceOverView: AppModel.View?
-    @State private var showsKeyboardFocus = false
+    @Environment(\.isFocusEffectEnabled) private var showsKeyboardFocus
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,28 +38,27 @@ struct SidebarView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 10)
             }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($sidebarIsFocused)
             .onKeyPress(keys: [.upArrow, .downArrow]) { press in
-                showsKeyboardFocus = true
                 let views = AppModel.View.sidebarViews
-                guard let index = views.firstIndex(of: focusedView ?? pendingView ?? model.view) else { return .ignored }
+                guard let index = views.firstIndex(of: pendingView ?? model.view) else { return .ignored }
                 let next = index + (press.key == .upArrow ? -1 : 1)
                 if views.indices.contains(next) { select(views[next]) }
                 return .handled
             }
             .onKeyPress(keys: [.space, .return]) { _ in
-                guard let focusedView else { return .ignored }
-                showsKeyboardFocus = true
-                select(focusedView)
+                guard sidebarIsFocused else { return .ignored }
+                select(pendingView ?? model.view)
                 return .handled
             }
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Sidebar")
         }
-        .background(SidebarInputObserver(showsKeyboardFocus: $showsKeyboardFocus))
+        .onAppear { sidebarIsFocused = true }
         .onChange(of: model.view) { _, view in
             pendingView = nil
-            // Page actions and menu commands use the same focus destination as sidebar navigation.
-            focusedView = view
             voiceOverView = view
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { capacityFooter }
@@ -93,20 +92,18 @@ struct SidebarView: View {
         // Mouse selection starts on press. The button also supports keyboard activation.
         .onLongPressGesture(minimumDuration: 0, maximumDistance: 4) { isPressing in
             if isPressing {
-                showsKeyboardFocus = false
                 select(view)
             }
         } perform: {}
-        .focusable()
-        .focusEffectDisabled()
-        .focused($focusedView, equals: view)
+        // The sidebar provides one Tab stop. Arrow keys select its pages.
+        .focusable(false)
         .accessibilityFocused($voiceOverView, equals: view)
         .background(
             RoundedRectangle(cornerRadius: Token.Radius.sidebarRow, style: .continuous)
                 .fill(isSelected(view) ? Token.Fill.sidebarSelection : .clear)
         )
         .overlay {
-            if showsKeyboardFocus, focusedView == view {
+            if showsKeyboardFocus, sidebarIsFocused, isSelected(view) {
                 RoundedRectangle(cornerRadius: Token.Radius.sidebarRow, style: .continuous)
                     .strokeBorder(Token.color(.accent), lineWidth: 2)
             }
@@ -131,7 +128,7 @@ struct SidebarView: View {
     }
 
     private func select(_ view: AppModel.View) {
-        focusedView = view
+        sidebarIsFocused = true
         guard (pendingView ?? model.view) != view else { return }
         pendingView = view
         Task { @MainActor in
@@ -203,52 +200,6 @@ struct SidebarView: View {
             return items > 0 ? items : nil
         default:
             return nil
-        }
-    }
-}
-
-/// Tracks the input method without consuming window events.
-private struct SidebarInputObserver: NSViewRepresentable {
-    @Binding var showsKeyboardFocus: Bool
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.install(in: view)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.onInput = { showsKeyboardFocus = $0 }
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.stop()
-    }
-
-    @MainActor
-    final class Coordinator {
-        var onInput: ((Bool) -> Void)?
-        private var monitor: Any?
-
-        func install(in view: NSView) {
-            monitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
-            ) { [weak self, weak view] event in
-                MainActor.assumeIsolated {
-                    guard let window = view?.window,
-                          event.window === window || (event.window == nil && window.isKeyWindow)
-                    else { return }
-                    self?.onInput?(event.type == .keyDown)
-                }
-                return event
-            }
-        }
-
-        func stop() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
         }
     }
 }

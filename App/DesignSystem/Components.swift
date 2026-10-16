@@ -649,6 +649,63 @@ struct SidebarBackground: View {
     }
 }
 
+/// Shows focus outlines during keyboard input and hides them after mouse input.
+struct KeyboardFocusVisibility: ViewModifier {
+    @State private var showsKeyboardFocus = false
+
+    func body(content: Content) -> some View {
+        content
+            .focusEffectDisabled(!showsKeyboardFocus)
+            .background(KeyboardInputObserver(showsKeyboardFocus: $showsKeyboardFocus))
+    }
+}
+
+/// Tracks the input method without consuming window events.
+private struct KeyboardInputObserver: NSViewRepresentable {
+    @Binding var showsKeyboardFocus: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.install(in: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onInput = { showsKeyboardFocus = $0 }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stop()
+    }
+
+    @MainActor
+    final class Coordinator {
+        var onInput: ((Bool) -> Void)?
+        private var monitor: Any?
+
+        func install(in view: NSView) {
+            monitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+            ) { [weak self, weak view] event in
+                MainActor.assumeIsolated {
+                    guard let window = view?.window,
+                          event.window === window || (event.window == nil && window.isKeyWindow)
+                    else { return }
+                    self?.onInput?(event.type == .keyDown)
+                }
+                return event
+            }
+        }
+
+        func stop() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+    }
+}
+
 /// Uses native title bar layout to align the window controls with the header.
 /// Native title bar dragging and WindowDragHandle keep empty header space movable.
 struct WindowChrome: NSViewRepresentable {
@@ -760,7 +817,15 @@ struct PageActionSurface: ViewModifier {
             .padding(.horizontal, size.horizontalPadding)
             .frame(minHeight: size.height)
             .foregroundStyle(isEnabled ? (foreground ?? (tint == nil ? Token.Text.primary : Color.white)) : Token.Text.disabled)
-            .background(isEnabled ? (tint ?? (isHovering ? Token.Fill.buttonHover : fill)) : Token.Fill.controlDisabled, in: Capsule())
+            .background {
+                Capsule()
+                    .fill(isEnabled ? (tint ?? (isHovering ? Token.Fill.buttonHover : fill)) : Token.Fill.controlDisabled)
+                    .overlay {
+                        if tint != nil {
+                            Capsule().fill(.black.opacity(isEnabled && isHovering ? 0.08 : 0))
+                        }
+                    }
+            }
             .overlay {
                 Capsule().strokeBorder(
                     isEnabled && tint == nil ? border : .clear,

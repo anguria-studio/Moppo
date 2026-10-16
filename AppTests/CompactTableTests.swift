@@ -1,4 +1,5 @@
 import AppKit
+import MoppoCore
 import SwiftUI
 import Testing
 
@@ -85,6 +86,81 @@ struct CompactTableTests {
             #expect(selection == expected)
             #expect(NSApp.sendAction(try #require(action.action), to: action.target, from: action))
             #expect(menuSelection == expected)
+        }
+    }
+
+    @Test("Clicking a selected Storage Explorer row transfers arrow navigation from the sidebar")
+    func rowClickFocus() async throws {
+        _ = NSApplication.shared
+        let model = AppModel(hasFullDiskAccess: { false })
+        model.view = .storageExplorer
+        let folder = try TemporaryFolder()
+        let items = try (0..<3).map { index in
+            StorageExplorerItem(
+                url: try folder.write("Item \(index).txt"), kind: .file,
+                allocatedBytes: Int64(3 - index), identity: "fixture-\(index)"
+            )
+        }
+        model.storageExplorer.currentURL = folder.url
+        model.storageExplorer.snapshot = StorageExplorerSnapshot(
+            directory: folder.url, items: items, allocatedBytes: 6,
+            fileCount: 3, unreadableCount: 0
+        )
+        let host = NSHostingView(rootView: MainWindow(model: model)
+            .environment(\.scenePhase, .inactive))
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 1120, height: 734),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        window.makeKeyAndOrderFront(nil)
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        let table = try #require(findTable(in: host))
+        // Select the row before sending pointer input to this background window.
+        table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(window.firstResponder !== table)
+
+        try clickRow(1, in: table, window: window)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(model.storageExplorer.selection == [items[1].id])
+        #expect(window.firstResponder === table)
+
+        try sendKey("\u{F701}", code: 125, to: window)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(model.storageExplorer.selection == [items[2].id])
+        #expect(model.view == .storageExplorer)
+        #expect(window.firstResponder === table)
+        #expect(try sidebarFocusRingPixels(in: host) == 0)
+
+        try sendKey("\u{F700}", code: 126, to: window)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(model.storageExplorer.selection == [items[1].id])
+        #expect(model.view == .storageExplorer)
+    }
+
+    private func clickRow(_ row: Int, in table: NSTableView, window: NSWindow) throws {
+        let frame = table.rect(ofRow: row)
+        let location = table.convert(NSPoint(x: frame.minX + 30, y: frame.midY), to: nil)
+        let down = try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown, location: location, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        ))
+        let up = try #require(NSEvent.mouseEvent(
+            with: .leftMouseUp, location: location, modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 0
+        ))
+        // Native tables track the pointer until they receive the release event.
+        NSApp.postEvent(up, atStart: true)
+        table.mouseDown(with: down)
+        if let release = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true) {
+            NSApp.sendEvent(release)
         }
     }
 
