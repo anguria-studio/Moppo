@@ -1,16 +1,7 @@
 import SwiftUI
 import MoppoCore
 
-/// The Dashboard's "what grew" card: what changed since a dated measurement, and
-/// where.
-///
-/// Figures compare measurements made under the same rules.
-/// The card shows an empty state until a comparison is available.
-///
-/// The card is dated history, not live data. A measurement in progress therefore
-/// leaves it exactly as it is — there is no measuring state and no skeleton. The
-/// report on screen was true when it was made, and it stays true while the next
-/// walk runs.
+/// Shows dated storage comparisons and cleanup measurement guidance.
 struct GrowthCard: View {
 
     /// Everything the card draws.
@@ -22,6 +13,7 @@ struct GrowthCard: View {
     enum Presentation: Equatable {
         case report(Report)
         case insufficientHistory
+        case notComparable
     }
 
     struct Report: Equatable {
@@ -37,6 +29,12 @@ struct GrowthCard: View {
     let baseline: GrowthBaseline
     var lastScanAt: Date? = nil
     var canCompareSinceCleanup = true
+    var cleanupMeasurementState: DashboardModel.CleanupMeasurementState = .none
+    var cleanupBaselineDate: Date? = nil
+    var hasLaterCleanupMeasurement = false
+    var isRefreshing = false
+    var onRefresh: () -> Void = {}
+    var onOpenDiskAccess: () -> Void = {}
     var onSelectBaseline: (GrowthBaseline) -> Void = { _ in }
     var onReveal: (GrowthAttribution) -> Void = { _ in }
 
@@ -52,6 +50,7 @@ struct GrowthCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 content
+                cleanupGuidance
             }
             .padding(.vertical, 18)
             .padding(.horizontal, 20)
@@ -126,7 +125,60 @@ struct GrowthCard: View {
         case .report(let report):
             reportBody(report)
         case .insufficientHistory:
-            message("Collecting storage history.", hint: "Storage changes appear once enough measurements are available.")
+            message("No storage comparison yet.", hint: "Storage changes need two measurements with the same access and settings.")
+        case .notComparable:
+            message("These measurements cannot be compared.", hint: "Storage changes need measurements with the same access and settings.")
+        }
+    }
+
+    @ViewBuilder
+    private var cleanupGuidance: some View {
+        if let guidance = cleanupGuidanceText {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(guidance)
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if cleanupMeasurementState == .requiresAccess {
+                    Button("Open Full Disk Access", action: onOpenDiskAccess)
+                        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
+                } else if cleanupMeasurementState == .failed || cleanupMeasurementState == .interrupted {
+                    Button("Refresh Storage", action: onRefresh)
+                        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
+                        .disabled(isRefreshing)
+                        .accessibilityHint("Update current storage. This does not create a cleanup baseline.")
+                }
+                if let cleanupBaselineDate, cleanupMeasurementState != .none {
+                    Text("The available cleanup comparison starts at \(Self.stamp(cleanupBaselineDate)).")
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.secondary)
+                }
+            }
+            .padding(.top, 12)
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private var cleanupGuidanceText: String? {
+        switch cleanupMeasurementState {
+        case .measuring:
+            "Measuring storage after cleanup."
+        case .requiresAccess:
+            "The latest cleanup has no storage measurement. Enable Full Disk Access before the next cleanup to save its comparison baseline."
+        case .failed:
+            "The storage measurement after cleanup failed. Refresh updates current storage. The next cleanup will try to save a new comparison baseline."
+        case .interrupted:
+            "The storage measurement after cleanup stopped. Refresh updates current storage. The next cleanup will try to save a new comparison baseline."
+        case .cleared:
+            "Storage history was cleared. The next cleanup starts a new cleanup comparison."
+        case .none:
+            if cleanupBaselineDate == nil {
+                "Since last cleanup needs a storage measurement immediately after removal. No cleanup baseline is available."
+            } else if baseline == .lastCleanup && !hasLaterCleanupMeasurement {
+                "Cleanup baseline saved. Changes appear after the next storage measurement."
+            } else {
+                nil
+            }
         }
     }
 
@@ -202,7 +254,9 @@ extension GrowthCard.Presentation {
                 classDeltas: report.classDeltas,
                 attributions: Self.oneRowPerEvent(report.attributions)
             ))
-        case .notComparable, .insufficientHistory:
+        case .notComparable:
+            self = .notComparable
+        case .insufficientHistory:
             self = .insufficientHistory
         }
     }

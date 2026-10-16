@@ -22,7 +22,7 @@ protocol DashboardPersisting: Sendable {
     func saveCache(_ cache: BreakdownCache) async
     func clearCache() async
     func loadHistory() async -> [StorageSnapshot]
-    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) async -> [StorageSnapshot]
+    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) async throws -> [StorageSnapshot]
     func clearHistory() async
 }
 
@@ -38,11 +38,16 @@ actor DashboardPersistence: DashboardPersisting {
     func saveCache(_ cache: BreakdownCache) { cache.save() }
     func clearCache() { BreakdownCache.clear() }
     func loadHistory() -> [StorageSnapshot] { snapshots.load() }
-    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) -> [StorageSnapshot] {
-        if let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) {
-            try? snapshots.save(snapshot)
+    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) throws -> [StorageSnapshot] {
+        guard let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) else {
+            throw CocoaError(.fileReadCorruptFile)
         }
-        return snapshots.load()
+        try snapshots.save(snapshot)
+        let history = snapshots.load()
+        guard history.contains(where: { $0.id == snapshot.id }) else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return history
     }
     func clearHistory() { try? snapshots.clear() }
 }

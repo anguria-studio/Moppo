@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import MoppoCore
 
@@ -113,4 +114,26 @@ actor HeldCleanupScanner: CleanupScanning {
 func nativeButtons(in view: NSView) -> [NSButton] {
     if let button = view as? NSButton { return [button] }
     return view.subviews.flatMap(nativeButtons)
+}
+
+/// Renders a native view for layout checks and visual review.
+@MainActor
+func renderTestView<V: View>(_ view: V, width: CGFloat, dark: Bool, output: URL) async throws -> CGSize {
+    let host = NSHostingView(rootView: view
+        .environment(\.colorScheme, dark ? .dark : .light)
+        .frame(width: width).fixedSize(horizontal: false, vertical: true))
+    let height = host.fittingSize.height
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+        styleMask: [.borderless], backing: .buffered, defer: false)
+    window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    window.contentView = host
+    defer { window.contentView = nil }
+    host.layoutSubtreeIfNeeded()
+    try await Task.sleep(for: .milliseconds(100))
+    host.layoutSubtreeIfNeeded()
+    let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+    host.cacheDisplay(in: host.bounds, to: bitmap)
+    let png = try #require(bitmap.representation(using: .png, properties: [:]))
+    try png.write(to: output)
+    return host.fittingSize
 }

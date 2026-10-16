@@ -22,44 +22,28 @@ struct ICloudPresentationTests {
             }
             .padding(24)
             .background(Token.pageBackground)
-            let size = try await render(cards, width: width, dark: dark, name: "cards-\(Int(width))")
+            let size = try await renderTestView(cards, width: width, dark: dark, output: imageURL("cards-\(Int(width))", dark: dark))
             #expect(abs(size.width - width) < 0.5)
             #expect(size.height < 1100)
         }
         let model = DashboardModel()
         let sheet = ICloudSetupView(model: model, access: .preview())
-        let sheetSize = try await render(sheet, width: 560, dark: dark, name: "setup")
+        let sheetSize = try await renderTestView(sheet, width: 560, dark: dark, output: imageURL("setup", dark: dark))
         #expect(sheetSize.height < 540)
         let unavailable = DashboardModel(service: UnavailableICloudMeasurements())
         await unavailable.loadICloud()
         let recoverySheet = ICloudSetupView(model: unavailable, access: .preview(disk: true))
-        let recoverySize = try await render(recoverySheet, width: 560, dark: dark, name: "setup-account")
+        let recoverySize = try await renderTestView(recoverySheet, width: 560, dark: dark, output: imageURL("setup-account", dark: dark))
         #expect(recoverySize.height < 540)
         let settings = SettingsStore.preview()
         let preferences = ICloudPreferences(settings: settings, dashboard: model, access: .preview())
             .padding(26).background(Token.pageBackground)
-        let settingsSize = try await render(preferences, width: 660, dark: dark, name: "settings")
+        let settingsSize = try await renderTestView(preferences, width: 660, dark: dark, output: imageURL("settings", dark: dark))
         #expect(settingsSize.height < PrefMetrics.paneHeight)
     }
 
-    private func render<V: View>(_ view: V, width: CGFloat, dark: Bool, name: String) async throws -> CGSize {
-        let host = NSHostingView(rootView: view
-            .environment(\.colorScheme, dark ? .dark : .light)
-            .frame(width: width).fixedSize(horizontal: false, vertical: true))
-        let height = host.fittingSize.height
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
-            styleMask: [.borderless], backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        window.contentView = host
-        defer { window.contentView = nil }
-        host.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(100))
-        host.layoutSubtreeIfNeeded()
-        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: bitmap)
-        let png = try #require(bitmap.representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/moppo-189-\(name)-\(dark ? "dark" : "light").png"))
-        return host.fittingSize
+    private func imageURL(_ name: String, dark: Bool) -> URL {
+        URL(fileURLWithPath: "/tmp/moppo-189-\(name)-\(dark ? "dark" : "light").png")
     }
 }
 
