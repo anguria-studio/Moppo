@@ -160,9 +160,11 @@ struct SidebarFocusTests {
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(100))
         #expect(!showsFocus)
-        let responder = try #require(window.firstResponder as? NSView)
+        let field = try #require(textField(in: host))
+        #expect(window.makeFirstResponder(field))
+        let responder = try #require(field.currentEditor())
 
-        try sendKey("\t", code: 48, to: window)
+        try sendKey("\u{F700}", code: 126, to: window)
         try await Task.sleep(for: .milliseconds(100))
         #expect(showsFocus)
         #expect(window.firstResponder === responder)
@@ -172,7 +174,7 @@ struct SidebarFocusTests {
         #expect(!showsFocus)
         #expect(window.firstResponder === responder)
 
-        try sendKey("\t", code: 48, to: window)
+        try sendKey("\u{F700}", code: 126, to: window)
         try await Task.sleep(for: .milliseconds(100))
         #expect(showsFocus)
         #expect(window.firstResponder === responder)
@@ -198,14 +200,11 @@ struct SidebarFocusTests {
 private struct PageFocusProbe: View {
     let onVisibility: (Bool) -> Void
     @Environment(\.isFocusEffectEnabled) private var showsFocus
-    @FocusState private var isFocused: Bool
 
     var body: some View {
-        Button("Page action") {}
-            .buttonStyle(PageActionButtonStyle())
-            .focused($isFocused)
+        TextField("Test input", text: .constant(""))
+            .frame(width: 120)
             .frame(width: 320, height: 200, alignment: .topLeading)
-            .onAppear { isFocused = true }
             .onChange(of: showsFocus, initial: true) { _, value in onVisibility(value) }
     }
 }
