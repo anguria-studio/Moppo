@@ -61,16 +61,18 @@ struct DashboardView: View {
                     onScan: { onScan() }
                 )
 
-                // Below the tiles: the capacity card and the tiles are what the
-                // disk is now, and this is what it did since a date the user picks.
-                // It carries no measuring state — the report is dated history, so it
-                // stays on screen while the next walk runs.
                 if let growth = model.growth {
                     GrowthCard(
                         presentation: GrowthCard.Presentation(growth),
                         baseline: model.growthBaseline,
                         lastScanAt: scanResults?.finishedAt ?? lastScanAt,
                         canCompareSinceCleanup: model.hasCleanupGrowthBaseline,
+                        cleanupMeasurementState: model.cleanupMeasurementState,
+                        cleanupBaselineDate: model.cleanupBaselineDate,
+                        hasLaterCleanupMeasurement: model.hasLaterCleanupMeasurement,
+                        isRefreshing: model.isLoadingBreakdown,
+                        onRefresh: { Task { await model.measureStorage() } },
+                        onOpenDiskAccess: { Task { await access?.performAction(for: .disk) } },
                         onSelectBaseline: { model.growthBaseline = $0 },
                         onReveal: { onRevealGrowth($0) }
                     )

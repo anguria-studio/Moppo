@@ -137,7 +137,7 @@ final class AppModel {
             guard let self else { return }
             switch mutation {
             case .emptyTrash:
-                await self.dashboard.measureStorage(trigger: .removal)
+                await self.dashboard.refreshAfterRemoval()
             case .putBack:
                 if self.checkDiskAccess(automatic: true) { await self.dashboard.measureStorage() }
             }
@@ -392,6 +392,7 @@ final class AppModel {
     }
 
     private func completeTrashRemoval(_ outcome: CleanupOutcome, in destination: View, extraFailures: Int = 0) {
+        if outcome.removedCount > 0 { dashboard.recordCleanup() }
         dashboard.recordTrashRemoval(outcome)
         let remaining = outcome.failed.count + extraFailures
         let success = remaining == 0 && outcome.removedCount > 0
@@ -589,15 +590,14 @@ final class AppModel {
         // Every cached Explorer level is stale too: a folder measured before a
         // Scanner clean-up came back from the cache with its old figure.
         storageExplorer.invalidateCache()
-        if view == .storageExplorer, !storageExplorer.isMeasurementBlocked {
-            storageExplorer.refreshIfNeeded()
-        }
         cleanup.pruneVanishedEntries()
         async let trash: Void = recovery.loadTrash()
         async let history: Void = recovery.loadCleanupHistory()
-        // `removal` marks this measurement as the post-clean-up baseline, which is
-        // what "since the last clean-up" reads and what the ring never thins away.
-        await dashboard.measureStorage(trigger: .removal)
+        // Measure storage before another view starts its refresh.
+        await dashboard.refreshAfterRemoval()
+        if view == .storageExplorer, !storageExplorer.isMeasurementBlocked {
+            storageExplorer.refreshIfNeeded()
+        }
         await trash
         await history
     }
@@ -662,13 +662,7 @@ final class AppModel {
     /// removal the click is answered with a reason rather than starting a second
     /// measurement underneath the first.
     func revealGrowth(_ attribution: GrowthAttribution) {
-        guard !isBusyWithDisk else {
-            report(
-                "Moppo Is Already Measuring",
-                "Wait for the measurement in progress to finish, then open the folder."
-            )
-            return
-        }
+        guard !operations.explainBlockedAction() else { return }
         let url = URL(fileURLWithPath: attribution.path)
         storageExplorer.selectLocation(url.deletingLastPathComponent(), revealing: url)
         view = .storageExplorer
@@ -703,6 +697,9 @@ final class AppModel {
             removalCompletion = nil
             activity = .emptyingTrash(itemCount: count, totalBytes: bytes)
         case .emptiedTrash(let freedBytes, let skippedURLs):
+            if freedBytes > 0 || (recovery.trashSummary?.itemCount ?? 0) > skippedURLs.count {
+                dashboard.recordCleanup()
+            }
             let skipped = skippedURLs.count
             if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             removalCompletion = RemovalCompletion(
@@ -762,7 +759,10 @@ final class AppModel {
                destination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
                 notice = unfinished
             }
-            if destination == .scanner { dashboard.recordTrashRemoval(outcome) }
+            if destination == .scanner {
+                if outcome.removedCount > 0 { dashboard.recordCleanup() }
+                dashboard.recordTrashRemoval(outcome)
+            }
             else { completeTrashRemoval(outcome, in: destination) }
             if view == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,
                outcome.trashedCount == outcome.removedCount, outcome.deletedCount == 0 {

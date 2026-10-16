@@ -190,7 +190,7 @@ struct DashboardModelTests {
         #expect(await persistence.records.count == (stopScan ? 0 : 1))
     }
 
-    @Test("Cleanup drains an active Dashboard measurement and retains a pending removal baseline", arguments: [SnapshotTrigger.manual, .removal])
+    @Test("Cleanup drains an active Dashboard measurement without postponing its cleanup baseline", arguments: [SnapshotTrigger.manual, .removal])
     func scanDrainsDashboard(trigger: SnapshotTrigger) async throws {
         let scanner = HeldCleanupScanner()
         let service = HeldDashboardMeasurements()
@@ -213,7 +213,11 @@ struct DashboardModelTests {
         try await waitUntil { await service.measurementCount == 2 }
         await service.finishMeasurement(1, dashboardMeasurement())
         try await waitUntil { !app.dashboard.isLoadingBreakdown }
-        #expect(await persistence.records == [trigger == .removal ? .removal : .scan])
+        #expect(await persistence.records == [.scan])
+        if trigger == .removal {
+            #expect(app.dashboard.cleanupMeasurementState == .interrupted)
+            #expect(!app.dashboard.hasCleanupGrowthBaseline)
+        }
     }
 
     @Test("Concurrent removal refreshes produce one additional cleanup baseline")
@@ -237,6 +241,142 @@ struct DashboardModelTests {
         #expect(await persistence.records == [.manual, .removal])
         #expect(model.hasCleanupGrowthBaseline)
         #expect(!model.isLoadingBreakdown)
+    }
+
+    @Test("Blocked cleanup measurements survive restart without turning a manual refresh into a cleanup baseline")
+    func blockedCleanupMeasurement() async throws {
+        let suite = "DashboardCleanupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence, defaults: defaults)
+        #expect(model.cleanupMeasurementState == .none)
+        model.canMeasure = { !$0 }
+        model.recordCleanup()
+        await model.refreshAfterRemoval()
+        #expect(model.cleanupMeasurementState == .requiresAccess)
+        #expect(await service.measurementCount == 0)
+        let reopened = DashboardModel(service: service, persistence: persistence, defaults: defaults)
+        #expect(reopened.cleanupMeasurementState == .requiresAccess)
+        let refresh = Task { await reopened.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await refresh.value
+        #expect(await persistence.records == [.manual])
+        #expect(!reopened.hasCleanupGrowthBaseline)
+        #expect(reopened.cleanupMeasurementState == .requiresAccess)
+    }
+
+    @Test("A failed cleanup measurement keeps the earlier baseline and its date", arguments: [false, true])
+    func failedCleanupKeepsBaseline(saveFailure: Bool) async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence)
+        let first = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { await service.measurementCount == 1 }
+        #expect(model.cleanupMeasurementState == .measuring)
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await first.value
+        let originalDate = try #require(model.cleanupBaselineDate)
+        #expect(model.cleanupMeasurementState == .none)
+        #expect(!model.hasLaterCleanupMeasurement)
+        let second = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { await service.measurementCount == 2 }
+        if saveFailure {
+            await persistence.rejectNextRecord()
+            await service.finishMeasurement(1, dashboardMeasurement())
+        } else {
+            await service.failMeasurement(1)
+        }
+        await second.value
+        #expect(model.cleanupMeasurementState == .failed)
+        #expect(model.hasCleanupGrowthBaseline)
+        #expect(model.cleanupBaselineDate == originalDate)
+        let refresh = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 3 }
+        await service.finishMeasurement(2, dashboardMeasurement(free: 300))
+        await refresh.value
+        #expect(await persistence.records == (saveFailure ? [.removal, .removal, .manual] : [.removal, .manual]))
+        #expect(model.cleanupMeasurementState == .failed)
+        #expect(model.cleanupBaselineDate == originalDate)
+        #expect(model.hasLaterCleanupMeasurement)
+    }
+
+    @Test("Queued cleanup measurements retain a reason when access changes or history is cleared", arguments: [false, true])
+    func queuedCleanupCannotBePostponed(clear: Bool) async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence)
+        let first = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        let removal = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { model.cleanupMeasurementState == .measuring }
+        // Let the request join the active measurement before changing its access.
+        await Task.yield()
+        if clear { model.clearMeasurementHistory() }
+        else { model.canMeasure = { !$0 } }
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await first.value
+        await removal.value
+        #expect(model.cleanupMeasurementState == (clear ? .cleared : .requiresAccess))
+        #expect(!model.hasCleanupGrowthBaseline)
+        let refresh = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 2 }
+        await service.finishMeasurement(1, dashboardMeasurement())
+        await refresh.value
+        #expect(await persistence.records.allSatisfy { $0 != .removal })
+        #expect(!model.hasCleanupGrowthBaseline)
+    }
+
+    @Test("Restart reports an interrupted cleanup measurement without restoring its pending work")
+    func cleanupRestart() async throws {
+        let suite = "DashboardCleanupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = DashboardModel(service: HeldDashboardMeasurements(), persistence: HeldDashboardPersistence(), defaults: defaults)
+        model.recordCleanup()
+        let reopened = DashboardModel(service: HeldDashboardMeasurements(), persistence: HeldDashboardPersistence(), defaults: defaults)
+        #expect(reopened.cleanupMeasurementState == .interrupted)
+        reopened.clearMeasurementHistory()
+        let cleared = DashboardModel(service: HeldDashboardMeasurements(), persistence: HeldDashboardPersistence(), defaults: defaults)
+        #expect(cleared.cleanupMeasurementState == .cleared)
+        #expect(!cleared.hasCleanupGrowthBaseline)
+    }
+
+    enum CleanupSource: CaseIterable { case cleanup, uninstaller, explorer, duplicates, emptyTrash }
+
+    @Test("Each removal entry point creates a baseline only after successful removal", arguments: CleanupSource.allCases, [false, true])
+    func cleanupEntryPoints(source: CleanupSource, removed: Bool) async throws {
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let app = AppModel(hasFullDiskAccess: { true }, dashboardService: service, dashboardPersistence: persistence)
+        let outcome = CleanupOutcome(removedBytes: removed ? 100 : 0, removedCount: removed ? 1 : 0, trashedCount: removed ? 1 : 0)
+        let refresh = Task {
+            switch source {
+            case .cleanup:
+                app.view = .scanner
+                app.cleanup.onEvent(.removed(outcome))
+                await app.cleanup.refreshAfterRemoval()
+            case .uninstaller:
+                app.uninstaller.onEvent(.removed(outcome))
+                await app.uninstaller.refreshAfterRemoval()
+            case .explorer:
+                app.storageExplorer.onEvent(.removed(outcome))
+                await app.storageExplorer.refreshAfterRemoval()
+            case .duplicates:
+                app.fileDuplicates.onEvent(.removed(outcome, extraFailures: 0))
+                await app.fileDuplicates.refreshAfterRemoval()
+            case .emptyTrash:
+                app.recovery.onEvent(.emptiedTrash(freedBytes: removed ? 100 : 0, skippedURLs: []))
+                await app.recovery.refreshAfterMutation(.emptyTrash)
+            }
+        }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await refresh.value
+        #expect(await persistence.records == [removed ? .removal : .scheduled])
+        #expect(app.dashboard.hasCleanupGrowthBaseline == removed)
     }
 
     @Test("Older cloud requests cannot replace the selected plan")
@@ -684,6 +824,7 @@ private actor HeldDashboardPersistence: DashboardPersisting {
     private(set) var records: [SnapshotTrigger] = []
     private(set) var clearCount = 0
     private var history: [StorageSnapshot] = []
+    private var rejectsNextRecord = false
     private var historyReply: CheckedContinuation<[StorageSnapshot], Never>?
     private var recordReply: CheckedContinuation<[StorageSnapshot], Never>?
     init(cache: BreakdownCache? = nil, holdHistory: Bool = false, holdRecord: Bool = false) {
@@ -699,8 +840,13 @@ private actor HeldDashboardPersistence: DashboardPersisting {
         if holdHistory { return await withCheckedContinuation { historyReply = $0 } }
         return history
     }
-    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) async -> [StorageSnapshot] {
+    func rejectNextRecord() { rejectsNextRecord = true }
+    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) async throws -> [StorageSnapshot] {
         records.append(trigger)
+        if rejectsNextRecord {
+            rejectsNextRecord = false
+            throw CocoaError(.fileWriteNoPermission)
+        }
         if holdRecord { return await withCheckedContinuation { recordReply = $0 } }
         if let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) { history.insert(snapshot, at: 0) }
         return history

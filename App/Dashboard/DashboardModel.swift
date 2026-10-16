@@ -20,7 +20,9 @@ final class DashboardModel {
     @ObservationIgnored private var cloudPlanBytes: Int64?
     @ObservationIgnored private var historyClearTask: Task<Void, Never>?
     @ObservationIgnored private var historyRevision = UUID()
-    @ObservationIgnored private var needsPostCleanupMeasurement = false
+    @ObservationIgnored private var queuedCleanupID: UUID?
+    @ObservationIgnored private var latestCleanupID: UUID?
+    @ObservationIgnored private var hasRemovalToMeasure = false
     @ObservationIgnored private var storageHistory: [StorageSnapshot] = []
     @ObservationIgnored var canLoad: () -> Bool = { true }
     @ObservationIgnored var canMeasure: (Bool) -> Bool = { _ in true }
@@ -40,6 +42,9 @@ final class DashboardModel {
         self.defaults = defaults
         self.settings = settings
         self.now = now
+        let savedState = defaults.string(forKey: "cleanupMeasurementState")
+            .flatMap(CleanupMeasurementState.init(rawValue:)) ?? .none
+        cleanupMeasurementState = savedState == .measuring ? .interrupted : savedState
         preferredGrowthBaseline = defaults.string(forKey: "growthBaseline")
             .flatMap(GrowthBaseline.init(rawValue:))
             .flatMap { $0 == .previousMeasurement ? nil : $0 }
@@ -79,6 +84,17 @@ final class DashboardModel {
     }
     var iCloudPlanBytes: Int64?
     private(set) var growth: GrowthComparison?
+    enum CleanupMeasurementState: String, CaseIterable {
+        case none, measuring, requiresAccess, failed, interrupted, cleared
+    }
+    private(set) var cleanupMeasurementState: CleanupMeasurementState {
+        didSet { defaults.set(cleanupMeasurementState.rawValue, forKey: "cleanupMeasurementState") }
+    }
+    var cleanupBaselineDate: Date? { storageHistory.first { $0.trigger == .removal }?.measuredAt }
+    var hasLaterCleanupMeasurement: Bool {
+        guard let cleanupBaselineDate, let latest = storageHistory.first else { return false }
+        return latest.measuredAt > cleanupBaselineDate
+    }
     private(set) var hasCleanupGrowthBaseline = false
     private var preferredGrowthBaseline: GrowthBaseline?
 
@@ -157,35 +173,74 @@ final class DashboardModel {
         await task.value
     }
 
-    /// Merge concurrent requests and retain a measurement after disk removal.
+    /// Record successful removals before their shared refresh starts.
+    func recordCleanup() {
+        hasRemovalToMeasure = true
+        latestCleanupID = UUID()
+        cleanupMeasurementState = .measuring
+    }
+
+    func refreshAfterRemoval() async {
+        let trigger: SnapshotTrigger = hasRemovalToMeasure ? .removal : .scheduled
+        hasRemovalToMeasure = false
+        await measureStorage(trigger: trigger)
+    }
+
+    /// Queue cleanup measurements only within the active refresh.
     func measureStorage(trigger: SnapshotTrigger = .manual) async {
+        let cleanupID: UUID? = trigger == .removal ? UUID() : nil
+        if let cleanupID {
+            latestCleanupID = cleanupID
+            cleanupMeasurementState = .measuring
+        }
         let automatic = trigger == .launch || trigger == .scheduled || trigger == .removal
-        guard canMeasure(automatic) else { return }
-        guard await beforeMeasurement(), !Task.isCancelled, canMeasure(automatic) else { return }
+        guard canMeasure(automatic) else {
+            finishCleanup(cleanupID, state: .requiresAccess)
+            return
+        }
+        guard await beforeMeasurement(), !Task.isCancelled else {
+            finishCleanup(cleanupID, state: .interrupted)
+            return
+        }
+        if let cleanupID, latestCleanupID != cleanupID { return }
+        guard canMeasure(automatic) else {
+            finishCleanup(cleanupID, state: .requiresAccess)
+            return
+        }
         if let measurementTask {
-            if trigger == .removal { needsPostCleanupMeasurement = true }
+            if let cleanupID { queuedCleanupID = cleanupID }
             await measurementTask.value
             return
         }
         isLoadingBreakdown = true
         let task = Task { [self] in
             defer { isLoadingBreakdown = false; measurementTask = nil }
-            var next = needsPostCleanupMeasurement ? .removal : trigger
-            needsPostCleanupMeasurement = false
+            var next = trigger
+            var nextCleanupID = cleanupID
             while true {
-                await performMeasurement(trigger: next)
+                let saved = await performMeasurement(trigger: next, cleanupID: nextCleanupID)
+                finishCleanup(nextCleanupID, state: saved ? .none : (Task.isCancelled ? .interrupted : .failed))
+                guard let queued = queuedCleanupID else { break }
+                queuedCleanupID = nil
                 guard !Task.isCancelled else {
-                    if next == .removal { needsPostCleanupMeasurement = true }
+                    finishCleanup(queued, state: .interrupted)
                     break
                 }
-                guard needsPostCleanupMeasurement else { break }
-                needsPostCleanupMeasurement = false
-                guard canMeasure(true) else { break }
+                guard canMeasure(true) else {
+                    finishCleanup(queued, state: .requiresAccess)
+                    break
+                }
                 next = .removal
+                nextCleanupID = queued
             }
         }
         measurementTask = task
         await task.value
+    }
+
+    private func finishCleanup(_ id: UUID?, state: CleanupMeasurementState) {
+        guard let id, latestCleanupID == id else { return }
+        cleanupMeasurementState = state
     }
 
     /// Release active filesystem workers before Cleanup starts.
@@ -198,19 +253,19 @@ final class DashboardModel {
         await cloud?.value
     }
 
-    private func performMeasurement(trigger: SnapshotTrigger) async {
+    private func performMeasurement(trigger: SnapshotTrigger, cleanupID: UUID?) async -> Bool {
         let revision = historyRevision
         let presentation = OperationPresentationDuration()
         startCloudLoad()
         await refreshVolumeInfo()
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return false }
         guard let measured = try? await service.measure() else {
             try? await presentation.wait()
-            return
+            return false
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return false }
         await refreshVolumeInfo()
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return false }
         breakdown = volume.map {
             measured.breakdown.reconcilingVolume(capacityBytes: $0.capacityBytes, freeBytes: $0.freeBytes)
         } ?? measured.breakdown
@@ -220,15 +275,17 @@ final class DashboardModel {
             await persistence.saveCache(BreakdownCache(volume: volume, breakdown: breakdown, measuredAt: measuredAt))
         }
         await historyClearTask?.value
-        if revision == historyRevision {
-            let history = await persistence.record(measured, trigger: trigger)
-            if revision == historyRevision {
+        var saved = false
+        if revision == historyRevision, cleanupID == nil || cleanupID == latestCleanupID {
+            if let history = try? await persistence.record(measured, trigger: trigger), revision == historyRevision {
+                saved = true
                 historyRevision = UUID()
                 storageHistory = history
                 recomputeGrowth()
             }
         }
         try? await presentation.wait()
+        return saved
     }
 
     func loadICloud() async {
@@ -319,6 +376,10 @@ final class DashboardModel {
     /// Reject earlier reads and measurements after the user clears history.
     func clearMeasurementHistory() {
         historyRevision = UUID()
+        latestCleanupID = nil
+        queuedCleanupID = nil
+        hasRemovalToMeasure = false
+        cleanupMeasurementState = .cleared
         storageHistory = []
         recomputeGrowth()
         let persistence = persistence

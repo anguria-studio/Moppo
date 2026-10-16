@@ -89,7 +89,8 @@ Keep pending checks in the GitHub ticket.
 
 Dashboard measurements wait for active Cleanup workers.
 Cleanup cancels an active Dashboard measurement before it starts category work.
-An interrupted removal measurement remains pending for the next authorized refresh.
+An interrupted removal measurement does not become a cleanup baseline during a later refresh.
+The Dashboard keeps the reason for a skipped, failed, or interrupted cleanup measurement across launches.
 Stop Scan also prevents waiting Dashboard measurements from starting.
 App Uninstaller pauses new application size walks while Cleanup runs.
 A size walk already in progress can finish before that pause.
@@ -253,7 +254,14 @@ Cleanup can request a leftover refresh through a separate callback.
 
 The Dashboard model owns launch refreshes and measurements independently of the requesting view.
 Concurrent measurement requests share one task.
+Successful removal requests a measurement immediately after cleanup.
 Removal during measurement requests one additional measurement for the cleanup baseline.
+Failed removal attempts do not create cleanup baselines.
+Automatic cleanup measurements require Full Disk Access.
+A later manual refresh updates current storage without creating a cleanup baseline.
+The Dashboard explains missing cleanup baselines and shows the date of an earlier available baseline.
+The next successful cleanup measurement replaces that baseline.
+Moving files to Trash does not mean that disk space was recovered.
 Background measurements remain separate from the shared scan and removal guard.
 New volume and iCloud requests reject older results.
 

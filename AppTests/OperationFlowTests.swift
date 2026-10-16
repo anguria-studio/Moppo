@@ -221,6 +221,30 @@ struct OperationFlowTests {
                 == "Duplicate file scan is running. Wait for it to finish, or stop the scan.")
     }
 
+    @Test("Dashboard history rows use scan feedback without opening a folder or an alert")
+    func growthRowWhileBusy() throws {
+        let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
+        model.view = .dashboard
+        let operation = try #require(model.operations.begin(.cleanupScan))
+        let attribution = GrowthAttribution(
+            path: "/unused-fixture/Documents", segment: .documentsDesktop, deltaBytes: 100, kind: .grew
+        )
+
+        model.revealGrowth(attribution)
+
+        let feedback = try #require(model.operations.blockedAction)
+        #expect(feedback.operation == operation)
+        #expect(model.notice == nil)
+        #expect(model.view == .dashboard)
+        #expect(model.storageExplorer.currentURL == nil)
+        model.revealGrowth(attribution)
+        #expect(model.operations.blockedAction == feedback)
+        model.operations.finish(operation)
+        #expect(model.operations.blockedAction == nil)
+        #expect(model.view == .dashboard)
+        #expect(model.storageExplorer.currentURL == nil)
+    }
+
     @Test("History selects the recorded Trash item and rejects a replacement")
     func historyTrashLink() async throws {
         let fixture = try TrashFixture()
