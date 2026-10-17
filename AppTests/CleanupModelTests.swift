@@ -7,12 +7,7 @@ import Testing
 struct CleanupModelTests {
     @Test("Worktrees seed only safe rows and warn before explicit unsafe selection")
     func worktreeSelectionAndReview() {
-        var safe = GitWorktreeReview()
-        safe.status = .clean
-        safe.pushStatus = .noUnpushedCommits
-        safe.filesChecked = true
-        safe.locks = .clear
-        safe.activity = .clear
+        let safe = safeWorktreeReview()
         var local = safe
         local.status = .uncommittedChanges
         local.localFiles = [.init(path: "notes.txt", status: .untracked)]
@@ -43,6 +38,133 @@ struct CleanupModelTests {
         #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree has uncommitted changes.") == true)
         #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree needs further review.") == true)
         cleanup.cancelCleanUp()
+    }
+
+    @Test("Docker scanning defaults on and preserves a saved choice")
+    func dockerDefault() throws {
+        let suite = "moppo-tests.docker-default.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fresh = SettingsStore(defaults: defaults, managesLoginItem: false)
+        #expect(fresh.isEnabled(.docker))
+        fresh.setEnabled(false, for: .docker)
+        let reopened = SettingsStore(defaults: defaults, managesLoginItem: false)
+        #expect(!reopened.isEnabled(.docker))
+        reopened.resetToDefaults()
+        #expect(reopened.isEnabled(.docker))
+        #expect(SettingsStore(defaults: defaults, managesLoginItem: false).isEnabled(.docker))
+    }
+
+    enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable }
+
+    @Test("Docker setup remains visible across filters only for an installed application", arguments: CleanupModel.ScanFilter.allCases)
+    func dockerCategoryVisibility(filter: CleanupModel.ScanFilter) {
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanFilter = filter
+        let prompt = ScanCategoryResult.unavailable(.docker, reason: "Start Docker Desktop, then scan again to see results.")
+        cleanup.scanResults = ScanResults(categories: [prompt], startedAt: .now, finishedAt: .now)
+        #expect(cleanup.visibleCategories == [prompt])
+        #expect(cleanup.scanResults?.safeToRemoveBytes == 0)
+        #expect(cleanup.scannerSelection.isEmpty)
+        cleanup.scanResults?.categories = [ScanCategoryResult(categoryID: .docker, availability: .notInstalled)]
+        #expect(cleanup.visibleCategories.isEmpty)
+        cleanup.scanResults?.categories = [.empty(.docker)]
+        #expect(cleanup.visibleCategories == (filter == .all ? [.empty(.docker)] : []))
+    }
+
+    @Test("Changed worktrees leave selection while other cleanup items proceed", arguments: WorktreeChange.allCases)
+    func changedWorktree(_ change: WorktreeChange) async throws {
+        let fixture = try CleanupFixture()
+        var worktree = try fixture.entry("worktree")
+        worktree.gitWorktreeReview = safeWorktreeReview()
+        let cache = try fixture.entry("cache")
+        let removal = HeldCleanupRemoval()
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(operations: operations, remover: removal,
+            reviewWorktree: { _ in
+                var review = safeWorktreeReview()
+                switch change {
+                case .unchanged: break
+                case .localChanges: review.status = .uncommittedChanges
+                case .inUse: review.activity = .found("Active process")
+                case .unavailable: throw CocoaError(.fileReadNoPermission)
+                }
+                return review
+            }, measureSaving: { _ in nil })
+        cleanup.scanResults = cleanupResults([worktree, cache])
+        cleanup.scannerSelection = [worktree.id, cache.id]
+        var failures = 0
+        var announcedCount: Int?
+        cleanup.onEvent = {
+            if case .failure = $0 { failures += 1 }
+            if case .removalStarted(let count, _) = $0 { announcedCount = count }
+        }
+        cleanup.requestCleanUp(in: .all)
+        let task = Task { await cleanup.performCleanUp() }
+        try await waitUntil { await removal.isPending }
+        let expected = change == .unchanged ? [worktree, cache] : [cache]
+        #expect(await removal.entries.map(\.id) == expected.map(\.id))
+        #expect(cleanup.scannerSelection.contains(worktree.id) == (change == .unchanged))
+        #expect(announcedCount == expected.count)
+        await removal.finish(.init(removedCount: expected.count, trashedCount: expected.count))
+        await task.value
+        #expect(cleanup.cleanupOutcome?.skippedWorktrees == (change == .unchanged ? [] : [worktree.id]))
+        #expect(failures == 0)
+        #expect(!operations.isBusy)
+        #expect(FileManager.default.fileExists(atPath: worktree.url.path))
+    }
+
+    @Test("A changed worktree also protects a selected parent", arguments: [false, true])
+    func changedWorktreeParent(selectedParent: Bool) async throws {
+        var worktree = cleanupEntry("changed-worktree")
+        worktree.gitWorktreeReview = safeWorktreeReview()
+        var selected = worktree
+        if selectedParent {
+            selected = cleanupEntry("parent")
+            selected.children = [worktree]
+        }
+        let removal = HeldCleanupRemoval()
+        let cleanup = CleanupModel(operations: OperationCoordinator(), remover: removal,
+            reviewWorktree: { _ in GitWorktreeReview() }, measureSaving: { _ in nil })
+        cleanup.scanResults = cleanupResults([selected])
+        cleanup.scannerSelection = [selected.id]
+        cleanup.userDataRemovalOverrides = [selected.id, worktree.id]
+        var refreshes = 0
+        cleanup.refreshAfterRemoval = { refreshes += 1 }
+        cleanup.requestCleanUp(in: .all)
+        await cleanup.performCleanUp()
+        try await waitUntil { !cleanup.isRemoving }
+        #expect(await removal.requestCount == 0)
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(cleanup.userDataRemovalOverrides.isEmpty)
+        #expect(cleanup.cleanupOutcome?.skippedWorktrees == [worktree.id])
+        #expect(cleanup.cleanupOutcome?.removedCount == 0)
+        #expect(refreshes == 0)
+        #expect(cleanup.allEntries.first { $0.id == worktree.id }?.gitWorktreeReview?.isSafeToRemove == false)
+    }
+
+    @Test("Cleanup identifies kept worktrees after removing other items")
+    func changedWorktreeNotice() async throws {
+        let fixture = try CleanupFixture()
+        let cache = try fixture.entry("notice-cache")
+        let removal = HeldCleanupRemoval()
+        let app = AppModel(cleanupRemover: removal)
+        app.view = .scanner
+        app.cleanup.refreshAfterRemoval = {}
+        app.cleanup.scanResults = cleanupResults([cache])
+        app.cleanup.scannerSelection = [cache.id]
+        app.cleanup.requestCleanUp(in: .all)
+        let task = Task { await app.cleanup.performCleanUp() }
+        try await waitUntil { await removal.isPending }
+        let kept = fixture.root.appendingPathComponent("changed-worktree")
+        await removal.finish(.init(removedCount: 1, trashedCount: 1, skippedWorktrees: [kept.path]))
+        await task.value
+        try await waitUntil { !app.cleanup.isRemoving }
+        let notice = try #require(app.notice)
+        #expect(notice.title == "Changed Worktrees Were Kept")
+        #expect(notice.message.contains("changed-worktree"))
+        #expect(notice.message.contains("Moppo removed 1 other item."))
+        #expect(notice.finderURLs == [kept])
     }
 
     @Test("AI inventory stays visible but cannot enter cleanup selection")
@@ -257,11 +379,12 @@ struct CleanupModelTests {
         cleanup.startScan(refreshOverview: false)
         #expect(cleanup.isRunningAppsNoticeDismissed)
         #expect(await scanner.requestCount == 1)
-        await scanner.report(0, percent: 99)
+        await scanner.report(0, percent: 99, phase: "Old phase")
         await scanner.finish(0, results: cleanupResults([]))
         try await waitUntil { !cleanup.isScanning }
         #expect(cleanup.scanResults == nil)
         #expect(cleanup.scanProgress == 0)
+        #expect(cleanup.scanPhase == nil)
         #expect(!app.isBusyWithDisk)
         #expect(app.view == .history)
 
@@ -269,14 +392,19 @@ struct CleanupModelTests {
         #expect(!cleanup.isRunningAppsNoticeDismissed)
         try await waitUntil { await scanner.requestCount == 2 }
         #expect(app.view == .history)
-        await scanner.report(1, percent: 32)
+        await scanner.report(1, percent: 32, phase: "Measuring local iCloud files")
         try await waitUntil { cleanup.scanProgress == 32 }
-        await scanner.report(0, percent: 98)
+        #expect(cleanup.scanProgressDetail == "32% · Measuring local iCloud files")
+        await scanner.report(1, percent: 32, phase: "Finding large archives")
+        try await waitUntil { cleanup.scanPhase == "Finding large archives" }
+        #expect(cleanup.scanProgress == 32)
+        await scanner.report(0, percent: 98, phase: "Old phase")
         let latest = cleanupResults([])
         await scanner.finish(1, results: latest)
         try await waitUntil { !cleanup.isScanning }
         #expect(cleanup.scanResults == latest)
         #expect(cleanup.scanProgress == 32)
+        #expect(cleanup.scanPhase == "Finding large archives")
         #expect(!app.isBusyWithDisk)
         #expect(app.view == .history)
     }
@@ -675,20 +803,28 @@ struct CleanupModelTests {
         let gate = TestGate()
         let removal = HeldCleanupRemoval()
         let owner = FileEntry.RunningOwner(name: "Fixture", bundleIdentifier: "test.cleanup", bundlePath: "/fixture.app")
+        let ownOwner = FileEntry.RunningOwner(name: "Moppo", bundleIdentifier: AppIdentity.bundleIdentifier,
+                                             bundlePath: "/Applications/Moppo.app")
         var item = cleanupEntry("running-cache")
         item.inUseBy = owner
+        var ownCache = cleanupEntry("moppo-cache")
+        ownCache.inUseBy = ownOwner
         let operations = OperationCoordinator()
         let cleanup = CleanupModel(
             operations: operations, remover: removal,
             applications: CleanupApplications(stillRunning: { $0 }, quit: { owners in
+                #expect(owners == [owner])
                 await gate.wait()
                 return refuses ? owners : []
             }, registeredIdentifiers: { _ in [] })
         )
         var failure: String?
         cleanup.onEvent = { if case .failure(let title, _) = $0 { failure = title } }
-        cleanup.scanResults = cleanupResults([item])
+        cleanup.scanResults = cleanupResults([item, ownCache])
         cleanup.scannerSelection = [item.id]
+        cleanup.refreshCleanupRunningOwners()
+        #expect(cleanup.cleanupRunningOwners == [owner])
+        #expect(cleanup.runningAppCaches.map(\.id) == [item.id])
         let caller = Task { await cleanup.quitAppsForCleanup() }
         try await waitUntil { await gate.isPending }
         caller.cancel()
@@ -699,8 +835,23 @@ struct CleanupModelTests {
         #expect(!cleanup.isWaitingForApplications)
         #expect(failure == (refuses ? "Some Apps Are Still Open" : nil))
         #expect(cleanup.allEntries.first?.inUseBy == (refuses ? owner : nil))
+        #expect(cleanup.allEntries.first { $0.id == ownCache.id }?.inUseBy == ownOwner)
+        #expect(cleanup.allEntries.first { $0.id == ownCache.id }?.regeneratesSafely == false)
         #expect(cleanup.scannerSelection == [item.id])
         #expect(await removal.requestCount == 0)
+    }
+
+    @Test("Cleanup quit targets use application identity instead of display names")
+    func cleanupQuitTargets() {
+        let otherBuild = FileEntry.RunningOwner(name: "Moppo Test", bundleIdentifier: AppIdentity.bundleIdentifier,
+                                               bundlePath: "/Downloads/Moppo.app")
+        let currentPath = FileEntry.RunningOwner(name: "Current app", bundleIdentifier: nil,
+                                                bundlePath: Bundle.main.bundlePath)
+        let sameName = FileEntry.RunningOwner(name: "Moppo", bundleIdentifier: "test.another-app",
+                                             bundlePath: "/Applications/Another.app")
+        #expect(!ApplicationRuntime.canQuitForCleanup(otherBuild))
+        #expect(!ApplicationRuntime.canQuitForCleanup(currentPath))
+        #expect(ApplicationRuntime.canQuitForCleanup(sameName))
     }
 
     @Test("Partial cleanup retains its receipt and Put Back invalidates later results")
@@ -948,6 +1099,16 @@ struct CleanupModelTests {
 
 private func cleanupEntry(_ name: String) -> FileEntry {
     FileEntry(url: URL(fileURLWithPath: "/cleanup-fixture/\(name)"), kind: .file, allocatedBytes: 100, isRegenerable: true)
+}
+
+private func safeWorktreeReview() -> GitWorktreeReview {
+    var review = GitWorktreeReview()
+    review.status = .clean
+    review.pushStatus = .noUnpushedCommits
+    review.filesChecked = true
+    review.locks = .clear
+    review.activity = .clear
+    return review
 }
 
 private func cleanupResults(_ entries: [FileEntry]) -> ScanResults {

@@ -8,6 +8,28 @@ struct MeasureSubtreesTests {
     private typealias Sandbox = AllocatedSizeMeasurerTests.Sandbox
     private static let oneMB = 1024 * 1024
 
+    @Test("Selected totals share hard-link accounting and preserve protection flags")
+    func selectedTotals() async throws {
+        let sandbox = try Sandbox()
+        let file = try sandbox.writeFile("project/tree/.venv/data.bin", bytes: Self.oneMB)
+        let project = sandbox.root.appendingPathComponent("project").standardizedFileURL
+        let tree = project.appendingPathComponent("tree")
+        let ignored = tree.appendingPathComponent(".venv")
+        let alias = project.appendingPathComponent("alias.bin")
+        try FileManager.default.linkItem(at: file, to: alias)
+        let secret = try sandbox.writeFile("project/tree/settings.keychain-db", bytes: 4096).standardizedFileURL
+        let totals = try await AllocatedSizeMeasurer(protectedPatterns: ["*.keychain-db"])
+            .measure(project, retaining: [tree, ignored, alias, secret])
+        let parent = try #require(totals[project])
+        #expect(parent.fileCount == 2)
+        #expect(parent.allocatedBytes == (totals[tree]?.allocatedBytes ?? 0) + (totals[alias]?.allocatedBytes ?? 0))
+        #expect(totals[tree]?.allocatedBytes == (totals[ignored]?.allocatedBytes ?? 0) + (totals[secret]?.allocatedBytes ?? 0))
+        #expect(parent.containsProtectedPattern)
+        #expect(totals[tree]?.containsProtectedPattern == true)
+        #expect(totals[secret]?.containsProtectedPattern == true)
+        #expect(totals[ignored]?.containsProtectedPattern == false)
+    }
+
     @Test("depth-2 totals are recursive and parents contain their children")
     func depthTwoTotals() async throws {
         let sandbox = try Sandbox()

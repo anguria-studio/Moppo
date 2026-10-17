@@ -24,6 +24,9 @@ public struct ScanContext: Sendable {
     /// never saw.
     public var applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan?
 
+    /// Reports the current phase within this category.
+    var onPhase: (@Sendable (String) -> Void)?
+
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         excludedPaths: [String] = [],

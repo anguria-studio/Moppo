@@ -20,6 +20,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>MoppoDetailedScanLogging</key>
+	<string>$(MOPPO_DETAILED_SCAN_LOGGING)</string>
 	<key>NSAppBundlesUsageDescription</key>
 	<string>Moppo needs permission to move applications that you select to the Trash.</string>
 	<key>NSAppDataUsageDescription</key>

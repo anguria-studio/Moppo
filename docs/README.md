@@ -103,13 +103,76 @@ A cancelled ownership check throws before it can return an incomplete owner set.
 Hidden & System Data checks cancellation before and after each archive discovery entry.
 A filesystem read already in progress can still delay cancellation.
 
+## Detailed scan test builds
+
+Detailed logs can contain private file paths, project names, command arguments, and error messages.
+Review the logs before you share them.
+
+Use `scripts/package-dmg.sh --scan-logging` to enable detailed logging in a private test package.
+Normal packages keep this logging off.
+The diagnostic package records each Cleanup scan automatically.
+Select **Help > Show Scan Logs** to open `~/Library/Logs/Moppo/Scans`.
+Share the newest `scan-*.jsonl` file after the scan pauses, completes, or stops.
+The file remains readable while the scan runs.
+An interrupted application can leave an unfinished log with its last recorded operations.
+Diagnostic builds also write `app-*.jsonl` files in the scan log folder.
+These files record startup, permission changes, quit decisions, and termination with the process identifier and app path.
+They remain available when no scan is running.
+
+Cloud directories use up to half the shared measurement workers while other Cleanup categories run.
+When only Hidden & System Data remains, that scan can use all four workers.
+The reservation returns when the scan finishes or stops.
+The progress display names the remaining category or its current phase.
+Hidden & System Data reports local iCloud measurements, hidden files, and archive discovery separately.
+Cloud measurements run alongside Photos cache measurements, hidden folder measurements, and archive discovery.
+The archive search skips all cloud roots and other folders that these steps measure.
+The scan waits for both paths to finish. A stop request cancels both paths.
+Cleanup reads local directory entries and size metadata in iCloud folders. It does not request downloads or read document contents.
+The Dashboard iCloud card separately measures account storage.
+The log reports active and queued cloud jobs beside the total worker counts.
+This limit does not interrupt a blocked filesystem call or set a maximum scan duration.
+
+The log records enabled categories, exclusions, access state, app versions, machine model, processor counts, memory, and disk capacity.
+Category and operation records include paths, elapsed time, measurement counts, unreadable counts, and removal protection flags.
+Directory records identify the last file that Moppo checked.
+Directory records separate listing time, including metadata prefetch, from subsequent metadata reads.
+For metadata reads above 50 milliseconds, the directory record includes the slowest path and duration.
+Worktree records identify discovery, Git checks, process checks, and review results.
+Final result records list worktree rows and their parent folders after category filters.
+Omitted worktree records state the reason.
+Category headers show worktree counts. Project badges expand their worktree rows.
+Documents & Files shows project worktrees. AI Tools shows worktrees inside each tool's storage.
+Small worktrees remain visible even when shared files contribute no additional bytes.
+
+Worktree process checks reuse prefetched volume and inode values during measurement.
+Incomplete process records include the process name, identifier, file descriptor, type, path, identity fields, and failure reason.
+Each inventory logs up to 32 issue records. Each field contains up to 1024 characters.
+The inventory summary counts omitted records and reports incomplete output or invalid text encoding.
+Filesystems without these values retain the separate identity lookup. Logs count these fallback lookups.
+The measurement loop reuses metadata keys and builds retained paths once per directory.
+Command records include arguments, process identifiers, exit status, timeout, cancellation, and up to 4096 bytes of standard error.
+Logs exclude file contents, conversation messages, raw standard output, passwords, tokens, and environment values.
+Scan commands retain their existing behavior and time limits.
+
+A one-second heartbeat records active operations, progress gaps, worker queues, CPU time, memory, thread count, and thermal state.
+Directory detail stops after 128 MiB per scan. The log records this limit.
+Heartbeats, commands, measurement summaries, and category results continue.
+Logging adds filesystem and CPU work. Compare test runs with the same settings.
+Logs remain local. The support report does not attach them automatically.
+
+The command-line profiler can create the same detailed logs:
+
+```sh
+Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory /tmp/moppo-scan-logs
+```
+
 ## Layout
 
 ```
 Core/                         Swift package
   Sources/MoppoCore/          Scanning engine and cleanup services
     Measure/                 AllocatedSizeMeasurer, ByteFormatting
-    System/                  Disk information, snapshots, process execution
+    System/                  Disk information, snapshots, process execution, scan diagnostics
     Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
     Duplicates/              File duplicate detection and removal
@@ -131,7 +194,7 @@ App/                          SwiftUI app
   StorageExplorer/           Storage Explorer model and services
   Uninstaller/               App Uninstaller model and services
   Updates/                   Sparkle controller, preferences, and installation guard
-  Support/                   Privacy information and reviewed support reports
+  Support/                   Privacy information, support reports, and scan log access
 design/                       Archived design handoff, kept locally
 ```
 
@@ -169,6 +232,11 @@ It does not hold `AppModel` or change navigation directly.
 
 Photo, file, and Cleanup scans continue when the user changes pages.
 A stop request cancels the scan task and keeps the shared operation guard until the service returns.
+Command-Q cancels Cleanup, duplicate, and Storage Explorer scans before the app quits.
+The app waits for scan workers and diagnostic log writes. It blocks new operations while quitting.
+Active file changes retain their existing quit guard.
+The Quit Apps notice excludes Moppo, including other builds with the same application identifier.
+Moppo's active caches retain their in-use status and remain outside Safe to Remove.
 Scan and regroup identifiers reject results from cancelled or replaced tasks.
 Only the matching operation can release the shared guard.
 All feature scans, removal reviews, removal tasks, and recovery operations use the same coordinator.
@@ -179,6 +247,8 @@ This includes Cleanup, application data, sound libraries, Storage Explorer, dupl
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
 Docker images appear once per image identifier, with their tags grouped together.
+When this Mac has Docker Desktop but it is unavailable, each Cleanup filter shows its category card with a setup instruction.
+When Docker Desktop is absent, Cleanup hides the empty Docker card.
 Docker removes selected images in the scanned context without forced removal.
 Before removal, Moppo checks the image identifier, tags, and container use again.
 After removal, Moppo updates the Docker category.
@@ -261,7 +331,7 @@ Automatic cleanup measurements require Full Disk Access.
 A later manual refresh updates current storage without creating a cleanup baseline.
 The Dashboard explains missing cleanup baselines and shows the date of an earlier available baseline.
 The next successful cleanup measurement replaces that baseline.
-Moving files to Trash does not mean that disk space was recovered.
+Moving files to Trash does not necessarily recover disk space.
 Background measurements remain separate from the shared scan and removal guard.
 New volume and iCloud requests reject older results.
 
@@ -414,11 +484,18 @@ folders, including `.codex` and `.claude`. Discovery searches up to eight folder
 levels and skips dependency stores and Git metadata. Worktree rows include their
 contents once in the parent total.
 
+Documents & Files collects project, worktree, and ignored file sizes in one traversal.
+Worktree metadata checks run two at a time within each project.
+One process inventory supplies file identities for that project scan.
+The measurement traversal checks those identities, including hard links and open directories.
+Incomplete process information keeps the activity check unknown.
+Worktree dialogs and cleanup use fresh checks.
+
 Each worktree has one status pill and an information button in the name column.
 The branch icon and branch name identify the worktree.
 Select the information button or status pill to open the review dialog.
 If the worktree row has focus, press Space or double-click the row to open the dialog.
-The dialog shows checks, local files, and ignored files in separate lists.
+The dialog separates changed files, local ignored files, unverified files, and regenerable files.
 Select **Done**, the close button, or Escape to close the dialog.
 
 The status pill reports one result, in this order:
@@ -444,7 +521,25 @@ status. Incomplete Git history also gives unknown push status.
 Checks make no network requests. Local remote data can be out of date.
 Moppo checks installed Git before use. It does not start a Git installation.
 The review measures ignored files separately. Unknown ignored content remains under review.
+Ignored files inside verified caches inherit the cache classification.
+The same rule applies to dependency stores with reinstall evidence.
+Moppo uses the existing cache tags, source checks, and lockfile rules.
+Additional checks recognize empty ignored folders, Finder metadata, and Xcode scheme ordering and window state.
+Xcode user folders remain under review if they contain custom schemes, breakpoints, or unknown files.
+Next.js output needs a Next.js dependency, generated manifests, and server output.
+Generated Next.js type declarations must contain only recognized generated lines.
+TypeScript build information needs a nearby configuration file and a recognized data structure.
+These checks read bounded metadata files. They do not execute project code.
+Environment files and generated project bundles with dependency lock files remain under review.
+Classification stops at the worktree root and does not cross symbolic links.
+Parent classifications remain cached only during that review.
+Protected, unreadable, and cloud-only content cannot receive a regenerable classification.
+The scan log records each ignored file classification and the final group counts.
 The open-file check covers the current user's visible processes. It cannot identify every inactive tool session.
+Documents and AI Tools share process information across each worktree group.
+They measure each containing folder once and reuse its worktree and ignored-file totals.
+Revoked handles without file identities do not make the process inventory incomplete.
+Missing identities for regular files and directories still prevent a safe verdict.
 Close the owning tool session before removal.
 
 Only worktrees with complete checks can enter Safe to Remove or the initial selection.

@@ -111,6 +111,58 @@ struct UpdateControllerTests {
         #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateNow)
     }
 
+    @Test("Quit stops Cleanup and replies once after its workers return", arguments: [false, true])
+    func quitDuringScan(alreadyStopping: Bool) async throws {
+        let scanner = HeldCleanupScanner()
+        let app = AppModel(hasFullDiskAccess: { true }, cleanupScanner: scanner)
+        let delegate = AppDelegate()
+        delegate.operations = app.operations
+        var replies = 0
+        delegate.completeTermination = { _ in replies += 1 }
+        app.cleanup.startScan(refreshOverview: false)
+        try await waitUntil { await scanner.requestCount == 1 }
+        if alreadyStopping { app.cleanup.cancelScan() }
+
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
+        #expect(app.cleanup.isInterruptingScan)
+        #expect(app.operations.isTerminating)
+        #expect(app.operations.activeOperation?.kind == .cleanupScan)
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
+        await Task.yield()
+        #expect(replies == 0)
+        #expect(app.operations.begin(.fileRemoval) == nil)
+
+        await scanner.fail(0)
+        try await waitUntil { replies == 1 }
+        #expect(!app.cleanup.isScanning)
+        #expect(app.cleanup.scanResults == nil)
+        #expect(app.notice == nil)
+        #expect(app.operations.activeOperation == nil)
+        #expect(app.operations.begin(.cleanupScan) == nil)
+        await Task.yield()
+        #expect(replies == 1)
+    }
+
+    @Test("Immediate scan cancellation replies after the termination decision")
+    func immediateScanTermination() async throws {
+        let operations = OperationCoordinator()
+        let delegate = AppDelegate()
+        delegate.operations = operations
+        var replies = 0
+        var cancellations = 0
+        delegate.completeTermination = { _ in replies += 1 }
+        _ = try #require(operations.begin(.fileScan, cancel: {
+            cancellations += 1
+            if let operation = operations.activeOperation { operations.finish(operation) }
+        }))
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
+        #expect(replies == 0)
+        #expect(delegate.applicationShouldTerminate(NSApplication.shared) == .terminateLater)
+        #expect(cancellations == 1)
+        #expect(operations.begin(.updateInstallation) == nil)
+        try await waitUntil { replies == 1 }
+    }
+
     @Test("A completed Sparkle cycle cancels a deferred installation without an error")
     func completedCycleCancelsInstallation() async throws {
         let operations = OperationCoordinator()

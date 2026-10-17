@@ -41,14 +41,14 @@ struct ScannerView: View {
                         }
                         filterPicker(results)
                             .modifier(resultEntrance(index: 0))
-                        listControls(results)
+                        listControls
                             .padding(.top, 8)
                             .modifier(resultEntrance(index: 1))
                     }
                     .padding(Token.Size.pageGutter)
                     Divider()
                         .opacity(resultsVisible ? 1 : 0)
-                    let visibleCategories = categories(of: results, for: model.scanFilter)
+                    let visibleCategories = model.visibleCategories
                     let showsRunningApps = model.scanFilter == .safeToRemove
                         && !model.runningAppCaches.isEmpty && !model.isRunningAppsNoticeDismissed
                     let showsEmptyState = hasNoCleanupItems(visibleCategories) && !showsRunningApps
@@ -160,7 +160,7 @@ struct ScannerView: View {
     private var scanProgress: some View {
         PageProgressView(
             title: "Scanning for cleanup items",
-            detail: model.scanProgress > 0 ? "\(model.scanProgress)%" : "Checking files",
+            detail: model.scanProgressDetail,
             progress: model.scanProgress > 0 ? Double(model.scanProgress) / 100 : nil,
             isInterrupting: model.isInterruptingScan,
             icon: .mascot(.scanning)
@@ -172,8 +172,8 @@ struct ScannerView: View {
         ResultEntrance(isVisible: resultsVisible, index: index, reduceMotion: reduceMotion)
     }
 
-    private func listControls(_ results: ScanResults) -> some View {
-        let visible = categories(of: results, for: model.scanFilter)
+    private var listControls: some View {
+        let visible = model.visibleCategories
         let count = visible.reduce(0) { $0 + $1.entries.count }
         return HStack(spacing: 12) {
             SelectionCheckbox(
@@ -232,18 +232,6 @@ struct ScannerView: View {
     }
 
     // MARK: - Sections
-
-    /// The scan's categories as one tab shows them — see
-    /// `ScanCategoryResult.filtered(safeToRemove:)`. `All` keeps every category,
-    /// an empty or unavailable one included, because its message is the point there.
-    private func categories(
-        of results: ScanResults, for filter: CleanupModel.ScanFilter
-    ) -> [ScanCategoryResult] {
-        guard filter != .all else { return results.categories }
-        return results.categories
-            .map { $0.filtered(safeToRemove: filter == .safeToRemove) }
-            .filter { !$0.entries.isEmpty }
-    }
 
     private func hasNoCleanupItems(_ categories: [ScanCategoryResult]) -> Bool {
         categories.allSatisfy {

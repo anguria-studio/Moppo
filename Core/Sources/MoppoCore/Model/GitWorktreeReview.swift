@@ -53,6 +53,9 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public init() {}
 
     public var ignoredBytes: Int64 { ignoredFiles.reduce(0) { $0 + $1.allocatedBytes } }
+    public var regenerableIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == true } }
+    public var localIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false } }
+    public var unverifiedIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == nil } }
     public var unpushedCommitCount: Int? {
         switch pushStatus {
         case .unknown: nil
@@ -67,7 +70,7 @@ public struct GitWorktreeReview: Sendable, Equatable {
     }
 
     public var ignoredFilesCheck: Check {
-        let local = ignoredFiles.filter { $0.regeneratesSafely == false }
+        let local = localIgnoredFiles
         if !local.isEmpty { return .found(local.map(\.path).joined(separator: ", ")) }
         guard filesChecked, status != .unavailable else { return .unknown(filesIssue) }
         guard ignoredFiles.allSatisfy({ $0.regeneratesSafely == true }) else { return .unknown(ignoredFilesIssue) }

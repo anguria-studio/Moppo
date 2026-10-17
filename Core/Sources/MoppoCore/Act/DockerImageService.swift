@@ -40,10 +40,14 @@ public struct DockerImageService: Sendable {
     }
 
     func currentContext() async throws -> String {
-        let output = try await read(["context", "show"])
-        let context = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !context.isEmpty else { throw DockerImageError.invalidInventory }
-        return context
+        for attempt in 1...2 {
+            let output = try await read(["context", "show"])
+            let context = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !context.isEmpty { return context }
+            ScanDiagnostics.current?.record("docker_context_empty", details: ["attempt": "\(attempt)"])
+            if attempt == 1 { try await Task.sleep(for: .milliseconds(300)) }
+        }
+        throw DockerImageError.emptyContext
     }
 
     func diskUsage(context: String) async throws -> Data {
@@ -187,5 +191,5 @@ public struct DockerImageService: Sendable {
 }
 
 enum DockerImageError: Error {
-    case invalidInventory, imageChanged, imageInUse, imageStillPresent
+    case invalidInventory, emptyContext, imageChanged, imageInUse, imageStillPresent
 }

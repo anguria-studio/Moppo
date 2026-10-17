@@ -166,6 +166,11 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var gitWorktreeReview: GitWorktreeReview?
     public var isGitWorktree: Bool { gitWorktreeReview != nil }
 
+    /// Counts worktrees in this row and its disclosed children.
+    public var worktreeCount: Int {
+        (isGitWorktree ? 1 : 0) + children.reduce(0) { $0 + ($1.isGitWorktree ? 1 : 0) }
+    }
+
     /// The row and its children are one thing, removed together or not at all.
     ///
     /// Children are ordinarily targets in their own right: an application's cache

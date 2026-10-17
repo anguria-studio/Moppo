@@ -119,6 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     private let finderUninstallServiceProvider = FinderUninstallServiceProvider()
     weak var operations: OperationCoordinator?
+    var completeTermination: (NSApplication) -> Void = { $0.reply(toApplicationShouldTerminate: true) }
 
     /// True while a login launch is still settling: SwiftUI can present the
     /// restored window just after `applicationDidFinishLaunching`, and without this
@@ -134,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !MoppoApp.isRunningPreview else { return }
+        _ = try? ScanLog.recordApplicationEvent("application_started")
         // Low-space readings often finish while the Dashboard is the active window.
         // Foreground notifications are silent unless the app supplies a delegate.
         UNUserNotificationCenter.current().delegate = self
@@ -167,10 +169,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         return [.banner, .list, .sound]
     }
 
-    /// Keeps disk work active until it finishes. The reserved update operation can terminate the app.
+    /// Stops scans before quitting. File changes must finish before another quit request.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let operations, operations.isBusy else { return .terminateNow }
-        return operations.activeOperation?.kind == .updateInstallation ? .terminateNow : .terminateCancel
+        let operation = operations?.activeOperation.map { String(describing: $0.kind) } ?? "none"
+        let reply: NSApplication.TerminateReply
+        let completeTermination = completeTermination
+        if let operations, operations.isBusy, operations.activeOperation?.kind != .updateInstallation {
+            reply = operations.cancelForTermination(whenReady: {
+                // Reply after AppKit receives terminateLater, including immediate cancellation.
+                Task { @MainActor in
+                    _ = try? ScanLog.recordApplicationEvent("termination_ready", details: ["operation": operation])
+                    completeTermination(sender)
+                }
+            }) ? .terminateLater : .terminateCancel
+        } else {
+            reply = .terminateNow
+        }
+        let decision = reply == .terminateNow ? "now" : reply == .terminateLater ? "after_cancellation" : "blocked"
+        _ = try? ScanLog.recordApplicationEvent("termination_requested", details: ["operation": operation, "decision": decision])
+        return reply
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        _ = try? ScanLog.recordApplicationEvent("application_terminating")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -286,6 +307,9 @@ private struct MoppoCommands: Commands {
                 .disabled(!model.canFind || model.uninstaller.isShowingAppUninstallDetail)
         }
         CommandGroup(after: .help) {
+            if ScanLog.isEnabled {
+                Button("Show Scan Logs") { ScanLog.reveal() }
+            }
             Button("Report a Problem…") {
                 openWindow(id: "support")
             }

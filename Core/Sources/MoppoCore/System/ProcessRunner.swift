@@ -1,4 +1,5 @@
 import Foundation
+import CoreServices
 
 public enum ProcessError: Error, Equatable {
     case executableMissing(String)
@@ -23,8 +24,15 @@ public struct ProcessRunner: Sendable {
         timeout: Duration = .seconds(60),
         environment: [String: String] = [:],
         allowsInput: Bool = true,
-        additionalSuccessExitStatuses: Set<Int32> = []
+        additionalSuccessExitStatuses: Set<Int32> = [],
+        requiresEmptyStandardError: Bool = false
     ) async throws -> Data {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("process", path: executable, details: [
+            "arguments": arguments.joined(separator: "\n"), "timeout_seconds": "\(ScanDiagnostics.Resources.seconds(timeout))"
+        ])
+        var diagnosticOutcome = "failed"
+        defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : diagnosticOutcome) }
         try Task.checkCancellation()
         guard FileManager.default.isExecutableFile(atPath: executable) else {
             throw ProcessError.executableMissing(executable)
@@ -40,6 +48,8 @@ public struct ProcessRunner: Sendable {
         let errorPipe = Pipe()
         process.standardOutput = outputPipe
         process.standardError = errorPipe
+        let outputReader = try ProcessOutputReader(outputPipe.fileHandleForReading)
+        let errorReader = try ProcessOutputReader(errorPipe.fileHandleForReading)
 
         // Set before launching, or an immediate exit could beat the handler into
         // place and the wait below would never be woken.
@@ -47,17 +57,12 @@ public struct ProcessRunner: Sendable {
         process.terminationHandler = { _ in exit.markExited() }
 
         try process.run()
+        diagnostics?.update(span, details: ["pid": "\(process.processIdentifier)"])
 
         // Every signal goes through here, and none is sent once the child has been
         // reaped: after that its pid is just a number the kernel may have handed to
         // somebody else.
         let signals = ChildSignals(process)
-
-        // Draining starts immediately — a full pipe buffer would block the child
-        // before it could exit. Unstructured tasks rather than `async let`, which
-        // the cancellation handler below would not be allowed to capture.
-        let outputTask = Task { await Self.readToEnd(outputPipe) }
-        let errorTask = Task { await Self.readToEnd(errorPipe) }
 
         // The watchdog owns the "took too long" verdict. A signal death alone is
         // not evidence of a timeout — crashes die by signal too — so the flag
@@ -68,6 +73,7 @@ public struct ProcessRunner: Sendable {
         let watchdog = Task {
             try await Task.sleep(for: timeout)
             timedOut.raise()
+            diagnostics?.record("process_timeout", details: ["pid": "\(process.processIdentifier)", "executable": executable])
             signals.send(SIGTERM)
             try await Task.sleep(for: .seconds(2))
             signals.send(SIGKILL)
@@ -92,34 +98,38 @@ public struct ProcessRunner: Sendable {
         await withTaskCancellationHandler {
             await exit.wait()
         } onCancel: {
+            diagnostics?.record("process_cancel_requested", details: ["pid": "\(process.processIdentifier)"])
             signals.send(SIGTERM)
             escalation.arm()
         }
         signals.markReaped()
         escalation.disarm()
+        watchdog.cancel()
 
-        // The child is gone; anything still holding these pipes is not it. Give the
-        // readers a moment to finish normally, then close the read ends so they
-        // cannot wait on a grandchild forever. Only ever runs in that pathological
-        // case — a healthy child's pipes are at EOF the instant it exits.
-        let unblock = Task.detached {
-            try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
-            try? outputPipe.fileHandleForReading.close()
-            try? errorPipe.fileHandleForReading.close()
-        }
-        let output = await outputTask.value
-        let errorOutput = await errorTask.value
-        unblock.cancel()
+        // The child has exited. Collect buffered bytes without waiting for descendants to close their pipes.
+        let outputResult = await outputReader.finish()
+        let errorResult = await errorReader.finish()
+        let output = outputResult.data
+        let errorOutput = errorResult.data
+        diagnostics?.update(span, details: ["exit_status": "\(process.terminationStatus)",
+            "termination_reason": "\(process.terminationReason.rawValue)", "stdout_bytes": "\(output.count)",
+            "stderr_bytes": "\(errorOutput.count)", "stderr": String(decoding: errorOutput.prefix(4096), as: UTF8.self),
+            "stdout_read_error": "\(outputResult.error ?? 0)", "stderr_read_error": "\(errorResult.error ?? 0)"])
 
         try Task.checkCancellation()
+        if let error = outputResult.error ?? errorResult.error {
+            throw ProcessError.failed(command: executable, status: process.terminationStatus,
+                                      stderr: "Command output could not be read (error \(error)).")
+        }
 
         // Additional exit codes require normal termination and no error output.
         let acceptedStatus = process.terminationReason == .exit
             && additionalSuccessExitStatuses.contains(process.terminationStatus) && errorOutput.isEmpty
-        guard process.terminationStatus == 0 || acceptedStatus else {
+        guard (process.terminationStatus == 0 || acceptedStatus)
+                && (!requiresEmptyStandardError || errorOutput.isEmpty) else {
             let command = "\(executable) \(arguments.joined(separator: " "))"
             if timedOut.isRaised {
+                diagnosticOutcome = "timed_out"
                 throw ProcessError.timedOut(command)
             }
             let stderr = process.terminationReason == .uncaughtSignal
@@ -131,16 +141,78 @@ public struct ProcessRunner: Sendable {
                 stderr: stderr
             )
         }
+        diagnosticOutcome = "completed"
         return output
     }
 
-    private static func readToEnd(_ pipe: Pipe) async -> Data {
+}
+
+/// Drains each pipe without blocking a thread or discarding bytes when a descendant keeps it open.
+private final class ProcessOutputReader: @unchecked Sendable {
+    struct Output: Sendable {
+        var data = Data()
+        var error: Int32?
+    }
+
+    private let queue = DispatchQueue(label: "Moppo.process-output", qos: .userInitiated)
+    private let source: DispatchSourceRead
+    private let descriptor: Int32
+    private var output = Output()
+    private var ended = false
+
+    init(_ handle: FileHandle) throws {
+        descriptor = handle.fileDescriptor
+        let flags = fcntl(descriptor, F_GETFL)
+        guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        source = DispatchSource.makeReadSource(fileDescriptor: descriptor, queue: queue)
+        source.setEventHandler { [weak self] in self?.drain() }
+        source.setCancelHandler { try? handle.close() }
+        source.resume()
+    }
+
+    deinit { source.cancel() }
+
+    func finish() async -> Output {
         await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-                continuation.resume(returning: data)
+            queue.async { [self] in
+                drain()
+                ended = true
+                source.cancel()
+                continuation.resume(returning: output)
             }
         }
+    }
+
+    private func drain() {
+        guard !ended else { return }
+        var remaining: Int32 = 0
+        // Darwin's FIONREAD macro is not imported into Swift.
+        let bytesAvailable: UInt = 0x4004667f
+        guard ioctl(descriptor, bytesAvailable, &remaining) == 0 else {
+            output.error = errno
+            ended = true
+            source.cancel()
+            return
+        }
+        var buffer = [UInt8](repeating: 0, count: 65_536)
+        repeat {
+            let count = read(descriptor, &buffer, min(buffer.count, max(1, Int(remaining))))
+            if count > 0 {
+                output.data.append(contentsOf: buffer.prefix(count))
+                remaining -= Int32(count)
+                continue
+            }
+            if count < 0 {
+                if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK { return }
+                output.error = errno
+            }
+            ended = true
+            source.cancel()
+            return
+        } while remaining > 0
     }
 }
 
@@ -271,6 +343,19 @@ public enum SystemExecutable {
     ]
 
     public static func resolveDocker() -> String? {
-        dockerCandidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        if let path = dockerCandidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) { return path }
+        guard let app = dockerDesktopApplicationURL() else { return nil }
+        let path = app.appendingPathComponent("Contents/Resources/bin/docker").path
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }
+
+    public static func dockerDesktopApplicationURL() -> URL? {
+        let registered = LSCopyApplicationURLsForBundleIdentifier("com.docker.docker" as CFString, nil)?
+            .takeRetainedValue() as? [URL] ?? []
+        let candidates = registered + [URL(fileURLWithPath: "/Applications/Docker.app"),
+            URL(fileURLWithPath: NSHomeDirectory() + "/Applications/Docker.app")]
+        return candidates.first {
+            FileManager.default.fileExists(atPath: $0.path) && Bundle(url: $0)?.bundleIdentifier == "com.docker.docker"
+        }
     }
 }

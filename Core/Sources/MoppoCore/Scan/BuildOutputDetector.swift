@@ -124,9 +124,13 @@ public enum BuildOutputDetector {
     /// rows either way. Dependency stores and version control are never entered,
     /// which is what keeps a deeper walk cheap.
     public static func roots(under folder: URL, maxDepth: Int = 3) -> [Root] {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("build_output_discovery", path: folder.path)
+        defer { diagnostics?.end(span) }
         guard !GitWorktreeDetector.isWorktree(folder) else { return [] }
         var found: [Root] = []
         func walk(_ directory: URL, depth: Int) {
+            diagnostics?.update(span, path: directory.path, details: ["depth": "\(depth)"])
             guard let children = directories(in: directory, includingHidden: true) else { return }
             for child in children {
                 let name = child.lastPathComponent

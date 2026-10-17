@@ -705,6 +705,14 @@ private struct FileRow: View {
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if entry.worktreeCount > 0, let onDisclose {
+                        Button(action: onDisclose) {
+                            Badge(text: "\(entry.worktreeCount) \(entry.worktreeCount == 1 ? "worktree" : "worktrees")").fixedSize()
+                        }
+                        .buttonStyle(.plain)
+                        .help("\(isExpanded ? "Hide" : "Show") Git worktrees")
+                        .accessibilityLabel("\(isExpanded ? "Hide" : "Show") Git worktrees in \(entry.displayName)")
+                    }
                     if let manual = entry.manualRemoval {
                         // A badge that answers itself: click for the explanation and the
                         // command, with the command one click from the clipboard.

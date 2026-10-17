@@ -396,7 +396,7 @@ struct MainWindow: View {
         if model.cleanup.isScanning, model.view != .scanner {
             backgroundWorkStatus(
                 title: "Cleanup scan",
-                detail: "\(model.cleanup.scanProgress)% complete",
+                detail: model.cleanup.scanProgressDetail,
                 progress: Double(model.cleanup.scanProgress) / 100,
                 isInterrupting: model.cleanup.isInterruptingScan,
                 onStop: { model.cleanup.cancelScan() }

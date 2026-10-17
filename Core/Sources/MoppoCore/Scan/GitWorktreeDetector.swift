@@ -47,8 +47,12 @@ enum GitWorktreeDetector {
 
     /// Stops at each worktree so nested files are counted once.
     static func roots(under folder: URL, context: ScanContext, maxDepth: Int = 8) throws -> [URL] {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("worktree_discovery", path: folder.path)
+        defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed") }
         var found: [URL] = []
         func walk(_ directory: URL, depth: Int) throws {
+            diagnostics?.update(span, path: directory.path, details: ["depth": "\(depth)", "worktrees_found": "\(found.count)"])
             try Task.checkCancellation()
             guard !context.isWithinExclusion(directory),
                   let children = try? FileManager.default.contentsOfDirectory(
@@ -73,8 +77,11 @@ enum GitWorktreeDetector {
     }
 
     /// Uses the upstream branch when available. Detached worktrees use all remote-tracking branches.
-    static func pushStatus(of directory: URL) async throws -> (status: FileEntry.GitWorktreePushStatus, reason: String?) {
-        guard let executable = try await executable() else { return (.unknown, "Git is not installed.") }
+    static func pushStatus(of directory: URL, executable suppliedExecutable: String? = nil) async throws -> (status: FileEntry.GitWorktreePushStatus, reason: String?) {
+        let resolvedExecutable: String?
+        if let suppliedExecutable { resolvedExecutable = suppliedExecutable }
+        else { resolvedExecutable = try await executable() }
+        guard let executable = resolvedExecutable else { return (.unknown, "Git is not installed.") }
         func git(_ arguments: [String]) async throws -> String {
             try Task.checkCancellation()
             let data = try await ProcessRunner().run(
@@ -120,25 +127,53 @@ enum GitWorktreeDetector {
     }
 
     /// Moves worktree bytes from the parent remainder into review rows.
-    static func addingWorktrees(to entry: FileEntry, context: ScanContext) async throws -> FileEntry {
+    static func addingWorktrees(to entry: FileEntry, context: ScanContext,
+                               prepared: WorktreeScan.Result? = nil) async throws -> FileEntry {
         guard entry.kind == .folder else { return entry }
         var result = entry
+        func record(_ root: URL, outcome: String, bytes: Int64? = nil) {
+            var details = ["path": root.path, "parent": entry.url.path, "outcome": outcome]
+            if let bytes { details["allocated_bytes"] = "\(bytes)" }
+            ScanDiagnostics.current?.record("worktree_row", details: details)
+        }
         if isWorktree(entry.url) {
             result.parentDisplay += " · Git worktree"
             result.isRegenerable = false
             result.safetyCaveat = "Git worktree"
-            result.gitWorktreeReview = try await GitWorktreeReviewService().review(entry.url)
+            if let prepared { result.gitWorktreeReview = prepared.reviews[entry.url.standardizedFileURL] ?? GitWorktreeReview() }
+            else { result.gitWorktreeReview = try await GitWorktreeReviewService().review(entry.url) }
+            record(entry.url, outcome: "shown", bytes: result.displayBytes)
             return result
         }
-        for root in try roots(under: entry.url, context: context) {
+        let worktrees = try prepared?.roots ?? roots(under: entry.url, context: context)
+        for root in worktrees {
             // Existing children own their complete trees.
             guard !entry.children.contains(where: {
                 root.path == $0.url.path || root.path.hasPrefix($0.url.path + "/")
-            }) else { continue }
-            let measured = try await context.measurer.measure(root)
-            guard measured.allocatedBytes > 0, !measured.containsProtectedPattern else { continue }
+            }) else {
+                record(root, outcome: "covered_by_child")
+                continue
+            }
+            let measured: SizeMeasurement
+            let review: GitWorktreeReview
+            if let prepared {
+                guard let cached = prepared.measurements[root.standardizedFileURL] else {
+                    record(root, outcome: "missing_measurement")
+                    continue
+                }
+                measured = cached
+                review = prepared.reviews[root.standardizedFileURL] ?? GitWorktreeReview()
+            } else {
+                measured = try await context.measurer.measure(root)
+                review = try await GitWorktreeReviewService().review(root)
+            }
+            guard !measured.containsProtectedPattern else {
+                record(root, outcome: "protected")
+                continue
+            }
             let bytes = min(result.allocatedBytes, measured.allocatedBytes)
             result.allocatedBytes -= bytes
+            record(root, outcome: "shown", bytes: bytes)
             result.children.append(FileEntry(
                 url: root,
                 parentDisplay: FileEntry.abbreviate(root.deletingLastPathComponent().path) + " · Git worktree",
@@ -146,7 +181,7 @@ enum GitWorktreeDetector {
                 allocatedBytes: bytes,
                 lastOpened: DocumentsFilesScanner.lastOpenedDate(for: root),
                 safetyCaveat: "Git worktree",
-                gitWorktreeReview: try await GitWorktreeReviewService().review(root)
+                gitWorktreeReview: review
             ))
         }
         return result

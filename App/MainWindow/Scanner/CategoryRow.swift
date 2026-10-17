@@ -78,7 +78,9 @@ struct CategoryRow: View {
     private var detail: String {
         if case .unavailable(let reason) = result.availability { return reason }
         let count = result.entries.count
-        return "\(count) \(count == 1 ? "item" : "items")"
+        let worktrees = result.entries.reduce(0) { $0 + $1.worktreeCount }
+        let suffix = worktrees > 0 ? " · \(worktrees) Git \(worktrees == 1 ? "worktree" : "worktrees")" : ""
+        return "\(count) \(count == 1 ? "item" : "items")" + suffix
     }
 
     private var iconStyle: (symbol: String, color: ColorToken) {
@@ -148,7 +150,7 @@ struct CategoryRow: View {
         // Dimmed, and the reason takes over the subtitle.
         (ScanCategoryResult.unavailable(
             .docker,
-            reason: "Docker Desktop is not running. Start it to measure images and volumes."
+            reason: "Start Docker Desktop, then scan again to see results."
         ), 0)
     ]
 

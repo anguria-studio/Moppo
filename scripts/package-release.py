@@ -156,6 +156,7 @@ def main():
                         help="Notarization profile; defaults to MOPPO_NOTARY_PROFILE or anguria-studio")
     parser.add_argument("--sparkle-tools", type=Path, help="Sparkle bin folder; required for notarized assets")
     parser.add_argument("--notes", type=Path, help="Release notes to include in the signed feed")
+    parser.add_argument("--scan-logging", action="store_true", help="Enable detailed local scan logs in this private test build")
     parser.add_argument("--download-url", help="HTTPS folder for versioned release downloads")
     args = parser.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+", args.version) or args.build < 1:
@@ -206,6 +207,8 @@ def main():
                        f"MARKETING_VERSION={args.version}", f"CURRENT_PROJECT_VERSION={args.build}"]
             if args.package_cache:
                 command += ["-clonedSourcePackagesDirPath", args.package_cache.resolve()]
+            if args.scan_logging:
+                command += ["MOPPO_DETAILED_SCAN_LOGGING=YES"]
             run(*command, "archive")
         with tempfile.TemporaryDirectory(prefix="moppo-export-") as temporary:
             options = Path(temporary) / "ExportOptions.plist"
@@ -218,8 +221,11 @@ def main():
                   "source_commit": run("git", "-C", ROOT, "rev-parse", "HEAD", capture=True).strip(),
                   "source_dirty": bool(run("git", "-C", ROOT, "status", "--porcelain", capture=True).strip()),
                   "notarized": False}
+        record["detailed_scan_logging"] = plistlib.loads((app / "Contents/Info.plist").read_bytes()).get("MoppoDetailedScanLogging") == "YES"
         manifest.write_text(json.dumps(record, indent=2) + "\n")
     validate_app(app, args.version, args.build, team)
+    if args.scan_logging and plistlib.loads((app / "Contents/Info.plist").read_bytes()).get("MoppoDetailedScanLogging") != "YES":
+        parser.error("The exported app does not enable detailed scan logging. Build a new diagnostic archive.")
     assets.mkdir(exist_ok=True)
     if args.prepare:
         create_dmg(app, dmg, identity)

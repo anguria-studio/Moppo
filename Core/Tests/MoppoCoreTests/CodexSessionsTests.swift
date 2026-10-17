@@ -72,8 +72,7 @@ struct CodexSessionsTests {
         }
 
         func scan(_ context: ScanContext = .init()) async throws -> ScanCategoryResult {
-            _ = try #require(try await CodexSessions(home: home, executable: executable).scan(context: context))
-            return try await AIToolsScanner(home: home.deletingLastPathComponent(), codexExecutable: executable).scan(context: context)
+            try await AIToolsScanner(home: home.deletingLastPathComponent(), codexExecutable: executable).scan(context: context)
         }
 
         func row(_ id: String) async throws -> FileEntry {
@@ -162,6 +161,47 @@ struct CodexSessionsTests {
         var unprotected = row
         unprotected.protectionReason = nil
         #expect(!CleanupService.removalAllowed(unprotected, userDataRemovalOverrides: []))
+    }
+
+    enum Installation: CaseIterable { case noDeletion, missingDatabase, legacySchema, differentDatabaseVersion }
+
+    @Test("CLI history remains visible and protected when verified deletion is unavailable", arguments: Installation.allCases)
+    func compatibleInventory(_ installation: Installation) async throws {
+        let fixture = try await Fixture()
+        let parent = try await fixture.session(fixture.parent, name: "CLI conversation")
+        let archived = try await fixture.session(fixture.archived, archived: true, name: "Archived CLI conversation")
+        let database = fixture.home.appendingPathComponent("state_5.sqlite")
+        var executable = fixture.executable
+        switch installation {
+        case .noDeletion:
+            executable = "/usr/bin/false"
+        case .missingDatabase:
+            try FileManager.default.removeItem(at: database)
+        case .legacySchema:
+            try await fixture.sql("ALTER TABLE threads DROP COLUMN name; DROP TABLE thread_spawn_edges;")
+        case .differentDatabaseVersion:
+            try FileManager.default.moveItem(at: database, to: fixture.home.appendingPathComponent("state_6.sqlite"))
+        }
+        let scanner = AIToolsScanner(home: fixture.home.deletingLastPathComponent(), codexExecutable: executable)
+        let result = try await scanner.scan(context: .init())
+        let groups = result.entries.filter { ["sessions", "archived_sessions"].contains($0.url.lastPathComponent) }
+        let rows = groups.flatMap(\.children)
+        #expect(groups.count == 2)
+        #expect(Set(rows.map(\.url)) == [parent, archived])
+        #expect(rows.allSatisfy { $0.protectionReason == .inventory && $0.codexSession == nil })
+        #expect(rows.allSatisfy { !CleanupService.removalAllowed($0, userDataRemovalOverrides: [$0.id]) })
+        #expect(groups.allSatisfy { $0.aiStorageSection?.owner == .codex })
+        #expect(result.safeToRemoveBytes == 0)
+        #expect(result.totalBytes == (try await AllocatedSizeMeasurer().measure(fixture.home)).allocatedBytes)
+        if installation == .missingDatabase {
+            #expect(rows.first { $0.url == parent }?.displayName.contains(fixture.parent) == true)
+        } else {
+            #expect(rows.first { $0.url == parent }?.displayName == "CLI conversation")
+        }
+        let excluded = try await scanner.scan(context: .init(excludedPaths: [parent.standardizedFileURL.path]))
+        #expect(!excluded.entries.flatMap(\.children).contains { $0.url == parent })
+        #expect(FileManager.default.fileExists(atPath: parent.path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent("native-called").path))
     }
 
     @Test("A partial native failure records removed history and retains the failure")
@@ -253,5 +293,9 @@ struct CodexSessionsTests {
         try Data("Compressed fixture".utf8).write(to: url.appendingPathExtension("zst"))
         scan = try await fixture.scan()
         #expect(scan.entries.flatMap(\.children).allSatisfy { $0.codexSession == nil })
+        let rows = scan.entries.filter { $0.url.lastPathComponent == "sessions" }.flatMap(\.children)
+        #expect(Set(rows.map(\.url)) == [url, url.appendingPathExtension("zst")])
+        #expect(rows.allSatisfy { $0.protectionReason == .inventory })
+        #expect(scan.totalBytes == (try await AllocatedSizeMeasurer().measure(fixture.home)).allocatedBytes)
     }
 }

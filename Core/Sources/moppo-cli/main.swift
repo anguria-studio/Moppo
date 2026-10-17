@@ -71,7 +71,7 @@ struct CLI {
                       + " | installer <app>"
                       + " | measure <path>"
                       + " | reclaim <path>")
-                print("          profile-scan [cleanup|dashboard|concurrent] [--skip-docker] [--cancel-after <seconds>]")
+                print("          profile-scan [cleanup|dashboard|concurrent] [--skip-docker] [--cancel-after <seconds>] [--log-directory <folder>]")
             }
         } catch {
             FileHandle.standardError.write(Data("error: \(error)\n".utf8))
@@ -261,6 +261,8 @@ struct CLI {
                 }
             case .empty:
                 print("  \(name) —            (nothing found)")
+            case .notInstalled:
+                break
             case .unavailable(let reason):
                 print("  \(name) —            \(reason)")
             }

@@ -105,6 +105,12 @@ struct CodexSessions: Sendable {
                 children[parent, default: []].append(row.id)
             } else { throw Failure.unavailable }
         }
+        let (files, unsupportedIDs) = try historyFiles()
+        let openPaths = try await openHistoryPaths()
+        return Snapshot(records: records, children: children, files: files, unsupportedIDs: unsupportedIDs, openPaths: openPaths)
+    }
+
+    private func historyFiles() throws -> (files: [String: [CodexSessionReview.Member]], unsupportedIDs: Set<String>) {
         var files: [String: [CodexSessionReview.Member]] = [:]
         var unsupportedIDs: Set<String> = []
         for directory in ["sessions", "archived_sessions"] {
@@ -120,7 +126,12 @@ struct CodexSessions: Sendable {
                 if url.lastPathComponent.hasSuffix(".jsonl.zst") {
                     let stem = String(url.lastPathComponent.dropLast(".jsonl.zst".count))
                     let id = String(stem.suffix(36))
-                    if UUID(uuidString: id) != nil { unsupportedIDs.insert(id) }
+                    if UUID(uuidString: id) != nil {
+                        unsupportedIDs.insert(id)
+                        if stem.hasPrefix("rollout-"), let member = readMember(url, threadID: id) {
+                            files[id, default: []].append(member)
+                        }
+                    }
                     continue
                 }
                 guard url.pathExtension == "jsonl", let member = readMember(url) else { continue }
@@ -128,8 +139,21 @@ struct CodexSessions: Sendable {
             }
             guard !failedRead else { throw Failure.unavailable }
         }
-        let openPaths = try await openHistoryPaths()
-        return Snapshot(records: records, children: children, files: files, unsupportedIDs: unsupportedIDs, openPaths: openPaths)
+        return (files, unsupportedIDs)
+    }
+
+    /// Titles are display data. They do not authorize session removal.
+    private func storedTitles() async -> [String: String] {
+        guard let databases = try? FileManager.default.contentsOfDirectory(at: home, includingPropertiesForKeys: nil)
+            .filter({ $0.lastPathComponent.hasPrefix("state_") && $0.pathExtension == "sqlite" }),
+              databases.count == 1, let database = databases.first, owned(database) else { return [:] }
+        struct Title: Decodable { let id: String; let title: String }
+        guard let data = try? await runner.run("/usr/bin/sqlite3",
+            ["-readonly", "-json", "-cmd", ".timeout 1000", database.path, "SELECT id, title FROM threads WHERE title IS NOT NULL;"],
+            timeout: .seconds(10), allowsInput: false),
+              let rows = try? JSONDecoder().decode([Title].self, from: data) else { return [:] }
+        return Dictionary(rows.filter { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Protects open history files, including clients that predate Codex writer locks.
@@ -160,12 +184,13 @@ struct CodexSessions: Sendable {
         return true
     }
 
-    /// Reads only the first session metadata record, with a fixed size limit.
-    private func readMember(_ url: URL) -> CodexSessionReview.Member? {
+    /// Reads file metadata. Plaintext history also requires a verified first metadata record.
+    private func readMember(_ url: URL, threadID: String? = nil) -> CodexSessionReview.Member? {
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]),
               values.isRegularFile == true, let date = values.contentModificationDate,
-              let size = values.fileSize, let identity = FileIdentity.of(url),
-              let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+              let size = values.fileSize, let identity = FileIdentity.of(url) else { return nil }
+        if let threadID { return .init(threadID: threadID, url: url, identity: identity, modifiedAt: date, fileSize: size) }
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         var header = Data()
         while header.count < 65_536 {
@@ -203,9 +228,28 @@ struct CodexSessions: Sendable {
         return true
     }
 
-    func scan(context: ScanContext) async throws -> [FileEntry]? {
-        guard await supportsDeletion() else { return nil }
-        let snapshot = try await snapshot()
+    func scan(context: ScanContext) async throws -> [FileEntry] {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("codex_inventory", path: home.path)
+        defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed") }
+        let supportsDeletion = await supportsDeletion()
+        diagnostics?.record("codex_deletion_support", details: ["supported": "\(supportsDeletion)", "executable": executable ?? "missing"])
+        let snapshot: Snapshot?
+        do { snapshot = supportsDeletion ? try await self.snapshot() : nil }
+        catch {
+            diagnostics?.record("codex_inventory_fallback", details: ["error": "\(error)"])
+            snapshot = nil
+        }
+        try Task.checkCancellation()
+        let files: [String: [CodexSessionReview.Member]]
+        let titles: [String: String]
+        if let snapshot {
+            files = snapshot.files
+            titles = snapshot.records.compactMapValues(\.name)
+        } else {
+            files = try historyFiles().files
+            titles = await storedTitles()
+        }
         var groups: [String: FileEntry] = [:]
         for name in ["sessions", "archived_sessions"] {
             let url = home.appendingPathComponent(name)
@@ -215,15 +259,18 @@ struct CodexSessions: Sendable {
             groups[name] = FileEntry(url: url,
                 displayName: name == "sessions" ? "Codex sessions" : "Codex archived sessions", kind: .folder,
                 allocatedBytes: size.allocatedBytes, protectionReason: .inventory,
-                protectionExplanation: "Review inactive conversations below. Active sessions and unknown files stay protected.", aiTool: .codex,
+                protectionExplanation: snapshot == nil
+                    ? "Saved conversations are shown below. Moppo cannot verify safe removal with this Codex installation."
+                    : "Review inactive conversations below. Active sessions and unknown files stay protected.", aiTool: .codex,
                 aiStorageSection: .init(owner: .codex,
                     title: name == "sessions" ? "Sessions" : "Archived sessions",
                     summary: name == "sessions" ? "Saved conversations and task history." : "Archived conversations and task history."))
         }
-        let childIDs = Set(snapshot.children.values.flatMap { $0 })
-        let roots = snapshot.records.keys.filter { !childIDs.contains($0) }.sorted()
+        var disclosedPaths: Set<String> = []
+        let childIDs = Set(snapshot?.children.values.flatMap { $0 } ?? [])
+        let roots = snapshot?.records.keys.filter { !childIDs.contains($0) }.sorted() ?? []
         for id in roots {
-            guard let review = snapshot.review(id, home: home), let root = snapshot.records[id],
+            guard let snapshot, let review = snapshot.review(id, home: home), let root = snapshot.records[id],
                   let primary = review.members.first(where: { $0.threadID == id }) else { continue }
             var sizes: [String: Int64] = [:]
             var permitted = true
@@ -247,6 +294,25 @@ struct CodexSessions: Sendable {
                 codexSession: review)
             for (key, bytes) in sizes { groups[key]!.allocatedBytes -= bytes }
             groups[folder]!.children.append(row)
+            disclosedPaths.formUnion(review.members.map { $0.url.path })
+        }
+        for member in files.values.flatMap({ $0 }).sorted(by: { $0.url.path < $1.url.path }) {
+            try Task.checkCancellation()
+            guard !disclosedPaths.contains(member.url.path), !context.isExcluded(member.url) else { continue }
+            let folder = member.url.path.hasPrefix(home.appendingPathComponent("archived_sessions").path + "/")
+                ? "archived_sessions" : "sessions"
+            guard groups[folder] != nil else { continue }
+            let size = try await context.measurer.measure(member.url)
+            let current = readMember(member.url, threadID: member.url.pathExtension == "zst" ? member.threadID : nil)
+            guard size.unreadableCount == 0, !size.containsProtectedPattern,
+                  size.allocatedBytes <= groups[folder]!.allocatedBytes, current == member else { continue }
+            let row = FileEntry(url: member.url, displayName: titles[member.threadID] ?? "Codex session \(member.threadID)",
+                kind: .file, allocatedBytes: size.allocatedBytes, lastOpened: member.modifiedAt,
+                protectionReason: .inventory,
+                protectionExplanation: "Moppo cannot verify safe removal for this conversation. Use Codex to manage it.")
+            groups[folder]!.allocatedBytes -= size.allocatedBytes
+            groups[folder]!.children.append(row)
+            disclosedPaths.insert(member.url.path)
         }
         return groups.values.sorted { $0.displayName < $1.displayName }.map { group in
             var group = group

@@ -48,6 +48,8 @@ public struct CleanupOutcome: Sendable, Equatable {
     public var failed: [String]
     /// Paths that failed because macOS denied access.
     public var permissionDenied: [String]
+    /// Worktree paths excluded because their removal checks changed.
+    public var skippedWorktrees: [String]
 
     public init(
         removedBytes: Int64 = 0,
@@ -57,7 +59,8 @@ public struct CleanupOutcome: Sendable, Equatable {
         failed: [String] = [],
         permissionDenied: [String] = [],
         trashedCount: Int = 0,
-        deletedCount: Int = 0
+        deletedCount: Int = 0,
+        skippedWorktrees: [String] = []
     ) {
         self.removedBytes = removedBytes
         self.freedBytes = freedBytes
@@ -67,6 +70,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         self.permissionDenied = permissionDenied
         self.trashedCount = trashedCount
         self.deletedCount = deletedCount
+        self.skippedWorktrees = skippedWorktrees
     }
 
     /// Bytes the removed items claimed but did not give back, because another file
@@ -82,6 +86,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         deletedCount += other.deletedCount
         failed.append(contentsOf: other.failed)
         permissionDenied.append(contentsOf: other.permissionDenied)
+        skippedWorktrees.append(contentsOf: other.skippedWorktrees)
     }
 }
 

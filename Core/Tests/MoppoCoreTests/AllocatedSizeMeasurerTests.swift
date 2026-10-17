@@ -318,6 +318,63 @@ struct AllocatedSizeMeasurerTests {
         #expect(firstWorkers == secondWorkers)
     }
 
+    @Test("Cloud reads reserve local workers until their scan releases the reservation")
+    func cloudReadsReserveLocalWorkers() async throws {
+        func wait(_ semaphore: DispatchSemaphore) async -> Bool {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().async {
+                    continuation.resume(returning: semaphore.wait(timeout: .now() + 5) == .success)
+                }
+            }
+        }
+        let sandbox = try Sandbox()
+        for index in 0..<4 {
+            try sandbox.writeFile("Library/Mobile Documents/folder-\(index)/file", bytes: 4096)
+        }
+        let local = try sandbox.writeFile("local/file", bytes: 4096).deletingLastPathComponent()
+        let cloud = sandbox.root.appendingPathComponent("Library/Mobile Documents")
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let localFinished = DispatchSemaphore(value: 0)
+        defer { for _ in 0..<4 { release.signal() } }
+        let reservation = CloudWorkerReservation()
+        defer { reservation.restore() }
+        var measurer = AllocatedSizeMeasurer()
+        measurer.cloudWorkerReservation = reservation
+        let cloudMeasurer = measurer
+        let cloudTask = Task {
+            try await cloudMeasurer.measure(cloud, retaining: [], observeEntry: { _, values, _ in
+                guard values.isRegularFile == true else { return }
+                started.signal()
+                release.wait()
+            })
+        }
+        for _ in 0..<AllocatedSizeMeasurer.workerActivity.cloudLimit {
+            #expect(await wait(started))
+        }
+        let activity = AllocatedSizeMeasurer.workerActivity
+        #expect(activity.cloudActive == activity.cloudLimit)
+        #expect(activity.cloudActive < activity.limit)
+        let unrelated = CloudWorkerReservation()
+        defer { unrelated.restore() }
+        unrelated.release()
+        let localTask = Task {
+            let result = try await AllocatedSizeMeasurer().measure(local)
+            localFinished.signal()
+            return result
+        }
+        #expect(await wait(localFinished))
+        unrelated.restore()
+        reservation.release()
+        for _ in activity.cloudActive..<activity.limit { #expect(await wait(started)) }
+        #expect(AllocatedSizeMeasurer.workerActivity.cloudActive == activity.limit)
+        reservation.restore()
+        #expect(AllocatedSizeMeasurer.workerActivity.cloudLimit == activity.cloudLimit)
+        for _ in 0..<4 { release.signal() }
+        #expect(try await localTask.value.fileCount == 1)
+        #expect(try await cloudTask.value[cloud.standardizedFileURL]?.fileCount == 4)
+    }
+
     /// Regression: `.skipsPackageDescendants` was briefly set alongside the symlink
     /// option, which made `/Applications` measure as roughly zero — every .app is a
     /// package, so all their contents were skipped.

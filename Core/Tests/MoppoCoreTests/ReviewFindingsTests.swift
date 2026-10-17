@@ -549,6 +549,20 @@ struct ReviewFindingsTests {
         #expect(elapsed < 10, "took \(elapsed)s — the grandchild should not hold the runner")
     }
 
+    @Test("Command pipes retain output larger than their buffers", arguments: [false, true])
+    func largeCommandOutput(fails: Bool) async throws {
+        let script = "/usr/bin/head -c 1048576 /dev/zero; /usr/bin/head -c 1048576 /dev/zero >&2; exit \(fails ? 1 : 0)"
+        do {
+            let data = try await ProcessRunner().run("/bin/sh", ["-c", script], timeout: .seconds(5))
+            #expect(!fails)
+            #expect(data == Data(repeating: 0, count: 1_048_576))
+        } catch ProcessError.failed(_, let status, let stderr) {
+            #expect(fails)
+            #expect(status == 1)
+            #expect(stderr.utf8.count == 1_048_576)
+        }
+    }
+
     @Test("Allowed exit codes retain output and do not hide error diagnostics")
     func allowedExitStatusRetainsOutput() async throws {
         let output = try await ProcessRunner().run("/bin/sh", ["-c", "printf 'open file'; exit 1"],

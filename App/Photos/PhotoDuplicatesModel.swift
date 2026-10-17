@@ -159,7 +159,8 @@ final class PhotoDuplicatesModel {
     }
 
     func startScan() {
-        guard canAccessPhotos, let operation = operations.begin(.photoScan) else { return }
+        guard canAccessPhotos,
+              let operation = operations.begin(.photoScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
         cancelRegroup()
         let service = makeService(allowsNetworkFetch())
         let similarity = similarity

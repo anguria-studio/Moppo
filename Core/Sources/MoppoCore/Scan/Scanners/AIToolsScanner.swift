@@ -23,7 +23,11 @@ public struct AIToolsScanner: CategoryScanner {
             let url = home.appendingPathComponent(root.path)
             guard !context.isExcluded(url), isOwnedPath(url),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
-            let total = try await context.measurer.measure(url)
+            let roots = try GitWorktreeDetector.isWorktree(url)
+                ? [url] : GitWorktreeDetector.roots(under: url, context: context)
+            let worktrees = try await WorktreeScan.prepare(roots)
+            let measured = try await worktrees.measure(url, with: context.measurer)
+            let total = measured.measurements[url.standardizedFileURL] ?? .zero
             found.unreadableCount += total.unreadableCount
             guard total.allocatedBytes > 0, !total.containsProtectedPattern else { continue }
 
@@ -67,7 +71,7 @@ public struct AIToolsScanner: CategoryScanner {
                     append(child, to: &entry)
                 }
             }
-            entry = try await GitWorktreeDetector.addingWorktrees(to: entry, context: context)
+            entry = try await GitWorktreeDetector.addingWorktrees(to: entry, context: context, prepared: measured)
             found.entries.append(entry)
         }
         try await appendLocalModels(context: context, to: &found)

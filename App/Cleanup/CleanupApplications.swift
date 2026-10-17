@@ -11,19 +11,25 @@ struct CleanupApplications {
 
 @MainActor
 enum ApplicationRuntime {
+    /// Cleanup cannot quit Moppo or Finder to release their files.
+    static func canQuitForCleanup(_ owner: FileEntry.RunningOwner) -> Bool {
+        if let identifier = owner.bundleIdentifier,
+           identifier == AppIdentity.bundleIdentifier || identifier == Bundle.main.bundleIdentifier
+            || identifier == "com.apple.finder" { return false }
+        return URL(fileURLWithPath: owner.bundlePath).standardizedFileURL.path != Bundle.main.bundleURL.standardizedFileURL.path
+    }
+
     static func currentRunningOwners() -> [FileEntry.RunningOwner] {
         NSWorkspace.shared.runningApplications.compactMap { application in
-            guard application.activationPolicy == .regular,
-                  application.bundleIdentifier != Bundle.main.bundleIdentifier,
-                  application.bundleIdentifier != "com.apple.finder"
-            else { return nil }
+            guard application.activationPolicy == .regular else { return nil }
             guard let url = application.bundleURL else { return nil }
-            return FileEntry.RunningOwner(
+            let owner = FileEntry.RunningOwner(
                 name: application.localizedName
                     ?? url.deletingPathExtension().lastPathComponent,
                 bundleIdentifier: application.bundleIdentifier,
                 bundlePath: url.path
             )
+            return canQuitForCleanup(owner) ? owner : nil
         }
     }
     private static func processes(of owner: FileEntry.RunningOwner) -> [NSRunningApplication] {
@@ -58,13 +64,15 @@ enum ApplicationRuntime {
     }
 
     static func quit(_ owners: [FileEntry.RunningOwner]) async -> [FileEntry.RunningOwner] {
-        for owner in owners {
+        let requested = owners.filter(canQuitForCleanup)
+        for owner in requested {
             for process in processes(of: owner) {
                 guard !Task.isCancelled else { return stillRunning(owners) }
+                guard process.processIdentifier != ProcessInfo.processInfo.processIdentifier else { continue }
                 process.terminate()
             }
         }
-        for _ in 0..<300 where !stillRunning(owners).isEmpty {
+        for _ in 0..<300 where !stillRunning(requested).isEmpty {
             do { try await Task.sleep(for: .milliseconds(100)) }
             catch { break }
         }

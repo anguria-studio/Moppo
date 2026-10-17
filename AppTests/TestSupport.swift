@@ -138,8 +138,8 @@ actor HeldCleanupScanner: CleanupScanning {
         reports[index] = onProgress
         return try await withCheckedThrowingContinuation { scans[index] = $0 }
     }
-    func report(_ index: Int, percent: Int) {
-        reports[index]?(ScanProgress(percent: percent, completedCategories: 1, totalCategories: 2))
+    func report(_ index: Int, percent: Int, phase: String? = nil) {
+        reports[index]?(ScanProgress(percent: percent, completedCategories: 1, totalCategories: 2, phase: phase))
     }
     func finish(_ index: Int, results: ScanResults) { scans.removeValue(forKey: index)?.resume(returning: results) }
     func fail(_ index: Int) { scans.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadUnknown)) }

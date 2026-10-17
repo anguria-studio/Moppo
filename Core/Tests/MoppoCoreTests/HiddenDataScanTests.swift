@@ -8,6 +8,63 @@ import Testing
 /// day it was written, so nothing stood in the way.
 @Suite("Hidden & System Data")
 struct HiddenDataScanTests {
+    @Test("Archives finish during a cloud wait, and cancellation prevents partial results", arguments: [false, true])
+    func archivesOverlapCloud(cancel: Bool) async throws {
+        let sandbox = try Sandbox()
+        let cloud = sandbox.home.appendingPathComponent("Library/Mobile Documents")
+        try sandbox.file("Library/Mobile Documents/claimed.zip", bytes: 260 * 1024 * 1024)
+        let archive = try sandbox.file("Downloads/separate.zip", bytes: 260 * 1024 * 1024)
+        let log = try ScanDiagnostics(directory: sandbox.home.appendingPathComponent("logs"))
+        let cloudStarted = DispatchSemaphore(value: 0)
+        let localFinished = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        var context = ScanContext(measurer: AllocatedSizeMeasurer(onMeasurement: { url, _, _ in
+            if url.path == cloud.path {
+                cloudStarted.signal()
+                #expect(release.wait(timeout: .now() + 5) == .success)
+            }
+        }))
+        context.onPhase = { phase in
+            if phase == "Measuring local iCloud files" { localFinished.signal() }
+        }
+        let scanContext = context
+        let scanner = HiddenDataScanner(home: sandbox.home)
+        let task = Task {
+            try await ScanDiagnostics.$current.withValue(log.context) { try await scanner.scan(context: scanContext) }
+        }
+        let overlapped = await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let cloudReady = cloudStarted.wait(timeout: .now() + 5) == .success
+                let localReady = localFinished.wait(timeout: .now() + 5) == .success
+                continuation.resume(returning: cloudReady && localReady)
+            }
+        }
+        #expect(overlapped)
+        log.flush()
+        let records = try Data(contentsOf: log.fileURL).split(separator: 10).map {
+            try #require(try JSONSerialization.jsonObject(with: Data($0)) as? [String: Any])
+        }
+        let completed = records.filter { $0["event"] as? String == "span_end" }
+            .compactMap { $0["details"] as? [String: String] }
+        #expect(completed.contains { $0["operation"] == "archive_discovery" && $0["candidates"] == "1" })
+        #expect(!completed.contains { $0["operation"] == "cloud_measurement" })
+        if cancel { task.cancel() }
+        release.signal()
+        if cancel {
+            await #expect(throws: CancellationError.self) { try await task.value }
+        } else {
+            let result = try await task.value
+            #expect(Set(result.entries.map { $0.url.resolvingSymlinksInPath().path })
+                == Set([cloud, archive].map { $0.resolvingSymlinksInPath().path }))
+            #expect(result.totalBytes == result.entries.reduce(0) { $0 + $1.displayBytes })
+        }
+        log.finish(outcome: cancel ? "cancelled" : "completed")
+        log.flush()
+        let final = try String(contentsOf: log.fileURL, encoding: .utf8)
+        #expect(final.contains("\"active_operations\":\"0\""))
+    }
+
 
     @Test("Archive discovery cancels before startup and during a small walk", arguments: [1, 8])
     func archiveDiscoveryCancellation(cancelAt: Int) throws {
