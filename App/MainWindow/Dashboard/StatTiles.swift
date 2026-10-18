@@ -5,7 +5,7 @@ import MoppoCore
 struct StatTiles: View {
 
     private let safeToRemoveBytes: Int64?
-    private let needsReviewBytes: Int64?
+    private let totalBytes: Int64?
     private let lastScanAt: Date?
     private let iCloudState: DashboardModel.ICloudState?
     private let onICloudSetup: () -> Void
@@ -14,7 +14,7 @@ struct StatTiles: View {
     /// Tap targets for the two counting tiles. A first-run placeholder stays inert.
     /// A saved scan time gives both tiles a fresh-scan action.
     private let onSafeTap: (() -> Void)?
-    private let onReviewTap: (() -> Void)?
+    private let onAllTap: (() -> Void)?
     /// Starts a fresh scan when only a saved timestamp remains.
     private let onScan: (() -> Void)?
 
@@ -28,37 +28,36 @@ struct StatTiles: View {
         onICloudRetry: @escaping () -> Void = {},
         onICloudHide: @escaping () -> Void = {},
         onSafeTap: (() -> Void)? = nil,
-        onReviewTap: (() -> Void)? = nil,
+        onAllTap: (() -> Void)? = nil,
         onScan: (() -> Void)? = nil
     ) {
         self.safeToRemoveBytes = results?.safeToRemoveBytes
-        self.needsReviewBytes = results?.needsReviewBytes
+        self.totalBytes = results?.totalBytes
         self.lastScanAt = results?.finishedAt ?? lastScanAt
         self.iCloudState = iCloudState
         self.onICloudSetup = onICloudSetup
         self.onICloudRetry = onICloudRetry
         self.onICloudHide = onICloudHide
         self.onSafeTap = onSafeTap
-        self.onReviewTap = onReviewTap
+        self.onAllTap = onAllTap
         self.onScan = onScan
     }
 
-    /// Figures directly. `ScanResults` has no public initializer, so a preview of the
-    /// populated state has no other way in.
+    /// Supplies totals for previews.
     init(
         safeToRemoveBytes: Int64?,
-        needsReviewBytes: Int64?,
+        totalBytes: Int64?,
         lastScanAt: Date?
     ) {
         self.safeToRemoveBytes = safeToRemoveBytes
-        self.needsReviewBytes = needsReviewBytes
+        self.totalBytes = totalBytes
         self.lastScanAt = lastScanAt
         self.iCloudState = nil
         self.onICloudSetup = {}
         self.onICloudRetry = {}
         self.onICloudHide = {}
         self.onSafeTap = nil
-        self.onReviewTap = nil
+        self.onAllTap = nil
         self.onScan = nil
     }
 
@@ -75,11 +74,11 @@ struct StatTiles: View {
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
                     linkedTile(
-                        label: "Needs Review",
-                        value: needsReviewBytes.map { ByteFormatting.string($0) },
+                        label: "All",
+                        value: totalBytes.map { ByteFormatting.string($0) },
                         emptyValue: savedScanNeedsRefresh ? "Scan Again" : nil,
-                        description: "Check these files before removal.",
-                        action: onReviewTap,
+                        description: "Includes protected items. Not all storage can be removed.",
+                        action: onAllTap,
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
                     if let iCloudState {
@@ -97,7 +96,7 @@ struct StatTiles: View {
     /// A timestamp is safe to keep. File removal candidates are not safe to keep
     /// across a relaunch because files can change or move.
     private var savedScanNeedsRefresh: Bool {
-        safeToRemoveBytes == nil && needsReviewBytes == nil && lastScanAt != nil
+        safeToRemoveBytes == nil && totalBytes == nil && lastScanAt != nil
     }
 
     @ViewBuilder
@@ -179,6 +178,12 @@ private struct StatTile: View {
                     .minimumScaleFactor(0.7)
                     .accessibilityLabel(value ?? emptyValue ?? "Not measured yet")
                     .padding(.top, 4)
+
+                Text(description)
+                    .font(.mcCaption)
+                    .foregroundStyle(Token.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
@@ -187,15 +192,14 @@ private struct StatTile: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityHint(description)
     }
 }
 
 #Preview("Stat tiles — scanned and pre-scan") {
     VStack(spacing: 24) {
         StatTiles(
-            safeToRemoveBytes: 6_023_000_000,      // 5.61 GB
-            needsReviewBytes: 66_712_000_000,      // 62.13 GB
+            safeToRemoveBytes: 6_023_000_000,
+            totalBytes: 72_735_000_000,
             lastScanAt: Calendar.current.date(byAdding: .day, value: -2, to: .now)
         )
         StatTiles(results: nil)

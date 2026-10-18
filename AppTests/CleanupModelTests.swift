@@ -98,10 +98,10 @@ struct CleanupModelTests {
         cleanup.scannerSelection = [session.id]
         cleanup.userDataRemovalOverrides = [session.id]
         #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
-        #expect(cleanup.cleanupSelection(in: .needsReview) == [session.id])
+        #expect(cleanup.cleanupSelection(in: .all) == [session.id])
         var requested = false
         cleanup.onEvent = { if case .confirmationRequested = $0 { requested = true } }
-        cleanup.requestCleanUp(in: .needsReview)
+        cleanup.requestCleanUp(in: .all)
         #expect(requested)
         #expect(cleanup.pendingCleanUp?.codexSessionCount == 2)
         #expect(cleanup.pendingCleanUp?.codexSessionWarning?.contains("1 child session") == true)
@@ -388,11 +388,17 @@ struct CleanupModelTests {
         cleanup.selectAllInCurrentView()
         #expect(cleanup.scannerSelection == [first.id, second.id, review.id])
         #expect(cleanup.selectAllStateInCurrentView == .on)
-        cleanup.scanFilter = .needsReview
+        cleanup.scanFilter = .safeToRemove
+        #expect(cleanup.scannerSelection == [first.id, second.id, review.id])
+        #expect(cleanup.cleanupSelectionBytes(in: .safeToRemove) == first.allocatedBytes + second.allocatedBytes)
+        #expect(cleanup.selectedBytes(in: .systemCaches, filter: .safeToRemove) == first.allocatedBytes + second.allocatedBytes)
         #expect(cleanup.selectAllStateInCurrentView == .on)
         cleanup.deselectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [review.id])
         #expect(cleanup.selectAllStateInCurrentView == .off)
         cleanup.scanFilter = .all
+        #expect(cleanup.cleanupSelectionBytes(in: .all) == review.allocatedBytes)
+        #expect(cleanup.selectedBytes(in: .systemCaches) == review.allocatedBytes)
         #expect(cleanup.selectAllStateInCurrentView == .mixed)
         cleanup.deselectAllInCurrentView()
         #expect(cleanup.selectAllStateInCurrentView == .off)

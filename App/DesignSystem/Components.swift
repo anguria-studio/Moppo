@@ -852,13 +852,12 @@ struct PageSegmentedControl<Selection: Hashable>: View {
     }
 
     enum Tint {
-        case blue, green, amber
+        case blue, green
 
         var fill: Color {
             switch self {
             case .blue: Token.Segments.blueFill
             case .green: Token.Segments.greenFill
-            case .amber: Token.Segments.amberFill
             }
         }
 
@@ -866,7 +865,6 @@ struct PageSegmentedControl<Selection: Hashable>: View {
             switch self {
             case .blue: Token.Segments.blueBorder
             case .green: Token.Segments.greenBorder
-            case .amber: Token.Segments.amberBorder
             }
         }
 
@@ -874,7 +872,6 @@ struct PageSegmentedControl<Selection: Hashable>: View {
             switch self {
             case .blue: Token.Segments.blueText
             case .green: Token.textColor(.green)
-            case .amber: Token.textColor(.orange)
             }
         }
 
@@ -882,7 +879,6 @@ struct PageSegmentedControl<Selection: Hashable>: View {
             switch self {
             case .blue: Token.Segments.blueText
             case .green: Token.color(.green)
-            case .amber: Token.color(.orange)
             }
         }
     }
