@@ -128,6 +128,10 @@ Cloud measurements run alongside Photos cache measurements, hidden folder measur
 The archive search skips all cloud roots and other folders that these steps measure.
 The scan waits for both paths to finish. A stop request cancels both paths.
 Cleanup reads local directory entries and size metadata in iCloud folders. It does not request downloads or read document contents.
+Cleanup cloud measurements use direct directory reads and filesystem allocation attributes instead of Foundation property prefetch.
+The shared walker retains cancellation checks, hard-link accounting, protected names, and volume boundaries.
+An allocation read failure increases the unreadable count. Logical file size does not replace missing allocation data.
+Storage Explorer retains Foundation metadata for its cloud residency checks.
 The Dashboard iCloud card separately measures account storage.
 The log reports active and queued cloud jobs beside the total worker counts.
 This limit does not interrupt a blocked filesystem call or set a maximum scan duration.
@@ -136,6 +140,8 @@ The log records enabled categories, exclusions, access state, app versions, mach
 Category and operation records include paths, elapsed time, measurement counts, unreadable counts, and removal protection flags.
 Directory records identify the last file that Moppo checked.
 Directory records separate listing time, including metadata prefetch, from subsequent metadata reads.
+Each directory record names its reader. Direct filesystem records also preserve the original directory path.
+For direct filesystem reads, listing time excludes metadata reads.
 For metadata reads above 50 milliseconds, the directory record includes the slowest path and duration.
 Worktree records identify discovery, Git checks, process checks, and review results.
 Final result records list worktree rows and their parent folders after category filters.
@@ -171,7 +177,7 @@ Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory
 ```
 Core/                         Swift package
   Sources/MoppoCore/          Scanning engine and cleanup services
-    Measure/                 AllocatedSizeMeasurer, ByteFormatting
+    Measure/                 AllocatedSizeMeasurer, MeasurementReader, ByteFormatting
     System/                  Disk information, snapshots, process execution, scan diagnostics
     Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history

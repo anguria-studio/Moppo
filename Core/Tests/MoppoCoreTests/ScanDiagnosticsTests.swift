@@ -4,6 +4,48 @@ import Testing
 
 @Suite("Detailed scan diagnostics")
 struct ScanDiagnosticsTests {
+    @Test("Scan descriptors are excluded by PID while other process activity remains protected")
+    func scanProcessDescriptors() throws {
+        let sandbox = try AllocatedSizeMeasurerTests.Sandbox()
+        let log = try ScanDiagnostics(directory: sandbox.root)
+        let unavailable = "f29\0nvnode: FD unavailable\0\n"
+        let output = Data(("p59089\0cMoppo\0\n"
+            + "fcwd\0tDIR\0D0x1\0i1\0\nftxt\0tREG\0D0x1\0i2\0\nfmem\0tREG\0D0x1\0i3\0\n"
+            + String(repeating: unavailable, count: 40)
+            + "f30\0tREG\0D0x1\0i6\0\n"
+            + "p59090\0cMoppo\0\nf31\0tREG\0D0x1\0i4\0\n"
+            + "p59091\0cEditor\0\nf32\0tREG\0D0x1\0i5\0\n").utf8)
+        let parsed = ScanDiagnostics.$current.withValue(log.context) {
+            WorktreeActivity.parse(output, scanProcessID: 59089)
+        }
+        #expect(parsed.complete)
+        #expect(parsed.incompleteFiles == 0)
+        #expect(parsed.processes == ["1:1": ["Moppo"], "1:2": ["Moppo"], "1:3": ["Moppo"],
+                                     "1:4": ["Moppo"], "1:5": ["Editor"]])
+        #expect(!WorktreeActivity.parse(output).complete)
+        for record in ["p59090\0cMoppo\0\n" + unavailable, "p59089\0cMoppo\0\nfcwd\0nvnode: FD unavailable\0\n"] {
+            let result = WorktreeActivity.parse(output + Data(record.utf8), scanProcessID: 59089)
+            #expect(!result.complete)
+            #expect(result.incompleteFiles == 1)
+        }
+        #expect(!WorktreeActivity.parse(output.dropLast(), scanProcessID: 59089).complete)
+        log.finish(outcome: "completed")
+        log.flush()
+        let events = try records(log)
+        #expect(!events.contains { $0["event"] as? String == "worktree_activity_issue" })
+        let excluded = events.filter { $0["event"] as? String == "worktree_activity_scan_handle" }.map(details)
+        #expect(excluded.count == 32)
+        #expect(excluded.allSatisfy { $0["pid"] == "59089" && $0["descriptor"] == "29" })
+        #expect(excluded.first?["path"] == "vnode: FD unavailable")
+        let inventory = details(try #require(events.first { $0["event"] as? String == "worktree_activity_inventory" }))
+        #expect(inventory["complete"] == "true")
+        #expect(inventory["scan_process_id"] == "59089")
+        #expect(inventory["scan_descriptors_excluded"] == "41")
+        #expect(inventory["scan_descriptor_records_logged"] == "32")
+        #expect(inventory["scan_descriptor_records_omitted"] == "9")
+        #expect(excluded.allSatisfy { $0["inventory_id"] == inventory["inventory_id"] })
+    }
+
     @Test("Incomplete process records identify the cause within diagnostic limits")
     func incompleteProcessRecords() throws {
         let sandbox = try AllocatedSizeMeasurerTests.Sandbox()

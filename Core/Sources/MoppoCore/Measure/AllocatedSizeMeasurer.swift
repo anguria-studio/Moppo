@@ -167,12 +167,20 @@ public struct AllocatedSizeMeasurer: Sendable {
         _ inputURL: URL,
         progress: (@Sendable (SizeMeasurement) -> Void)? = nil
     ) async throws -> SizeMeasurement {
+        try await measure(inputURL, reader: .foundation, progress: progress)
+    }
+
+    /// Cleanup cloud measurements use direct metadata. Residency checks retain Foundation support.
+    func measure(_ inputURL: URL, reader: MeasurementReader,
+                 progress: (@Sendable (SizeMeasurement) -> Void)? = nil) async throws -> SizeMeasurement {
+        try Task.checkCancellation()
+        let reader: MeasurementReader = detectCloudOnlyItems ? .foundation : reader
         let followSymlinks = self.followSymlinks
         let protectedPatterns = self.protectedPatterns
         let keys = Self.keys(detectingCloudItems: detectCloudOnlyItems)
         let cancelled = CancellationFlag()
         let diagnostics = ScanDiagnostics.current
-        let span = diagnostics?.begin("measure_tree", path: inputURL.path)
+        let span = diagnostics?.begin("measure_tree", path: inputURL.path, details: ["reader": reader.rawValue])
         var diagnosticOutcome = "failed"
         var diagnosticDetails: [String: String] = [:]
         defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : diagnosticOutcome, details: diagnosticDetails) }
@@ -184,16 +192,24 @@ public struct AllocatedSizeMeasurer: Sendable {
                 let url = followSymlinks
                     ? inputURL.resolvingSymlinksInPath()
                     : inputURL
-                let rootValues = try? url.resourceValues(forKeys: Set(keys))
+                let rootValues: MeasurementMetadata
+                do {
+                    rootValues = try reader.metadata(at: url, keys: Set(keys))
+                } catch {
+                    diagnostics?.record("metadata_unreadable", details: ["path": url.path,
+                        "reader": reader.rawValue, "error": "\(error)"])
+                    return SizeMeasurement(unreadableCount: 1)
+                }
+                if cancelled.isCancelled { throw CancellationError() }
 
                 // A plain file, or a symlink we are not following: measure and return.
-                if rootValues?.isDirectory != true {
-                    if rootValues?.isSymbolicLink == true && !followSymlinks { return .zero }
-                    if let bytes = Self.allocatedSize(of: rootValues) {
+                if !rootValues.isDirectory {
+                    if rootValues.isSymbolicLink && !followSymlinks { return .zero }
+                    if let bytes = rootValues.allocatedBytes {
                         return SizeMeasurement(
                             allocatedBytes: bytes,
                             fileCount: 1,
-                            containsCloudOnlyItem: Self.isCloudOnly(rootValues)
+                            containsCloudOnlyItem: rootValues.isCloudOnly
                         )
                     }
                     return .zero
@@ -201,6 +217,7 @@ public struct AllocatedSizeMeasurer: Sendable {
 
                 let key = url.standardizedFileURL
                 let walker = ParallelTreeWalker(
+                    reader: reader,
                     diagnostics: diagnostics,
                     cloudWorkerReservation: cloudWorkerReservation,
                     followSymlinks: followSymlinks,
@@ -209,18 +226,19 @@ public struct AllocatedSizeMeasurer: Sendable {
                     keys: keys,
                     progress: progress
                 )
-                if Self.isCloudOnly(rootValues) { walker.markCloudOnly(key) }
+                if rootValues.isCloudOnly { walker.markCloudOnly(key) }
                 walker.enqueue(
                     listing: url,
                     attribution: [key],
                     grow: 0,
-                    volume: rootValues?.volumeIdentifier as? NSObject
+                    volume: rootValues.volumeIdentifier
                 )
                 return try walker.run()[key] ?? .zero
             }.value
         } onCancel: {
             cancelled.cancel()
         }
+        try Task.checkCancellation()
         diagnosticOutcome = "completed"
         diagnosticDetails = Self.diagnosticDetails(result)
         onMeasurement?(inputURL, started.duration(to: .now), result)
@@ -421,7 +439,7 @@ public struct AllocatedSizeMeasurer: Sendable {
     }
 
     /// APFS-aware size, most accurate first.
-    fileprivate static func allocatedSize(of values: URLResourceValues?) -> Int64? {
+    static func allocatedSize(of values: URLResourceValues?) -> Int64? {
         guard let values else { return nil }
         if let total = values.totalFileAllocatedSize { return Int64(total) }
         if let allocated = values.fileAllocatedSize { return Int64(allocated) }
@@ -429,7 +447,7 @@ public struct AllocatedSizeMeasurer: Sendable {
         return nil
     }
 
-    fileprivate static func isCloudOnly(_ values: URLResourceValues?) -> Bool {
+    static func isCloudOnly(_ values: URLResourceValues?) -> Bool {
         values?.isUbiquitousItem == true
             && values?.ubiquitousItemDownloadingStatus != .current
     }
@@ -465,6 +483,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         let volume: NSObject?
     }
 
+    private let reader: MeasurementReader
     private let diagnostics: ScanDiagnostics.Context?
     private let cloudWorkerReservation: CloudWorkerReservation?
     private let retainedChildren: [String: [String: URL]]
@@ -510,6 +529,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
     private static let reportInterval = 512
 
     init(
+        reader: MeasurementReader = .foundation,
         diagnostics: ScanDiagnostics.Context? = nil,
         cloudWorkerReservation: CloudWorkerReservation? = nil,
         followSymlinks: Bool,
@@ -521,6 +541,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         retainedPaths: [URL] = [],
         observeEntry: (@Sendable (URL, URLResourceValues, [URL]) -> Void)? = nil
     ) {
+        self.reader = reader
         self.diagnostics = diagnostics
         self.cloudWorkerReservation = cloudWorkerReservation
         var children: [String: [String: URL]] = [:]
@@ -687,7 +708,9 @@ private final class ParallelTreeWalker: @unchecked Sendable {
 
     private func process(_ item: WorkItem) {
         guard !cancelled.isCancelled else { return }
-        let span = diagnostics?.begin("directory", path: item.listing.path, details: ["stage": "list_directory"])
+        var details = ["stage": "list_directory", "reader": reader.rawValue]
+        if reader == .filesystem { details["directory_path"] = item.listing.path }
+        let span = diagnostics?.begin("directory", path: item.listing.path, details: details)
         var outcome = "completed"
         var listingSeconds = 0.0, metadataSeconds = 0.0, slowestMetadataSeconds = 0.0
         var metadataReads = 0
@@ -704,11 +727,12 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             }
         }
         let listingStarted = diagnostics.map { _ in ContinuousClock.now }
-        let listed = try? FileManager.default.contentsOfDirectory(
-            at: item.listing,
-            includingPropertiesForKeys: keys,
-            options: []
-        )
+        var listed: [URL]?
+        do {
+            listed = try reader.contents(of: item.listing, keys: keys, cancelled: cancelled)
+        } catch {
+            diagnostics?.update(span, details: ["error": "\(error)"])
+        }
         if let listingStarted { listingSeconds = ScanDiagnostics.Resources.seconds(listingStarted.duration(to: .now)) }
         guard let entries = listed else {
             // A permission-denied directory costs one entry — never a subtree,
@@ -729,7 +753,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             if index % Self.reportInterval == 0, cancelled.isCancelled { return }
             let name = entry.lastPathComponent
             let metadataStarted = diagnostics.map { _ in ContinuousClock.now }
-            let values = try? entry.resourceValues(forKeys: keySet)
+            let values = readMetadata(at: entry)
             if let metadataStarted {
                 let seconds = ScanDiagnostics.Resources.seconds(metadataStarted.duration(to: .now))
                 metadataSeconds += seconds
@@ -750,19 +774,18 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                 for key in childAttribution { markProtected(key) }
             }
             guard let values else {
-                diagnostics?.record("metadata_unreadable", details: ["path": entry.path])
                 recordUnreadable(at: childAttribution)
                 continue
             }
             // Never leave the starting volume — a mounted disk under the scan
             // root is not part of this category.
             if let volume = item.volume,
-               let entryVolume = values.volumeIdentifier as? NSObject,
+               let entryVolume = values.volumeIdentifier,
                !entryVolume.isEqual(volume) {
                 continue
             }
-            observeEntry?(entry, values, childAttribution)
-            if AllocatedSizeMeasurer.isCloudOnly(values) {
+            if let resourceValues = values.resourceValues { observeEntry?(entry, resourceValues, childAttribution) }
+            if values.isCloudOnly {
                 for key in childAttribution { markCloudOnly(key) }
             }
             if values.isSymbolicLink == true {
@@ -776,18 +799,16 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                 // catches for hard content and misses for directories re-linked
                 // under different names — the disclosed price of the option.
                 let resolved = entry.resolvingSymlinksInPath()
-                guard let target = try? resolved.resourceValues(
-                    forKeys: keySet
-                ) else {
+                guard let target = readMetadata(at: resolved) else {
                     recordUnreadable(at: childAttribution)
                     continue
                 }
                 if let volume = item.volume,
-                   let targetVolume = target.volumeIdentifier as? NSObject,
+                   let targetVolume = target.volumeIdentifier,
                    !targetVolume.isEqual(volume) {
                     continue
                 }
-                if AllocatedSizeMeasurer.isCloudOnly(target) {
+                if target.isCloudOnly {
                     for key in childAttribution { markCloudOnly(key) }
                 }
                 if target.isDirectory == true {
@@ -799,15 +820,15 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                         logicalURL: childKey ?? item.logicalURL.appendingPathComponent(name, isDirectory: true)
                     )
                 } else if target.isRegularFile == true {
-                    if (target.linkCount ?? 1) > 1 {
+                    if target.linkCount > 1 {
                         condition.lock()
-                        let fresh = (target.fileResourceIdentifier as? NSObject).map {
+                        let fresh = target.fileResourceIdentifier.map {
                             claimedInodes.insert($0).inserted
                         } ?? true
                         condition.unlock()
                         guard fresh else { continue }
                     }
-                    if let bytes = AllocatedSizeMeasurer.allocatedSize(of: target) {
+                    if let bytes = target.allocatedBytes {
                         localFiles.append(bytes)
                         if flushIfNeeded(&localFiles, attribution: item.attribution) { return }
                     }
@@ -828,15 +849,15 @@ private final class ParallelTreeWalker: @unchecked Sendable {
 
             guard values.isRegularFile == true else { continue }
 
-            if (values.linkCount ?? 1) > 1 {
+            if values.linkCount > 1 {
                 condition.lock()
-                let fresh = (values.fileResourceIdentifier as? NSObject).map {
+                let fresh = values.fileResourceIdentifier.map {
                     claimedInodes.insert($0).inserted
                 } ?? true
                 condition.unlock()
                 guard fresh else { continue }
             }
-            guard let bytes = AllocatedSizeMeasurer.allocatedSize(of: values) else { continue }
+            guard let bytes = values.allocatedBytes else { continue }
             if let retainedKey {
                 var selected = [bytes]
                 if flush(&selected, attribution: item.attribution + [retainedKey]) { drainProgress() }
@@ -849,6 +870,16 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         if !localFiles.isEmpty {
             let shouldDrain = flush(&localFiles, attribution: item.attribution)
             if shouldDrain { drainProgress() }
+        }
+    }
+
+    private func readMetadata(at url: URL) -> MeasurementMetadata? {
+        do {
+            return try reader.metadata(at: url, keys: keySet)
+        } catch {
+            diagnostics?.record("metadata_unreadable", details: ["path": url.path,
+                "reader": reader.rawValue, "error": "\(error)"])
+            return nil
         }
     }
 

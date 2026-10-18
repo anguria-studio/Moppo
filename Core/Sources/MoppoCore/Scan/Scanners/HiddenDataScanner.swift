@@ -210,7 +210,7 @@ public struct HiddenDataScanner: CategoryScanner {
         for components in [Root.mobileDocuments, Root.cloudKit] {
             try Task.checkCancellation()
             try await measureAndAppend(url(components), kind: .folder, minimumBytes: Threshold.cloudMirror,
-                                       context: context, to: &found)
+                                       reader: .filesystem, context: context, to: &found)
         }
         try Task.checkCancellation()
         outcome = "completed"
@@ -434,6 +434,7 @@ public struct HiddenDataScanner: CategoryScanner {
         kind: FileEntry.Kind,
         minimumBytes: Int64,
         isRegenerable: Bool = false,
+        reader: MeasurementReader = .foundation,
         context: ScanContext,
         to found: inout Found
     ) async throws {
@@ -443,7 +444,7 @@ public struct HiddenDataScanner: CategoryScanner {
         // not worth walking.
         guard !context.isExcluded(url) else { return }
 
-        let measurement = try await context.measurer.measure(url)
+        let measurement = try await context.measurer.measure(url, reader: reader)
         append(url, kind: kind, measurement: measurement, lastOpened: lastOpened,
                minimumBytes: minimumBytes, isRegenerable: isRegenerable,
                context: context, to: &found)

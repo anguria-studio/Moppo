@@ -119,7 +119,7 @@ final class WorktreeActivity: @unchecked Sendable {
             let data = try await ProcessRunner().run("/usr/sbin/lsof",
                 ["-n", "-P", "-u", NSUserName(), "-F0pcftDin"], timeout: .seconds(5),
                 allowsInput: false, requiresEmptyStandardError: true)
-            let parsed = parse(data)
+            let parsed = parse(data, scanProcessID: ProcessInfo.processInfo.processIdentifier)
             return WorktreeActivity(roots: roots, processes: parsed.processes,
                 issue: parsed.complete ? nil : "The process check returned incomplete file information.")
         } catch is CancellationError { throw CancellationError() }
@@ -129,30 +129,44 @@ final class WorktreeActivity: @unchecked Sendable {
         }
     }
 
-    static func parse(_ data: Data) -> (processes: [String: Set<String>], complete: Bool, revokedFiles: Int, incompleteFiles: Int) {
+    static func parse(_ data: Data, scanProcessID: Int32? = nil)
+        -> (processes: [String: Set<String>], complete: Bool, revokedFiles: Int, incompleteFiles: Int) {
         var processes: [String: Set<String>] = [:]
         let diagnostics = ScanDiagnostics.current
         let inventoryID = diagnostics == nil ? "" : UUID().uuidString
         var name = "", type = "", device = "", inode = "", fileName = ""
         var pid = "", descriptor = ""
         var revokedFiles = 0, incompleteFiles = 0
-        var invalidFields = 0, issueRecords = 0
+        var invalidFields = 0, issueRecords = 0, scanDescriptors = 0
         let issueLimit = 32
         let terminatedRecord = !data.isEmpty && data.last == 10
         var hasFile = false, sawProcess = false, complete = terminatedRecord
-        func recordIssue(_ reason: String, fields: [String: String] = [:]) {
-            issueRecords += 1
-            guard let diagnostics, issueRecords <= issueLimit else { return }
+        func recordFile(_ event: String, reason: String, fields: [String: String] = [:]) {
+            guard let diagnostics else { return }
             let details = ["inventory_id": inventoryID, "reason": reason, "pid": pid, "process": name,
                 "descriptor": descriptor, "file_type": type, "device": device, "inode": inode, "path": fileName]
                 .merging(fields, uniquingKeysWith: { _, new in new })
             var bounded = details.mapValues { String($0.prefix(1024)) }
             bounded["truncated_fields"] = details.filter { $0.value.count > 1024 }.keys.sorted().joined(separator: ",")
-            diagnostics.record("worktree_activity_issue", details: bounded)
+            diagnostics.record(event, details: bounded)
+        }
+        func recordIssue(_ reason: String, fields: [String: String] = [:]) {
+            issueRecords += 1
+            guard issueRecords <= issueLimit else { return }
+            recordFile("worktree_activity_issue", reason: reason, fields: fields)
         }
         func finishFile() {
             guard hasFile else { return }
             defer { type = ""; device = ""; inode = ""; fileName = ""; descriptor = ""; hasFile = false }
+            // Exclude this scanner's numbered handles. Keep its working directory and executable mappings.
+            if let scanProcessID, pid == String(scanProcessID), !descriptor.isEmpty,
+               descriptor.utf8.allSatisfy({ (48...57).contains($0) }) {
+                scanDescriptors += 1
+                if scanDescriptors <= issueLimit {
+                    recordFile("worktree_activity_scan_handle", reason: "scan_process_descriptor")
+                }
+                return
+            }
             // Darwin reports ENOENT handles as revoked without a type or identity.
             if type.isEmpty, device.isEmpty, inode.isEmpty, fileName == "(revoked)" {
                 revokedFiles += 1
@@ -211,6 +225,10 @@ final class WorktreeActivity: @unchecked Sendable {
         diagnostics?.record("worktree_activity_inventory", details: [
             "inventory_id": inventoryID, "file_identities": "\(processes.count)", "complete": "\(complete)",
             "revoked_files": "\(revokedFiles)", "incomplete_files": "\(incompleteFiles)",
+            "scan_process_id": scanProcessID.map(String.init) ?? "",
+            "scan_descriptors_excluded": "\(scanDescriptors)",
+            "scan_descriptor_records_logged": "\(min(scanDescriptors, issueLimit))",
+            "scan_descriptor_records_omitted": "\(max(0, scanDescriptors - issueLimit))",
             "invalid_utf8_fields": "\(invalidFields)", "terminated_record": "\(terminatedRecord)",
             "process_record_found": "\(sawProcess)", "issue_records_logged": "\(min(issueRecords, issueLimit))",
             "issue_records_omitted": "\(max(0, issueRecords - issueLimit))"

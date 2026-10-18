@@ -48,6 +48,14 @@ struct HiddenDataScanTests {
         let completed = records.filter { $0["event"] as? String == "span_end" }
             .compactMap { $0["details"] as? [String: String] }
         #expect(completed.contains { $0["operation"] == "archive_discovery" && $0["candidates"] == "1" })
+        #expect(records.contains { record in
+            let details = record["details"] as? [String: String]
+            return record["event"] as? String == "span_start" && details?["operation"] == "measure_tree"
+                && details?["reader"] == "filesystem" && details?["path"] == cloud.path
+        })
+        #expect(completed.contains { $0["operation"] == "directory" && $0["reader"] == "filesystem"
+            && $0["directory_path"] == cloud.path
+            && Double($0["listing_seconds"] ?? "") != nil && Double($0["metadata_seconds"] ?? "") != nil })
         #expect(!completed.contains { $0["operation"] == "cloud_measurement" })
         if cancel { task.cancel() }
         release.signal()
