@@ -294,8 +294,10 @@ public struct DocumentsFilesScanner: CategoryScanner {
         let shouldCarve = !Self.atomicDirectoryNames.contains(candidate.url.lastPathComponent)
             && listing.candidates.count <= Self.maximumChildrenToMeasureIndividually
             && !listing.candidates.isEmpty
-        let outputs = shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
-            .filter { !context.isExcluded($0.url) } : []
+        let outputs = (shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
+            : XcodeBuildCache.releaseCaches(under: candidate.url).map {
+                BuildOutputDetector.Root(url: $0.url, kind: .xcodeDerivedData, xcodeBuildCacheReview: $0)
+            }).filter { !context.isExcluded($0.url) }
         let roots = try GitWorktreeDetector.isWorktree(candidate.url)
             ? [candidate.url] : GitWorktreeDetector.roots(under: candidate.url, context: context)
         let worktrees = try await WorktreeScan.prepare(roots.filter { root in

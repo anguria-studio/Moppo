@@ -62,8 +62,10 @@ public struct GitWorktreeReviewService: Sendable {
             review.filesChecked = parsed.complete
             if !parsed.complete { review.filesIssue = "Git returned an incomplete file list." }
             review.status = review.localFiles.isEmpty ? .clean : .uncommittedChanges
+            review.verifiedGeneratedProjects = try await GeneratedXcodeProjectVerifier().verify(
+                directory, ignoredPaths: review.ignoredFiles.map(\.path), git: git)
             if includeFileChecks {
-                var classifier = IgnoredFileClassifier(root: directory)
+                var classifier = IgnoredFileClassifier(root: directory, verifiedProjects: review.verifiedGeneratedProjects)
                 for index in review.ignoredFiles.indices {
                     try Task.checkCancellation()
                     let url = directory.appendingPathComponent(review.ignoredFiles[index].path)
@@ -105,7 +107,7 @@ public struct GitWorktreeReviewService: Sendable {
 
     /// Applies scan measurements without another filesystem traversal.
     static func applyMeasurements(_ measurements: [URL: SizeMeasurement], directory: URL, to review: inout GitWorktreeReview) {
-        var classifier = IgnoredFileClassifier(root: directory)
+        var classifier = IgnoredFileClassifier(root: directory, verifiedProjects: review.verifiedGeneratedProjects)
         for index in review.ignoredFiles.indices {
             let url = directory.appendingPathComponent(review.ignoredFiles[index].path).standardizedFileURL
             guard let measured = measurements[url] else {
@@ -167,9 +169,13 @@ public struct GitWorktreeReviewService: Sendable {
     private struct IgnoredFileClassifier {
         private enum Classification { case regenerable, local, unavailable, blocked }
         private let root: URL
+        private let generated: GeneratedWorktreeFileDetector
         private var cache: [String: Classification] = [:]
 
-        init(root: URL) { self.root = root.standardizedFileURL }
+        init(root: URL, verifiedProjects: Set<URL>) {
+            self.root = root.standardizedFileURL
+            generated = GeneratedWorktreeFileDetector(root: self.root, verifiedProjects: verifiedProjects)
+        }
 
         mutating func regenerates(_ url: URL) -> Bool? {
             switch classify(url.standardizedFileURL) {
@@ -207,7 +213,7 @@ public struct GitWorktreeReviewService: Sendable {
                     return .regenerable
                 }
             }
-            return GeneratedWorktreeFileDetector(root: root).recognizes(url, isDirectory: isDirectory) ? .regenerable : .local
+            return generated.recognizes(url, isDirectory: isDirectory) ? .regenerable : .local
         }
     }
 

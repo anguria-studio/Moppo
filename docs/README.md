@@ -424,6 +424,17 @@ New measurements use a different contract version and cannot produce growth comp
 scanners claim the same path. Adding a cache root to one scanner fails the build
 until you update the overlapping scanner.
 
+Xcode & iOS Dev also finds verified build caches in the current user's temporary folders and project release folders.
+Temporary discovery checks two folder levels, with a limit of 2,048 entries.
+Release discovery checks `dist/releases`, `build/releases`, and `releases`, with a limit of 200 folders per location.
+Moppo requires Xcode metadata and folders owned by the current user.
+Moppo offers only recognized cache folders for removal.
+Source checkouts, test reports, archives, and unknown files remain in place.
+Open files or incomplete process checks protect the cache.
+Removal checks the folder identities, metadata, and open files again.
+Documents & Files excludes these cache sizes from project totals.
+Other project files, including release archives and disk images, remain in Documents & Files.
+
 **Reported sizes are an upper bound.** APFS clones share blocks between distinct
 files and no per-file API can see it, so removing two clones frees less than their
 sum. The measurer counts hard links once. Do not change this estimate into a
@@ -532,10 +543,19 @@ The same rule applies to dependency stores with reinstall evidence.
 Moppo uses the existing cache tags, source checks, and lockfile rules.
 Additional checks recognize empty ignored folders, Finder metadata, and Xcode scheme ordering and window state.
 Xcode user folders remain under review if they contain custom schemes, breakpoints, or unknown files.
+Generated Xcode projects require a matching tracked specification and an installed XcodeGen executable.
+Moppo copies tracked files into a private temporary folder and generates a comparison project there.
+The original project files must match the generated files exactly.
+Empty folders, recognized Xcode window state, and scheme ordering can appear as additional content.
+Generation commands, external paths, included specifications, and symbolic links prevent verification.
+The check accepts one root specification: `project.yml`, `project.yaml`, or `project.json`.
+It limits the copy to 2,048 files and 32 MB, with a 4 MB limit for each file.
+Each tool command and the copy loop have a two-second limit.
+Missing tools, changed files, unsupported specifications, and exceeded limits keep the project under review.
 Next.js output needs a Next.js dependency, generated manifests, and server output.
 Generated Next.js type declarations must contain only recognized generated lines.
 TypeScript build information needs a nearby configuration file and a recognized data structure.
-These checks read bounded metadata files. They do not execute project code.
+Generated-file checks use bounded reads. They do not execute project code.
 Environment files and generated project bundles with dependency lock files remain under review.
 Classification stops at the worktree root and does not cross symbolic links.
 Parent classifications remain cached only during that review.

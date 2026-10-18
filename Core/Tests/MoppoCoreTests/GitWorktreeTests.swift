@@ -410,6 +410,102 @@ struct GitWorktreeTests {
         #expect(!detector.recognizes(sandbox.home.appendingPathComponent("Project.xcodeproj"), isDirectory: true))
     }
 
+    private static var xcodegenExecutable: String? {
+        ["/opt/homebrew/bin/xcodegen", "/usr/local/bin/xcodegen"].first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    @Test("Generated Xcode projects require an exact match in fresh and shared reviews", .enabled(if: xcodegenExecutable != nil))
+    func generatedXcodeProjects() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let spec = """
+            name: Project
+            targets:
+              Project:
+                type: framework
+                platform: macOS
+                sources: [Sources]
+            schemes:
+              Project:
+                build:
+                  targets:
+                    Project: all
+            """
+        try sandbox.file("Documents/Project/project.yml", text: spec)
+        try sandbox.file("Documents/Project/.gitignore", text: "*.xcodeproj/\n")
+        try sandbox.file("Documents/Project/Sources/Source.swift", text: "struct Source {}\n")
+        try sandbox.git(["-C", repo.path, "add", "project.yml", ".gitignore", "Sources"])
+        try sandbox.git(["-C", repo.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Project"])
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        let tree = try sandbox.worktree("Worktrees/generated", repository: repo)
+        let generator = try #require(Self.xcodegenExecutable)
+        try await ProcessRunner().run(generator, ["generate", "--quiet", "--no-env", "--project", tree.path,
+            "--spec", tree.appendingPathComponent("project.yml").path, "--project-root", tree.path])
+        let bundle = tree.appendingPathComponent("Project.xcodeproj")
+        try FileManager.default.createDirectory(at: bundle.appendingPathComponent("project.xcworkspace/xcshareddata/swiftpm/configuration"),
+                                               withIntermediateDirectories: true)
+        let fresh = try await GitWorktreeReviewService().review(tree)
+        #expect(fresh.regenerableIgnoredFiles.map(\.path) == ["Project.xcodeproj/"])
+        #expect(fresh.isSafeToRemove)
+        let batch = try await WorktreeScan.prepare([tree])
+        let measured = try await batch.measure(tree, with: AllocatedSizeMeasurer())
+        #expect(measured.reviews[tree]?.ignoredFiles == fresh.ignoredFiles)
+        let verifier = GeneratedXcodeProjectVerifier(generator: generator)
+        let project = bundle.appendingPathComponent("project.pbxproj")
+        let original = try Data(contentsOf: project)
+        try (original + Data("\n// Local project edit\n".utf8)).write(to: project)
+        #expect(try await verifier.verify(tree, ignoredPaths: ["Project.xcodeproj/"], git: "/usr/bin/git").isEmpty)
+        try original.write(to: project)
+        for path in ["project.xcworkspace/xcshareddata/swiftpm/Package.resolved", "xcshareddata/xcschemes/Local.xcscheme",
+                     "xcuserdata/fixture.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist", "notes.txt"] {
+            try sandbox.file("Worktrees/generated/Project.xcodeproj/" + path, text: "Keep local data")
+            #expect(try await verifier.verify(tree, ignoredPaths: ["Project.xcodeproj/"], git: "/usr/bin/git").isEmpty)
+            try FileManager.default.removeItem(at: bundle)
+            try await ProcessRunner().run(generator, ["generate", "--quiet", "--no-env", "--project", tree.path,
+                "--spec", tree.appendingPathComponent("project.yml").path, "--project-root", tree.path])
+        }
+        try FileManager.default.removeItem(at: tree.appendingPathComponent("Sources/Source.swift"))
+        try FileManager.default.createSymbolicLink(at: tree.appendingPathComponent("Sources/Source.swift"),
+            withDestinationURL: repo.appendingPathComponent("Sources/Source.swift"))
+        #expect(try await verifier.verify(tree, ignoredPaths: ["Project.xcodeproj/"], git: "/usr/bin/git").isEmpty)
+    }
+
+    @Test("Project verification rejects generation commands and paths outside the snapshot",
+           arguments: ["preGenCommand", "postGenCommand", "sourcePath", "schemeName"])
+    func unsafeXcodeGeneration(kind: String) async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file("project.yml", text: "name: Project\n")
+        var object: [String: Any] = ["name": "Project"]
+        switch kind {
+        case "sourcePath": object["fileGroups"] = ["../outside"]
+        case "schemeName": object["schemes"] = ["../../outside": [:]]
+        default: object["options"] = [kind: "touch marker"]
+        }
+        let resolved = try JSONSerialization.data(withJSONObject: object)
+        let verifier = GeneratedXcodeProjectVerifier(generator: "xcodegen") { executable, arguments in
+            if executable == "git" { return Data("project.yml\0".utf8) }
+            #expect(arguments.first == "dump")
+            return resolved
+        }
+        #expect(try await verifier.verify(sandbox.home, ignoredPaths: ["Project.xcodeproj/"], git: "git").isEmpty)
+    }
+
+    @Test("Missing generators and external specification inputs remain unverified")
+    func unavailableXcodeGeneration() async throws {
+        let sandbox = try Sandbox()
+        let verifier = GeneratedXcodeProjectVerifier(generator: "xcodegen") { _, _ in
+            Issue.record("The parser must not read an external specification.")
+            return Data()
+        }
+        for source in ["include: ../external.yml\nname: Project\n", #"{"\u0069nclude":"../external.yml","name":"Project"}"#] {
+            try sandbox.file("project.yml", text: source)
+            #expect(try await verifier.verify(sandbox.home, ignoredPaths: ["Project.xcodeproj/"], git: "git").isEmpty)
+        }
+        try sandbox.file("project.yml", text: "name: Project\n")
+        let missing = GeneratedXcodeProjectVerifier(generator: nil)
+        #expect(try await missing.verify(sandbox.home, ignoredPaths: ["Project.xcodeproj/"], git: "git").isEmpty)
+    }
+
     @Test("Empty ignored folders stop qualifying when local or hidden files appear")
     func emptyIgnoredFolders() throws {
         let sandbox = try Sandbox()

@@ -49,6 +49,7 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public var lastFetchDate: Date?
     public var locks: Check = .unknown("Git locks were not checked.")
     public var activity: Check = .unknown("Open files and processes were not checked.")
+    var verifiedGeneratedProjects: Set<URL> = []
 
     public init() {}
 

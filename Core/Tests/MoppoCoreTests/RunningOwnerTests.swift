@@ -161,7 +161,7 @@ struct RunningOwnerTests {
         let scanner = XcodeScanner(
             developerRoot: developer,
             projectRoots: [],
-            systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators")
+            systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: []
         )
 
         let idle = try await scanner.scan(context: ScanContext())

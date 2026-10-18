@@ -137,7 +137,7 @@ struct ReviewFindingsTests {
             // The fixture is the whole world here: the default roots are the real
             // home folders and the real system simulator directory.
             projectRoots: [],
-            systemSimulatorRoot: developer.appendingPathComponent("no-simulators")
+            systemSimulatorRoot: developer.appendingPathComponent("no-simulators"), temporaryRoots: []
         ).scan(
             context: ScanContext(excludedPatterns: ["*.keychain-db"])
         )
@@ -185,7 +185,7 @@ struct ReviewFindingsTests {
         let result = try await XcodeScanner(
             developerRoot: developer,
             projectRoots: [],
-            systemSimulatorRoot: developer.appendingPathComponent("no-simulators")
+            systemSimulatorRoot: developer.appendingPathComponent("no-simulators"), temporaryRoots: []
         ).scan(context: ScanContext())
 
         let archiveRow = try #require(result.entries.first { $0.url.path.contains("Archives") })

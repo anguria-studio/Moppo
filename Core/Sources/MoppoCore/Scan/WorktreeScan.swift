@@ -263,7 +263,7 @@ final class WorktreeActivity: @unchecked Sendable {
             if let names = matches[root], !names.isEmpty { return .found(names.sorted().joined(separator: ", ")) }
             if let issue { return .unknown(issue) }
             guard let measurement, measurement.unreadableCount == 0, !unreadable.contains(root) else {
-                return .unknown("Some worktree files could not be checked for open processes.")
+                return .unknown("Some files could not be checked for open processes.")
             }
             return .clear
         }

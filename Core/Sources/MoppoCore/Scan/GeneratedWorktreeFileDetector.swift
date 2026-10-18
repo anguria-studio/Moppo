@@ -1,12 +1,14 @@
 import Foundation
 import Darwin
 
-/// Recognizes generated files without treating local settings or project bundles as caches.
+/// Recognizes generated files while preserving unverified local settings and project files.
 struct GeneratedWorktreeFileDetector {
     let root: URL
+    var verifiedProjects: Set<URL> = []
 
     func recognizes(_ url: URL, isDirectory: Bool) -> Bool {
         if isDirectory {
+            if url.pathExtension == "xcodeproj", verifiedProjects.contains(url.standardizedFileURL) { return true }
             if children(of: url, limit: 1)?.isEmpty == true { return true }
             if url.lastPathComponent == ".next" {
                 return isNextProject(url.deletingLastPathComponent())
@@ -130,7 +132,7 @@ struct GeneratedWorktreeFileDetector {
     }
 
     /// Checks every path component inside the worktree before reading evidence.
-    private func safeValues(_ input: URL) -> URLResourceValues? {
+    func safeValues(_ input: URL) -> URLResourceValues? {
         let url = input.standardizedFileURL
         guard url.path == root.path || url.path.hasPrefix(root.path + "/"), !Task.isCancelled else { return nil }
         var current = url
@@ -143,8 +145,13 @@ struct GeneratedWorktreeFileDetector {
         return try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
     }
 
-    private func children(of url: URL, limit: Int) -> [URL]? {
+    func children(of url: URL, limit: Int) -> [URL]? {
         guard safeValues(url)?.isDirectory == true else { return nil }
+        return Self.directoryChildren(of: url, limit: limit)
+    }
+
+    /// Reads a bounded directory listing without following a link at the directory itself.
+    static func directoryChildren(of url: URL, limit: Int) -> [URL]? {
         let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_DIRECTORY | O_CLOEXEC)
         guard descriptor >= 0 else { return nil }
         guard let directory = fdopendir(descriptor) else { close(descriptor); return nil }
@@ -162,7 +169,7 @@ struct GeneratedWorktreeFileDetector {
     }
 
     /// Limits evidence reads and rejects links, special files, and unreadable data.
-    private func read(_ url: URL, limit: Int, prefixOnly: Bool = false) -> Data? {
+    func read(_ url: URL, limit: Int, prefixOnly: Bool = false) -> Data? {
         guard safeValues(url)?.isRegularFile == true else { return nil }
         let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
         guard descriptor >= 0 else { return nil }
