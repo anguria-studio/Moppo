@@ -6,7 +6,6 @@ import MoppoCore
 struct AppUninstallDetailView: View {
     @Bindable var model: AppUninstallerModel
     var activity: AppModel.Activity? = nil
-    @FocusState private var isCloseFocused: Bool
 
     private var plan: AppUninstallPlan? {
         model.isPlanningAppUninstall ? nil : model.appUninstallPlan
@@ -53,7 +52,7 @@ struct AppUninstallDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Token.pageBackground)
         .ignoresSafeArea()
-        .onAppear { isCloseFocused = true }
+        .modifier(KeyboardFocusVisibility())
         .sheet(item: $model.pendingSoundLibraryRemoval) { review in
             ConfirmationSheet(
                 variant: .soundLibrary(
@@ -120,6 +119,10 @@ struct AppUninstallDetailView: View {
                     }
                     .buttonStyle(PageActionButtonStyle(size: .small))
                     .disabled(model.isBusyWithDisk || model.selectedSoundLibraryIDs.isEmpty)
+                }
+                if let package = plan.managedPackage {
+                    CopyHomebrewCommandButton(package: package)
+                        .disabled(model.isBusyWithDisk)
                 }
                 Button(
                     plan.managedPackage != nil ? "Uninstall with Homebrew"
@@ -262,7 +265,6 @@ struct AppUninstallDetailView: View {
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
             .disabled(model.isUninstallingApp)
-            .focused($isCloseFocused)
             .accessibilityLabel("Close application details")
             .help("Close application details (Escape)")
         }
@@ -337,7 +339,6 @@ struct AppUninstallDetailView: View {
                 Label("Homebrew package: \(package.name)", systemImage: "shippingbox")
                     .font(.mcBody.weight(.medium))
                 HomebrewRemovalExplanation()
-                CopyHomebrewCommandButton(package: package)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
