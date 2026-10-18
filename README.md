@@ -59,6 +59,25 @@ Disk usage, cleanup, duplicate review, and application removal in one Mac app.
 | AI Tools | Inspect AI storage. Review Codex sessions, worktrees, and local models. Keep active sessions and VM files protected. |
 | Local AI models | Review Ollama, Hugging Face, and LM Studio models with shared storage information. |
 
+In Cleanup, use **All results** to filter items found by the scan.
+Available types include worktrees, Node modules, Python environments, and archives and installers.
+The menu shows types found in the current **All** or **Safe to Remove** view.
+Choosing a specific type opens matching categories and AI tool groups.
+Each type includes its item count and size.
+**Select All** selects eligible items in the filtered view.
+Changing filters keeps earlier selections. A notice identifies selected items outside the current view.
+Removal includes all selected items.
+Detected worktrees appear separately from grouped folders. Moppo counts each byte once.
+When a group contains worktrees, its **Other files** row shows the remaining size.
+Select the parent folder to review removal of the worktrees and other files together.
+Moppo blocks separate removal of the **Other files** row because its folder path also contains the worktrees.
+Worktrees inside protected groups keep their protection.
+
+Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer** or **Reveal in Finder**.
+Right-click a row to use the same actions.
+Application rows show **Reveal in Finder** and, where applicable, **Review Uninstall**.
+Storage Explorer opens folder contents or highlights a file in its containing folder. Cleanup keeps its selections.
+
 <a name="duplicates-and-applications"></a>
 
 ### 🗂️ Duplicates and applications

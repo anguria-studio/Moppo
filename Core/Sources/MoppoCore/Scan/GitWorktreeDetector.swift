@@ -129,7 +129,7 @@ enum GitWorktreeDetector {
     /// Moves worktree bytes from the parent remainder into review rows.
     static func addingWorktrees(to entry: FileEntry, context: ScanContext,
                                prepared: WorktreeScan.Result? = nil) async throws -> FileEntry {
-        guard entry.kind == .folder else { return entry }
+        guard entry.kind == .folder || entry.kind == .cache else { return entry }
         var result = entry
         func record(_ root: URL, outcome: String, bytes: Int64? = nil) {
             var details = ["path": root.path, "parent": entry.url.path, "outcome": outcome]
@@ -137,23 +137,19 @@ enum GitWorktreeDetector {
             ScanDiagnostics.current?.record("worktree_row", details: details)
         }
         if isWorktree(entry.url) {
-            result.parentDisplay += " · Git worktree"
-            result.isRegenerable = false
-            result.safetyCaveat = "Git worktree"
-            if let prepared { result.gitWorktreeReview = prepared.reviews[entry.url.standardizedFileURL] ?? GitWorktreeReview() }
-            else { result.gitWorktreeReview = try await GitWorktreeReviewService().review(entry.url) }
+            let review: GitWorktreeReview
+            if let prepared { review = prepared.reviews[entry.url.standardizedFileURL] ?? GitWorktreeReview() }
+            else { review = try await GitWorktreeReviewService().review(entry.url) }
+            result = applyingReview(review, to: result)
             record(entry.url, outcome: "shown", bytes: result.displayBytes)
             return result
         }
         let worktrees = try prepared?.roots ?? roots(under: entry.url, context: context)
+        var splitGroups = Set<FileEntry.ID>()
         for root in worktrees {
-            // Existing children own their complete trees.
-            guard !entry.children.contains(where: {
+            let owner = entry.children.first(where: {
                 root.path == $0.url.path || root.path.hasPrefix($0.url.path + "/")
-            }) else {
-                record(root, outcome: "covered_by_child")
-                continue
-            }
+            })
             let measured: SizeMeasurement
             let review: GitWorktreeReview
             if let prepared {
@@ -171,19 +167,56 @@ enum GitWorktreeDetector {
                 record(root, outcome: "protected")
                 continue
             }
-            let bytes = min(result.allocatedBytes, measured.allocatedBytes)
-            result.allocatedBytes -= bytes
+            result.kind = .folder
+            result.isRegenerable = false
+            if let index = result.children.firstIndex(where: { $0.url.path == root.path }) {
+                result.children[index] = applyingReview(review, to: result.children[index])
+                record(root, outcome: "shown", bytes: result.children[index].allocatedBytes)
+                continue
+            }
+            let bytes: Int64
+            if let owner, let index = result.children.firstIndex(where: { $0.id == owner.id }) {
+                bytes = min(result.children[index].allocatedBytes, measured.allocatedBytes)
+                result.children[index].allocatedBytes -= bytes
+                if splitGroups.insert(owner.id).inserted {
+                    // Remove these files only with the parent, after the worktree checks.
+                    result.children[index].displayName += " · Other files"
+                    result.children[index].kind = .folder
+                    result.children[index].isRegenerable = false
+                    result.children[index].safetyCaveat = nil
+                    if owner.protectionReason == nil, !owner.isRemovalLocked {
+                        result.children[index].protectionReason = .folderRemainder
+                        result.children[index].protectionExplanation = "This row shows files outside the listed worktrees. Select the parent folder to include these files in its removal review."
+                    } else if result.protectionReason == nil {
+                        result.protectionReason = .inventory
+                        result.protectionExplanation = "This folder contains protected files. Review its removable child items separately."
+                    }
+                }
+            } else {
+                bytes = min(result.allocatedBytes, measured.allocatedBytes)
+                result.allocatedBytes -= bytes
+            }
             record(root, outcome: "shown", bytes: bytes)
-            result.children.append(FileEntry(
+            result.children.append(applyingReview(review, to: FileEntry(
                 url: root,
-                parentDisplay: FileEntry.abbreviate(root.deletingLastPathComponent().path) + " · Git worktree",
                 kind: .folder,
                 allocatedBytes: bytes,
                 lastOpened: DocumentsFilesScanner.lastOpenedDate(for: root),
-                safetyCaveat: "Git worktree",
-                gitWorktreeReview: review
-            ))
+                protectionReason: owner?.protectionReason ?? (owner?.isRemovalLocked == true ? .inventory : nil),
+                protectionExplanation: owner?.protectionExplanation,
+                inUseBy: owner?.inUseBy
+            )))
         }
+        return result
+    }
+
+    private static func applyingReview(_ review: GitWorktreeReview, to entry: FileEntry) -> FileEntry {
+        var result = entry
+        if !result.isGitWorktree { result.parentDisplay += " · Git worktree" }
+        result.kind = .folder
+        result.isRegenerable = false
+        result.safetyCaveat = "Git worktree"
+        result.gitWorktreeReview = review
         return result
     }
 }

@@ -601,10 +601,18 @@ public struct CleanupService: Sendable {
         for entry: FileEntry,
         removeProtectedAppData: Bool
     ) -> [FileEntry] {
-        guard entry.kind == .appBundle else { return entry.children + [entry] }
+        guard entry.kind == .appBundle else {
+            var parent = entry
+            // Remainder rows share paths with worktrees. Their bytes belong to the final parent target.
+            parent.allocatedBytes += entry.children.filter { $0.protectionReason == .folderRemainder }
+                .reduce(0) { $0 + $1.allocatedBytes }
+            parent.children.removeAll { $0.protectionReason == .folderRemainder }
+            return parent.children + [parent]
+        }
 
         let children = entry.children.filter { child in
-            if child.manualRemoval != nil || child.protectionReason == .running || child.protectionReason == .inventory || child.soundLibrary != nil {
+            if child.manualRemoval != nil || child.protectionReason == .running || child.protectionReason == .inventory
+                || child.protectionReason == .folderRemainder || child.soundLibrary != nil {
                 return false
             }
             return child.isRegenerable || removeProtectedAppData
@@ -619,7 +627,7 @@ public struct CleanupService: Sendable {
         _ entry: FileEntry,
         userDataRemovalOverrides: Set<FileEntry.ID>
     ) -> Bool {
-        if entry.manualRemoval != nil || entry.protectionReason == .running
+        if entry.manualRemoval != nil || entry.protectionReason == .running || entry.protectionReason == .folderRemainder
             || entry.protectionReason == .inventory || entry.dockerImage?.isRemovalLocked == true
             || !entry.unlockableChildren.isEmpty { return false }
         if entry.codexSession != nil {

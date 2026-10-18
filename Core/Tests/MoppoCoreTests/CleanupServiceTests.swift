@@ -139,6 +139,38 @@ struct CleanupServiceTests {
         #expect(logged.map(\.originalPath) == [parent.path, dependency.path])
     }
 
+    @Test("Folder remainders stay with the parent after separate children leave")
+    func folderRemainderRemoval() async throws {
+        let sandbox = try Sandbox()
+        let parent = try sandbox.directory("Project")
+        try sandbox.writeFile("Project/source.bin", bytes: oneMB)
+        let grouped = try sandbox.directory("Project/cache")
+        try sandbox.writeFile("Project/cache/other.bin", bytes: oneMB)
+        let nested = try sandbox.directory("Project/cache/task")
+        try sandbox.writeFile("Project/cache/task/data.bin", bytes: oneMB)
+        let remainder = FileEntry(url: grouped, kind: .folder, allocatedBytes: Int64(oneMB), protectionReason: .folderRemainder)
+        let child = entry(nested, kind: .folder, bytes: Int64(oneMB))
+        let group = FileEntry(url: parent, kind: .folder, allocatedBytes: Int64(oneMB), children: [remainder, child])
+        let log = RemovalLog(directory: sandbox.root.appendingPathComponent("logs"))
+        let service = CleanupService(log: log)
+
+        let blocked = try await service.remove(entries: [remainder], trashFirst: false, keepReceipt: false,
+            userDataRemovalOverrides: [remainder.id])
+        #expect(blocked.failed == [remainder.id])
+        #expect(FileManager.default.fileExists(atPath: nested.path))
+        let targets = CleanupService.removalTargets(for: group, removeProtectedAppData: false)
+        #expect(targets.map(\.id) == [child.id, group.id])
+        #expect(targets.last?.allocatedBytes == Int64(2 * oneMB))
+        #expect(group.displayBytes == Int64(3 * oneMB))
+
+        let outcome = try await service.remove(entries: [group], trashFirst: false)
+        #expect(outcome.failed.isEmpty)
+        #expect(outcome.removedCount == 2)
+        #expect(outcome.removedBytes >= Int64(3 * oneMB))
+        #expect(!FileManager.default.fileExists(atPath: parent.path))
+        #expect(log.recentEntries().map(\.originalPath) == [parent.path, nested.path])
+    }
+
     @Test("an application moves to the Trash even with the setting off")
     func applicationsAlwaysMoveToTrash() {
         let app = entry(URL(fileURLWithPath: "/Applications/Demo.app"), kind: .appBundle)

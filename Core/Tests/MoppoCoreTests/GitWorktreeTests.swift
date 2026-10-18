@@ -153,6 +153,72 @@ struct GitWorktreeTests {
         #expect(ai.totalBytes == ai.entries.reduce(0) { $0 + $1.displayBytes })
     }
 
+    @Test("Worktrees inside AI groups remain visible with their storage protection")
+    func groupedAIWorktrees() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let first = try sandbox.worktree(".codex/cache/first", repository: repo)
+        let second = try sandbox.worktree(".codex/cache/nested/second", repository: repo)
+        let exact = try sandbox.worktree(".codex/plugins", repository: repo)
+        try sandbox.file(".codex/cache/other.txt", text: "Keep these files")
+        let context = ScanContext()
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let parent = try #require(ai.entries.first { $0.url.lastPathComponent == ".codex" })
+        let rows = CleanupDataType.worktrees.rows(in: ai.entries)
+        #expect(Set(rows.map { $0.url.path }) == Set([first.path, second.path, exact.path]))
+        #expect(parent.worktreeCount == 3)
+        #expect(parent.children.count == 4)
+        #expect(parent.displayBytes == (try await context.measurer.measure(parent.url)).allocatedBytes)
+        #expect(ai.totalBytes == parent.displayBytes)
+        #expect(ai.safeToRemoveBytes == 0)
+        for row in rows {
+            #expect(row.allocatedBytes == (try await context.measurer.measure(row.url)).allocatedBytes)
+            #expect(row.protectionReason == .inventory)
+            #expect(!CleanupService.removalAllowed(row, userDataRemovalOverrides: [row.id]))
+            #expect(row.gitWorktreeReview?.status == .clean)
+        }
+        let remainder = try #require(parent.children.first { $0.url.lastPathComponent == "cache" })
+        #expect(remainder.displayName == "Codex other cache files · Other files")
+        #expect(remainder.allocatedBytes == (try await context.measurer.measure(remainder.url)).allocatedBytes
+            - rows.filter { $0.url.path != exact.path }.reduce(0) { $0 + $1.allocatedBytes })
+        #expect(remainder.protectionReason == .inventory)
+        #expect(!CleanupService.removalAllowed(parent, userDataRemovalOverrides: [parent.id]))
+        #expect(parent.children.first { $0.url.path == exact.path }?.displayName == "Codex plugins")
+    }
+
+    @Test("Cache grouping cannot hide worktrees or make their containing folders safe")
+    func groupedCacheWorktrees() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let grouped = try sandbox.worktree("Documents/Project/.mypy_cache/task", repository: repo)
+        try sandbox.file("Documents/Project/.mypy_cache/CACHEDIR.TAG", text: CacheDirectoryTag.signature)
+        let nested = try sandbox.worktree("Documents/build/task", repository: repo)
+        let context = ScanContext()
+        let documents = try await DocumentsFilesScanner(home: sandbox.home).scan(context: context)
+        let rows = CleanupDataType.worktrees.rows(in: documents.entries)
+        #expect(Set(rows.map { $0.url.path }) == Set([grouped.path, nested.path]))
+        for parent in documents.entries {
+            #expect(parent.worktreeCount == 1)
+            #expect(!parent.regeneratesSafely)
+            #expect(parent.kind == .folder)
+            #expect(parent.displayBytes == (try await context.measurer.measure(parent.url)).allocatedBytes)
+        }
+        let project = try #require(documents.entries.first { $0.url.lastPathComponent == "Project" },
+            "Expected \(repo.path), found \(documents.entries.map { $0.url.path })")
+        let remainder = try #require(project.children.first { $0.url.lastPathComponent == ".mypy_cache" })
+        #expect(remainder.protectionReason == .folderRemainder)
+        #expect(!remainder.regeneratesSafely)
+        #expect(!CleanupService.removalAllowed(remainder, userDataRemovalOverrides: [remainder.id]))
+        #expect(!project.isRemovalLocked)
+        #expect(CleanupService.removalAllowed(project, userDataRemovalOverrides: []))
+        #expect(project.reclaimableBytes == project.totalBytesIncludingChildren)
+        let targets = CleanupService.removalTargets(for: project, removeProtectedAppData: false)
+        #expect(targets.map(\.url.path) == [grouped.path, project.url.path])
+        #expect(targets.reduce(0) { $0 + $1.allocatedBytes } == project.displayBytes)
+        #expect(rows.allSatisfy { $0.gitWorktreeReview?.status == .clean && !$0.isRemovalLocked })
+        #expect(documents.totalBytes == (try await context.measurer.measure(sandbox.home.appendingPathComponent("Documents"))).allocatedBytes)
+    }
+
     @Test("Git status detects untracked, unstaged, staged, and deleted files")
     func worktreeStatus() async throws {
         let sandbox = try Sandbox()

@@ -55,6 +55,56 @@ struct AIStorageGroupTests {
         #expect(groups.first?.entries.first?.aiStorageSection?.title == "Cache")
     }
 
+    @Test("Cleanup filters reveal matching AI child rows when selected again", arguments: [false, true])
+    func filteredChildVisibility(dark: Bool) async throws {
+        let folder = try TemporaryFolder()
+        let root = folder.url.appendingPathComponent(".codex")
+        let worktreeURL = root.appendingPathComponent("worktrees/Task")
+        let nodeURL = root.appendingPathComponent("tools/node_modules")
+        for url in [worktreeURL, nodeURL] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        var worktree = FileEntry(url: worktreeURL, kind: .folder, allocatedBytes: 2_000_000)
+        worktree.gitWorktreeReview = GitWorktreeReview()
+        let node = FileEntry(url: nodeURL, kind: .cache, allocatedBytes: 1_000_000, isRegenerable: true)
+        let parent = FileEntry(url: root, kind: .folder, allocatedBytes: 100,
+            protectionReason: .inventory,
+            aiStorageSection: .init(owner: .codex, title: "Task data", summary: "Settings and worktrees."),
+            children: [worktree, node])
+        let cleanup = CleanupModel(operations: OperationCoordinator(), measureSaving: { _ in nil })
+        cleanup.scanResults = .init(categories: [.init(categoryID: .aiTools, totalBytes: parent.displayBytes, entries: [parent])],
+            startedAt: .now, finishedAt: .now)
+        cleanup.scanFilter = .all
+        cleanup.openCategories = []
+        let host = NSHostingView(rootView: ScannerView(model: cleanup, activity: nil, cleanupCompletion: nil,
+            onViewDashboard: { _ in }, onUninstallApplication: { _ in }, onShowInStorageExplorer: { _ in })
+            .background(Token.pageBackground)
+            .environment(\.colorScheme, dark ? .dark : .light))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: Token.Size.minimumContentWidth, height: 580),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+
+        for filter in [CleanupDataType.worktrees, .all, .nodeModules, .worktrees] {
+            cleanup.dataTypeFilter = filter
+            try await Task.sleep(for: .milliseconds(100))
+            host.layoutSubtreeIfNeeded()
+            let labels = nativeButtons(in: host).compactMap { $0.accessibilityLabel() }
+            #expect(labels.contains(worktree.displayName) == (filter == .worktrees))
+            #expect(labels.contains(node.displayName) == (filter == .nodeModules))
+            #expect(cleanup.openCategories.contains(.aiTools))
+            #expect(cleanup.scannerSelection.isEmpty)
+            #expect(cleanup.userDataRemovalOverrides.isEmpty)
+        }
+
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: URL(fileURLWithPath: "/tmp/moppo-207-worktree-expansion-\(dark ? "dark" : "light").png"))
+    }
+
     @Test("Collapsed and expanded application groups render in both appearances", arguments: [false, true])
     func render(dark: Bool) async throws {
         let rows = fixture()

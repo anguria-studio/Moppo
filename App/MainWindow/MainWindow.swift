@@ -213,7 +213,8 @@ struct MainWindow: View {
                     activity: model.activity,
                     cleanupCompletion: model.cleanupCompletion,
                     onViewDashboard: { model.showDashboardAfterCleanup($0) },
-                    onUninstallApplication: { model.uninstaller.planAppUninstall($0.url) }
+                    onUninstallApplication: { model.uninstaller.planAppUninstall($0.url) },
+                    onShowInStorageExplorer: model.showInStorageExplorer
                 )
             case .storageExplorer:
                 StorageExplorerView(model: model.storageExplorer)

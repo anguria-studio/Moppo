@@ -253,7 +253,7 @@ This includes Cleanup, application data, sound libraries, Storage Explorer, dupl
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
 Docker images appear once per image identifier, with their tags grouped together.
-When this Mac has Docker Desktop but it is unavailable, each Cleanup filter shows its category card with a setup instruction.
+When this Mac has Docker Desktop but it is unavailable, Cleanup shows its setup card in All results.
 When Docker Desktop is absent, Cleanup hides the empty Docker card.
 Docker removes selected images in the scanned context without forced removal.
 Before removal, Moppo checks the image identifier, tags, and container use again.

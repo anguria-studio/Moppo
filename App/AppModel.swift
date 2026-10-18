@@ -576,6 +576,7 @@ final class AppModel {
     /// the requested list on its first frame instead of showing the whole outline
     /// for a frame and then replacing it.
     func showScanner(filtered filter: CleanupModel.ScanFilter) {
+        cleanup.dataTypeFilter = .all
         cleanup.scanFilter = filter
         view = .scanner
     }
@@ -660,6 +661,19 @@ final class AppModel {
     var categorySizes: [CategoryID: Int64] {
         guard let results = cleanup.scanResults else { return [:] }
         return Dictionary(uniqueKeysWithValues: results.categories.map { ($0.categoryID, $0.totalBytes) })
+    }
+
+    /// Opens a cleanup folder or reveals a file without changing Cleanup selections.
+    func showInStorageExplorer(_ entry: FileEntry) {
+        guard entry.url.isFileURL, entry.kind != .appBundle, entry.kind != .downloadedApp,
+              !operations.explainBlockedAction() else { return }
+        let values = try? entry.url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        if values?.isDirectory == true, values?.isPackage != true {
+            storageExplorer.selectLocation(entry.url)
+        } else {
+            storageExplorer.selectLocation(entry.url.deletingLastPathComponent(), revealing: entry.url)
+        }
+        view = .storageExplorer
     }
 
     /// Opens the Storage Explorer at the folder the growth report named.

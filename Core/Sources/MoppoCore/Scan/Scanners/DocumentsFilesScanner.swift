@@ -301,7 +301,9 @@ public struct DocumentsFilesScanner: CategoryScanner {
         let roots = try GitWorktreeDetector.isWorktree(candidate.url)
             ? [candidate.url] : GitWorktreeDetector.roots(under: candidate.url, context: context)
         let worktrees = try await WorktreeScan.prepare(roots.filter { root in
-            !outputs.contains { root.path == $0.url.path || root.path.hasPrefix($0.url.path + "/") }
+            !outputs.contains {
+                $0.kind.isXcodeOutput && (root.path == $0.url.path || root.path.hasPrefix($0.url.path + "/"))
+            }
         })
         let worktreeResult = try await worktrees.measure(candidate.url, with: context.measurer, retaining: outputs.map(\.url))
         let measured = worktreeResult.measurements
