@@ -38,8 +38,7 @@ public struct ScanResults: Sendable, Equatable {
         categories.reduce(0) { $0 + $1.safeToRemoveBytes }
     }
 
-    /// The "Needs review" tile: large files, unused apps, and anything in a safe
-    /// category that does not regenerate — the user decides.
+    /// Storage outside Safe to Remove for the CLI summary.
     public var needsReviewBytes: Int64 {
         categories.reduce(0) { $0 + $1.needsReviewBytes }
     }

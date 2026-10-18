@@ -456,7 +456,7 @@ struct AppUninstallerView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     if review.homebrewCount > 0 {
                         GroupedBox {
-                            HomebrewRemovalExplanation()
+                            HomebrewRemovalExplanation(isBatchReview: true)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(14)
                         }

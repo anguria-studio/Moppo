@@ -481,6 +481,12 @@ Read the [AI storage sources and limits](ai-storage.md) before you add storage r
 
 ## Scanner rows and Git worktrees
 
+Cleanup has two tabs: All and Safe to Remove.
+All shows all scan results, including protected items and items that need review.
+The Dashboard All card shows the total scanned size and opens All.
+This total includes protected storage and does not represent removable space.
+Safe to Remove is the initial tab.
+
 The Scanner groups cleanup items. It does not show a complete folder tree.
 When a group contains children that support unlocking, its parent shows a clickable amber lock.
 The parent review unlocks eligible children without selecting them.
@@ -663,9 +669,8 @@ App Uninstaller review. The Finder action never removes files.
 **Application Leftovers uses strict ownership rules.** The Scanner finds exact
 bundle-identifier paths and roots from curated app rules. It ignores loose name
 matches and shared containers. It keeps exclusions, keychains, ambiguous paths,
-and files for installed applications protected. Needs Review includes each
-verified application group. Moppo checks the owner and the file identity
-again before removal.
+and files for installed applications protected. All includes each verified application group.
+Moppo checks the owner and the file identity again before removal.
 
 **Downloaded Apple sounds use the existing application flows.** An installed
 application has a separate sound removal review. Complete uninstall keeps this

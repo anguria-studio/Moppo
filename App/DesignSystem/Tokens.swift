@@ -341,14 +341,6 @@ enum Token {
             light: NSColor(srgbRed: 182 / 255, green: 226 / 255, blue: 193 / 255, alpha: 1),
             dark: NSColor(srgbRed: 44 / 255, green: 89 / 255, blue: 55 / 255, alpha: 1)
         )
-        static let amberFill = Token.dynamic(
-            light: NSColor(srgbRed: 255 / 255, green: 237 / 255, blue: 199 / 255, alpha: 1),
-            dark: NSColor(srgbRed: 65 / 255, green: 47 / 255, blue: 17 / 255, alpha: 1)
-        )
-        static let amberBorder = Token.dynamic(
-            light: NSColor(srgbRed: 240 / 255, green: 210 / 255, blue: 140 / 255, alpha: 1),
-            dark: NSColor(srgbRed: 102 / 255, green: 73 / 255, blue: 25 / 255, alpha: 1)
-        )
     }
 
     // MARK: - Geometry

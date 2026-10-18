@@ -57,7 +57,7 @@ struct DashboardView: View {
                     // where its rows live, so a tile opens the Scanner on the list
                     // it counted rather than a page of its own.
                     onSafeTap: { onShowScanner(.safeToRemove) },
-                    onReviewTap: { onShowScanner(.needsReview) },
+                    onAllTap: { onShowScanner(.all) },
                     onScan: { onScan() }
                 )
 

@@ -192,15 +192,8 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
         }
     }
 
-    /// This category as one of the Scanner's tabs shows it: the same category, holding
-    /// only the rows that tab counts.
-    ///
-    /// The Scanner's three tabs are one outline. "Safe to Remove" and "Needs Review"
-    /// used to be a flat list with the categories thrown away, which answered "what
-    /// can I act on" and lost "where is it" — the first thing anybody asks of a row
-    /// called `com.apple.helpd`. The rows are `tileRows`, so a category's figure
-    /// under a tab is exactly that tab's share of the tile, and the two filtered
-    /// copies of a category are the category, once.
+    /// Keeps category information while filtering rows by removal safety.
+    /// Safe to Remove uses the safe rows. The CLI also reports the remaining rows.
     public func filtered(safeToRemove wantSafe: Bool) -> ScanCategoryResult {
         var copy = self
         copy.entries = tileRows(safeToRemove: wantSafe)
@@ -228,11 +221,8 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
         child.regeneratesSafely
     }
 
-    /// Whether the row itself — not merely something inside it — is safe to remove.
-    ///
-    /// A row held open by a running application is not: it lands in Needs Review,
-    /// which is also what keeps it out of the pre-ticked selection, since that is
-    /// seeded from the safe list. See `FileEntry.inUseBy`.
+    /// Checks whether the row itself is safe to remove.
+    /// Running applications keep their rows outside Safe to Remove and automatic selection.
     private func countsAsSafe(_ entry: FileEntry) -> Bool {
         guard entry.inUseBy == nil else { return false }
         guard entry.children.filter(\.isGitWorktree).allSatisfy(\.regeneratesSafely) else { return false }
@@ -240,16 +230,9 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
         return categoryID.isSafe && entry.isRegenerable
     }
 
-    /// Everything else: each category without a safe badge, plus each
-    /// non-regenerable entry in a safe category.
-    /// Summed from the rows the list will show, never from `totalBytes`: the tile
-    /// and the list it opens must state the same figure. A category with no entries
-    /// keeps its own total — that is a scanner reporting an aggregate it did not
-    /// break into rows.
-    /// The two tiles are a partition, so whatever `safeToRemoveBytes` claims from a
-    /// row is subtracted here. An application keeps its bundle and its user data in
-    /// this figure and loses its caches to the other one; before, it kept both and
-    /// the caches were counted nowhere else.
+    /// Storage outside Safe to Remove, retained for the CLI summary.
+    /// Safe rows and these remaining rows count each byte once.
+    /// Categories without rows retain their aggregate total.
     public var needsReviewBytes: Int64 {
         // A category with no rows keeps its own total: that is a scanner reporting an
         // aggregate it never broke into rows, Docker being the one that does it.

@@ -21,7 +21,7 @@ struct CleanupSelectionTests {
         let category = ScanCategoryResult(categoryID: .xcode, entries: [cache, archive])
         let selected: Set<String> = [cache.id, archive.id, "/tmp/stale"]
         #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .safe) == [cache.id])
-        #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .review) == [archive.id])
+        #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .all) == [cache.id, archive.id])
     }
 
     @Test("Safe child selections remain separate from their review parent")
@@ -32,7 +32,7 @@ struct CleanupSelectionTests {
         let category = ScanCategoryResult(categoryID: .applications, entries: [parent])
         let selected: Set<String> = [cache.id, data.id]
         #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .safe) == [cache.id])
-        #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .review) == [data.id])
+        #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .all) == [cache.id, data.id])
     }
 
     @Test("Deselected safe items stay excluded")

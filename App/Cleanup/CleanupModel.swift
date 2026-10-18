@@ -100,25 +100,13 @@ final class CleanupModel {
     var isBusyWithDisk: Bool { operations.isBusy }
 
     enum ScanFilter: String, CaseIterable, Identifiable {
-        case all, safeToRemove, needsReview
+        case all, safeToRemove
         var id: String { rawValue }
 
         var title: String {
             switch self {
             case .all:          "All"
             case .safeToRemove: "Safe to Remove"
-            case .needsReview:  "Needs Review"
-            }
-        }
-
-        var explanation: String? {
-            switch self {
-            case .all:
-                nil
-            case .safeToRemove:
-                "Caches, package files, and checked worktrees. Review worktree checks before removal."
-            case .needsReview:
-                "Large files, unused apps and what removed apps left behind. Look before you remove."
             }
         }
     }
@@ -217,7 +205,7 @@ final class CleanupModel {
         guard let result = scanResults?.categories.first(where: { $0.categoryID == category })
         else { return 0 }
         let entries = filter == .all
-            ? result.entries : result.tileRows(safeToRemove: filter == .safeToRemove)
+            ? result.entries : result.tileRows(safeToRemove: true)
         if category == .applicationLeftovers {
             return entries
                 .filter { selected.contains($0.id) }
@@ -292,16 +280,16 @@ final class CleanupModel {
         guard scanFilter != .all else { return categories }
         return categories.compactMap { category in
             if category.categoryID == .docker, case .unavailable = category.availability { return category }
-            let filtered = category.filtered(safeToRemove: scanFilter == .safeToRemove)
+            let filtered = category.filtered(safeToRemove: true)
             return filtered.entries.isEmpty ? nil : filtered
         }
     }
 
-    func tileEntries(safeToRemove wantSafe: Bool) -> [FileEntry] {
+    private var safeToRemoveEntries: [FileEntry] {
         guard let results = scanResults else { return [] }
         var seen: Set<FileEntry.ID> = []
         return results.categories
-            .flatMap { $0.tileRows(safeToRemove: wantSafe) }
+            .flatMap { $0.tileRows(safeToRemove: true) }
             .filter { seen.insert($0.id).inserted }
             .sorted { $0.displayBytes > $1.displayBytes }
     }
@@ -309,15 +297,14 @@ final class CleanupModel {
     private var rowsInCurrentView: [FileEntry] {
         switch scanFilter {
         case .all: scanResults?.categories.flatMap(\.entries) ?? []
-        case .safeToRemove: tileEntries(safeToRemove: true)
-        case .needsReview: tileEntries(safeToRemove: false)
+        case .safeToRemove: safeToRemoveEntries
         }
     }
 
     private var selectableInCurrentView: [FileEntry] {
         let rows = rowsInCurrentView
         let candidates = scanFilter == .all
-            ? rows + tileEntries(safeToRemove: true) : rows
+            ? rows + safeToRemoveEntries : rows
         return selectableEntries(from: candidates)
     }
 
@@ -371,7 +358,6 @@ final class CleanupModel {
         let scope: CleanupSelection.Scope = switch filter {
         case .all: .all
         case .safeToRemove: .safe
-        case .needsReview: .review
         }
         return CleanupSelection.ids(
             in: scanResults?.categories ?? [], selected: scannerSelection, scope: scope
@@ -418,7 +404,7 @@ final class CleanupModel {
         else { return }
         safeSelectionSeededAt = finishedAt
 
-        select(tileEntries(safeToRemove: true).filter {
+        select(safeToRemoveEntries.filter {
             !$0.isRemovalLocked && $0.kind != .appBundle && $0.removalAction == nil && $0.unlockableChildren.isEmpty
         })
     }

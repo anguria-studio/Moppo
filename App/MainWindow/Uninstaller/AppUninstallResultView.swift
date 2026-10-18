@@ -3,14 +3,20 @@ import SwiftUI
 import MoppoCore
 
 struct HomebrewRemovalExplanation: View {
+    var isBatchReview = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("Reinstall the application through Homebrew. Put Back can restore its recorded profiles and settings.")
+            Text(isBatchReview
+                ? "Apps removed with Homebrew cannot be restored from the Trash."
+                : "Only Homebrew can uninstall this app. You cannot restore it from the Trash.")
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.textColor(.orange))
-            Text("Homebrew removes the package. Moppo then moves its verified related data to the Trash, including profiles and settings.")
-                .font(.mcControlLabel)
-            Text("If Homebrew needs administrator access, Moppo asks for your login password.")
+            if isBatchReview {
+                Text("After Homebrew removes each app, Moppo moves its verified related data to the Trash.")
+                    .font(.mcControlLabel)
+            }
+            Text("If needed, Moppo asks for your login password and never stores it.")
                 .font(.mcSubtitle)
         }
         .foregroundStyle(Token.Text.secondary)
@@ -20,16 +26,41 @@ struct HomebrewRemovalExplanation: View {
 
 struct CopyHomebrewCommandButton: View {
     let package: AppUninstallPlan.ManagedPackage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
+    @State private var copyCount = 0
 
     var body: some View {
-        Button(copied ? "Command Copied" : "Copy Homebrew Command") {
+        Button {
             NSPasteboard.general.clearContents()
             copied = NSPasteboard.general.setString(package.uninstallCommand, forType: .string)
+            if copied { copyCount += 1 }
+        } label: {
+            ZStack {
+                Text("Copy Command")
+                    .opacity(copied ? 0 : 1)
+                if copied {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Token.color(.green))
+                        .transition(.opacity)
+                }
+            }
         }
-        .buttonStyle(PageActionButtonStyle())
+        .buttonStyle(PageActionButtonStyle(size: .small))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: copied)
         .help(package.uninstallCommand)
         .accessibilityLabel(copied ? "Command copied for \(package.name)" : "Copy Homebrew command for \(package.name)")
+        .task(id: copyCount) {
+            guard copyCount > 0 else { return }
+            NSAccessibility.post(
+                element: NSApplication.shared, notification: .announcementRequested,
+                userInfo: [.announcement: "Command copied for \(package.name)",
+                           .priority: NSAccessibilityPriorityLevel.medium.rawValue]
+            )
+            do { try await Task.sleep(for: .seconds(1)) }
+            catch { return }
+            copied = false
+        }
     }
 }
 
