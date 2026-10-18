@@ -4,6 +4,52 @@ import Testing
 
 @Suite("Docker images")
 struct DockerImageTests {
+    @Test("Empty Docker categories follow Desktop installation", arguments: [false, true])
+    func desktopPresence(installed: Bool) async throws {
+        let scanner = DockerScanner(resolveExecutable: { nil }, resolveDesktopApplication: {
+            installed ? URL(fileURLWithPath: "/Applications/Docker.app") : nil
+        })
+        let result = try await scanner.scan(context: ScanContext())
+        #expect(result.availability == (installed
+            ? .unavailable(reason: "Open Docker Desktop to finish setup, then scan again.") : .notInstalled))
+        #expect(result.entries.isEmpty)
+        #expect(result.totalBytes == 0)
+        let emptyImages = DockerImageService(run: { arguments in
+            if arguments == ["context", "show"] { return Data("fixture-context\n".utf8) }
+            if arguments.contains("--verbose") { return Data("{\"Images\":[]}".utf8) }
+            return Data()
+        })
+        let empty = try await DockerScanner(images: emptyImages, resolveDesktopApplication: {
+            installed ? URL(fileURLWithPath: "/Applications/Docker.app") : nil
+        }).scan(context: ScanContext())
+        #expect(empty.availability == (installed ? .empty : .notInstalled))
+    }
+
+    @Test("A command without Docker Desktop keeps real results but has no setup card", arguments: [false, true])
+    func commandOnly(unreachable: Bool) async throws {
+        let fixture = DockerFixture(readFailure: unreachable ? Self.temporaryReadFailures[1] : nil,
+            repeatedReadFailure: unreachable)
+        let scanner = DockerScanner(images: DockerImageService(run: { try await fixture.run($0) }),
+            resolveDesktopApplication: { nil })
+        let result = try await scanner.scan(context: ScanContext())
+        #expect(result.availability == (unreachable ? .notInstalled : .available))
+        #expect(result.entries.isEmpty == unreachable)
+    }
+
+    @Test("An empty Docker context gets one retry", arguments: [1, 2])
+    func emptyContext(emptyResponses: Int) async throws {
+        let fixture = DockerFixture(emptyContexts: emptyResponses)
+        let scanner = DockerScanner(images: DockerImageService(run: { try await fixture.run($0) }))
+        let result = try await scanner.scan(context: ScanContext())
+        #expect(await fixture.calls.filter { $0 == ["context", "show"] }.count == 2)
+        if emptyResponses == 1 {
+            #expect(result.availability == .available)
+        } else {
+            #expect(result.availability == .unavailable(reason: "Docker did not return its current context. Try scanning again."))
+            #expect(result.entries.isEmpty)
+        }
+    }
+
     static let temporaryReadFailures: [ProcessError] = [
         .timedOut("docker system df"),
         .failed(command: "docker", status: 1, stderr: "Cannot connect to the Docker daemon. Is the docker daemon running?"),
@@ -32,7 +78,7 @@ struct DockerImageTests {
         case .timedOut:
             reason = "Docker did not finish the scan in time. Try scanning again."
         case .failed(_, _, let stderr) where stderr.contains("Cannot connect"):
-            reason = "Moppo cannot connect to Docker. Check Docker Desktop and try scanning again."
+            reason = "Start Docker Desktop, then scan again to see results."
         default:
             reason = "Docker could not read its storage information. Try scanning again."
         }
@@ -195,24 +241,29 @@ private actor DockerFixture {
     private let readFailure: ProcessError?
     private let repeatedReadFailure: Bool
     private let verboseReadFailure: Bool
+    private var emptyContexts: Int
     private var removed = false
     private(set) var calls: [[String]] = []
     private(set) var readAttempts = 0
 
     init(
         failure: Failure? = nil, untagged: Bool = false, readFailure: ProcessError? = nil,
-        repeatedReadFailure: Bool = false, verboseReadFailure: Bool = false
+        repeatedReadFailure: Bool = false, verboseReadFailure: Bool = false, emptyContexts: Int = 0
     ) {
         self.failure = failure
         self.untagged = untagged
         self.readFailure = readFailure
         self.repeatedReadFailure = repeatedReadFailure
         self.verboseReadFailure = verboseReadFailure
+        self.emptyContexts = emptyContexts
     }
 
     func run(_ arguments: [String]) throws -> Data {
         calls.append(arguments)
-        if arguments == ["context", "show"] { return Data("fixture-context\n".utf8) }
+        if arguments == ["context", "show"] {
+            if emptyContexts > 0 { emptyContexts -= 1; return Data(" \n".utf8) }
+            return Data("fixture-context\n".utf8)
+        }
         #expect(Array(arguments.prefix(2)) == ["--context", "fixture-context"])
         let command = Array(arguments.dropFirst(2))
         if command.starts(with: ["system", "df"]) {

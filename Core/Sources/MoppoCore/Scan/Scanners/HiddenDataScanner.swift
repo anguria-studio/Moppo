@@ -101,6 +101,7 @@ public struct HiddenDataScanner: CategoryScanner {
 
     public func scan(context: ScanContext) async throws -> ScanCategoryResult {
         var found = Found()
+        context.onPhase?("Measuring backups and Mail")
 
         // Paths whose bytes are already offered under some entry above. The archive
         // sweep skips them, so a 2 GB disk image sitting in the Trash is not counted
@@ -143,19 +144,15 @@ public struct HiddenDataScanner: CategoryScanner {
         claimed += AIToolStorage.roots.map { home.appendingPathComponent($0.path).path }
         claimed += LocalModelStores.homeDotFolders.map { home.appendingPathComponent($0).path }
 
-        // 5/6. Local cloud mirrors. Not marked regenerable: a file that has not
-        // finished uploading exists only here.
-        for components in [Root.mobileDocuments, Root.cloudKit] {
-            let mirror = url(components)
-            claimed.append(mirror.path)
-            try await measureAndAppend(mirror, kind: .folder, minimumBytes: Threshold.cloudMirror,
-                                       context: context, to: &found)
-        }
+        // Reserve cloud paths before archive discovery starts. Cloud measurements run alongside the remaining local work.
+        claimed += [Root.mobileDocuments, Root.cloudKit].map { url($0).path }
+        async let cloud = measureCloudMirrors(context: context)
 
         // 7. Photos. The predecessor offered the entire `.photoslibrary` — every
         // original the user owns — as a removal candidate. Only the rebuildable
         // derivative caches inside it are offered here; the library as a whole is
         // claimed so the archive sweep does not walk back into it either.
+        context.onPhase?("Measuring Photos caches")
         claimed.append(url(Root.photosLibrary).path)
         for components in Root.photosCaches {
             try await measureAndAppend(url(components), kind: .cache,
@@ -164,10 +161,18 @@ public struct HiddenDataScanner: CategoryScanner {
         }
 
         // 8. Large hidden dot-directories in $HOME.
+        context.onPhase?("Measuring hidden files")
         try await appendHiddenDirectories(context: context, to: &found, claiming: &claimed)
 
         // 9. Large archives and VM images.
+        context.onPhase?("Finding large archives")
         try await appendLargeArchives(skipping: claimed, context: context, to: &found)
+
+        context.onPhase?("Measuring local iCloud files")
+        let cloudResult = try await cloud
+        try Task.checkCancellation()
+        found.entries += cloudResult.entries
+        found.unreadableCount += cloudResult.unreadableCount
 
         found.entries.sort { $0.allocatedBytes > $1.allocatedBytes }
         let total = found.entries.reduce(Int64(0)) { $0 + $1.displayBytes }
@@ -195,6 +200,22 @@ public struct HiddenDataScanner: CategoryScanner {
     }
 
     // MARK: - Sections
+
+    private func measureCloudMirrors(context: ScanContext) async throws -> Found {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("cloud_measurement", path: home.path)
+        var outcome = "failed"
+        defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : outcome) }
+        var found = Found()
+        for components in [Root.mobileDocuments, Root.cloudKit] {
+            try Task.checkCancellation()
+            try await measureAndAppend(url(components), kind: .folder, minimumBytes: Threshold.cloudMirror,
+                                       reader: .filesystem, context: context, to: &found)
+        }
+        try Task.checkCancellation()
+        outcome = "completed"
+        return found
+    }
 
     private func appendMobileSyncBackups(
         context: ScanContext,
@@ -265,11 +286,14 @@ public struct HiddenDataScanner: CategoryScanner {
         let root = home
         let cancelled = CancellationFlag()
 
+        let diagnostics = ScanDiagnostics.current
         let discovered = try await withTaskCancellationHandler {
             // The flag carries cancellation into the detached filesystem walk.
             try await Task.detached(priority: .utility) {
-                try Self.discoverLargeArchives(below: root, skipping: skipPrefixes) {
-                    if cancelled.isCancelled { throw CancellationError() }
+                try ScanDiagnostics.$current.withValue(diagnostics) {
+                    try Self.discoverLargeArchives(below: root, skipping: skipPrefixes) {
+                        if cancelled.isCancelled { throw CancellationError() }
+                    }
                 }
             }.value
         } onCancel: {
@@ -305,8 +329,12 @@ public struct HiddenDataScanner: CategoryScanner {
         skipping skipPrefixes: [String],
         checkCancellation: () throws -> Void
     ) throws -> (candidates: [URL], unreadableCount: Int) {
-        try checkCancellation()
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("archive_discovery", path: root.path)
         let state = WalkState()
+        var candidates: [URL] = []
+        defer { diagnostics?.end(span, details: ["candidates": "\(candidates.count)", "unreadable_count": "\(state.unreadableCount)"]) }
+        try checkCancellation()
         let keys: [URLResourceKey] = [
             .isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey,
             .totalFileAllocatedSizeKey, .fileSizeKey
@@ -343,8 +371,6 @@ public struct HiddenDataScanner: CategoryScanner {
             return ([], state.unreadableCount)
         }
 
-        var candidates: [URL] = []
-
         while true {
             try checkCancellation()
             let next = enumerator.nextObject() as? URL
@@ -352,6 +378,7 @@ public struct HiddenDataScanner: CategoryScanner {
             guard let entry = next else { break }
 
             let path = entry.path
+            diagnostics?.update(span, path: path, details: ["candidates": "\(candidates.count)"])
             if skipPrefixes.contains(where: { path == $0 || path.hasPrefix($0 + "/") }) {
                 enumerator.skipDescendants()
                 continue
@@ -393,7 +420,7 @@ public struct HiddenDataScanner: CategoryScanner {
     // MARK: - Entry construction
 
     /// Entries plus the tally of what could not be read.
-    private struct Found {
+    private struct Found: Sendable {
         var entries: [FileEntry] = []
         var unreadableCount = 0
     }
@@ -407,6 +434,7 @@ public struct HiddenDataScanner: CategoryScanner {
         kind: FileEntry.Kind,
         minimumBytes: Int64,
         isRegenerable: Bool = false,
+        reader: MeasurementReader = .foundation,
         context: ScanContext,
         to found: inout Found
     ) async throws {
@@ -416,7 +444,7 @@ public struct HiddenDataScanner: CategoryScanner {
         // not worth walking.
         guard !context.isExcluded(url) else { return }
 
-        let measurement = try await context.measurer.measure(url)
+        let measurement = try await context.measurer.measure(url, reader: reader)
         append(url, kind: kind, measurement: measurement, lastOpened: lastOpened,
                minimumBytes: minimumBytes, isRegenerable: isRegenerable,
                context: context, to: &found)

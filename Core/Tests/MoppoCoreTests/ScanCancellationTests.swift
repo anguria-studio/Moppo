@@ -48,6 +48,50 @@ struct ScanCancellationTests {
         #expect(timings.result.allSatisfy { $0.1 >= .zero })
     }
 
+    @Test("The final category reports its current phase and changes phase without changing percent")
+    func finalCategoryPhase() async throws {
+        let localGate = ScanGate()
+        let hiddenGate = ScanGate()
+        let updates = AsyncStream.makeStream(of: ScanProgress.self)
+        let coordinator = ScanCoordinator(scanners: [
+            DelayedScanner(gate: localGate), PhaseScanner(gate: hiddenGate)
+        ])
+        let task = Task {
+            defer { updates.continuation.finish() }
+            return try await coordinator.scan(onProgress: { updates.continuation.yield($0) })
+        }
+        await localGate.waitForStart()
+        await hiddenGate.waitForStart()
+        var iterator = updates.stream.makeAsyncIterator()
+        let initial = try #require(await iterator.next())
+        #expect(initial.phase == nil)
+        await localGate.release()
+        let cloud = try #require(await iterator.next())
+        #expect(cloud.percent == 60)
+        #expect(cloud.phase == "Measuring local iCloud files")
+        await hiddenGate.release()
+        let archives = try #require(await iterator.next())
+        #expect(archives.percent == cloud.percent)
+        #expect(archives.phase == "Finding large archives")
+        let finished = try #require(await iterator.next())
+        #expect(finished.percent == 100)
+        #expect(finished.phase == nil)
+        #expect(try await task.value.categories.count == 2)
+    }
+
+    private struct PhaseScanner: CategoryScanner {
+        let id: CategoryID = .hiddenSystemData
+        let gate: ScanGate
+
+        func scan(context: ScanContext) async throws -> ScanCategoryResult {
+            context.onPhase?("Measuring local iCloud files")
+            await gate.didStart()
+            await gate.waitForRelease()
+            context.onPhase?("Finding large archives")
+            return .empty(id)
+        }
+    }
+
     private struct FixedScanner: CategoryScanner {
         let id: CategoryID
         let fails: Bool

@@ -102,6 +102,8 @@ public enum CategoryAvailability: Sendable, Equatable {
     case available
     /// Measured successfully and found nothing.
     case empty
+    /// The required application is absent. Cleanup hides this category.
+    case notInstalled
     case unavailable(reason: String)
 
     public var isActionable: Bool { self == .available }
@@ -271,7 +273,7 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
               !entries.isEmpty
         else { return self }
         var copy = self
-        copy.entries = entries.filter { $0.totalBytesIncludingChildren >= floor }
+        copy.entries = entries.filter { $0.totalBytesIncludingChildren >= floor || $0.worktreeCount > 0 }
         copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
         // Everything it found was noise — that is "nothing worth cleaning", not a
         // category with an empty table.

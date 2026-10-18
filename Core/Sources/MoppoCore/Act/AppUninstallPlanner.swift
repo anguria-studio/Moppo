@@ -828,6 +828,9 @@ public struct AppUninstallPlanner: Sendable {
     private static func installedApplications(
         in roots: [URL], fileManager: FileManager, checkCancellation: () throws -> Void
     ) throws -> [URL] {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("installed_application_discovery", details: ["roots": roots.map(\.path).joined(separator: "\n")])
+        defer { diagnostics?.end(span) }
         try checkCancellation()
         var result: [URL] = []
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
@@ -838,6 +841,7 @@ public struct AppUninstallPlanner: Sendable {
                 options: [.skipsHiddenFiles], errorHandler: nil
             ) else { continue }
             for case let url as URL in enumerator {
+                diagnostics?.update(span, path: url.path)
                 try checkCancellation()
                 let values = try? url.resourceValues(forKeys: Set(keys))
                 if values?.isSymbolicLink == true {
@@ -863,6 +867,9 @@ public struct AppUninstallPlanner: Sendable {
     private static func allBundleIdentifiers(
         in applicationURL: URL, fileManager: FileManager, checkCancellation: () throws -> Void
     ) throws -> Set<String> {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("application_bundle_identifiers", path: applicationURL.path)
+        defer { diagnostics?.end(span) }
         try checkCancellation()
         var result = Set<String>()
         if let identifier = verifiedBundleIdentifier(Bundle(url: applicationURL)?.bundleIdentifier) {
@@ -874,6 +881,7 @@ public struct AppUninstallPlanner: Sendable {
             options: [.skipsHiddenFiles], errorHandler: nil
         ) else { return result }
         for case let url as URL in enumerator {
+            diagnostics?.update(span, path: url.path)
             try checkCancellation()
             let values = try? url.resourceValues(forKeys: Set(keys))
             if values?.isSymbolicLink == true {

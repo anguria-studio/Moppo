@@ -71,15 +71,21 @@ struct WorktreeReviewSheet: View {
                             detail: "Compared with saved remote data. Last fetch: " + fetchDate)
                         Divider()
                         check("Ignored files", state: review.ignoredFilesCheck,
-                            clear: review.ignoredFiles.isEmpty ? "None" : "Build output only")
+                            clear: review.ignoredFiles.isEmpty ? "None" : "Regenerable files only")
                         Divider()
                         check("Git locks", state: review.locks)
                         Divider()
                         check("In use", state: review.activity, clear: "Not detected")
                     }
                     if !review.localFiles.isEmpty { files("Files only on this Mac", items: review.localFiles) }
-                    if !review.ignoredFiles.isEmpty {
-                        files("Ignored files", items: review.ignoredFiles, detail: "\(review.ignoredFiles.count) · \(ByteFormatting.string(review.ignoredBytes))")
+                    if !review.localIgnoredFiles.isEmpty {
+                        files("Local files to review", items: review.localIgnoredFiles, showsBytes: true)
+                    }
+                    if !review.unverifiedIgnoredFiles.isEmpty {
+                        files("Unverified files", items: review.unverifiedIgnoredFiles, showsBytes: true)
+                    }
+                    if !review.regenerableIgnoredFiles.isEmpty {
+                        files("Regenerable files", items: review.regenerableIgnoredFiles, showsBytes: true)
                     }
                     Text(nextStep).font(.mcSubtitle).foregroundStyle(Token.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -144,7 +150,7 @@ struct WorktreeReviewSheet: View {
     private var verdict: String {
         if isChecking { return "Moppo is checking local files, commits, locks, and open files." }
         if isSafe {
-            return "All checks passed using the saved remote data. You can recreate these files from Git."
+            return "All checks passed using saved remote data. Git and project tools can recreate these files."
         }
         var findings: [String] = []
         if review.status == .uncommittedChanges || !review.localFiles.isEmpty {
@@ -156,7 +162,7 @@ struct WorktreeReviewSheet: View {
             findings.append("\(count) \(count == 1 ? "commit is" : "commits are") absent from the saved remote data.")
         }
         if case .found = review.ignoredFilesCheck {
-            findings.append("Ignored files can contain local settings or user data.")
+            findings.append("Some ignored files need review. Verified caches and dependencies appear separately.")
         }
         if case .found = review.locks { findings.append("Git locks are present.") }
         if case .found = review.activity { findings.append("An open process uses this worktree.") }
@@ -221,15 +227,20 @@ struct WorktreeReviewSheet: View {
         }
     }
 
-    private func files(_ title: String, items: [GitWorktreeReview.File], detail: String? = nil) -> some View {
-        section(title, detail: detail ?? String(items.count)) {
+    private func files(_ title: String, items: [GitWorktreeReview.File], showsBytes: Bool = false) -> some View {
+        let detail = String(items.count) + (showsBytes ? " · " + ByteFormatting.string(items.reduce(0) { $0 + $1.allocatedBytes }) : "")
+        return section(title, detail: detail) {
             VStack(spacing: 0) {
                 ForEach(items) { file in
                     if file.id != items.first?.id { Divider() }
                     HStack(spacing: 8) {
                         Text(file.path).font(.mcMonoPath).lineLimit(1).truncationMode(.middle).help(file.path)
                         Spacer(minLength: 8)
-                        Badge(text: file.status.rawValue, style: file.status == .changed ? .review : .neutral).fixedSize()
+                        let label = file.status == .ignored
+                            ? (file.regeneratesSafely == true ? "Regenerable" : file.regeneratesSafely == false ? "Review" : "Unverified")
+                            : file.status.rawValue
+                        Badge(text: label, style: file.regeneratesSafely == true ? .safe
+                            : file.status == .changed || file.regeneratesSafely == false ? .review : .neutral).fixedSize()
                     }.padding(.horizontal, 14).padding(.vertical, 7)
                 }
             }

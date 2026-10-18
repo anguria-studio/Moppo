@@ -7,6 +7,7 @@ public struct DockerScanner: CategoryScanner {
 
     private let images: DockerImageService
     private let resolveExecutable: @Sendable () -> String?
+    private let resolveDesktopApplication: @Sendable () -> URL?
 
     /// - Parameters:
     ///   - timeout: time limit for each command attempt. The first storage request
@@ -16,24 +17,29 @@ public struct DockerScanner: CategoryScanner {
     public init(
         runner: ProcessRunner = ProcessRunner(),
         timeout: Duration = .seconds(30),
-        resolveExecutable: @escaping @Sendable () -> String? = { SystemExecutable.resolveDocker() }
+        resolveExecutable: @escaping @Sendable () -> String? = { SystemExecutable.resolveDocker() },
+        resolveDesktopApplication: @escaping @Sendable () -> URL? = { SystemExecutable.dockerDesktopApplicationURL() }
     ) {
         self.images = DockerImageService(runner: runner, timeout: timeout, resolveExecutable: resolveExecutable)
         self.resolveExecutable = resolveExecutable
+        self.resolveDesktopApplication = resolveDesktopApplication
     }
 
-    init(images: DockerImageService) {
+    init(images: DockerImageService, resolveDesktopApplication: @escaping @Sendable () -> URL? = {
+        URL(fileURLWithPath: "/Applications/Docker.app")
+    }) {
         self.images = images
         self.resolveExecutable = { "/docker-fixture" }
+        self.resolveDesktopApplication = resolveDesktopApplication
     }
 
     // MARK: - User-facing copy
 
     static let connectionReason =
-        "Moppo cannot connect to Docker. Check Docker Desktop and try scanning again."
+        "Start Docker Desktop, then scan again to see results."
 
-    static let notInstalledReason =
-        "Docker Desktop is not installed. There is nothing to measure on this Mac."
+    static let setupReason =
+        "Open Docker Desktop to finish setup, then scan again."
 
     /// Docker Desktop keeps its VM disk here. Only consulted to honour an exclusion
     /// rule — never measured, never listed.
@@ -43,12 +49,21 @@ public struct DockerScanner: CategoryScanner {
 
     public func scan(context: ScanContext) async throws -> ScanCategoryResult {
         try Task.checkCancellation()
+        let desktopApplication = resolveDesktopApplication()
+        let executable = resolveExecutable()
+        ScanDiagnostics.current?.record("docker_installation", details: [
+            "application_path": desktopApplication?.path ?? "", "executable_path": executable ?? ""
+        ])
+        func unavailable(_ reason: String) -> ScanCategoryResult {
+            desktopApplication == nil ? ScanCategoryResult(categoryID: id, availability: .notInstalled)
+                : .unavailable(id, reason: reason)
+        }
 
         // Never `docker` off `PATH`: a GUI app launched from Finder inherits none of
         // the shell's environment, so name resolution works in a dev terminal and
         // then silently reports "not installed" to every real user.
-        guard resolveExecutable() != nil else {
-            return .unavailable(id, reason: Self.notInstalledReason)
+        guard executable != nil else {
+            return unavailable(Self.setupReason)
         }
 
         // Pruning frees space inside Docker's container folder, so a user who has
@@ -66,9 +81,11 @@ public struct DockerScanner: CategoryScanner {
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch let error as ProcessError {
-            return .unavailable(id, reason: Self.reason(for: error))
+            return unavailable(Self.reason(for: error))
+        } catch DockerImageError.emptyContext {
+            return unavailable("Docker did not return its current context. Try scanning again.")
         } catch {
-            return .unavailable(id, reason: "Docker image information is unavailable. Try scanning again.")
+            return unavailable("Docker image information is unavailable. Try scanning again.")
         }
 
         try Task.checkCancellation()
@@ -96,7 +113,7 @@ public struct DockerScanner: CategoryScanner {
             // A running daemon with nothing to prune is `.empty`, not `.unavailable`:
             // the row is disabled either way, but only one of them asks the user to
             // go start something that is already started.
-            availability: entries.isEmpty ? .empty : .available,
+            availability: entries.isEmpty ? (desktopApplication == nil ? .notInstalled : .empty) : .available,
             unreadableCount: unreadableCount
         )
     }
@@ -104,7 +121,7 @@ public struct DockerScanner: CategoryScanner {
     static func reason(for error: ProcessError) -> String {
         switch error {
         case .executableMissing:
-            return notInstalledReason
+            return setupReason
         case .timedOut:
             return "Docker did not finish the scan in time. Try scanning again."
         case .failed:

@@ -611,6 +611,18 @@ final class AppModel {
     /// Dashboard being measured again. A partial failure is different in kind:
     /// silent partial failure is how a cleaner loses trust.
     private static func cleanUpNotice(_ outcome: CleanupOutcome) -> Notice? {
+        if !outcome.skippedWorktrees.isEmpty {
+            let names = outcome.skippedWorktrees.map { FileEntry.abbreviate($0) }.joined(separator: "\n")
+            var message = "Moppo kept these worktrees because their removal checks changed:\n\(names)"
+            if outcome.removedCount > 0 {
+                message += "\nMoppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
+            }
+            if !outcome.failed.isEmpty {
+                message += "\n\(outcome.failed.count) other \(outcome.failed.count == 1 ? "item could" : "items could") not be removed."
+            }
+            return Notice(title: "Changed Worktrees Were Kept", message: message,
+                finderURLs: (outcome.skippedWorktrees + outcome.failed).map { URL(fileURLWithPath: $0) })
+        }
         guard !outcome.failed.isEmpty else { return nil }
         let count = outcome.failed.count
         let one = count == 1

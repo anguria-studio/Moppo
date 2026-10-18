@@ -73,6 +73,13 @@ Select Clean Up to confirm permanent deletion.
 The warning explains that deleted sessions cannot be put back.
 Codex session rows never enter Safe to Remove or automatic selection.
 
+Session sections remain visible when the installed Codex CLI does not support verified deletion.
+Moppo lists recognized conversation files even when the expected database schema is unavailable.
+These conversations stay locked. Use Codex to manage them.
+Available database titles identify conversations. Otherwise, each row shows its session identifier.
+Moppo reads the first metadata record without reading conversation messages.
+Compressed history files remain visible and locked.
+
 Moppo reads `state_5.sqlite` without writing to it.
 The reader checks stored titles, rollout paths, and `thread_spawn_edges`.
 It supports plaintext rollout files with a verified first metadata record.

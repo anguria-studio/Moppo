@@ -69,6 +69,16 @@ Each release asset has a matching `.sha256` file.
 `SHA256SUMS` lists checksums for the DMGs, release notes, and signed feed.
 The tool publishes no files.
 
+For a private scan investigation, add `--scan-logging` to the package command.
+This option enables detailed local logs through the application build setting.
+The package manifest records the detailed logging setting.
+Keep this option off for normal releases.
+Normal packaging rejects an app with detailed scan logging enabled.
+This check also applies to existing archives and prepared candidates.
+For private diagnostic packages, supply `--scan-logging` again when you use `--archive` or `--finish`.
+Git ignores generated scan and application logs.
+See [detailed scan test builds](README.md#detailed-scan-test-builds) for log contents and sharing instructions.
+
 ## Prepare before credentials are available
 
 An unnotarized candidate must remain local.

@@ -28,6 +28,10 @@ public struct XcodeScanner: CategoryScanner {
     /// its own regenerable row. Xcode puts derived data wherever a project says,
     /// and a project-local `build` folder is invisible to the roots above.
     private let projectRoots: [URL]
+    private let temporaryRoots: [URL]
+    var captureBuildActivity: @Sendable ([URL]) async throws -> WorktreeActivity = {
+        try await WorktreeActivity.capture(roots: $0)
+    }
 
     /// The machine-wide simulator directory, whose runtimes are reported as a
     /// manual-removal row. Injectable for the same reason `developerRoot` is: it is
@@ -47,10 +51,12 @@ public struct XcodeScanner: CategoryScanner {
         developerRoot: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appending(path: "Library/Developer", directoryHint: .isDirectory),
         projectRoots: [URL] = XcodeScanner.defaultProjectRoots,
-        systemSimulatorRoot: URL = URL(fileURLWithPath: "/Library/Developer/CoreSimulator")
+        systemSimulatorRoot: URL = URL(fileURLWithPath: "/Library/Developer/CoreSimulator"),
+        temporaryRoots: [URL] = [URL(fileURLWithPath: "/private/tmp", isDirectory: true), FileManager.default.temporaryDirectory]
     ) {
         self.developerRoot = developerRoot
         self.projectRoots = projectRoots
+        self.temporaryRoots = temporaryRoots
         self.systemSimulatorRoot = systemSimulatorRoot
     }
 
@@ -169,6 +175,7 @@ public struct XcodeScanner: CategoryScanner {
         let fileManager = FileManager.default
         var entries: [FileEntry] = []
         var unreadableCount = 0
+        var additionalCaches: [XcodeBuildCache.Review] = []
 
         for root in Self.roots(developer: developerRoot) {
             try Task.checkCancellation()
@@ -229,6 +236,10 @@ public struct XcodeScanner: CategoryScanner {
                 for output in BuildOutputDetector.roots(under: project)
                 where output.kind.isXcodeOutput {
                     guard !context.isExcluded(output.url) else { continue }
+                    if let review = output.xcodeBuildCacheReview {
+                        additionalCaches.append(review)
+                        continue
+                    }
                     let measurement = try await context.measurer.measure(output.url)
                     unreadableCount += measurement.unreadableCount
                     guard measurement.allocatedBytes > 0,
@@ -250,6 +261,60 @@ public struct XcodeScanner: CategoryScanner {
                         ))?.count
                     ))
                 }
+            }
+        }
+
+        additionalCaches += try XcodeBuildCache.temporaryCaches(under: temporaryRoots, context: context)
+        let existing = entries.map { $0.url.resolvingSymlinksInPath().path }
+        var seen: Set<String> = []
+        additionalCaches = additionalCaches.filter { review in
+            let path = review.url.resolvingSymlinksInPath().path
+            return !existing.contains { path == $0 || path.hasPrefix($0 + "/") }
+                && seen.insert(path).inserted && !XcodeBuildCache.excluded(review.url, context: context)
+        }
+        if !additionalCaches.isEmpty {
+            let activity = try await captureBuildActivity(additionalCaches.map(\.url))
+            for (root, reviews) in Dictionary(grouping: additionalCaches, by: \.root).sorted(by: { $0.key.path < $1.key.path }) {
+                try Task.checkCancellation()
+                var children: [FileEntry] = []
+                for review in reviews {
+                    guard XcodeBuildCache.isCurrent(review) else { continue }
+                    let measured = try await context.measurer.measure(review.url, retaining: []) {
+                        activity.observe($0, values: $1, attribution: $2)
+                    }[review.url] ?? .zero
+                    unreadableCount += measured.unreadableCount
+                    guard measured.allocatedBytes > 0, !measured.containsProtectedPattern else { continue }
+                    let check = activity.check(review.url, measurement: measured)
+                    let protection: FileEntry.ProtectionReason?
+                    let explanation: String?
+                    switch check {
+                    case .clear:
+                        protection = measured.containsCloudOnlyItem ? .inventory : nil
+                        explanation = measured.containsCloudOnlyItem ? "Some cache files are stored only in the cloud." : nil
+                    case .found(let names):
+                        protection = .running
+                        explanation = "Files are open in: \(names). Stop the build or close the tool, then scan again."
+                    case .unknown:
+                        protection = .inventory
+                        explanation = "Open files could not be checked. Scan again before removing this cache."
+                    }
+                    children.append(FileEntry(url: review.url, kind: .cache, allocatedBytes: measured.allocatedBytes,
+                        lastOpened: lastOpenedDate(for: review.url), isRegenerable: true,
+                        protectionReason: protection, protectionExplanation: explanation,
+                        inUseBy: Self.runningOwner(of: review.url, context: context), xcodeBuildCacheReview: review))
+                    ScanDiagnostics.current?.record("xcode_build_cache", details: [
+                        "path": review.url.path, "root": root.path, "activity": "\(check)",
+                        "allocated_bytes": "\(measured.allocatedBytes)"
+                    ])
+                }
+                guard !children.isEmpty, let review = reviews.first else { continue }
+                let temporary = temporaryRoots.contains {
+                    root.path.hasPrefix($0.resolvingSymlinksInPath().path + "/")
+                }
+                entries.append(FileEntry(url: root,
+                    displayName: review.projectName + (temporary ? " — temporary build cache" : " — release build cache"),
+                    parentDisplay: FileEntry.abbreviate(root.path), kind: .cache, allocatedBytes: 0, protectionReason: .inventory,
+                    protectionExplanation: "Select the verified cache folders inside. Other files stay in place.", children: children))
             }
         }
 
@@ -278,14 +343,14 @@ public struct XcodeScanner: CategoryScanner {
         // `measureChildren` returns a dictionary, so iteration order varies between
         // runs; the path tiebreak keeps equal-sized rows in a stable order.
         entries.sort {
-            $0.allocatedBytes == $1.allocatedBytes
+            $0.totalBytesIncludingChildren == $1.totalBytesIncludingChildren
                 ? $0.url.path < $1.url.path
-                : $0.allocatedBytes > $1.allocatedBytes
+                : $0.totalBytesIncludingChildren > $1.totalBytesIncludingChildren
         }
 
         return ScanCategoryResult(
             categoryID: id,
-            totalBytes: entries.reduce(0) { $0 + $1.allocatedBytes },
+            totalBytes: entries.reduce(0) { $0 + $1.totalBytesIncludingChildren },
             entries: entries,
             availability: .available,
             unreadableCount: unreadableCount

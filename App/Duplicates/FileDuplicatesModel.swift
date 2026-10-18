@@ -116,7 +116,7 @@ final class FileDuplicatesModel {
             chooseFolders()
             return
         }
-        guard let operation = operations.begin(.fileScan) else { return }
+        guard let operation = operations.begin(.fileScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
         let preferences = preferences()
         let scanID = UUID()
         self.scanID = scanID

@@ -48,6 +48,8 @@ public struct CleanupOutcome: Sendable, Equatable {
     public var failed: [String]
     /// Paths that failed because macOS denied access.
     public var permissionDenied: [String]
+    /// Worktree paths excluded because their removal checks changed.
+    public var skippedWorktrees: [String]
 
     public init(
         removedBytes: Int64 = 0,
@@ -57,7 +59,8 @@ public struct CleanupOutcome: Sendable, Equatable {
         failed: [String] = [],
         permissionDenied: [String] = [],
         trashedCount: Int = 0,
-        deletedCount: Int = 0
+        deletedCount: Int = 0,
+        skippedWorktrees: [String] = []
     ) {
         self.removedBytes = removedBytes
         self.freedBytes = freedBytes
@@ -67,6 +70,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         self.permissionDenied = permissionDenied
         self.trashedCount = trashedCount
         self.deletedCount = deletedCount
+        self.skippedWorktrees = skippedWorktrees
     }
 
     /// Bytes the removed items claimed but did not give back, because another file
@@ -82,6 +86,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         deletedCount += other.deletedCount
         failed.append(contentsOf: other.failed)
         permissionDenied.append(contentsOf: other.permissionDenied)
+        skippedWorktrees.append(contentsOf: other.skippedWorktrees)
     }
 }
 
@@ -103,6 +108,7 @@ public struct CleanupService: Sendable {
     private let dockerImages: DockerImageService
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
+    private let reviewBuildCache: @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement?
 
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
@@ -110,7 +116,8 @@ public struct CleanupService: Sendable {
         dockerImages: DockerImageService = DockerImageService()
     ) {
         self.init(measureSize: { try await measurer.measure($0) }, log: log,
-                  registeredApplications: AppleSoundLibrary.registeredOwners, dockerImages: dockerImages)
+                  registeredApplications: AppleSoundLibrary.registeredOwners, dockerImages: dockerImages,
+                  reviewBuildCache: { try await XcodeBuildCache.measureForRemoval($0, with: measurer) })
     }
 
     init(
@@ -120,6 +127,9 @@ public struct CleanupService: Sendable {
         dockerImages: DockerImageService = DockerImageService(),
         deleteCodexSession: @escaping @Sendable (CodexSessionReview) async throws -> Void = {
             try await CodexSessions(home: $0.codexHome).remove($0)
+        },
+        reviewBuildCache: @escaping @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement? = {
+            try await XcodeBuildCache.measureForRemoval($0, with: AllocatedSizeMeasurer())
         }
     ) {
         self.measureSize = measureSize
@@ -127,6 +137,7 @@ public struct CleanupService: Sendable {
         self.registeredApplications = registeredApplications
         self.dockerImages = dockerImages
         self.deleteCodexSession = deleteCodexSession
+        self.reviewBuildCache = reviewBuildCache
     }
 
     /// - Parameters:
@@ -261,7 +272,17 @@ public struct CleanupService: Sendable {
                 // hours old. The measurer throws nothing but `CancellationError`, so
                 // letting this propagate does not turn an unreadable file into an
                 // aborted batch.
-                let measured = try await measureSize(target.url).allocatedBytes
+                let measured: Int64
+                if let review = target.xcodeBuildCacheReview {
+                    guard review.url == target.url, let checked = try await reviewBuildCache(review) else {
+                        outcome.failed.append(target.url.path)
+                        records.append(Self.failureRecord(for: target))
+                        continue
+                    }
+                    measured = checked.allocatedBytes
+                } else {
+                    measured = try await measureSize(target.url).allocatedBytes
+                }
 
                 if let expected = expectedIdentities[target.id],
                    FileIdentity.of(target.url) != expected {

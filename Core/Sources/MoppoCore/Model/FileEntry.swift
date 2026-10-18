@@ -141,6 +141,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     }
 
     public var inUseBy: RunningOwner?
+    public var xcodeBuildCacheReview: XcodeBuildCache.Review?
 
     /// Why a row that looks regenerable is not called so, in two or three words:
     /// `no lockfile` on a dependency store nothing can put back as it was.
@@ -165,6 +166,11 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
 
     public var gitWorktreeReview: GitWorktreeReview?
     public var isGitWorktree: Bool { gitWorktreeReview != nil }
+
+    /// Counts worktrees in this row and its disclosed children.
+    public var worktreeCount: Int {
+        (isGitWorktree ? 1 : 0) + children.reduce(0) { $0 + ($1.isGitWorktree ? 1 : 0) }
+    }
 
     /// The row and its children are one thing, removed together or not at all.
     ///
@@ -236,6 +242,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         manualRemoval: ManualRemoval? = nil,
         dockerImage: DockerImage? = nil,
         inUseBy: RunningOwner? = nil,
+        xcodeBuildCacheReview: XcodeBuildCache.Review? = nil,
         safetyCaveat: String? = nil,
         gitWorktreeReview: GitWorktreeReview? = nil,
         removalAction: RemovalAction? = nil,
@@ -259,6 +266,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.manualRemoval = manualRemoval
         self.dockerImage = dockerImage
         self.inUseBy = inUseBy
+        self.xcodeBuildCacheReview = xcodeBuildCacheReview
         self.safetyCaveat = safetyCaveat
         self.gitWorktreeReview = gitWorktreeReview
         self.removalAction = removalAction

@@ -122,6 +122,9 @@ public struct DocumentsFilesScanner: CategoryScanner {
             try Task.checkCancellation()
 
             let root = home.appendingPathComponent(name)
+            let diagnostics = ScanDiagnostics.current
+            let rootSpan = diagnostics?.begin("documents_root", path: root.path)
+            defer { diagnostics?.end(rootSpan, outcome: Task.isCancelled ? "cancelled" : "completed") }
             guard Self.isDirectory(root) else { continue }
             presentRoots += 1
 
@@ -137,6 +140,8 @@ public struct DocumentsFilesScanner: CategoryScanner {
             readableRoots += 1
 
             for candidate in listing.candidates {
+                let candidateSpan = diagnostics?.begin("document_candidate", path: candidate.url.path)
+                defer { diagnostics?.end(candidateSpan, outcome: Task.isCancelled ? "cancelled" : "completed") }
                 try Task.checkCancellation()
 
                 // A date filters nothing. This loop used to `continue` on a recent
@@ -149,7 +154,13 @@ public struct DocumentsFilesScanner: CategoryScanner {
                 let measured = try await measure(candidate, context: context)
                 unreadableCount += measured.unreadableCount
                 // See `SizeMeasurement.containsProtectedPattern`.
-                guard !measured.containsProtectedPattern else { continue }
+                guard !measured.containsProtectedPattern else {
+                    diagnostics?.record("document_candidate_omitted", details: [
+                        "path": candidate.url.path, "reason": "protected",
+                        "worktrees": "\(measured.worktrees?.roots.count ?? 0)"
+                    ])
+                    continue
+                }
 
                 // Keep dependency stores under their project. The parent shows its
                 // complete size. The child lets the user remove dependencies while
@@ -188,7 +199,7 @@ public struct DocumentsFilesScanner: CategoryScanner {
                 let completeBytes = measured.bytes + dependencyChildren.reduce(0) {
                     $0 + $1.allocatedBytes
                 }
-                guard completeBytes >= minimum else { continue }
+                guard completeBytes >= minimum || measured.worktrees?.roots.isEmpty == false else { continue }
 
                 let entry = Self.entry(
                     for: candidate,
@@ -197,7 +208,7 @@ public struct DocumentsFilesScanner: CategoryScanner {
                     childCount: measured.childCount,
                     children: dependencyChildren
                 )
-                entries.append(try await GitWorktreeDetector.addingWorktrees(to: entry, context: context))
+                entries.append(try await GitWorktreeDetector.addingWorktrees(to: entry, context: context, prepared: measured.worktrees))
             }
         }
 
@@ -239,6 +250,7 @@ public struct DocumentsFilesScanner: CategoryScanner {
         /// subtracted from `bytes`. Dependency stores become disclosed children.
         /// Xcode output is listed by `XcodeScanner`.
         var carved: [Carved] = []
+        var worktrees: WorktreeScan.Result?
     }
 
     private struct Carved {
@@ -279,50 +291,31 @@ public struct DocumentsFilesScanner: CategoryScanner {
 
         var result = Measured(childCount: listing.totalCount)
 
-        // An atomic tree is reported whole, so there is nothing to gain from resolving
-        // it child by child; a pathologically wide folder would cost a dictionary
-        // entry per child for the same single number. Both take the plain walk, which
-        // returns an identical total.
-        let isAtomic = Self.atomicDirectoryNames.contains(candidate.url.lastPathComponent)
-        let isTooWide = listing.candidates.count > Self.maximumChildrenToMeasureIndividually
+        let shouldCarve = !Self.atomicDirectoryNames.contains(candidate.url.lastPathComponent)
+            && listing.candidates.count <= Self.maximumChildrenToMeasureIndividually
+            && !listing.candidates.isEmpty
+        let outputs = (shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
+            : XcodeBuildCache.releaseCaches(under: candidate.url).map {
+                BuildOutputDetector.Root(url: $0.url, kind: .xcodeDerivedData, xcodeBuildCacheReview: $0)
+            }).filter { !context.isExcluded($0.url) }
+        let roots = try GitWorktreeDetector.isWorktree(candidate.url)
+            ? [candidate.url] : GitWorktreeDetector.roots(under: candidate.url, context: context)
+        let worktrees = try await WorktreeScan.prepare(roots.filter { root in
+            !outputs.contains { root.path == $0.url.path || root.path.hasPrefix($0.url.path + "/") }
+        })
+        let worktreeResult = try await worktrees.measure(candidate.url, with: context.measurer, retaining: outputs.map(\.url))
+        let measured = worktreeResult.measurements
+        let total = measured[candidate.url.standardizedFileURL] ?? .zero
+        result.bytes = total.allocatedBytes
+        result.unreadableCount = total.unreadableCount
+        result.containsProtectedPattern = total.containsProtectedPattern
+        result.worktrees = worktreeResult
 
-        guard !isAtomic, !isTooWide, !listing.candidates.isEmpty else {
-            let measurement = try await context.measurer.measure(candidate.url)
-            result.bytes = measurement.allocatedBytes
-            result.unreadableCount = measurement.unreadableCount
-            result.containsProtectedPattern = measurement.containsProtectedPattern
-            return result
-        }
-
-        // Still one traversal, not one per child: `measureChildren` walks the folder
-        // once and returns a full recursive total for each immediate child, sharing a
-        // hard-link deduplicator across them so the parts sum to the whole exactly.
-        // The original needed a second batched `du` to learn the same thing.
-        let measured = try await context.measurer.measureChildren(of: candidate.url)
-        for measurement in measured.values {
-            result.bytes += measurement.allocatedBytes
-            result.unreadableCount += measurement.unreadableCount
-            result.containsProtectedPattern =
-                result.containsProtectedPattern || measurement.containsProtectedPattern
-        }
-
-        // Build output and dependency stores inside a project are not the
-        // project. Each becomes a row of its own — Xcode output under the Xcode
-        // category, `node_modules` and its kind right here — so the bytes leave
-        // this row: a `Renewals` row that still counted its 11 GB `build` folder
-        // would offer the same space twice, and offer it as documents. The project
-        // keeps its own size — sources, assets, whatever the user actually made.
-        // An excluded root is neither carved nor listed: the user said hands off,
-        // and its bytes stay where they are, inside the project.
-        for output in BuildOutputDetector.roots(under: candidate.url)
-        where !context.isExcluded(output.url) {
+        for output in outputs {
             try Task.checkCancellation()
-            let carved = try await context.measurer.measure(output.url)
-            if !output.kind.isXcodeOutput,
-               carved.allocatedBytes < Self.minimumFolderBytes {
-                continue
-            }
-            result.bytes = max(0, result.bytes - carved.allocatedBytes)
+            guard let carved = measured[output.url.standardizedFileURL] else { continue }
+            if !output.kind.isXcodeOutput, carved.allocatedBytes < Self.minimumFolderBytes { continue }
+            result.bytes -= carved.allocatedBytes
             result.carved.append(Carved(root: output, measurement: carved))
         }
         return result

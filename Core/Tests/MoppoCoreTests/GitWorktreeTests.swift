@@ -20,6 +20,30 @@ struct GitWorktreeTests {
             try Data(text.utf8).write(to: url)
         }
 
+        func nextProject(_ path: String, development: Bool = false) throws {
+            try file(path + "/package.json", text: #"{"dependencies":{"next":"16.2.4"}}"#)
+            try file(path + "/tsconfig.json", text: #"{"compilerOptions":{"incremental":true}}"#)
+            try file(path + "/tsconfig.tsbuildinfo", text: #"{"fileNames":["./page.ts"],"fileInfos":["hash"],"version":"5.9.3"}"#)
+            try file(path + "/next-env.d.ts", text: """
+                /// <reference types="next" />
+                /// <reference types="next/image-types/global" />
+                import "./.next/types/routes.d.ts";
+
+                // NOTE: This file should not be edited
+                // see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+                """)
+            let output = path + (development ? "/.next/dev" : "/.next")
+            try file(output + "/package.json", text: #"{"type":"commonjs"}"#)
+            try file(output + "/build-manifest.json", text: #"{"pages":{"/page":["page.js"]},"rootMainFiles":["main.js"]}"#)
+            try file(output + "/server/pages/page.js", text: "Generated page")
+        }
+
+        func plist(_ path: String, object: [String: Any]) throws {
+            try file(path, text: "")
+            try PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0)
+                .write(to: home.appendingPathComponent(path))
+        }
+
         func git(_ arguments: [String]) throws {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
@@ -56,11 +80,44 @@ struct GitWorktreeTests {
         let claudeTree = try sandbox.worktree(".claude/worktrees/task", repository: repo)
         _ = try sandbox.worktree("Projects/task", repository: repo)
         try sandbox.file("Documents/Project/.claude/worktrees/task/.build/workspace-state.json", text: "{}")
+        try sandbox.file("Documents/Small/.hidden/task/.git", text: "gitdir: /missing/.git/worktrees/task\n")
+        try sandbox.file("Documents/Small/.hidden/task/tiny.txt", text: "Local work")
         let context = ScanContext()
-        let documents = try await DocumentsFilesScanner(home: sandbox.home).scan(context: context)
+        let log = try ScanDiagnostics(directory: sandbox.home.appendingPathComponent("logs"))
+        let documents = try await ScanDiagnostics.$current.withValue(log.context) {
+            let results = try await ScanCoordinator(scanners: [DocumentsFilesScanner(home: sandbox.home)]).scan(context: context)
+            return try #require(results.categories.first)
+        }
+        log.finish(outcome: "completed")
+        log.flush()
+        let events = try Data(contentsOf: log.fileURL).split(separator: 10).map {
+            try #require(try JSONSerialization.jsonObject(with: Data($0)) as? [String: Any])
+        }
+        let completed = events.filter { $0["event"] as? String == "span_end" }
+            .compactMap { $0["details"] as? [String: String] }
+        #expect(completed.filter { $0["operation"]?.hasPrefix("measure_") == true }.count == 3)
+        let processChecks = completed.filter { $0["operation"] == "process" && $0["path"] == "/usr/sbin/lsof" }
+        #expect(processChecks.count == 3)
+        #expect(processChecks.allSatisfy { $0["arguments"]?.contains("+D") == false })
         let project = try #require(documents.entries.first { $0.url.path.hasSuffix("/Documents/Project") })
         let child = try #require(project.children.first { $0.url.path.hasSuffix("/Documents/Project/.claude/worktrees/task") })
         #expect(child.parentDisplay.contains("Git worktree"))
+        #expect(project.worktreeCount == 1)
+        let small = try #require(documents.filteringNoise(below: 1_048_576).entries.first { $0.url.lastPathComponent == "Small" })
+        #expect(small.worktreeCount == 1)
+        #expect(small.totalBytesIncludingChildren < 1_048_576)
+        let shown = events.filter { $0["event"] as? String == "worktree_row" }
+            .compactMap { $0["details"] as? [String: String] }
+        #expect(shown.filter { $0["outcome"] == "shown" }.count == 3)
+        let visible = events.filter { $0["event"] as? String == "worktree_visible_row" }
+            .compactMap { $0["details"] as? [String: String] }
+        #expect(Set(visible.compactMap { $0["path"] }) == Set((documents.entries + documents.entries.flatMap(\.children))
+            .filter(\.isGitWorktree).map { $0.url.path }))
+        let zero = try await GitWorktreeDetector.addingWorktrees(to: FileEntry(url: repo, kind: .folder, allocatedBytes: 0),
+            context: context, prepared: WorktreeScan.Result(roots: [projectTree],
+                measurements: [projectTree.standardizedFileURL: .zero], reviews: [:]))
+        #expect(zero.worktreeCount == 1)
+        #expect(zero.displayBytes == 0)
         #expect(!child.regeneratesSafely)
         #expect(child.safetyCaveat != nil)
         #expect(child.gitWorktreeReview?.status == .uncommittedChanges)
@@ -73,7 +130,20 @@ struct GitWorktreeTests {
         #expect(standalone.gitWorktreeReview?.status == .clean)
         #expect(standalone.gitWorktreeReview?.pushStatus == .unknown)
 
-        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let aiLog = try ScanDiagnostics(directory: sandbox.home.appendingPathComponent("ai-logs"))
+        let ai = try await ScanDiagnostics.$current.withValue(aiLog.context) {
+            try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        }
+        aiLog.finish(outcome: "completed")
+        aiLog.flush()
+        let aiSpans = try Data(contentsOf: aiLog.fileURL).split(separator: 10).compactMap { line -> [String: String]? in
+            let event = try #require(try JSONSerialization.jsonObject(with: Data(line)) as? [String: Any])
+            return event["event"] as? String == "span_end" ? event["details"] as? [String: String] : nil
+        }
+        let aiProcessChecks = aiSpans.filter { $0["operation"] == "process" && $0["path"] == "/usr/sbin/lsof" }
+        #expect(aiProcessChecks.count == 2)
+        #expect(aiProcessChecks.allSatisfy { $0["arguments"]?.contains("+D") == false })
+        #expect(!aiSpans.contains { $0["operation"] == "worktree_review" })
         for tree in [codexTree, claudeTree] {
             let parent = try #require(ai.entries.first { $0.children.contains { $0.url.path.hasSuffix(String(tree.path.dropFirst(sandbox.home.path.count))) } })
             let measurement = try await context.measurer.measure(parent.url)
@@ -245,6 +315,243 @@ struct GitWorktreeTests {
         #expect(locked.outcome == .inUse)
     }
 
+    @Test("Ignored cache files inherit verified roots in fresh and shared reviews")
+    func ignoredCacheContents() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        try sandbox.file("Documents/Project/.gitignore", text: ".venv/\n__pycache__/\n.env\ndatabase.sqlite\n.DS_Store\n.next/\nnext-env.d.ts\n*.tsbuildinfo\n")
+        try sandbox.file("Documents/Project/uv.lock", text: "version = 1\n")
+        try sandbox.file("Documents/Project/source.py", text: "print('fixture')\n")
+        try sandbox.nextProject("Documents/Project")
+        try sandbox.git(["-C", repo.path, "add", ".gitignore", "uv.lock", "source.py", "package.json", "tsconfig.json"])
+        try sandbox.git(["-C", repo.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Fixture"])
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        let tree = try sandbox.worktree("Worktrees/caches", repository: repo)
+        try sandbox.nextProject("Worktrees/caches")
+        try sandbox.file("Worktrees/caches/.DS_Store", text: "\0\0\0\u{1}Bud1fixture")
+        try sandbox.file("Worktrees/caches/.pytest_cache/.gitignore", text: "*\n")
+        try sandbox.file("Worktrees/caches/.pytest_cache/CACHEDIR.TAG", text: CacheDirectoryTag.signature)
+        try sandbox.file("Worktrees/caches/.pytest_cache/README.md", text: "pytest cache")
+        try sandbox.file("Worktrees/caches/.pytest_cache/v/cache/nodeids", text: "[]")
+        try sandbox.file("Worktrees/caches/.venv/pyvenv.cfg", text: "home = /fixture/python\n")
+        try sandbox.file("Worktrees/caches/.venv/lib/package.py", text: "# Installed dependency\n")
+        try sandbox.file("Worktrees/caches/__pycache__/source.cpython-313.pyc", text: "Compiled fixture")
+
+        let fresh = try await GitWorktreeReviewService().review(tree)
+        #expect(fresh.ignoredFiles.contains { $0.path == ".pytest_cache/README.md" })
+        #expect(fresh.ignoredFiles.contains { $0.path == ".pytest_cache/CACHEDIR.TAG" })
+        #expect(fresh.regenerableIgnoredFiles.count == fresh.ignoredFiles.count)
+        #expect(fresh.isSafeToRemove)
+        let batch = try await WorktreeScan.prepare([tree])
+        let measured = try await batch.measure(tree, with: AllocatedSizeMeasurer())
+        let shared = try #require(measured.reviews[tree.standardizedFileURL])
+        #expect(shared.ignoredFiles == fresh.ignoredFiles)
+
+        try sandbox.file("Worktrees/caches/.env", text: "Local settings")
+        try sandbox.file("Worktrees/caches/database.sqlite", text: "Local data")
+        let mixed = try await GitWorktreeReviewService().review(tree)
+        #expect(mixed.localIgnoredFiles.map(\.path) == [".env", "database.sqlite"])
+        #expect(mixed.regenerableIgnoredFiles.count == fresh.ignoredFiles.count)
+        #expect(mixed.unverifiedIgnoredFiles.isEmpty)
+        #expect(mixed.outcome == .hasLocalFiles)
+        #expect(mixed.ignoredFilesCheck == .found(".env, database.sqlite"))
+    }
+
+    @Test("Next and TypeScript evidence rejects edited files, missing manifests, and links", arguments: [false, true])
+    func generatedWebFiles(development: Bool) throws {
+        let sandbox = try Sandbox()
+        try sandbox.nextProject("web", development: development)
+        let detector = GeneratedWorktreeFileDetector(root: sandbox.home.appendingPathComponent("web"))
+        let root = sandbox.home.appendingPathComponent("web")
+        #expect(detector.recognizes(root.appendingPathComponent(".next"), isDirectory: true))
+        #expect(detector.recognizes(root.appendingPathComponent("next-env.d.ts"), isDirectory: false))
+        #expect(detector.recognizes(root.appendingPathComponent("tsconfig.tsbuildinfo"), isDirectory: false))
+        try sandbox.file("web/.env.local", text: "Keep local settings")
+        #expect(!detector.recognizes(root.appendingPathComponent(".env.local"), isDirectory: false))
+        try sandbox.file("web/next-env.d.ts", text: "/// <reference types=\"next\" />\n// NOTE: This file should not be edited\ndeclare const localSetting: string;")
+        #expect(!detector.recognizes(root.appendingPathComponent("next-env.d.ts"), isDirectory: false))
+        try sandbox.file("web/tsconfig.tsbuildinfo", text: #"{"notes":"Keep this file"}"#)
+        #expect(!detector.recognizes(root.appendingPathComponent("tsconfig.tsbuildinfo"), isDirectory: false))
+        try sandbox.file("outside/package.json", text: #"{"dependencies":{"next":"16.2.4"}}"#)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("package.json"))
+        #expect(!detector.recognizes(root.appendingPathComponent(".next"), isDirectory: true))
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("package.json"),
+            withDestinationURL: sandbox.home.appendingPathComponent("outside/package.json"))
+        #expect(!detector.recognizes(root.appendingPathComponent(".next"), isDirectory: true))
+    }
+
+    @Test("Finder and Xcode metadata require known contents and preserve local Xcode data")
+    func generatedDesktopMetadata() throws {
+        let sandbox = try Sandbox()
+        let detector = GeneratedWorktreeFileDetector(root: sandbox.home)
+        let finder = sandbox.home.appendingPathComponent(".DS_Store")
+        try sandbox.file(".DS_Store", text: "Local notes with a misleading name")
+        #expect(!detector.recognizes(finder, isDirectory: false))
+        try sandbox.file(".DS_Store", text: "\0\0\0\u{1}Bud1fixture")
+        #expect(detector.recognizes(finder, isDirectory: false))
+        let metadata = "Core/.swiftpm/xcode/xcuserdata"
+        let user = metadata + "/fixture.xcuserdatad"
+        try sandbox.plist(user + "/xcschemes/xcschememanagement.plist", object: [
+            "SchemeUserState": ["Core.xcscheme_^#shared#^_": ["orderHint": 1]]
+        ])
+        try sandbox.plist(user + "/UserInterfaceState.xcuserstate", object: [
+            "$archiver": "NSKeyedArchiver", "$objects": ["$null"], "$top": [:]
+        ])
+        let folder = sandbox.home.appendingPathComponent(metadata)
+        #expect(detector.recognizes(folder, isDirectory: true))
+        try sandbox.file(user + "/xcschemes/Local.xcscheme", text: "Local scheme")
+        #expect(!detector.recognizes(folder, isDirectory: true))
+        try FileManager.default.removeItem(at: sandbox.home.appendingPathComponent(user + "/xcschemes/Local.xcscheme"))
+        try sandbox.file(user + "/xcdebugger/Breakpoints_v2.xcbkptlist", text: "Local breakpoint")
+        #expect(!detector.recognizes(folder, isDirectory: true))
+        try sandbox.file("project.yml", text: "name: Project")
+        try sandbox.file("Project.xcodeproj/project.pbxproj", text: "Generated project")
+        try sandbox.file("Project.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved", text: "Keep dependency versions")
+        #expect(!detector.recognizes(sandbox.home.appendingPathComponent("Project.xcodeproj"), isDirectory: true))
+    }
+
+    private static var xcodegenExecutable: String? {
+        ["/opt/homebrew/bin/xcodegen", "/usr/local/bin/xcodegen"].first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    @Test("Generated Xcode projects require an exact match in fresh and shared reviews", .enabled(if: xcodegenExecutable != nil))
+    func generatedXcodeProjects() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let spec = """
+            name: Project
+            targets:
+              Project:
+                type: framework
+                platform: macOS
+                sources: [Sources]
+            schemes:
+              Project:
+                build:
+                  targets:
+                    Project: all
+            """
+        try sandbox.file("Documents/Project/project.yml", text: spec)
+        try sandbox.file("Documents/Project/.gitignore", text: "*.xcodeproj/\n")
+        try sandbox.file("Documents/Project/Sources/Source.swift", text: "struct Source {}\n")
+        try sandbox.git(["-C", repo.path, "add", "project.yml", ".gitignore", "Sources"])
+        try sandbox.git(["-C", repo.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Project"])
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        let tree = try sandbox.worktree("Worktrees/generated", repository: repo)
+        let generator = try #require(Self.xcodegenExecutable)
+        try await ProcessRunner().run(generator, ["generate", "--quiet", "--no-env", "--project", tree.path,
+            "--spec", tree.appendingPathComponent("project.yml").path, "--project-root", tree.path])
+        let bundle = tree.appendingPathComponent("Project.xcodeproj")
+        try FileManager.default.createDirectory(at: bundle.appendingPathComponent("project.xcworkspace/xcshareddata/swiftpm/configuration"),
+                                               withIntermediateDirectories: true)
+        let fresh = try await GitWorktreeReviewService().review(tree)
+        #expect(fresh.regenerableIgnoredFiles.map(\.path) == ["Project.xcodeproj/"])
+        #expect(fresh.isSafeToRemove)
+        let batch = try await WorktreeScan.prepare([tree])
+        let measured = try await batch.measure(tree, with: AllocatedSizeMeasurer())
+        #expect(measured.reviews[tree]?.ignoredFiles == fresh.ignoredFiles)
+        let verifier = GeneratedXcodeProjectVerifier(generator: generator)
+        let project = bundle.appendingPathComponent("project.pbxproj")
+        let original = try Data(contentsOf: project)
+        try (original + Data("\n// Local project edit\n".utf8)).write(to: project)
+        #expect(try await verifier.verify(tree, ignoredPaths: ["Project.xcodeproj/"], git: "/usr/bin/git").isEmpty)
+        try original.write(to: project)
+        for path in ["project.xcworkspace/xcshareddata/swiftpm/Package.resolved", "xcshareddata/xcschemes/Local.xcscheme",
+                     "xcuserdata/fixture.xcuserdatad/xcdebugger/Breakpoints_v2.xcbkptlist", "notes.txt"] {
+            try sandbox.file("Worktrees/generated/Project.xcodeproj/" + path, text: "Keep local data")
+            #expect(try await verifier.verify(tree, ignoredPaths: ["Project.xcodeproj/"], git: "/usr/bin/git").isEmpty)
+            try FileManager.default.removeItem(at: bundle)
+            try await ProcessRunner().run(generator, ["generate", "--quiet", "--no-env", "--project", tree.path,
+                "--spec", tree.appendingPathComponent("project.yml").path, "--project-root", tree.path])
+        }
+        try FileManager.default.removeItem(at: tree.appendingPathComponent("Sources/Source.swift"))
+        try FileManager.default.createSymbolicLink(at: tree.appendingPathComponent("Sources/Source.swift"),
+            withDestinationURL: repo.appendingPathComponent("Sources/Source.swift"))
+        #expect(try await verifier.verify(tree, ignoredPaths: ["Project.xcodeproj/"], git: "/usr/bin/git").isEmpty)
+    }
+
+    @Test("Project verification rejects generation commands and paths outside the snapshot",
+           arguments: ["preGenCommand", "postGenCommand", "sourcePath", "schemeName"])
+    func unsafeXcodeGeneration(kind: String) async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file("project.yml", text: "name: Project\n")
+        var object: [String: Any] = ["name": "Project"]
+        switch kind {
+        case "sourcePath": object["fileGroups"] = ["../outside"]
+        case "schemeName": object["schemes"] = ["../../outside": [:]]
+        default: object["options"] = [kind: "touch marker"]
+        }
+        let resolved = try JSONSerialization.data(withJSONObject: object)
+        let verifier = GeneratedXcodeProjectVerifier(generator: "xcodegen") { executable, arguments in
+            if executable == "git" { return Data("project.yml\0".utf8) }
+            #expect(arguments.first == "dump")
+            return resolved
+        }
+        #expect(try await verifier.verify(sandbox.home, ignoredPaths: ["Project.xcodeproj/"], git: "git").isEmpty)
+    }
+
+    @Test("Missing generators and external specification inputs remain unverified")
+    func unavailableXcodeGeneration() async throws {
+        let sandbox = try Sandbox()
+        let verifier = GeneratedXcodeProjectVerifier(generator: "xcodegen") { _, _ in
+            Issue.record("The parser must not read an external specification.")
+            return Data()
+        }
+        for source in ["include: ../external.yml\nname: Project\n", #"{"\u0069nclude":"../external.yml","name":"Project"}"#] {
+            try sandbox.file("project.yml", text: source)
+            #expect(try await verifier.verify(sandbox.home, ignoredPaths: ["Project.xcodeproj/"], git: "git").isEmpty)
+        }
+        try sandbox.file("project.yml", text: "name: Project\n")
+        let missing = GeneratedXcodeProjectVerifier(generator: nil)
+        #expect(try await missing.verify(sandbox.home, ignoredPaths: ["Project.xcodeproj/"], git: "git").isEmpty)
+    }
+
+    @Test("Empty ignored folders stop qualifying when local or hidden files appear")
+    func emptyIgnoredFolders() throws {
+        let sandbox = try Sandbox()
+        let folder = sandbox.home.appendingPathComponent(".claude/.cc-writes")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let detector = GeneratedWorktreeFileDetector(root: sandbox.home)
+        #expect(detector.recognizes(folder, isDirectory: true))
+        try sandbox.file(".claude/.cc-writes/.local-data", text: "Keep this hidden file")
+        #expect(!detector.recognizes(folder, isDirectory: true))
+    }
+
+    @Test("Cache inheritance preserves evidence, boundaries, and measurement failures")
+    func ignoredCacheBoundaries() throws {
+        let sandbox = try Sandbox()
+        let root = sandbox.home.appendingPathComponent(".pytest_cache/tree").standardizedFileURL
+        try sandbox.file(".pytest_cache/CACHEDIR.TAG", text: CacheDirectoryTag.signature)
+        try sandbox.file(".pytest_cache/uv.lock", text: "Outside the worktree")
+        let files = ["ordinary.txt", ".venv/pyvenv.cfg", ".venv/lib/package.py", "__pycache__/orphan.pyc",
+                     "plain/.pytest_cache/README.md", ".pytest_cache/README.md", ".pytest_cache/nested/file.json"]
+        for path in files { try sandbox.file(".pytest_cache/tree/" + path, text: "Fixture") }
+        try sandbox.file(".pytest_cache/tree/plain/.pytest_cache/CACHEDIR.TAG", text: "Invalid signature")
+        try sandbox.file(".pytest_cache/tree/.pytest_cache/CACHEDIR.TAG", text: CacheDirectoryTag.signature)
+        try sandbox.file("outside/.pytest_cache/CACHEDIR.TAG", text: CacheDirectoryTag.signature)
+        try sandbox.file("outside/.pytest_cache/README.md", text: "Outside data")
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked"),
+            withDestinationURL: sandbox.home.appendingPathComponent("outside"))
+        let paths = files + ["linked/.pytest_cache/README.md", "missing.txt"]
+        var review = GitWorktreeReview()
+        review.ignoredFiles = paths.map { .init(path: $0, status: .ignored) }
+        let measurements = Dictionary(uniqueKeysWithValues: paths.map {
+            (root.appendingPathComponent($0).standardizedFileURL, SizeMeasurement(allocatedBytes: 64, fileCount: 1))
+        })
+        GitWorktreeReviewService.applyMeasurements(measurements, directory: root, to: &review)
+        #expect(review.regenerableIgnoredFiles.map(\.path) == [".pytest_cache/README.md", ".pytest_cache/nested/file.json"])
+        #expect(review.unverifiedIgnoredFiles.map(\.path) == ["missing.txt"])
+        #expect(review.localIgnoredFiles.count == paths.count - 3)
+
+        let cacheFile = root.appendingPathComponent(".pytest_cache/README.md").standardizedFileURL
+        for failure in [SizeMeasurement(unreadableCount: 1), SizeMeasurement(containsCloudOnlyItem: true)] {
+            GitWorktreeReviewService.applyMeasurements([cacheFile: failure], directory: root, to: &review)
+            #expect(review.ignoredFiles.first { $0.path == ".pytest_cache/README.md" }?.regeneratesSafely == nil)
+        }
+        GitWorktreeReviewService.applyMeasurements([cacheFile: SizeMeasurement(containsProtectedPattern: true)], directory: root, to: &review)
+        #expect(review.ignoredFiles.first { $0.path == ".pytest_cache/README.md" }?.regeneratesSafely == false)
+    }
+
     @Test("A green verdict requires complete checks and regenerable ignored files")
     func safeVerdict() {
         var review = GitWorktreeReview()
@@ -293,6 +600,53 @@ struct GitWorktreeTests {
         #expect(review.pushStatus == .unknown)
         #expect(!review.filesChecked)
         #expect(!review.isSafeToRemove)
+    }
+
+    @Test("Shared process checks match hard links and reject incomplete inventories")
+    func sharedActivity() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file("outside/open.txt", text: "Open file")
+        try sandbox.file("tree/.venv/other.txt", text: "Other file")
+        let root = sandbox.home.appendingPathComponent("tree").standardizedFileURL
+        let file = sandbox.home.appendingPathComponent("outside/open.txt")
+        try FileManager.default.linkItem(at: file, to: root.appendingPathComponent(".venv/alias.txt"))
+        let identity = try #require(FileIdentity.of(file)).split(separator: ":")
+        let device = try #require(UInt32(identity[0]))
+        let output = Data("p123\0cTest process\0\nf3\0tREG\0D0x\(String(device, radix: 16))\0i\(identity[1])\0\n".utf8)
+        let parsed = WorktreeActivity.parse(output)
+        #expect(parsed.complete)
+        let activity = WorktreeActivity(roots: [root], processes: parsed.processes)
+        let totals = try await AllocatedSizeMeasurer().measure(root, retaining: [],
+            observeEntry: { url, values, owners in activity.observe(url, values: values, attribution: owners) })
+        #expect(activity.check(root, measurement: totals[root]) == .found("Test process"))
+        let prefetched = try file.resourceValues(forKeys: [.fileIdentifierKey, .volumeIdentifierKey])
+        #expect(prefetched.fileIdentifier == UInt64(identity[1]))
+        let fast = WorktreeActivity(roots: [root], processes: parsed.processes)
+        fast.observe(root.appendingPathComponent("missing"), values: prefetched, attribution: [root])
+        #expect(fast.check(root, measurement: totals[root]) == .found("Test process"))
+        #expect(fast.fallbackCount == 0)
+        #expect(activity.fallbackCount == 0)
+        let fallback = WorktreeActivity(roots: [root], processes: parsed.processes)
+        fallback.observe(file, values: URLResourceValues(), attribution: [root])
+        #expect(fallback.check(root, measurement: totals[root]) == .found("Test process"))
+        #expect(fallback.fallbackCount == 1)
+        let directoryIdentity = try #require(FileIdentity.of(root))
+        let cwd = WorktreeActivity(roots: [root], processes: [directoryIdentity: ["Shell"]])
+        cwd.observe(root, values: try root.resourceValues(forKeys: [.fileIdentifierKey, .volumeIdentifierKey]), attribution: [root])
+        #expect(cwd.check(root, measurement: totals[root]) == .found("Shell"))
+        #expect(!WorktreeActivity.parse(Data("p123\0cTest\0\nf3\0tREG\0\n".utf8)).complete)
+        let revoked = WorktreeActivity.parse(output + Data("f4\0n(revoked)\0\n".utf8))
+        #expect(revoked.complete)
+        #expect(revoked.revokedFiles == 1)
+        #expect(revoked.processes == parsed.processes)
+        for record in ["f4\0\n", "f4\0nPermission denied\0\n", "f4\0tREG\0n(revoked)\0\n"] {
+            let result = WorktreeActivity.parse(output + Data(record.utf8))
+            #expect(!result.complete)
+            #expect(result.incompleteFiles == 1)
+        }
+        #expect(!WorktreeActivity.parse(output.dropLast()).complete)
+        let incomplete = WorktreeActivity(roots: [root], processes: [:], issue: "Incomplete inventory.")
+        #expect(incomplete.check(root, measurement: totals[root]) == .unknown("Incomplete inventory."))
     }
 
     @Test("Status parsing handles renames, unusual names, and invalid paths")

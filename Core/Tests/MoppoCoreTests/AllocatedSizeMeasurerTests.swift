@@ -49,6 +49,34 @@ struct AllocatedSizeMeasurerTests {
 
     private static let oneMB = 1024 * 1024
 
+    @Test("Direct metadata preserves allocation for sparse files, resource forks, and protected names")
+    func directMetadataAllocation() async throws {
+        let sandbox = try Sandbox()
+        let ordinary = try sandbox.writeFile("nested/café.bin", bytes: Self.oneMB)
+        let sparse = try sandbox.writeFile("nested/sparse.bin", bytes: 1)
+        let handle = try FileHandle(forWritingTo: sparse)
+        try handle.truncate(atOffset: 64 * 1024 * 1024)
+        try handle.close()
+        let fork = try sandbox.writeFile("fork.bin", bytes: 1)
+        let forkBytes = Data(repeating: 0x41, count: 8192)
+        try #require(forkBytes.withUnsafeBytes {
+            setxattr(fork.path, "com.apple.ResourceFork", $0.baseAddress, $0.count, 0, 0)
+        } == 0)
+        try sandbox.writeFile("nested/local.keychain-db", bytes: 1)
+        let measurer = AllocatedSizeMeasurer(protectedPatterns: ["*.keychain-db"])
+        for url in [ordinary, sparse, fork, sandbox.root] {
+            let foundation = try await measurer.measure(url)
+            let filesystem = try await measurer.measure(url, reader: .filesystem)
+            #expect(filesystem == foundation)
+        }
+        let total = try await measurer.measure(sandbox.root, reader: .filesystem)
+        #expect(total.containsProtectedPattern)
+        #expect(total.fileCount == 4)
+        #expect(total.allocatedBytes < Int64(4 * Self.oneMB))
+        let missing = try await measurer.measure(sandbox.root.appendingPathComponent("missing"), reader: .filesystem)
+        #expect(missing.unreadableCount == 1)
+    }
+
     private final class MeasurementRecorder: @unchecked Sendable {
         private let lock = NSLock()
         private var observations: [(URL, Duration, SizeMeasurement)] = []
@@ -129,8 +157,8 @@ struct AllocatedSizeMeasurerTests {
 
     // MARK: - The regression that motivated the rewrite
 
-    @Test("an unreadable subdirectory costs only itself — it never zeroes the total")
-    func unreadableSubdirectoryDoesNotZeroTheTotal() async throws {
+    @Test("an unreadable subdirectory costs only itself — it never zeroes the total", arguments: [MeasurementReader.foundation, .filesystem])
+    func unreadableSubdirectoryDoesNotZeroTheTotal(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         try sandbox.writeFile("readable/a.bin", bytes: Self.oneMB)
         try sandbox.writeFile("readable/b.bin", bytes: Self.oneMB)
@@ -138,7 +166,7 @@ struct AllocatedSizeMeasurerTests {
         try sandbox.writeFile("locked/secret.bin", bytes: Self.oneMB)
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
 
-        let result = try await AllocatedSizeMeasurer().measure(sandbox.root)
+        let result = try await AllocatedSizeMeasurer().measure(sandbox.root, reader: reader)
 
         // `du` would have exited non-zero here and the old code returned 0.
         #expect(result.allocatedBytes >= Int64(2 * Self.oneMB))
@@ -164,21 +192,21 @@ struct AllocatedSizeMeasurerTests {
 
     // MARK: - Counting rules
 
-    @Test("hard links to one inode are counted once")
-    func hardLinksCountedOnce() async throws {
+    @Test("hard links to one inode are counted once", arguments: [MeasurementReader.foundation, .filesystem])
+    func hardLinksCountedOnce(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         let original = try sandbox.writeFile("original.bin", bytes: 4 * Self.oneMB)
         let link = sandbox.root.appendingPathComponent("hardlink.bin")
         try FileManager.default.linkItem(at: original, to: link)
 
-        let result = try await AllocatedSizeMeasurer().measure(sandbox.root)
+        let result = try await AllocatedSizeMeasurer().measure(sandbox.root, reader: reader)
 
         #expect(result.fileCount == 1, "both directory entries point at one inode")
         #expect(result.allocatedBytes < Int64(8 * Self.oneMB), "must not double-count")
     }
 
-    @Test("symlinks are not followed by default")
-    func symlinksIgnoredByDefault() async throws {
+    @Test("symlinks are not followed by default", arguments: [MeasurementReader.foundation, .filesystem])
+    func symlinksIgnoredByDefault(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         try sandbox.writeFile("real/payload.bin", bytes: 2 * Self.oneMB)
         let outside = try sandbox.writeFile("outside/elsewhere.bin", bytes: 8 * Self.oneMB)
@@ -188,7 +216,7 @@ struct AllocatedSizeMeasurerTests {
         )
 
         let measured = try await AllocatedSizeMeasurer()
-            .measure(sandbox.root.appendingPathComponent("real"))
+            .measure(sandbox.root.appendingPathComponent("real"), reader: reader)
 
         #expect(measured.fileCount == 1)
         #expect(measured.allocatedBytes < Int64(8 * Self.oneMB))
@@ -200,8 +228,8 @@ struct AllocatedSizeMeasurerTests {
     /// clones report their full allocated size. A reported total is therefore an
     /// upper bound on reclaimable space. This test pins the behaviour so nobody
     /// "fixes" it into a false promise, and so the UI copy stays honest.
-    @Test("APFS clones are counted per file — totals are an upper bound")
-    func clonesAreCountedPerFile() async throws {
+    @Test("APFS clones are counted per file — totals are an upper bound", arguments: [MeasurementReader.foundation, .filesystem])
+    func clonesAreCountedPerFile(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         let source = try sandbox.writeFile("source.bin", bytes: 16 * Self.oneMB)
         let clone = sandbox.root.appendingPathComponent("clone.bin")
@@ -214,7 +242,7 @@ struct AllocatedSizeMeasurerTests {
         process.waitUntilExit()
         try #require(process.terminationStatus == 0, "clonefile unavailable on this volume")
 
-        let result = try await AllocatedSizeMeasurer().measure(sandbox.root)
+        let result = try await AllocatedSizeMeasurer().measure(sandbox.root, reader: reader)
 
         #expect(result.fileCount == 2, "clones are two distinct inodes, unlike hard links")
         // Both report full size: block sharing between distinct files is invisible
@@ -274,10 +302,13 @@ struct AllocatedSizeMeasurerTests {
 
         #expect(mountedChild.fileCount == 1)
         #expect(mountedChild.allocatedBytes >= Int64(Self.oneMB))
+        let direct = try await AllocatedSizeMeasurer().measure(sandbox.root, reader: .filesystem)
+        #expect(direct.fileCount == 0)
+        #expect(direct.allocatedBytes == 0)
     }
 
-    @Test("progress callbacks are serial, ordered, and not duplicated")
-    func progressCallbacksAreSerialAndOrdered() async throws {
+    @Test("progress callbacks are serial, ordered, and not duplicated", arguments: [MeasurementReader.foundation, .filesystem])
+    func progressCallbacksAreSerialAndOrdered(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         for directory in 0..<4 {
             for file in 0..<520 {
@@ -287,7 +318,7 @@ struct AllocatedSizeMeasurerTests {
         let recorder = ProgressRecorder()
 
         let result = try await AllocatedSizeMeasurer().measure(
-            sandbox.root,
+            sandbox.root, reader: reader,
             progress: { recorder.record($0) }
         )
         let recorded = recorder.result
@@ -318,16 +349,73 @@ struct AllocatedSizeMeasurerTests {
         #expect(firstWorkers == secondWorkers)
     }
 
+    @Test("Cloud reads reserve local workers until their scan releases the reservation")
+    func cloudReadsReserveLocalWorkers() async throws {
+        func wait(_ semaphore: DispatchSemaphore) async -> Bool {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().async {
+                    continuation.resume(returning: semaphore.wait(timeout: .now() + 5) == .success)
+                }
+            }
+        }
+        let sandbox = try Sandbox()
+        for index in 0..<4 {
+            try sandbox.writeFile("Library/Mobile Documents/folder-\(index)/file", bytes: 4096)
+        }
+        let local = try sandbox.writeFile("local/file", bytes: 4096).deletingLastPathComponent()
+        let cloud = sandbox.root.appendingPathComponent("Library/Mobile Documents")
+        let started = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let localFinished = DispatchSemaphore(value: 0)
+        defer { for _ in 0..<4 { release.signal() } }
+        let reservation = CloudWorkerReservation()
+        defer { reservation.restore() }
+        var measurer = AllocatedSizeMeasurer()
+        measurer.cloudWorkerReservation = reservation
+        let cloudMeasurer = measurer
+        let cloudTask = Task {
+            try await cloudMeasurer.measure(cloud, retaining: [], observeEntry: { _, values, _ in
+                guard values.isRegularFile == true else { return }
+                started.signal()
+                release.wait()
+            })
+        }
+        for _ in 0..<AllocatedSizeMeasurer.workerActivity.cloudLimit {
+            #expect(await wait(started))
+        }
+        let activity = AllocatedSizeMeasurer.workerActivity
+        #expect(activity.cloudActive == activity.cloudLimit)
+        #expect(activity.cloudActive < activity.limit)
+        let unrelated = CloudWorkerReservation()
+        defer { unrelated.restore() }
+        unrelated.release()
+        let localTask = Task {
+            let result = try await AllocatedSizeMeasurer().measure(local)
+            localFinished.signal()
+            return result
+        }
+        #expect(await wait(localFinished))
+        unrelated.restore()
+        reservation.release()
+        for _ in activity.cloudActive..<activity.limit { #expect(await wait(started)) }
+        #expect(AllocatedSizeMeasurer.workerActivity.cloudActive == activity.limit)
+        reservation.restore()
+        #expect(AllocatedSizeMeasurer.workerActivity.cloudLimit == activity.cloudLimit)
+        for _ in 0..<4 { release.signal() }
+        #expect(try await localTask.value.fileCount == 1)
+        #expect(try await cloudTask.value[cloud.standardizedFileURL]?.fileCount == 4)
+    }
+
     /// Regression: `.skipsPackageDescendants` was briefly set alongside the symlink
     /// option, which made `/Applications` measure as roughly zero — every .app is a
     /// package, so all their contents were skipped.
-    @Test("package contents are measured — an .app bundle is not opaque")
-    func descendsIntoPackages() async throws {
+    @Test("package contents are measured — an .app bundle is not opaque", arguments: [MeasurementReader.foundation, .filesystem])
+    func descendsIntoPackages(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         try sandbox.writeFile("Demo.app/Contents/MacOS/Demo", bytes: 6 * Self.oneMB)
         try sandbox.writeFile("Demo.app/Contents/Info.plist", bytes: 1024)
 
-        let result = try await AllocatedSizeMeasurer().measure(sandbox.root)
+        let result = try await AllocatedSizeMeasurer().measure(sandbox.root, reader: reader)
 
         #expect(result.fileCount == 2)
         #expect(result.allocatedBytes >= Int64(6 * Self.oneMB))
@@ -341,14 +429,14 @@ struct AllocatedSizeMeasurerTests {
         #expect(result.fileCount == 0)
     }
 
-    @Test("cancellation is honoured mid-traversal")
-    func cancellationHonoured() async throws {
+    @Test("cancellation is honoured", arguments: [MeasurementReader.foundation, .filesystem])
+    func cancellationHonoured(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         for index in 0..<2_000 {
             try sandbox.writeFile("bulk/file-\(index).bin", bytes: 1024)
         }
 
-        let task = Task { try await AllocatedSizeMeasurer().measure(sandbox.root) }
+        let task = Task { try await AllocatedSizeMeasurer().measure(sandbox.root, reader: reader) }
         task.cancel()
 
         await #expect(throws: CancellationError.self) { try await task.value }

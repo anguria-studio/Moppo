@@ -42,6 +42,8 @@ final class OperationCoordinator {
     }
 
     @ObservationIgnored private let now: () -> ContinuousClock.Instant
+    @ObservationIgnored private var cancelActiveOperation: (() -> Void)?
+    @ObservationIgnored private var terminationReady: (() -> Void)?
 
     init(now: @escaping () -> ContinuousClock.Instant = { .now }) {
         self.now = now
@@ -49,14 +51,26 @@ final class OperationCoordinator {
 
     private(set) var activeOperation: Operation?
     private(set) var blockedAction: BlockedAction?
+    private(set) var isTerminating = false
 
-    var isBusy: Bool { activeOperation != nil }
+    var isBusy: Bool { activeOperation != nil || isTerminating }
 
-    func begin(_ kind: Kind) -> Operation? {
+    func begin(_ kind: Kind, cancel: (() -> Void)? = nil) -> Operation? {
         guard !isBusy else { return nil }
         let operation = Operation(kind: kind)
+        cancelActiveOperation = cancel
         activeOperation = operation
         return operation
+    }
+
+    /// Stops a cancellable operation and prevents new work until the app quits.
+    func cancelForTermination(whenReady: @escaping () -> Void) -> Bool {
+        guard !isTerminating else { return true }
+        guard let cancelActiveOperation else { return false }
+        isTerminating = true
+        terminationReady = whenReady
+        cancelActiveOperation()
+        return true
     }
 
     /// Reports the active operation without changing or queuing the requested action.
@@ -80,5 +94,9 @@ final class OperationCoordinator {
         guard activeOperation == operation else { return }
         activeOperation = nil
         blockedAction = nil
+        cancelActiveOperation = nil
+        let ready = terminationReady
+        terminationReady = nil
+        ready?()
     }
 }

@@ -25,6 +25,7 @@ targets:
       properties:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        MoppoDetailedScanLogging: "$(MOPPO_DETAILED_SCAN_LOGGING)"
         LSApplicationCategoryType: public.app-category.utilities
         NSHumanReadableCopyright: ""
         # PhotoKit terminates the process if the app fetches the photo library
@@ -110,6 +111,7 @@ targets:
         MOPPO_UPDATE_PUBLIC_KEY: "UR2YX2TLBED1cQO57OcTydSt21gEmOelgJeCXbbBmNE="
         MARKETING_VERSION: "0.2.0"
         CURRENT_PROJECT_VERSION: "14"
+        MOPPO_DETAILED_SCAN_LOGGING: "NO"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
 

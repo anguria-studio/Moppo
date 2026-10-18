@@ -40,6 +40,14 @@ struct BuildOutputTests {
             try file("\(relative)/info.plist", bytes: 64)
             return home.appendingPathComponent(relative)
         }
+
+        func verifiedDerivedData(_ relative: String, bytes: Int = 4_096) throws -> URL {
+            let root = try derivedData(relative, bytes: bytes)
+            let info = try PropertyListSerialization.data(fromPropertyList:
+                ["WorkspacePath": "/Projects/Demo/Demo.xcodeproj/project.xcworkspace"], format: .xml, options: 0)
+            try info.write(to: root.appendingPathComponent("info.plist"))
+            return root
+        }
     }
 
     // MARK: - Detector
@@ -397,7 +405,7 @@ struct BuildOutputTests {
             // carried a 3.69 GB manual-removal row this test never planted — so
             // "everything found here is safe" failed for a true reason about the
             // machine rather than a false one about the code.
-            systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators")
+            systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: []
         ).scan(context: ScanContext())
 
         let row = try #require(result.entries.first { $0.displayName == "Renewals build output" })
@@ -412,6 +420,126 @@ struct BuildOutputTests {
     }
 
     // MARK: - Documents scanner
+
+    @Test("Temporary builds expose cache children and preserve other contents")
+    func temporaryBuildCaches() async throws {
+        let sandbox = try Sandbox()
+        let temporary = try sandbox.directory("Temporary")
+        let root = try sandbox.verifiedDerivedData("Temporary/agent-job")
+        let kept = ["notes.txt", "SourcePackages/checkouts/local.swift", "Tests.xcresult/report", "Release.xcarchive/app"]
+        for path in kept { try sandbox.file("Temporary/agent-job/" + path) }
+        try sandbox.file("Temporary/agent-job/ModuleCache.noindex/cache")
+        try sandbox.file("Temporary/agent-job/Index.noindex/index")
+        try sandbox.verifiedDerivedData("Temporary/another-job/DerivedData")
+        try sandbox.derivedData("Temporary/unknown")
+        let linked = try sandbox.verifiedDerivedData("Elsewhere")
+        try FileManager.default.createSymbolicLink(at: temporary.appendingPathComponent("linked"), withDestinationURL: linked)
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"),
+            temporaryRoots: [temporary, temporary])
+        scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+        let context = ScanContext(excludedPaths: [root.appendingPathComponent("Index.noindex").path])
+        let result = try await scanner.scan(context: context)
+        #expect(result.entries.count == 2)
+        let group = try #require(result.entries.first { $0.url.path == root.path })
+        #expect(group.displayName == "Demo — temporary build cache")
+        #expect(group.isRemovalLocked)
+        #expect(Set(group.children.map(\.url.lastPathComponent)) == ["Build", "ModuleCache.noindex"])
+        #expect(result.totalBytes == result.safeToRemoveBytes)
+        #expect(result.filtered(safeToRemove: true).entries.count == 3)
+        #expect(result.entries.flatMap(\.children).allSatisfy { $0.xcodeBuildCacheReview != nil })
+        #expect(kept.allSatisfy { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) })
+        #expect(try XcodeBuildCache.temporaryCaches(under: [temporary],
+            context: ScanContext(excludedPaths: [temporary.path])).isEmpty)
+        let task = Task {
+            try Task.checkCancellation()
+            return try XcodeBuildCache.temporaryCaches(under: [temporary], context: context)
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+
+    @Test("Nested release caches belong to Xcode and leave archives in the project total", arguments: ["dist/releases", "build/releases", "releases"])
+    func releaseBuildCaches(container: String) async throws {
+        let sandbox = try Sandbox()
+        let documents = try sandbox.directory("Documents")
+        let project = try sandbox.directory("Documents/Demo")
+        try sandbox.file("Documents/Demo/source.swift", bytes: 2 * 1024 * 1024)
+        let release = "Documents/Demo/\(container)/build-1"
+        try sandbox.verifiedDerivedData(release + "/DerivedData", bytes: 4 * 1024 * 1024)
+        let archive = try sandbox.file(release + "/Demo.xcarchive/dSYMs/data", bytes: 2 * 1024 * 1024)
+        try sandbox.file(release + "/Demo.dmg", bytes: 2 * 1024 * 1024)
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [documents], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [])
+        scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+        let xcode = try await scanner.scan(context: ScanContext())
+        let documentsResult = try await DocumentsFilesScanner(home: sandbox.home).scan(context: ScanContext())
+        let row = try #require(documentsResult.entries.first {
+            $0.url.resolvingSymlinksInPath().path == project.resolvingSymlinksInPath().path
+        })
+        #expect(xcode.entries.map(\.displayName) == ["Demo — release build cache"])
+        #expect(xcode.totalBytes >= 4 * 1024 * 1024)
+        #expect(row.allocatedBytes >= 6 * 1024 * 1024)
+        let total = try await AllocatedSizeMeasurer().measure(project).allocatedBytes
+        #expect(row.allocatedBytes + xcode.totalBytes == total)
+        #expect(!row.regeneratesSafely)
+        #expect(FileManager.default.fileExists(atPath: archive.path))
+    }
+
+    @Test("Open files and incomplete process information protect discovered build caches", arguments: [false, true])
+    func activeBuildCaches(incomplete: Bool) async throws {
+        let sandbox = try Sandbox()
+        let temporary = try sandbox.directory("Temporary")
+        let root = try sandbox.verifiedDerivedData("Temporary/job")
+        let identity = try #require(FileIdentity.of(root.appendingPathComponent("Build/Products/Debug/app.o")))
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [temporary])
+        scanner.captureBuildActivity = {
+            WorktreeActivity(roots: $0, processes: incomplete ? [:] : [identity: ["swift-frontend"]],
+                             issue: incomplete ? "Incomplete process information." : nil)
+        }
+        let result = try await scanner.scan(context: ScanContext())
+        let child = try #require(result.entries.first?.children.first)
+        #expect(child.protectionReason == (incomplete ? .inventory : .running))
+        #expect(result.safeToRemoveBytes == 0)
+        #expect(!CleanupService.removalAllowed(child, userDataRemovalOverrides: [child.id]))
+    }
+
+    @Test("Build cache removal rechecks activity and identities while preserving neighboring files")
+    func buildCacheRemoval() async throws {
+        let sandbox = try Sandbox()
+        let root = try sandbox.verifiedDerivedData("Temporary/job")
+        try sandbox.file("Temporary/job/ModuleCache.noindex/cache")
+        let notes = try sandbox.file("Temporary/job/notes.txt")
+        let reviews = XcodeBuildCache.reviews(in: root)
+        #expect(reviews.count == 2)
+        let entries = reviews.map { FileEntry(url: $0.url, kind: .cache, allocatedBytes: 1,
+            isRegenerable: true, xcodeBuildCacheReview: $0) }
+        let identity = try #require(FileIdentity.of(root.appendingPathComponent("Build/Products/Debug/app.o")))
+        let log = RemovalLog(directory: sandbox.home.appendingPathComponent("logs"))
+        let busy = CleanupService(measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: log,
+            reviewBuildCache: { review in
+                try await XcodeBuildCache.measureForRemoval(review, with: AllocatedSizeMeasurer(), capture: {
+                    WorktreeActivity(roots: $0, processes: [identity: ["xcodebuild"]])
+                })
+            })
+        let first = try #require(entries.first { $0.url.lastPathComponent == "Build" })
+        let refused = try await busy.remove(entries: [first], trashFirst: false)
+        #expect(refused.removedCount == 0)
+        #expect(refused.failed == [first.url.path])
+        let idle = CleanupService(measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: log,
+            reviewBuildCache: { review in
+                try await XcodeBuildCache.measureForRemoval(review, with: AllocatedSizeMeasurer(), capture: {
+                    WorktreeActivity(roots: $0, processes: [:])
+                })
+            })
+        let removed = try await idle.remove(entries: entries, trashFirst: false)
+        #expect(removed.removedCount == 2)
+        #expect(removed.failed.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: notes.path))
+        _ = try sandbox.verifiedDerivedData("Temporary/job")
+        #expect(!XcodeBuildCache.isCurrent(try #require(reviews.first { $0.url.lastPathComponent == "Build" })))
+    }
 
     /// The scanner once skipped anything used in the last 30 days, which hid the
     /// disk's largest folder — an 11 GB build, made that morning.

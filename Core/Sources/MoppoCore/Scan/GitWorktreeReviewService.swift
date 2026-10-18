@@ -7,13 +7,31 @@ public struct GitWorktreeReviewService: Sendable {
     init(gitExecutable: @escaping @Sendable () async throws -> String?) { self.gitExecutable = gitExecutable }
 
     public func review(_ directory: URL) async throws -> GitWorktreeReview {
+        try await review(directory, includeFileChecks: true)
+    }
+
+    /// Reads Git metadata before the scan measures the worktree.
+    func metadata(_ directory: URL) async throws -> GitWorktreeReview {
+        try await review(directory, includeFileChecks: false)
+    }
+
+    private func review(_ directory: URL, includeFileChecks: Bool) async throws -> GitWorktreeReview {
         var review = GitWorktreeReview()
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin(includeFileChecks ? "worktree_review" : "worktree_metadata", path: directory.path)
+        defer {
+            diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed", details: [
+                "review_status": review.statusLabel, "branch": review.branch,
+                "local_files": "\(review.localFiles.count)", "ignored_files": "\(review.ignoredFiles.count)",
+                "push_status": "\(review.pushStatus)", "activity": "\(review.activity)", "locks": "\(review.locks)"
+            ])
+        }
         guard GitWorktreeDetector.isWorktree(directory) else {
             review.filesIssue = "This folder is no longer a linked Git worktree."
             review.pushIssue = review.filesIssue
             return review
         }
-        review.activity = try await Self.activity(in: directory)
+        if includeFileChecks { review.activity = try await Self.activity(in: directory) }
         guard let git = try await gitExecutable() else {
             review.filesIssue = "Git is not installed."
             review.pushIssue = review.filesIssue
@@ -26,7 +44,7 @@ public struct GitWorktreeReviewService: Sendable {
                 "-C", directory.path] + arguments, timeout: .seconds(5),
                 environment: ["GIT_TERMINAL_PROMPT": "0"], allowsInput: false)
         }
-        let comparison = try await GitWorktreeDetector.pushStatus(of: directory)
+        let comparison = try await GitWorktreeDetector.pushStatus(of: directory, executable: git)
         review.pushStatus = comparison.status
         if let reason = comparison.reason { review.pushIssue = reason }
         if let output = try? await run(["symbolic-ref", "--quiet", "--short", "HEAD"]) {
@@ -44,18 +62,15 @@ public struct GitWorktreeReviewService: Sendable {
             review.filesChecked = parsed.complete
             if !parsed.complete { review.filesIssue = "Git returned an incomplete file list." }
             review.status = review.localFiles.isEmpty ? .clean : .uncommittedChanges
-            for index in review.ignoredFiles.indices {
-                try Task.checkCancellation()
-                let url = directory.appendingPathComponent(review.ignoredFiles[index].path)
-                let measured = try await AllocatedSizeMeasurer().measure(url)
-                let regenerates = Self.regenerates(url, within: directory)
-                review.ignoredFiles[index].allocatedBytes = measured.allocatedBytes
-                if measured.containsProtectedPattern || regenerates == false {
-                    review.ignoredFiles[index].regeneratesSafely = false
-                } else if measured.unreadableCount > 0 {
-                    review.ignoredFilesIssue = "Some ignored files could not be read. Check folder access permissions."
-                } else {
-                    review.ignoredFiles[index].regeneratesSafely = regenerates
+            review.verifiedGeneratedProjects = try await GeneratedXcodeProjectVerifier().verify(
+                directory, ignoredPaths: review.ignoredFiles.map(\.path), git: git)
+            if includeFileChecks {
+                var classifier = IgnoredFileClassifier(root: directory, verifiedProjects: review.verifiedGeneratedProjects)
+                for index in review.ignoredFiles.indices {
+                    try Task.checkCancellation()
+                    let url = directory.appendingPathComponent(review.ignoredFiles[index].path)
+                    let measured = try await AllocatedSizeMeasurer().measure(url)
+                    Self.apply(measured, at: index, directory: directory, classifier: &classifier, to: &review)
                 }
             }
         } catch is CancellationError { throw CancellationError() }
@@ -90,6 +105,44 @@ public struct GitWorktreeReviewService: Sendable {
         return review
     }
 
+    /// Applies scan measurements without another filesystem traversal.
+    static func applyMeasurements(_ measurements: [URL: SizeMeasurement], directory: URL, to review: inout GitWorktreeReview) {
+        var classifier = IgnoredFileClassifier(root: directory, verifiedProjects: review.verifiedGeneratedProjects)
+        for index in review.ignoredFiles.indices {
+            let url = directory.appendingPathComponent(review.ignoredFiles[index].path).standardizedFileURL
+            guard let measured = measurements[url] else {
+                review.ignoredFiles[index].regeneratesSafely = nil
+                ScanDiagnostics.current?.record("worktree_ignored_file", details: [
+                    "path": url.path, "worktree": directory.path,
+                    "classification": "unverified", "reason": "missing_measurement"
+                ])
+                continue
+            }
+            apply(measured, at: index, directory: directory, classifier: &classifier, to: &review)
+        }
+    }
+
+    private static func apply(_ measured: SizeMeasurement, at index: Int, directory: URL,
+                              classifier: inout IgnoredFileClassifier, to review: inout GitWorktreeReview) {
+        let url = directory.appendingPathComponent(review.ignoredFiles[index].path)
+        let regenerates = classifier.regenerates(url)
+        review.ignoredFiles[index].allocatedBytes = measured.allocatedBytes
+        review.ignoredFiles[index].regeneratesSafely = nil
+        if measured.containsProtectedPattern || regenerates == false {
+            review.ignoredFiles[index].regeneratesSafely = false
+        } else if measured.unreadableCount > 0 || measured.containsCloudOnlyItem {
+            review.ignoredFilesIssue = "Some ignored files could not be read. Check folder access permissions."
+        } else {
+            review.ignoredFiles[index].regeneratesSafely = regenerates
+        }
+        let classification = review.ignoredFiles[index].regeneratesSafely
+        ScanDiagnostics.current?.record("worktree_ignored_file", details: [
+            "path": url.path, "worktree": directory.path,
+            "classification": classification == true ? "regenerable" : classification == false ? "local" : "unverified",
+            "allocated_bytes": "\(measured.allocatedBytes)"
+        ])
+    }
+
     static func files(in data: Data, directory: URL) -> (local: [GitWorktreeReview.File], ignored: [GitWorktreeReview.File], complete: Bool) {
         let records = data.split(separator: 0)
         var local: [GitWorktreeReview.File] = [], ignored: [GitWorktreeReview.File] = []
@@ -112,12 +165,56 @@ public struct GitWorktreeReviewService: Sendable {
         return (local.sorted { $0.path < $1.path }, ignored.sorted { $0.path < $1.path }, complete)
     }
 
-    private static func regenerates(_ url: URL, within root: URL) -> Bool? {
-        guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey]) else { return nil }
-        guard values.isSymbolicLink != true, values.isDirectory == true,
-              let kind = BuildOutputDetector.kind(of: url) else { return false }
-        if case .dependencyStore = kind { return BuildOutputDetector.reinstallEvidence(for: url, within: root) != nil }
-        return true
+    /// Reuses verified parent classifications within one worktree review.
+    private struct IgnoredFileClassifier {
+        private enum Classification { case regenerable, local, unavailable, blocked }
+        private let root: URL
+        private let generated: GeneratedWorktreeFileDetector
+        private var cache: [String: Classification] = [:]
+
+        init(root: URL, verifiedProjects: Set<URL>) {
+            self.root = root.standardizedFileURL
+            generated = GeneratedWorktreeFileDetector(root: self.root, verifiedProjects: verifiedProjects)
+        }
+
+        mutating func regenerates(_ url: URL) -> Bool? {
+            switch classify(url.standardizedFileURL) {
+            case .regenerable: true
+            case .local, .blocked: false
+            case .unavailable: nil
+            }
+        }
+
+        private mutating func classify(_ url: URL) -> Classification {
+            let path = url.path
+            guard path == root.path || path.hasPrefix(root.path + "/") else { return .blocked }
+            if let cached = cache[path] { return cached }
+            let result = inspect(url)
+            cache[path] = result
+            return result
+        }
+
+        private mutating func inspect(_ url: URL) -> Classification {
+            guard let values = try? url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey]),
+                  let isDirectory = values.isDirectory, let isSymbolicLink = values.isSymbolicLink else { return .unavailable }
+            guard !isSymbolicLink else { return .blocked }
+            // The worktree itself cannot supply cache evidence for its contents.
+            guard url.path != root.path else { return isDirectory ? .local : .blocked }
+            let parent = classify(url.deletingLastPathComponent())
+            switch parent {
+            case .blocked, .unavailable: return parent
+            case .regenerable: return .regenerable
+            case .local: break
+            }
+            if isDirectory, let kind = BuildOutputDetector.kind(of: url) {
+                if case .dependencyStore = kind {
+                    if BuildOutputDetector.reinstallEvidence(for: url, within: root) != nil { return .regenerable }
+                } else {
+                    return .regenerable
+                }
+            }
+            return generated.recognizes(url, isDirectory: isDirectory) ? .regenerable : .local
+        }
     }
 
     private static func activity(in directory: URL) async throws -> GitWorktreeReview.Check {

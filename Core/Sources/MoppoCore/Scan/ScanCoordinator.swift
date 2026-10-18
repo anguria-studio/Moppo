@@ -6,6 +6,7 @@ public struct ScanProgress: Sendable, Equatable {
     public var percent: Int
     public var completedCategories: Int
     public var totalCategories: Int
+    public var phase: String? = nil
 }
 
 /// Everything a finished scan produced.
@@ -69,8 +70,7 @@ public actor ScanCoordinator {
         .docker: 0.5
     ]
 
-    /// Entries below this never reach the UI. A live scan surfaced a 0.2 MB app
-    /// helper rendered as "0.0 MB" — a row that costs attention and returns nothing.
+    /// Hides small ordinary entries. Worktree rows remain available for review.
     private static let entryNoiseFloor: Int64 = 1024 * 1024
 
     private let scanners: [any CategoryScanner]
@@ -119,6 +119,7 @@ public actor ScanCoordinator {
         if let runningTask { return try await runningTask.value }
 
         let active = scanners.filter { enabled?.contains($0.id) ?? true }
+        ScanDiagnostics.current?.record("categories_enabled", details: ["categories": active.map { $0.id.rawValue }.joined(separator: ",")])
         let task = Task { [active] in
             try await Self.run(
                 active,
@@ -151,25 +152,55 @@ public actor ScanCoordinator {
         onCategory: (@Sendable (ScanCategoryResult) -> Void)?,
         onCategoryTiming: (@Sendable (CategoryID, Duration) -> Void)?
     ) async throws -> ScanResults {
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("scan_categories")
+        var diagnosticOutcome = "failed"
+        defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : diagnosticOutcome) }
         let startedAt = Date()
         let totalWeight = scanners.reduce(0.0) { $0 + (weights[$1.id] ?? 1.0) }
-        let tracker = ProgressTracker(totalWeight: totalWeight, totalCategories: scanners.count)
+        let reservation = CloudWorkerReservation()
+        defer { reservation.restore() }
+        var scanContext = context
+        scanContext.measurer.cloudWorkerReservation = reservation
+        let context = scanContext
+        let tracker = ProgressTracker(totalWeight: totalWeight, categories: scanners.map(\.id),
+                                      reservation: reservation, diagnostics: diagnostics, onProgress: onProgress)
 
         var results: [ScanCategoryResult] = []
 
         try await withThrowingTaskGroup(of: ScanCategoryResult.self) { group in
             for scanner in scanners {
                 group.addTask {
-                    let started = ContinuousClock.now
-                    defer { onCategoryTiming?(scanner.id, started.duration(to: .now)) }
-                    do {
-                        return try await scanner.scan(context: context)
-                    } catch is CancellationError {
-                        throw CancellationError()
-                    } catch {
-                        // One category failure must not lose the whole scan. The row
-                        // reports that category as unavailable and gives the reason.
-                        return .unavailable(scanner.id, reason: Self.describe(error))
+                    let categoryDiagnostics = diagnostics?.forCategory(scanner.id.rawValue)
+                    return try await ScanDiagnostics.$current.withValue(categoryDiagnostics) {
+                        let started = ContinuousClock.now
+                        let categorySpan = categoryDiagnostics?.begin("category")
+                        var outcome = "failed"
+                        defer {
+                            onCategoryTiming?(scanner.id, started.duration(to: .now))
+                            categoryDiagnostics?.end(categorySpan, outcome: outcome)
+                        }
+                        do {
+                            var categoryContext = context
+                            categoryContext.onPhase = { phase in
+                                categoryDiagnostics?.record("scan_phase", details: ["phase": phase])
+                                tracker.setPhase(phase, for: scanner.id)
+                            }
+                            let result = try await scanner.scan(context: categoryContext)
+                            outcome = "completed"
+                            categoryDiagnostics?.update(categorySpan, details: ["entries": "\(result.entries.count)",
+                                "total_bytes": "\(result.totalBytes)", "unreadable_count": "\(result.unreadableCount)",
+                                "availability": "\(result.availability)"])
+                            return result
+                        } catch is CancellationError {
+                            outcome = "cancelled"
+                            throw CancellationError()
+                        } catch {
+                            categoryDiagnostics?.update(categorySpan, details: ["error": "\(error)"])
+                            // One category failure must not lose the whole scan. The row
+                            // reports that category as unavailable and gives the reason.
+                            return .unavailable(scanner.id, reason: Self.describe(error))
+                        }
                     }
                 }
             }
@@ -181,7 +212,7 @@ public actor ScanCoordinator {
                 results.append(result)
                 onCategory?(result)
                 let weight = weights[result.categoryID] ?? 1.0
-                onProgress?(tracker.advance(by: weight))
+                tracker.advance(category: result.categoryID, by: weight)
             }
         }
 
@@ -190,6 +221,8 @@ public actor ScanCoordinator {
         // a cleanup route that does not repeat the owner and identity checks. If a
         // generic row contains a leftover path, remove the full row. Keeping that
         // parent would also remove the protected child when cleanup removes it.
+        let finalization = diagnostics?.begin("result_finalization")
+        defer { diagnostics?.end(finalization) }
         results = removingApplicationLeftoverOverlaps(from: results)
         results = removingAIToolOverlaps(from: results)
         results = removingInstalledApplicationOverlaps(from: results)
@@ -200,6 +233,23 @@ public actor ScanCoordinator {
             (order.firstIndex(of: $0.categoryID) ?? 0) < (order.firstIndex(of: $1.categoryID) ?? 0)
         }
 
+        for result in results {
+            let category = diagnostics?.forCategory(result.categoryID.rawValue)
+            category?.record("category_result_rows", details: [
+                "entries": "\(result.entries.count)",
+                "worktrees": "\(result.entries.reduce(0) { $0 + $1.worktreeCount })"
+            ])
+            for entry in result.entries {
+                for row in [entry] + entry.children where row.isGitWorktree {
+                    category?.record("worktree_visible_row", details: [
+                        "path": row.url.path, "parent": entry.url.path,
+                        "allocated_bytes": "\(row.allocatedBytes)",
+                        "review_status": row.gitWorktreeReview?.statusLabel ?? "Unknown"
+                    ])
+                }
+            }
+        }
+        diagnosticOutcome = "completed"
         return ScanResults(categories: results, startedAt: startedAt, finishedAt: Date())
     }
 
@@ -337,28 +387,66 @@ public actor ScanCoordinator {
     }
 }
 
-/// Accumulates weighted progress across concurrently finishing categories.
+/// Serializes category completion and phase updates for the progress display.
 private final class ProgressTracker: @unchecked Sendable {
     private let lock = NSLock()
     private let totalWeight: Double
     private let totalCategories: Int
+    private let reservation: CloudWorkerReservation
+    private let diagnostics: ScanDiagnostics.Context?
+    private let onProgress: (@Sendable (ScanProgress) -> Void)?
+    private var remaining: Set<CategoryID>
+    private var phases: [CategoryID: String] = [:]
     private var completedWeight = 0.0
-    private var completedCategories = 0
+    private var previousProgress: ScanProgress?
+    private var releasedCloudWorkers = false
 
-    init(totalWeight: Double, totalCategories: Int) {
+    init(totalWeight: Double, categories: [CategoryID], reservation: CloudWorkerReservation,
+         diagnostics: ScanDiagnostics.Context?, onProgress: (@Sendable (ScanProgress) -> Void)?) {
         self.totalWeight = max(totalWeight, 0.001)
-        self.totalCategories = totalCategories
+        self.totalCategories = categories.count
+        self.remaining = Set(categories)
+        self.reservation = reservation
+        self.diagnostics = diagnostics
+        self.onProgress = onProgress
+        releaseCloudWorkersIfNeeded()
     }
 
-    func advance(by weight: Double) -> ScanProgress {
+    func advance(category: CategoryID, by weight: Double) {
         lock.lock()
         defer { lock.unlock() }
+        remaining.remove(category)
         completedWeight += weight
-        completedCategories += 1
-        return ScanProgress(
+        releaseCloudWorkersIfNeeded()
+        report()
+    }
+
+    func setPhase(_ phase: String, for category: CategoryID) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard remaining.contains(category) else { return }
+        phases[category] = phase
+        report()
+    }
+
+    private func releaseCloudWorkersIfNeeded() {
+        guard !releasedCloudWorkers, remaining == [.hiddenSystemData] else { return }
+        releasedCloudWorkers = true
+        reservation.release()
+        diagnostics?.record("cloud_workers_released", details: ["reason": "other_categories_finished"])
+    }
+
+    private func report() {
+        let category = remaining.count == 1 ? remaining.first : nil
+        let progress = ScanProgress(
             percent: min(100, Int((completedWeight / totalWeight) * 100)),
-            completedCategories: completedCategories,
-            totalCategories: totalCategories
+            completedCategories: totalCategories - remaining.count,
+            totalCategories: totalCategories,
+            phase: category.map { phases[$0] ?? "Scanning \($0.displayName)" }
         )
+        guard progress != previousProgress else { return }
+        previousProgress = progress
+        diagnostics?.progress(progress)
+        onProgress?(progress)
     }
 }

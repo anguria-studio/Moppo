@@ -137,7 +137,7 @@ struct ReviewFindingsTests {
             // The fixture is the whole world here: the default roots are the real
             // home folders and the real system simulator directory.
             projectRoots: [],
-            systemSimulatorRoot: developer.appendingPathComponent("no-simulators")
+            systemSimulatorRoot: developer.appendingPathComponent("no-simulators"), temporaryRoots: []
         ).scan(
             context: ScanContext(excludedPatterns: ["*.keychain-db"])
         )
@@ -185,7 +185,7 @@ struct ReviewFindingsTests {
         let result = try await XcodeScanner(
             developerRoot: developer,
             projectRoots: [],
-            systemSimulatorRoot: developer.appendingPathComponent("no-simulators")
+            systemSimulatorRoot: developer.appendingPathComponent("no-simulators"), temporaryRoots: []
         ).scan(context: ScanContext())
 
         let archiveRow = try #require(result.entries.first { $0.url.path.contains("Archives") })
@@ -547,6 +547,20 @@ struct ReviewFindingsTests {
         let elapsed = Date().timeIntervalSince(started)
         #expect(String(decoding: data, as: UTF8.self).contains("done"))
         #expect(elapsed < 10, "took \(elapsed)s — the grandchild should not hold the runner")
+    }
+
+    @Test("Command pipes retain output larger than their buffers", arguments: [false, true])
+    func largeCommandOutput(fails: Bool) async throws {
+        let script = "/usr/bin/head -c 1048576 /dev/zero; /usr/bin/head -c 1048576 /dev/zero >&2; exit \(fails ? 1 : 0)"
+        do {
+            let data = try await ProcessRunner().run("/bin/sh", ["-c", script], timeout: .seconds(5))
+            #expect(!fails)
+            #expect(data == Data(repeating: 0, count: 1_048_576))
+        } catch ProcessError.failed(_, let status, let stderr) {
+            #expect(fails)
+            #expect(status == 1)
+            #expect(stderr.utf8.count == 1_048_576)
+        }
     }
 
     @Test("Allowed exit codes retain output and do not hide error diagnostics")

@@ -33,6 +33,7 @@ final class CleanupModel {
     @ObservationIgnored private let applications: CleanupApplications
     @ObservationIgnored private let measureSaving: ([URL]) async throws -> PrivateSizeMeasurement?
     @ObservationIgnored private let scanDocker: (Preferences) async throws -> ScanCategoryResult
+    @ObservationIgnored private let reviewWorktree: (URL) async throws -> GitWorktreeReview
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var scanTask: Task<Bool, Never>?
     @ObservationIgnored private var scanID: UUID?
@@ -56,6 +57,9 @@ final class CleanupModel {
                 excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns
             ))
         },
+        reviewWorktree: @escaping (URL) async throws -> GitWorktreeReview = {
+            try await GitWorktreeReviewService().review($0)
+        },
         measureSaving: @escaping ([URL]) async throws -> PrivateSizeMeasurement? = {
             try await PrivateSizeMeasurer().measure($0)
         }
@@ -68,6 +72,7 @@ final class CleanupModel {
         self.defaults = defaults
         self.measureSaving = measureSaving
         self.scanDocker = scanDocker
+        self.reviewWorktree = reviewWorktree
         lastScanFinishedAt = defaults.object(forKey: "lastScanFinishedAt") as? Date
     }
 
@@ -79,6 +84,12 @@ final class CleanupModel {
     private(set) var isScanning = false
     private(set) var isInterruptingScan = false
     private(set) var scanProgress = 0
+    private(set) var scanPhase: String?
+
+    var scanProgressDetail: String {
+        let phase = scanPhase ?? "Checking files"
+        return scanProgress > 0 ? "\(scanProgress)% · \(phase)" : phase
+    }
     private(set) var lastScanFinishedAt: Date?
     private(set) var hasStartedInitialScan = false
     private(set) var isRemoving = false
@@ -263,6 +274,17 @@ final class CleanupModel {
         }
     }
 
+    /// Keeps the Docker setup message visible in each filter when its application is installed.
+    var visibleCategories: [ScanCategoryResult] {
+        let categories = (scanResults?.categories ?? []).filter { $0.availability != .notInstalled }
+        guard scanFilter != .all else { return categories }
+        return categories.compactMap { category in
+            if category.categoryID == .docker, case .unavailable = category.availability { return category }
+            let filtered = category.filtered(safeToRemove: true)
+            return filtered.entries.isEmpty ? nil : filtered
+        }
+    }
+
     private var safeToRemoveEntries: [FileEntry] {
         guard let results = scanResults else { return [] }
         var seen: Set<FileEntry.ID> = []
@@ -410,7 +432,7 @@ final class CleanupModel {
     struct CleanupPlan {
         let id = UUID()
         var keepReceipt = true
-        let entries: [FileEntry]
+        var entries: [FileEntry]
         let userDataRemovalOverrides: Set<FileEntry.ID>
         let applicationLeftoverPlan: OrphanedAppLeftoverPlan?
         let orphanedApplicationBundleIdentifiers: Set<String>
@@ -554,7 +576,8 @@ final class CleanupModel {
                 return
             }
             guard entry.kind != .appBundle, entry.isRegenerable,
-                  !entry.isRemovalLocked, entry.inUseBy != nil,
+                  !entry.isRemovalLocked, let owner = entry.inUseBy,
+                  ApplicationRuntime.canQuitForCleanup(owner),
                   entry.allocatedBytes > 0, seen.insert(entry.id).inserted else { return }
             candidates.append(entry)
         }
@@ -595,7 +618,7 @@ final class CleanupModel {
 
     func startScan(automatic: Bool = false, refreshOverview: Bool = true) {
         guard canScan(automatic), pendingCleanUp == nil,
-              let operation = operations.begin(.cleanupScan) else { return }
+              let operation = operations.begin(.cleanupScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
         let preferences = preferences()
         isRunningAppsNoticeDismissed = false
         let scanID = UUID()
@@ -607,6 +630,7 @@ final class CleanupModel {
         isScanning = true
         isInterruptingScan = false
         scanProgress = 0
+        scanPhase = nil
         onEvent(.scanStarted(automatic: automatic, refreshOverview: refreshOverview))
         scanTask = Task { [self] in
             let presentation = OperationPresentationDuration()
@@ -627,6 +651,7 @@ final class CleanupModel {
                     Task { @MainActor in
                         guard let self, self.scanID == scanID, !self.isInterruptingScan else { return }
                         self.scanProgress = progress.percent
+                        self.scanPhase = progress.phase
                     }
                 }
                 try Task.checkCancellation()
@@ -693,15 +718,33 @@ final class CleanupModel {
         }
     }
 
-    private func execute(_ plan: CleanupPlan, quittingOwners: Bool) async -> Bool {
+    private func execute(_ capturedPlan: CleanupPlan, quittingOwners: Bool) async -> Bool {
+        var plan = capturedPlan
         var presentation = OperationPresentationDuration()
+        var skippedWorktrees: Set<String> = []
         for entry in plan.entries.flatMap(Self.plannedTargets) where entry.gitWorktreeReview?.isSafeToRemove == true {
-            let current = try? await GitWorktreeReviewService().review(entry.url)
-            guard current?.isSafeToRemove == true else {
-                if let current { updateWorktreeReview(current, for: entry.id) }
-                onEvent(.failure(title: "Review Worktree Again", message: "The worktree checks changed. Review the worktree before removal."))
-                return false
+            let current = (try? await reviewWorktree(entry.url)) ?? GitWorktreeReview()
+            if !current.isSafeToRemove {
+                updateWorktreeReview(current, for: entry.id)
+                skippedWorktrees.insert(entry.id)
             }
+        }
+        if !skippedWorktrees.isEmpty {
+            // Exclude a selected parent when it contains a changed worktree.
+            let skippedEntries = plan.entries.filter { entry in
+                Self.plannedTargets(for: entry).contains { skippedWorktrees.contains($0.id) }
+            }
+            let deselected = skippedWorktrees.union(skippedEntries.map(\.id))
+            plan.entries.removeAll { deselected.contains($0.id) }
+            scannerSelection.subtract(deselected)
+            userDataRemovalOverrides.subtract(deselected)
+            plan.runningOwners = applications.stillRunning(plan.entries.flatMap(Self.plannedTargets).compactMap(\.inUseBy))
+        }
+        var outcome = CleanupOutcome(skippedWorktrees: skippedWorktrees.sorted())
+        guard plan.itemCount > 0 else {
+            cleanupOutcome = outcome
+            onEvent(.removed(outcome))
+            return false
         }
         if quittingOwners, !plan.runningOwners.isEmpty {
             guard let stragglers = await waitForApplicationsToQuit(plan.runningOwners) else { return false }
@@ -718,7 +761,6 @@ final class CleanupModel {
         onEvent(.removalStarted(count: plan.itemCount, bytes: plan.totalBytes))
         presentation.extend(toShow: .deletion(bytes: plan.totalBytes))
         let entries = plan.entries
-        var outcome = CleanupOutcome()
         if !entries.isEmpty {
             let ordinary = (try? await remover.remove(
                 entries: entries,

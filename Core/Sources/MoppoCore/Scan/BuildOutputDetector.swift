@@ -60,6 +60,7 @@ public enum BuildOutputDetector {
     public struct Root: Sendable, Equatable {
         public let url: URL
         public let kind: Kind
+        public var xcodeBuildCacheReview: XcodeBuildCache.Review? = nil
     }
 
     /// Names that only ever hold build output, so a folder so named whose contents
@@ -124,11 +125,17 @@ public enum BuildOutputDetector {
     /// rows either way. Dependency stores and version control are never entered,
     /// which is what keeps a deeper walk cheap.
     public static func roots(under folder: URL, maxDepth: Int = 3) -> [Root] {
+        let folder = folder.standardizedFileURL
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("build_output_discovery", path: folder.path)
+        defer { diagnostics?.end(span) }
         guard !GitWorktreeDetector.isWorktree(folder) else { return [] }
         var found: [Root] = []
         func walk(_ directory: URL, depth: Int) {
+            diagnostics?.update(span, path: directory.path, details: ["depth": "\(depth)"])
             guard let children = directories(in: directory, includingHidden: true) else { return }
-            for child in children {
+            for item in children {
+                let child = item.standardizedFileURL
                 let name = child.lastPathComponent
                 if GitWorktreeDetector.isWorktree(child) { continue }
                 if name.hasPrefix("."), !visibleHiddenNames.contains(name) { continue }
@@ -141,6 +148,14 @@ public enum BuildOutputDetector {
             }
         }
         walk(folder, depth: 1)
+        let releasePaths = XcodeBuildCache.releasePaths.map { folder.appendingPathComponent($0).path + "/" }
+        found.removeAll { output in
+            output.kind == .xcodeDerivedData && releasePaths.contains { output.url.path.hasPrefix($0) }
+        }
+        for review in XcodeBuildCache.releaseCaches(under: folder) {
+            guard !found.contains(where: { review.url.path == $0.url.path || review.url.path.hasPrefix($0.url.path + "/") }) else { continue }
+            found.append(Root(url: review.url, kind: .xcodeDerivedData, xcodeBuildCacheReview: review))
+        }
         return found.sorted { $0.url.path < $1.url.path }
     }
 

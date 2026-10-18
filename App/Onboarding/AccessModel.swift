@@ -88,7 +88,11 @@ final class AccessModel {
     func refresh() async {
         refreshRevision += 1
         let revision = refreshRevision
+        let previousDiskStatus = disk
         disk = client.diskStatus() ? .allowed : .denied
+        if disk != previousDiskStatus {
+            _ = try? ScanLog.recordApplicationEvent("full_disk_access_changed", details: ["status": disk.label])
+        }
         photos = client.photoStatus()
         let status = await client.notificationStatus()
         guard revision == refreshRevision else { return }
@@ -105,6 +109,7 @@ final class AccessModel {
         guard status != .restricted, status != .unavailable, status != .checking else { return }
         if permission == .disk {
             openedDiskSettings = true
+            _ = try? ScanLog.recordApplicationEvent("full_disk_access_settings_opened")
             client.openSettings(.disk)
         } else if status == .undecided {
             do {

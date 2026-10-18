@@ -59,7 +59,7 @@ final class StorageExplorerModel {
     @ObservationIgnored private var mapSelectionTask: Task<Void, Never>?
     private(set) var isLoading = false
     private(set) var isRemoving = false
-    var isMeasurementBlocked: Bool { operations.isBusy && scanOperation == nil }
+    var isMeasurementBlocked: Bool { operations.isTerminating || (operations.isBusy && scanOperation == nil) }
     private(set) var isInterrupting = false
     var progress = SizeMeasurement.zero
     var error: StorageExplorerError?
@@ -336,7 +336,8 @@ final class StorageExplorerModel {
             applyPendingSelection()
             return
         }
-        guard let operation = scanOperation ?? operations.begin(.storageMeasurement) else { return }
+        guard let operation = scanOperation ?? operations.begin(.storageMeasurement, cancel: { [weak self] in self?.cancel() })
+        else { return }
         scanOperation = operation
         isLoading = true
         let capturedPreferences = preferences()

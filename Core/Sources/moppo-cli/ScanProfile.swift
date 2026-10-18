@@ -8,6 +8,7 @@ extension CLI {
         var mode = "cleanup"
         var cancelAfter: Double?
         var skipDocker = false
+        var logDirectory: URL?
         var remaining = arguments[...]
         if let first = remaining.first, ["cleanup", "dashboard", "concurrent"].contains(first) {
             mode = first
@@ -17,6 +18,10 @@ extension CLI {
             remaining = remaining.dropFirst()
             switch option {
             case "--skip-docker": skipDocker = true
+            case "--log-directory":
+                guard let path = remaining.first else { throw CLIError.usage("--log-directory needs a folder path") }
+                logDirectory = URL(fileURLWithPath: path)
+                remaining = remaining.dropFirst()
             case "--cancel-after":
                 guard let value = remaining.first, let seconds = Double(value),
                       seconds.isFinite, seconds > 0, seconds <= 3600 else {
@@ -33,6 +38,7 @@ extension CLI {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         var outputs: [ScanProfileOutput] = []
         for run in 1...2 {
+            let diagnostics = try logDirectory.map { try ScanDiagnostics(directory: $0, metadata: ["operation": mode, "run": "\(run)"]) }
             let resources = ScanProcessResources.capture()
             let started = ContinuousClock.now
             let workers = ScanWorkerRecorder()
@@ -48,48 +54,50 @@ extension CLI {
             let selectedMode = mode
             let enabled = Set(CategoryID.allCases.filter { !skipDocker || $0 != .docker })
             let task = Task {
-                await withTaskGroup(of: ScanProfileRecorder.Report.self) { group in
-                    if selectedMode != "dashboard" {
-                        group.addTask {
-                            do {
-                                var context = await scanContext()
-                                try Task.checkCancellation()
-                                context.measurer.onMeasurement = { cleanup.record($0, $1, $2) }
-                                let result = try await ScanCoordinator.standard().scan(
-                                    enabled: enabled,
-                                    context: context,
-                                    onProgress: { cleanup.recordProgress($0.percent) },
-                                    onCategory: { cleanup.recordCategory($0) },
-                                    onCategoryTiming: { cleanup.recordTiming($0, $1) }
-                                )
-                                return cleanup.report(operation: "cleanup", outcome: "completed", bytes: result.totalBytes)
-                            } catch is CancellationError {
-                                return cleanup.report(operation: "cleanup", outcome: "cancelled")
-                            } catch {
-                                return cleanup.report(operation: "cleanup", outcome: "failed")
+                await ScanDiagnostics.$current.withValue(diagnostics?.context) {
+                    await withTaskGroup(of: ScanProfileRecorder.Report.self) { group in
+                        if selectedMode != "dashboard" {
+                            group.addTask {
+                                do {
+                                    var context = await scanContext()
+                                    try Task.checkCancellation()
+                                    context.measurer.onMeasurement = { cleanup.record($0, $1, $2) }
+                                    let result = try await ScanCoordinator.standard().scan(
+                                        enabled: enabled,
+                                        context: context,
+                                        onProgress: { cleanup.recordProgress($0.percent) },
+                                        onCategory: { cleanup.recordCategory($0) },
+                                        onCategoryTiming: { cleanup.recordTiming($0, $1) }
+                                    )
+                                    return cleanup.report(operation: "cleanup", outcome: "completed", bytes: result.totalBytes)
+                                } catch is CancellationError {
+                                    return cleanup.report(operation: "cleanup", outcome: "cancelled")
+                                } catch {
+                                    return cleanup.report(operation: "cleanup", outcome: "failed")
+                                }
                             }
                         }
-                    }
-                    if selectedMode != "cleanup" {
-                        group.addTask {
-                            do {
-                                let measurer = AllocatedSizeMeasurer(onMeasurement: { dashboard.record($0, $1, $2) })
-                                let result = try await StorageBreakdownService(measurer: measurer).measure(
-                                    progress: { dashboard.recordProgress(Int($0 * 100)) }
-                                )
-                                return dashboard.report(
-                                    operation: "dashboard", outcome: "completed", bytes: result.breakdown.usedBytes
-                                )
-                            } catch is CancellationError {
-                                return dashboard.report(operation: "dashboard", outcome: "cancelled")
-                            } catch {
-                                return dashboard.report(operation: "dashboard", outcome: "failed")
+                        if selectedMode != "cleanup" {
+                            group.addTask {
+                                do {
+                                    let measurer = AllocatedSizeMeasurer(onMeasurement: { dashboard.record($0, $1, $2) })
+                                    let result = try await StorageBreakdownService(measurer: measurer).measure(
+                                        progress: { dashboard.recordProgress(Int($0 * 100)) }
+                                    )
+                                    return dashboard.report(
+                                        operation: "dashboard", outcome: "completed", bytes: result.breakdown.usedBytes
+                                    )
+                                } catch is CancellationError {
+                                    return dashboard.report(operation: "dashboard", outcome: "cancelled")
+                                } catch {
+                                    return dashboard.report(operation: "dashboard", outcome: "failed")
+                                }
                             }
                         }
+                        var reports: [ScanProfileRecorder.Report] = []
+                        for await report in group { reports.append(report) }
+                        return reports.sorted { $0.operation < $1.operation }
                     }
-                    var reports: [ScanProfileRecorder.Report] = []
-                    for await report in group { reports.append(report) }
-                    return reports.sorted { $0.operation < $1.operation }
                 }
             }
             let cancellation = Task {
@@ -101,6 +109,8 @@ extension CLI {
                 task.cancel()
             }
             let reports = await task.value
+            diagnostics?.finish(outcome: task.isCancelled ? "cancelled" : "completed")
+            diagnostics?.flush()
             cancellation.cancel()
             workerSampling.cancel()
             await workerSampling.value
@@ -137,45 +147,7 @@ private struct ScanProfileOutput: Encodable {
     let workersAfterIdle: AllocatedSizeMeasurer.WorkerActivity
 }
 
-private struct ScanProcessResources: Encodable {
-    let wallSeconds: Double
-    let userCPUSeconds: Double
-    let systemCPUSeconds: Double
-    let diskReadBytes: UInt64?
-    let diskWrittenBytes: UInt64?
-
-    static func capture() -> Self {
-        var cpu = rusage()
-        getrusage(RUSAGE_SELF, &cpu)
-        var io = rusage_info_v2()
-        let result = withUnsafeMutablePointer(to: &io) {
-            proc_pid_rusage(getpid(), RUSAGE_INFO_V2,
-                           UnsafeMutableRawPointer($0).assumingMemoryBound(to: rusage_info_t?.self))
-        }
-        return Self(
-            wallSeconds: 0,
-            userCPUSeconds: Double(cpu.ru_utime.tv_sec) + Double(cpu.ru_utime.tv_usec) / 1e6,
-            systemCPUSeconds: Double(cpu.ru_stime.tv_sec) + Double(cpu.ru_stime.tv_usec) / 1e6,
-            diskReadBytes: result == 0 ? io.ri_diskio_bytesread : nil,
-            diskWrittenBytes: result == 0 ? io.ri_diskio_byteswritten : nil
-        )
-    }
-
-    func difference(from previous: Self, wallSeconds: Double) -> Self {
-        Self(
-            wallSeconds: wallSeconds,
-            userCPUSeconds: userCPUSeconds - previous.userCPUSeconds,
-            systemCPUSeconds: systemCPUSeconds - previous.systemCPUSeconds,
-            diskReadBytes: diskReadBytes.flatMap { value in previous.diskReadBytes.map { value - $0 } },
-            diskWrittenBytes: diskWrittenBytes.flatMap { value in previous.diskWrittenBytes.map { value - $0 } }
-        )
-    }
-
-    static func seconds(_ duration: Duration) -> Double {
-        let parts = duration.components
-        return Double(parts.seconds) + Double(parts.attoseconds) / 1e18
-    }
-}
+private typealias ScanProcessResources = ScanDiagnostics.Resources
 
 private final class ScanWorkerRecorder: @unchecked Sendable {
     private let lock = NSLock()
@@ -252,6 +224,7 @@ private final class ScanProfileRecorder: @unchecked Sendable {
         let availability = switch category.availability {
         case .available: "available"
         case .empty: "empty"
+        case .notInstalled: "not_installed"
         case .unavailable: "unavailable"
         }
         categories[category.categoryID.rawValue] = Category(
