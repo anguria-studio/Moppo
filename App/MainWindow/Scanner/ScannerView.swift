@@ -213,22 +213,12 @@ struct ScannerView: View {
     private func filterPicker(_ results: ScanResults) -> some View {
         PageSegmentedControl(selection: $model.scanFilter, segments: [
             .init(id: .all, title: CleanupModel.ScanFilter.all.title, symbol: "square.grid.2x2",
-                  detail: ByteFormatting.string(bytes(in: .all, results: results))),
+                  detail: ByteFormatting.string(results.totalBytes)),
             .init(id: .safeToRemove, title: CleanupModel.ScanFilter.safeToRemove.title, symbol: "checkmark.circle.fill",
-                  detail: ByteFormatting.string(bytes(in: .safeToRemove, results: results)), tint: .green),
-            .init(id: .needsReview, title: CleanupModel.ScanFilter.needsReview.title, symbol: "questionmark.circle",
-                  detail: ByteFormatting.string(bytes(in: .needsReview, results: results)), tint: .amber)
+                  detail: ByteFormatting.string(results.safeToRemoveBytes), tint: .green)
         ])
         .frame(maxWidth: .infinity, alignment: .leading)
         .disabled(model.isBusyWithDisk)
-    }
-
-    private func bytes(in filter: CleanupModel.ScanFilter, results: ScanResults) -> Int64 {
-        switch filter {
-        case .all: results.totalBytes
-        case .safeToRemove: results.safeToRemoveBytes
-        case .needsReview: results.needsReviewBytes
-        }
     }
 
     // MARK: - Sections
@@ -241,7 +231,7 @@ struct ScannerView: View {
     ) -> [ScanCategoryResult] {
         guard filter != .all else { return results.categories }
         return results.categories
-            .map { $0.filtered(safeToRemove: filter == .safeToRemove) }
+            .map { $0.filtered(safeToRemove: true) }
             .filter { !$0.entries.isEmpty }
     }
 

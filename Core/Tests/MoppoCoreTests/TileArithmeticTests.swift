@@ -2,13 +2,7 @@ import Foundation
 import Testing
 @testable import MoppoCore
 
-/// What the Dashboard's two tiles count, and the rule that they never count the
-/// same byte twice.
-///
-/// The case that forced this suite: an application's caches are children of the
-/// application's row, and the Applications category is not safe, so "Safe to
-/// remove" could not see a single one of them — while the Scanner, one screen
-/// away, badged each of them `regenerable`.
+/// Safe and review totals divide scanned storage without duplicate counting.
 @Suite("Safe to remove and Needs review partition the scan")
 struct TileArithmeticTests {
 
@@ -130,12 +124,9 @@ struct TileArithmeticTests {
         #expect(Self.tileMatchesItsList(category))
     }
 
-    // MARK: - The Scanner's tabs
+    // MARK: - Filtered categories
 
-    /// All three tabs of the Scanner draw the same outline. "Safe to Remove" and
-    /// "Needs Review" are the scan with the other half taken out of each category,
-    /// so a category's figure under a tab is that tab's share of it and nothing else.
-    @Test("a category filtered for a tab holds that tab's rows, and the two halves are the category")
+    @Test("Filtered categories preserve their rows and divide scanned storage")
     func filteredCategoriesPartitionTheScan() {
         var held = Self.child("Held Cache", bytes: 200, regenerable: true)
         held.inUseBy = FileEntry.RunningOwner(

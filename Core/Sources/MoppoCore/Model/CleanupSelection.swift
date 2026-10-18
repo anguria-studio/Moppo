@@ -3,7 +3,7 @@ import Foundation
 /// Limits a cleanup action to the items in its review group.
 public enum CleanupSelection {
     public enum Scope: Sendable {
-        case all, safe, review
+        case all, safe
     }
 
     public static func ids(
@@ -25,9 +25,6 @@ public enum CleanupSelection {
         switch scope {
         case .all: allowed = known
         case .safe: allowed = safe
-        case .review:
-            let rows = categories.flatMap { $0.tileRows(safeToRemove: false) }
-            allowed = Set((rows + rows.flatMap(\.children)).map(\.id)).subtracting(safe)
         }
         var result = selected.intersection(allowed).intersection(known)
         // A selected parent already includes its children.
