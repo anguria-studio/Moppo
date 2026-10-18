@@ -28,14 +28,14 @@ jobs:
         run: brew install xcodegen vale
       - name: Check release packaging
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - name: Run process timing tests
+      - name: Run timing tests
         run: >-
-          swift test --package-path Core
-          --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)'
+          swift test --package-path Core --no-parallel
+          --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud'
       - name: Run core tests
         run: >-
           swift test --package-path Core
-          --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)'
+          --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud'
       - name: Generate the Xcode project
         run: xcodegen generate
       - name: Run app state tests
