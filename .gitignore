@@ -13,6 +13,10 @@ CLAUDE.local.md
 BACKLOG.local.md
 .claude/
 
+# Local diagnostic logs
+scan-*.jsonl
+app-*.jsonl
+
 # Design sources and concept renders — kept locally, not in the repo
 design/
 output/

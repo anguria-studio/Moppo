@@ -26,6 +26,8 @@ jobs:
           persist-credentials: false
       - name: Install build and writing tools
         run: brew install xcodegen vale
+      - name: Check release packaging
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Run process timing tests
         run: >-
           swift test --package-path Core

@@ -233,6 +233,7 @@ xcodebuild \
 Run the tests and writing checks from the repository root:
 
 ```sh
+python3 -m unittest discover -s scripts -p 'test_*.py'
 swift test --package-path Core
 xcodegen generate
 xcodebuild -project Moppo.xcodeproj -scheme MoppoAppTests -destination 'platform=macOS' test

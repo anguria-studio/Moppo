@@ -34,6 +34,20 @@ def digest(path):
     return result.hexdigest()
 
 
+def validate_scan_logging(app, requested):
+    info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+    setting = info.get("MoppoDetailedScanLogging", "NO")
+    if not isinstance(setting, str) or setting.upper() not in ("YES", "NO"):
+        raise RuntimeError("The app has an invalid detailed scan logging setting.")
+    enabled = setting.upper() == "YES"
+    if enabled and not requested:
+        raise RuntimeError("Normal packages cannot enable detailed scan logging. "
+                           "Use --scan-logging only for a private diagnostic package.")
+    if requested and not enabled:
+        raise RuntimeError("The app does not enable detailed scan logging. Build a new diagnostic archive.")
+    return enabled
+
+
 def validate_app(app, version, build, team):
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     expected = {
@@ -204,11 +218,10 @@ def main():
                        "-derivedDataPath", output / "DerivedData",
                        "ARCHS=arm64 x86_64", "ONLY_ACTIVE_ARCH=NO",
                        f"CODE_SIGN_IDENTITY={identity}", f"DEVELOPMENT_TEAM={team}",
-                       f"MARKETING_VERSION={args.version}", f"CURRENT_PROJECT_VERSION={args.build}"]
+                       f"MARKETING_VERSION={args.version}", f"CURRENT_PROJECT_VERSION={args.build}",
+                       f"MOPPO_DETAILED_SCAN_LOGGING={'YES' if args.scan_logging else 'NO'}"]
             if args.package_cache:
                 command += ["-clonedSourcePackagesDirPath", args.package_cache.resolve()]
-            if args.scan_logging:
-                command += ["MOPPO_DETAILED_SCAN_LOGGING=YES"]
             run(*command, "archive")
         with tempfile.TemporaryDirectory(prefix="moppo-export-") as temporary:
             options = Path(temporary) / "ExportOptions.plist"
@@ -221,11 +234,9 @@ def main():
                   "source_commit": run("git", "-C", ROOT, "rev-parse", "HEAD", capture=True).strip(),
                   "source_dirty": bool(run("git", "-C", ROOT, "status", "--porcelain", capture=True).strip()),
                   "notarized": False}
-        record["detailed_scan_logging"] = plistlib.loads((app / "Contents/Info.plist").read_bytes()).get("MoppoDetailedScanLogging") == "YES"
-        manifest.write_text(json.dumps(record, indent=2) + "\n")
+    record["detailed_scan_logging"] = validate_scan_logging(app, args.scan_logging)
     validate_app(app, args.version, args.build, team)
-    if args.scan_logging and plistlib.loads((app / "Contents/Info.plist").read_bytes()).get("MoppoDetailedScanLogging") != "YES":
-        parser.error("The exported app does not enable detailed scan logging. Build a new diagnostic archive.")
+    manifest.write_text(json.dumps(record, indent=2) + "\n")
     assets.mkdir(exist_ok=True)
     if args.prepare:
         create_dmg(app, dmg, identity)
