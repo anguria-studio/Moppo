@@ -8,6 +8,7 @@ struct ScannerView: View {
     let cleanupCompletion: AppModel.CleanupCompletion?
     let onViewDashboard: (UUID) -> Void
     let onUninstallApplication: (FileEntry) -> Void
+    let onShowInStorageExplorer: (FileEntry) -> Void
     @State private var animateEmptyResult = false
     @State private var resultBeforeScan: Date?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -49,7 +50,7 @@ struct ScannerView: View {
                     Divider()
                         .opacity(resultsVisible ? 1 : 0)
                     let visibleCategories = model.visibleCategories
-                    let showsRunningApps = model.scanFilter == .safeToRemove
+                    let showsRunningApps = model.scanFilter == .safeToRemove && model.dataTypeFilter == .all
                         && !model.runningAppCaches.isEmpty && !model.isRunningAppsNoticeDismissed
                     let showsEmptyState = hasNoCleanupItems(visibleCategories) && !showsRunningApps
                     GeometryReader { geometry in
@@ -91,6 +92,7 @@ struct ScannerView: View {
             }
         }
         .onChange(of: model.scanFilter) { _, _ in animateEmptyResult = false }
+        .onChange(of: model.dataTypeFilter) { _, _ in animateEmptyResult = false }
         .onDisappear { animateEmptyResult = false }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showsOperation)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: cleanupCompletion?.id)
@@ -173,21 +175,29 @@ struct ScannerView: View {
     }
 
     private var listControls: some View {
-        let visible = model.visibleCategories
-        let count = visible.reduce(0) { $0 + $1.entries.count }
-        return HStack(spacing: 12) {
-            SelectionCheckbox(
-                title: "Select All",
-                detail: "\(count) \(count == 1 ? "item" : "items")",
-                state: model.selectAllStateInCurrentView,
-                isEnabled: !model.isBusyWithDisk
-                    && (model.hasSelectableItemsInCurrentView || model.hasSelectionInCurrentView)
-            ) { isOn in
-                if isOn && model.canSelectAllInCurrentView { model.selectAllInCurrentView() }
-                else { model.deselectAllInCurrentView() }
+        let count = model.dataTypeOptions.first { $0.type == model.dataTypeFilter }?.count ?? 0
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                SelectionCheckbox(
+                    title: "Select All",
+                    detail: "\(count) \(count == 1 ? "item" : "items")",
+                    state: model.selectAllStateInCurrentView,
+                    isEnabled: !model.isBusyWithDisk
+                        && (model.hasSelectableItemsInCurrentView || model.hasSelectionInCurrentView)
+                ) { isOn in
+                    if isOn && model.canSelectAllInCurrentView { model.selectAllInCurrentView() }
+                    else { model.deselectAllInCurrentView() }
+                }
+                .fixedSize()
+                Spacer()
+                CleanupTypePicker(model: model)
             }
-            .fixedSize()
-            Spacer()
+            if model.hiddenSelectionCount > 0 {
+                Text("Removal also includes \(model.hiddenSelectionCount) selected \(model.hiddenSelectionCount == 1 ? "item" : "items") outside this view.")
+                    .font(.mcCaption)
+                    .foregroundStyle(Token.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.leading, 15)
     }
@@ -272,20 +282,25 @@ struct ScannerView: View {
                 let selectedIDs = model.selectedIDs(in: category)
                 FileTable(
                     entries: category.entries,
-                    isSafeToRemove: category.isCountedSafe,
+                    isSafeToRemove: { category.isCountedSafe($0)
+                        || (model.dataTypeFilter != .all && $0.regeneratesSafely) },
                     showsSafeToRemoveBadges: model.scanFilter != .safeToRemove,
-                    selection: $model.scannerSelection,
+                    selection: Binding(get: { model.scannerSelection }, set: model.setScannerSelection),
                     userDataRemovalOverrides: $model.userDataRemovalOverrides,
                     confirmBeforeCleanup: model.confirmBeforeCleanup,
                     onUninstallApplication: onUninstallApplication,
+                    onShowInStorageExplorer: onShowInStorageExplorer,
                     onReviewWorktree: { worktreeReviewEntry = $0 },
                     onUnlockChildren: { model.unlockChildren(in: $0) },
                     onToggleChildren: { model.setChildrenSelected($0, in: $1.id) },
                     selectAllState: model.selectAllState(in: category),
                     canToggleAll: !selectableIDs.isEmpty || !selectedIDs.isEmpty,
-                    onToggleAll: { model.setSelected($0 && !selectableIDs.isSubset(of: selectedIDs), in: category) }
+                    onToggleAll: { model.setSelected($0 && !selectableIDs.isSubset(of: selectedIDs), in: category) },
+                    expandedGroups: model.dataTypeFilter == .all
+                        ? [] : Set(category.entries.compactMap { $0.aiStorageSection?.owner })
                 )
                 .id(model.scanFilter)
+                .id(model.dataTypeFilter)
                 .disabled(model.isBusyWithDisk)
             }
         }

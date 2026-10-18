@@ -245,6 +245,74 @@ struct OperationFlowTests {
         #expect(model.storageExplorer.currentURL == nil)
     }
 
+    @Test("Cleanup Explorer navigation preserves selections and excludes applications",
+          arguments: ["Project", "cache.log", "Sample.app", "Downloaded.app"])
+    func cleanupExplorerNavigation(name: String) async throws {
+        let folder = try TemporaryFolder()
+        let url = folder.url.appendingPathComponent(name)
+        if name == "cache.log" {
+            try Data("Fixture".utf8).write(to: url)
+        } else {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data("Fixture".utf8).write(to: url.appendingPathComponent("contents.txt"))
+        }
+        let kind: FileEntry.Kind = switch name {
+        case "Sample.app": .appBundle
+        case "Downloaded.app": .downloadedApp
+        default: .cache
+        }
+        let entry = FileEntry(url: url, kind: kind, allocatedBytes: 100)
+        let model = AppModel()
+        let results = ScanResults(categories: [.init(categoryID: .systemCaches, totalBytes: 100, entries: [entry])],
+            startedAt: .now, finishedAt: .now)
+        model.cleanup.scanResults = results
+        model.cleanup.scanFilter = .all
+        model.cleanup.scannerSelection = [entry.id]
+        model.view = .scanner
+
+        model.showInStorageExplorer(entry)
+        if name.hasSuffix(".app") {
+            #expect(model.view == .scanner)
+            #expect(model.storageExplorer.currentURL == nil)
+            #expect(!model.operations.isBusy)
+            #expect(model.cleanup.scannerSelection == [entry.id])
+            return
+        }
+        #expect(model.view == .storageExplorer)
+        try await waitUntil { !model.storageExplorer.isLoading }
+        let snapshot = try #require(model.storageExplorer.snapshot)
+        #expect(snapshot.directory.standardizedFileURL.path
+            == (name == "Project" ? url : folder.url).standardizedFileURL.path)
+        #expect(model.storageExplorer.selectedItems.map { $0.url.standardizedFileURL.path }
+            == (name == "Project" ? [] : [url.standardizedFileURL.path]))
+        #expect(model.cleanup.pendingCleanUp == nil)
+        model.view = .scanner
+        #expect(model.cleanup.scannerSelection == [entry.id])
+        #expect(model.cleanup.scanResults?.startedAt == results.startedAt)
+        #expect(model.cleanup.scanFilter == .all)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test("Cleanup Explorer navigation respects active operations and file URLs")
+    func cleanupExplorerWhileBusy() throws {
+        let model = AppModel()
+        model.view = .scanner
+        let entry = FileEntry(url: URL(fileURLWithPath: "/unused-fixture"), kind: .folder, allocatedBytes: 100)
+        let operation = try #require(model.operations.begin(.cleanupRemoval))
+        model.showInStorageExplorer(entry)
+        #expect(model.operations.blockedAction?.operation == operation)
+        #expect(model.view == .scanner)
+        #expect(model.storageExplorer.currentURL == nil)
+        model.operations.finish(operation)
+
+        var docker = entry
+        docker.url = try #require(URL(string: "docker://fixture/image"))
+        model.showInStorageExplorer(docker)
+        #expect(model.view == .scanner)
+        #expect(model.storageExplorer.currentURL == nil)
+        #expect(!model.operations.isBusy)
+    }
+
     @Test("History selects the recorded Trash item and rejects a replacement")
     func historyTrashLink() async throws {
         let fixture = try TrashFixture()

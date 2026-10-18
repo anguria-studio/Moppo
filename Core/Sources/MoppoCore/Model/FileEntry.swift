@@ -93,6 +93,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case userData
         /// Storage shown for information. Ordinary cleanup cannot override this lock.
         case inventory
+        /// A size remainder with no separate removal target. The parent includes these files.
+        case folderRemainder
     }
 
     /// How to remove something this app cannot: the explanation of what it is and
@@ -293,7 +295,9 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         let childBytes = children
             .filter { !$0.isRemovalLocked }
             .reduce(Int64(0)) { $0 + $1.allocatedBytes }
-        return isRemovalLocked ? childBytes : allocatedBytes + childBytes
+        let remainderBytes = children.filter { $0.protectionReason == .folderRemainder }
+            .reduce(Int64(0)) { $0 + $1.allocatedBytes }
+        return isRemovalLocked ? childBytes : allocatedBytes + childBytes + remainderBytes
     }
 
     /// The figure a row advertises, and the one every *display* total sums —
@@ -309,7 +313,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var displayBytes: Int64 {
         if dockerImage != nil { return allocatedBytes }
         if removalAction != nil { return reclaimableBytes }
-        return manualRemoval != nil || protectionReason == .inventory || codexSession != nil || !unlockableChildren.isEmpty
+        return manualRemoval != nil || protectionReason == .inventory || protectionReason == .folderRemainder
+            || codexSession != nil || !unlockableChildren.isEmpty
             ? totalBytesIncludingChildren : reclaimableBytes
     }
 

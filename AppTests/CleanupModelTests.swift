@@ -5,6 +5,124 @@ import Testing
 @Suite("Cleanup feature ownership")
 @MainActor
 struct CleanupModelTests {
+    @Test("Type options count nested matches and follow safety and scan results")
+    func dataTypeOptions() throws {
+        var safeNode = cleanupEntry("project/node_modules")
+        safeNode.kind = .cache
+        var reviewNode = cleanupEntry("other/node_modules")
+        reviewNode.kind = .cache
+        reviewNode.isRegenerable = false
+        reviewNode.allocatedBytes = 200
+        var project = cleanupEntry("project")
+        project.kind = .folder
+        project.isRegenerable = false
+        project.children = [safeNode, reviewNode]
+        var photo = cleanupEntry("holiday.HEIC")
+        photo.isRegenerable = false
+        var archive = cleanupEntry("Installer.zip")
+        archive.kind = .archive
+        archive.isRegenerable = false
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanResults = cleanupResults([project, photo, archive])
+        cleanup.scanFilter = .all
+        #expect(cleanup.dataTypeOptions.map(\.type) == [.all, .nodeModules, .archivesAndInstallers])
+        let nodes = try #require(cleanup.dataTypeOptions.first { $0.type == .nodeModules })
+        #expect(nodes.count == 2)
+        #expect(nodes.bytes == 300)
+        cleanup.dataTypeFilter = .nodeModules
+        #expect(cleanup.visibleCategories.flatMap(\.entries).map(\.id) == [safeNode.id, reviewNode.id])
+        #expect(cleanup.visibleCategories.first?.totalBytes == 300)
+        cleanup.scanFilter = .safeToRemove
+        #expect(cleanup.dataTypeFilter == .nodeModules)
+        #expect(cleanup.dataTypeOptions.map(\.type) == [.all, .nodeModules])
+        #expect(cleanup.dataTypeOptions.last?.count == 1)
+        #expect(cleanup.dataTypeOptions.last?.bytes == 100)
+        cleanup.scanFilter = .all
+        cleanup.dataTypeFilter = .archivesAndInstallers
+        cleanup.scanFilter = .safeToRemove
+        #expect(cleanup.dataTypeFilter == .all)
+        cleanup.dataTypeFilter = .nodeModules
+        cleanup.scanResults = cleanupResults([photo])
+        #expect(cleanup.dataTypeFilter == .all)
+        #expect(cleanup.dataTypeOptions.map(\.type) == [.all])
+        cleanup.scanFilter = .all
+        #expect(cleanup.visibleCategories.flatMap(\.entries).map(\.id) == [photo.id])
+    }
+
+    @Test("Type selection replaces a whole parent and preserves selections outside the view")
+    func dataTypeSelection() throws {
+        var node = cleanupEntry("project/node_modules")
+        node.kind = .cache
+        var python = cleanupEntry("project/.venv")
+        python.kind = .cache
+        var project = cleanupEntry("project")
+        project.kind = .folder
+        project.children = [node, python]
+        let audio = cleanupEntry("recording.wav")
+        let cleanup = CleanupModel(operations: OperationCoordinator(), measureSaving: { _ in nil })
+        cleanup.scanResults = cleanupResults([project, audio])
+        cleanup.scanFilter = .all
+        cleanup.scannerSelection = [project.id, audio.id]
+        cleanup.dataTypeFilter = .nodeModules
+        #expect(cleanup.hiddenSelectionCount == 2)
+        #expect(cleanup.selectAllStateInCurrentView == .off)
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        #expect(cleanup.hiddenSelectionCount == 1)
+        #expect(cleanup.selectedBytes(in: .systemCaches) == node.allocatedBytes)
+        cleanup.requestCleanUp(in: .all)
+        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [node.id, audio.id])
+        #expect(cleanup.pendingCleanUp?.entries.first { $0.id == node.id } == node)
+        cleanup.cancelCleanUp()
+        cleanup.dataTypeFilter = .pythonEnvironments
+        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        #expect(cleanup.hiddenSelectionCount == 2)
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [node.id, python.id, audio.id])
+        cleanup.deselectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        cleanup.dataTypeFilter = .nodeModules
+        let category = try #require(cleanup.visibleCategories.first)
+        #expect(cleanup.selectAllState(in: category) == .on)
+        cleanup.setSelected(false, in: category)
+        #expect(cleanup.scannerSelection == [audio.id])
+        cleanup.setSelected(true, in: category)
+        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        cleanup.dataTypeFilter = .all
+        #expect(cleanup.hiddenSelectionCount == 0)
+    }
+
+    @Test("Filtered selection keeps protections and busy guards")
+    func dataTypeProtection() throws {
+        var locked = cleanupEntry("protected/node_modules")
+        locked.kind = .cache
+        locked.protectionReason = .inventory
+        var node = cleanupEntry("project/node_modules")
+        node.kind = .cache
+        var project = cleanupEntry("project")
+        project.kind = .folder
+        project.children = [node]
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(operations: operations)
+        cleanup.scanResults = cleanupResults([project, locked])
+        cleanup.scanFilter = .all
+        cleanup.dataTypeFilter = .nodeModules
+        cleanup.scannerSelection = [project.id]
+        cleanup.setScannerSelection([project.id, node.id])
+        #expect(cleanup.scannerSelection == [node.id])
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [node.id])
+        #expect(cleanup.selectAllStateInCurrentView == .on)
+        let operation = try #require(operations.begin(.appUninstall))
+        cleanup.deselectAllInCurrentView()
+        #expect(cleanup.scannerSelection == [node.id])
+        operations.finish(operation)
+        cleanup.invalidateResults()
+        #expect(cleanup.dataTypeFilter == .all)
+        #expect(cleanup.hiddenSelectionCount == 0)
+    }
+
     @Test("Worktrees seed only safe rows and warn before explicit unsafe selection")
     func worktreeSelectionAndReview() {
         let safe = safeWorktreeReview()
@@ -37,6 +155,40 @@ struct CleanupModelTests {
         #expect(requested)
         #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree has uncommitted changes.") == true)
         #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree needs further review.") == true)
+        cleanup.cancelCleanUp()
+    }
+
+    @Test("Parent selection includes grouped worktree checks and remainder bytes", arguments: [false, true])
+    func groupedWorktreeParentReview(hasLocalChanges: Bool) throws {
+        var worktree = cleanupEntry("parent/cache/task")
+        var review = safeWorktreeReview()
+        if hasLocalChanges {
+            review.status = .uncommittedChanges
+            review.localFiles = [.init(path: "notes.txt", status: .untracked)]
+        }
+        worktree.gitWorktreeReview = review
+        var remainder = cleanupEntry("parent/cache")
+        remainder.protectionReason = .folderRemainder
+        var parent = cleanupEntry("parent")
+        parent.kind = .folder
+        parent.isRegenerable = false
+        parent.children = [remainder, worktree]
+        let cleanup = CleanupModel(operations: OperationCoordinator(), measureSaving: { _ in nil })
+        cleanup.scanResults = cleanupResults([parent])
+        cleanup.scanFilter = .all
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection == (hasLocalChanges ? [] : [worktree.id]))
+        #expect(!parent.isRemovalLocked)
+        cleanup.scannerSelection = [remainder.id]
+        #expect(cleanup.cleanupSelection(in: .all).isEmpty)
+        cleanup.scannerSelection = [parent.id]
+        #expect(cleanup.selectedBytes(in: .systemCaches) == 300)
+        cleanup.requestCleanUp(in: .all)
+        let plan = try #require(cleanup.pendingCleanUp)
+        #expect(plan.entries.map(\.id) == [parent.id])
+        #expect(plan.totalBytes == 300)
+        #expect((plan.worktreeWarning != nil) == hasLocalChanges)
+        #expect(CleanupService.alwaysMovesToTrash(parent))
         cleanup.cancelCleanUp()
     }
 
@@ -121,7 +273,9 @@ struct CleanupModelTests {
         var selected = worktree
         if selectedParent {
             selected = cleanupEntry("parent")
-            selected.children = [worktree]
+            var remainder = cleanupEntry("parent/cache")
+            remainder.protectionReason = .folderRemainder
+            selected.children = [remainder, worktree]
         }
         let removal = HeldCleanupRemoval()
         let cleanup = CleanupModel(operations: OperationCoordinator(), remover: removal,

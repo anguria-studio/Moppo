@@ -76,8 +76,17 @@ final class CleanupModel {
         lastScanFinishedAt = defaults.object(forKey: "lastScanFinishedAt") as? Date
     }
 
-    var scanResults: ScanResults?
-    var scanFilter: ScanFilter = .safeToRemove
+    var scanResults: ScanResults? {
+        didSet { resetUnavailableDataType() }
+    }
+    var scanFilter: ScanFilter = .safeToRemove {
+        didSet { resetUnavailableDataType() }
+    }
+    var dataTypeFilter: CleanupDataType = .all {
+        didSet {
+            if dataTypeFilter != .all { openCategories.formUnion(visibleCategories.map(\.categoryID)) }
+        }
+    }
     var openCategories: Set<CategoryID> = [.documentsAndFiles]
     var scannerSelection: Set<FileEntry.ID> = []
     var userDataRemovalOverrides: Set<FileEntry.ID> = []
@@ -201,7 +210,8 @@ final class CleanupModel {
     }
 
     func selectedBytes(in category: CategoryID, filter: ScanFilter = .all) -> Int64 {
-        let selected = cleanupSelection(in: filter)
+        let selected = dataTypeFilter == .all ? cleanupSelection(in: filter)
+            : cleanupSelection(in: filter).intersection(idsInCurrentView)
         guard let result = scanResults?.categories.first(where: { $0.categoryID == category })
         else { return 0 }
         let entries = filter == .all
@@ -274,8 +284,8 @@ final class CleanupModel {
         }
     }
 
-    /// Keeps the Docker setup message visible in each filter when its application is installed.
-    var visibleCategories: [ScanCategoryResult] {
+    /// Keeps the Docker setup message visible when no type filter is active.
+    var safetyFilteredCategories: [ScanCategoryResult] {
         let categories = (scanResults?.categories ?? []).filter { $0.availability != .notInstalled }
         guard scanFilter != .all else { return categories }
         return categories.compactMap { category in
@@ -295,15 +305,12 @@ final class CleanupModel {
     }
 
     private var rowsInCurrentView: [FileEntry] {
-        switch scanFilter {
-        case .all: scanResults?.categories.flatMap(\.entries) ?? []
-        case .safeToRemove: safeToRemoveEntries
-        }
+        visibleCategories.flatMap(\.entries)
     }
 
     private var selectableInCurrentView: [FileEntry] {
         let rows = rowsInCurrentView
-        let candidates = scanFilter == .all
+        let candidates = scanFilter == .all && dataTypeFilter == .all
             ? rows + safeToRemoveEntries : rows
         return selectableEntries(from: candidates)
     }
@@ -312,7 +319,8 @@ final class CleanupModel {
         var seen = Set<FileEntry.ID>()
         let children = candidates.flatMap { $0.selectableChildren(userDataRemovalOverrides: userDataRemovalOverrides) }
         let selectable = (candidates + children).filter {
-            (!$0.isRemovalLocked || ($0.protectionReason == .userData && userDataRemovalOverrides.contains($0.id)))
+            dataTypeFilter.matches($0)
+                && (!$0.isRemovalLocked || ($0.protectionReason == .userData && userDataRemovalOverrides.contains($0.id)))
                 && $0.unlockableChildren.isEmpty && $0.kind != .appBundle && seen.insert($0.id).inserted
         }
         let covered = Set(selectable.flatMap(\.children).map(\.id))
@@ -331,6 +339,7 @@ final class CleanupModel {
 
     func selectedIDs(in category: ScanCategoryResult) -> Set<FileEntry.ID> {
         CleanupSelection.ids(in: [category], selected: scannerSelection, scope: .all)
+            .intersection(viewIDs(in: category.entries))
     }
 
     func selectAllState(in category: ScanCategoryResult) -> NSControl.StateValue {
@@ -347,8 +356,7 @@ final class CleanupModel {
         if isSelected {
             select(selectableEntries(in: category))
         } else {
-            let rows = category.entries
-            let ids = Set((rows + rows.flatMap(\.children)).map(\.id))
+            let ids = viewIDs(in: category.entries)
             scannerSelection.subtract(ids)
             userDataRemovalOverrides.subtract(ids)
         }
@@ -373,7 +381,8 @@ final class CleanupModel {
     }
 
     var selectAllStateInCurrentView: NSControl.StateValue {
-        selectAllState(in: selectableInCurrentView, selected: cleanupSelection(in: scanFilter))
+        selectAllState(in: selectableInCurrentView,
+            selected: cleanupSelection(in: scanFilter).intersection(idsInCurrentView))
     }
 
     var canSelectAllInCurrentView: Bool {
@@ -384,14 +393,12 @@ final class CleanupModel {
     var hasSelectableItemsInCurrentView: Bool { !selectableInCurrentView.isEmpty }
 
     var hasSelectionInCurrentView: Bool {
-        let rows = rowsInCurrentView
-        return (rows + rows.flatMap(\.children)).contains { scannerSelection.contains($0.id) }
+        !scannerSelection.isDisjoint(with: idsInCurrentView)
     }
 
     func deselectAllInCurrentView() {
         guard !isBusyWithDisk else { return }
-        let rows = rowsInCurrentView
-        let ids = Set((rows + rows.flatMap(\.children)).map(\.id))
+        let ids = idsInCurrentView
         scannerSelection.subtract(ids)
         userDataRemovalOverrides.subtract(ids)
     }
@@ -417,7 +424,7 @@ final class CleanupModel {
     /// A selected row covers its children, so the children leave the selection.
     private func select(_ entries: [FileEntry]) {
         guard !entries.isEmpty else { return }
-        scannerSelection.formUnion(entries.map(\.id))
+        setScannerSelection(scannerSelection.union(entries.map(\.id)))
         let childIDs = Set(entries.flatMap(\.children).map(\.id))
         scannerSelection.subtract(childIDs)
         userDataRemovalOverrides.subtract(childIDs)

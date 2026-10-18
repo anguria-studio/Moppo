@@ -21,6 +21,7 @@ struct FileTable: View {
     @Binding var userDataRemovalOverrides: Set<FileEntry.ID>
     var confirmBeforeCleanup = false
     var onUninstallApplication: ((FileEntry) -> Void)? = nil
+    var onShowInStorageExplorer: ((FileEntry) -> Void)? = nil
     var onReviewWorktree: ((FileEntry) -> Void)? = nil
     var onUnlockChildren: ((FileEntry) -> Void)? = nil
     var onToggleChildren: ((Bool, FileEntry) -> Void)? = nil
@@ -192,8 +193,7 @@ struct FileTable: View {
                 action: { adopt(.size) }
             )
             .frame(width: Metrics.size, alignment: .trailing)
-            // Empty slot over the Finder action, so SIZE lands above the figures
-            // rather than above the button.
+            // Keep the Size header above the figures and clear of the row menu.
             Color.clear.frame(width: Metrics.action, height: 0)
         }
         .font(.mcControlLabel)
@@ -243,6 +243,7 @@ struct FileTable: View {
             onUninstallApplication: onUninstallApplication.map { action in
                 { action(entry) }
             },
+            onShowInStorageExplorer: onShowInStorageExplorer.map { action in { action(entry) } },
             onReviewWorktree: onReviewWorktree.map { action in { action(entry) } },
             hasUnlockedChildren: !entry.unlockableChildren.isEmpty
                 && entry.unlockableChildren.allSatisfy { userDataRemovalOverrides.contains($0.id) },
@@ -276,6 +277,7 @@ struct FileTable: View {
                         }
                     },
                     onRequestUserDataOverride: { requestUserDataOverride(child) },
+                    onShowInStorageExplorer: onShowInStorageExplorer.map { action in { action(child) } },
                     onReviewWorktree: onReviewWorktree.map { action in { action(child) } }
                 )
             }
@@ -463,6 +465,7 @@ private struct FileRow: View {
     let onRequestUserDataOverride: () -> Void
     var onDisclose: (() -> Void)?
     var onUninstallApplication: (() -> Void)? = nil
+    var onShowInStorageExplorer: (() -> Void)? = nil
     var onReviewWorktree: (() -> Void)? = nil
     var hasUnlockedChildren = false
     var onUnlockChildren: (() -> Void)? = nil
@@ -562,7 +565,9 @@ private struct FileRow: View {
                 : ByteFormatting.string(entry.rowDisplayBytes))
 
             if entry.url.isFileURL {
-                RevealButton(url: entry.url, name: entry.displayName, isRowHovered: isRowHovered)
+                FileRowMenu(entry: entry, isRowHovered: isRowHovered,
+                    onShowInStorageExplorer: onShowInStorageExplorer,
+                    onUninstallApplication: onUninstallApplication)
             } else {
                 Color.clear.frame(width: Metrics.action)
             }
@@ -594,7 +599,7 @@ private struct FileRow: View {
         }
         // The whole row is a target, not just its smallest control: a row that can
         // disclose discloses, and a plain row toggles its checkbox. The checkbox and
-        // reveal button keep their own clicks — SwiftUI gives embedded controls
+        // row menu keep their own clicks — SwiftUI gives embedded controls
         // precedence over the row's gesture.
         .simultaneousGesture(TapGesture(count: 2).onEnded {
             onReviewWorktree?()
@@ -613,17 +618,8 @@ private struct FileRow: View {
             }
         }
         .contextMenu {
-            if entry.kind == .appBundle, let onUninstallApplication {
-                Button("Review Uninstall", systemImage: "trash") {
-                    onUninstallApplication()
-                }
-                Divider()
-            }
-            if entry.url.isFileURL {
-                Button("Reveal in Finder", systemImage: "arrow.up.forward.app") {
-                    NSWorkspace.shared.activateFileViewerSelecting([entry.url])
-                }
-            }
+            FileRowActions(entry: entry, onShowInStorageExplorer: onShowInStorageExplorer,
+                onUninstallApplication: onUninstallApplication)
         }
     }
 
@@ -675,6 +671,8 @@ private struct FileRow: View {
                 : "Contains user data. Use the lock to review and select it separately."
         case .inventory:
             return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+        case .folderRemainder:
+            return entry.protectionExplanation ?? "Select the parent folder to review removal of these files."
         case nil:
             return ""
         }
@@ -691,6 +689,7 @@ private struct FileRow: View {
         case .running:   "running"
         case .userData:  "user data"
         case .inventory: "protected"
+        case .folderRemainder: "with parent"
         }
     }
 
@@ -778,11 +777,7 @@ private struct FileRow: View {
     }
 }
 
-// MARK: - Reveal in Finder
-
-/// The row's only action. It does not delete, rename or preview: it hands the file to
-/// Finder and lets the user decide there, which is the honest thing for a row whose
-/// checkbox is otherwise a vote to throw something away.
+// MARK: - Child rows
 /// A removable item under a disclosed parent. It can be removed separately unless
 /// it is protected or already covered by the parent selection.
 private struct ChildRow: View {
@@ -794,6 +789,7 @@ private struct ChildRow: View {
     var isReadOnly = false
     let onToggle: (Bool) -> Void
     let onRequestUserDataOverride: () -> Void
+    var onShowInStorageExplorer: (() -> Void)? = nil
     var onReviewWorktree: (() -> Void)? = nil
     @FocusState private var isFocused: Bool
     @State private var isRowHovered = false
@@ -843,6 +839,8 @@ private struct ChildRow: View {
                         }
                     } else if entry.protectionReason == .inventory {
                         Badge(text: "protected").fixedSize()
+                    } else if entry.protectionReason == .folderRemainder {
+                        Badge(text: "with parent").fixedSize()
                     } else if entry.protectionReason == .userData {
                         Badge(text: "user data").fixedSize()
                     } else if entry.isRegenerable {
@@ -872,7 +870,12 @@ private struct ChildRow: View {
                 .fixedSize()
                 .frame(width: Metrics.size, alignment: .trailing)
 
-            RevealButton(url: entry.url, name: entry.displayName, isRowHovered: isRowHovered)
+            if entry.url.isFileURL {
+                FileRowMenu(entry: entry, isRowHovered: isRowHovered,
+                    onShowInStorageExplorer: onShowInStorageExplorer)
+            } else {
+                Color.clear.frame(width: Metrics.action)
+            }
         }
         .padding(.horizontal, Metrics.sidePadding)
         .frame(minHeight: 46)
@@ -904,6 +907,9 @@ private struct ChildRow: View {
                 onToggle(!isSelected)
             }
         }
+        .contextMenu {
+            FileRowActions(entry: entry, onShowInStorageExplorer: onShowInStorageExplorer)
+        }
     }
 
     private var childHelp: String {
@@ -912,6 +918,9 @@ private struct ChildRow: View {
         }
         if entry.protectionReason == .inventory {
             return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+        }
+        if entry.protectionReason == .folderRemainder {
+            return entry.protectionExplanation ?? "Select the parent folder to review removal of these files."
         }
         if isReadOnly {
             // True whether or not the parent is ticked yet: a child drawn this way
@@ -1018,6 +1027,7 @@ struct ProtectedSelectionControl: View {
             return entry.protectionReason == .inventory ? "Session is in use" : "Conversation history"
         }
         if entry.protectionReason == .inventory { return "Protected AI storage" }
+        if entry.protectionReason == .folderRemainder { return "Remove with parent" }
         if entry.protectionReason == .userData { return "Protected user data" }
         if entry.protectionReason == .running { return "Application is running" }
         if entry.manualRemoval != nil { return "Manual removal required" }
@@ -1232,18 +1242,41 @@ private struct UninstallHoverTipShape: Shape {
     }
 }
 
-private struct RevealButton: View {
-    let url: URL
-    let name: String
+private struct FileRowActions: View {
+    let entry: FileEntry
+    var onShowInStorageExplorer: (() -> Void)? = nil
+    var onUninstallApplication: (() -> Void)? = nil
+
+    var body: some View {
+        if entry.kind == .appBundle, let onUninstallApplication {
+            Button("Review Uninstall", systemImage: "trash", action: onUninstallApplication)
+            Divider()
+        }
+        if entry.url.isFileURL {
+            if entry.kind != .appBundle, entry.kind != .downloadedApp, let onShowInStorageExplorer {
+                Button("Show in Storage Explorer", systemImage: "externaldrive", action: onShowInStorageExplorer)
+            }
+            Button("Reveal in Finder", systemImage: "arrow.up.forward.app") {
+                NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+            }
+        }
+    }
+}
+
+private struct FileRowMenu: View {
+    let entry: FileEntry
     let isRowHovered: Bool
+    var onShowInStorageExplorer: (() -> Void)? = nil
+    var onUninstallApplication: (() -> Void)? = nil
 
     @State private var isHovered = false
 
     var body: some View {
-        Button {
-            NSWorkspace.shared.activateFileViewerSelecting([url])
+        Menu {
+            FileRowActions(entry: entry, onShowInStorageExplorer: onShowInStorageExplorer,
+                onUninstallApplication: onUninstallApplication)
         } label: {
-            Image(systemName: "arrow.up.forward.app")
+            Image(systemName: "ellipsis")
                 .font(.system(size: 13))
                 .foregroundStyle(glyphColor)
                 .frame(width: Metrics.action, height: Metrics.action)
@@ -1252,10 +1285,12 @@ private struct RevealButton: View {
                     in: RoundedRectangle(cornerRadius: Token.Radius.checkbox)
                 )
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
+        .menuIndicator(.hidden)
         .onHover { isHovered = $0 }
-        .help("Reveal in Finder")
-        .accessibilityLabel("Reveal \(name) in Finder")
+        .help("More actions")
+        .accessibilityLabel("More actions for \(entry.displayName)")
     }
 
     /// Dim at rest — lit on every row at once, a column of these would read as data
