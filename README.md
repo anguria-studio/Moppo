@@ -133,6 +133,12 @@ Empty Trash always requires confirmation because it permanently erases items.
 Moppo does not use `--zap`.
 Moppo uses normal file permissions for cleanup, Put Back, and Empty Trash.
 When macOS denies access, Moppo leaves those items and provides **Show in Finder**.
+If macOS denies an application Trash move, App Uninstaller offers permanent deletion.
+The warning always requires confirmation. Select **Cancel** to keep the application and stop the uninstall.
+Select **Delete Permanently** to continue. macOS can request administrator approval.
+Permanent deletion cannot be undone. Put Back cannot restore the application.
+Related files use the normal Trash operation after application removal succeeds.
+If application removal fails, Moppo keeps its related files.
 Moppo does not delete APFS snapshots.
 
 If Homebrew needs administrator access, Moppo shows a password dialog.

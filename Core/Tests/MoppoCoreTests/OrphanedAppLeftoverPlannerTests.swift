@@ -254,13 +254,19 @@ struct OrphanedAppLeftoverPlannerTests {
     @Test("an installed owner protects its identifier and helper identifiers")
     func installedOwnersAreProtected() async throws {
         let sandbox = try Sandbox()
-        _ = try sandbox.application("Live", identifier: "com.vendor.live")
+        let original = try sandbox.application("Live", identifier: "com.vendor.live")
+        let vendor = sandbox.applications.appendingPathComponent("Utilities/Vendor/ACC")
+        try FileManager.default.createDirectory(at: vendor, withIntermediateDirectories: true)
+        let nested = vendor.appendingPathComponent(original.lastPathComponent)
+        try FileManager.default.moveItem(at: original, to: nested)
         for identifier in ["com.vendor.live", "com.vendor.live.helper", "com.vendor.old"] {
             try sandbox.evidence(for: identifier)
             _ = try sandbox.write("Library/Caches/\(identifier)/blob")
         }
 
-        let plan = try await sandbox.planner().plan()
+        let context = ScanContext(excludedPaths: [vendor.path])
+        #expect(sandbox.appPlanner().installedApplications(context: context).isEmpty)
+        let plan = try await sandbox.planner().plan(context: context)
         let identifiers = Set(plan.groups.map(\.bundleIdentifier))
 
         #expect(identifiers == ["com.vendor.old"])

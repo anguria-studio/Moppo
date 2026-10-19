@@ -198,7 +198,7 @@ App/                          SwiftUI app
   Preferences/               Four panes and the settings store
   Recovery/                  History, Trash, and Put Back model
   StorageExplorer/           Storage Explorer model and services
-  Uninstaller/               App Uninstaller model and services
+  Uninstaller/               App Uninstaller model, scan services, and permanent removal
   Updates/                   Sparkle controller, preferences, and installation guard
   Support/                   Privacy information, support reports, and scan log access
 design/                       Archived design handoff, kept locally
@@ -603,6 +603,16 @@ When macOS denies access, Moppo reports the affected items and provides **Show i
 Other selected items can still complete.
 If the application bundle cannot move, Moppo keeps its related data.
 
+**Permanent application deletion requires confirmation.** A direct Trash move must fail with an access error before Moppo offers permanent deletion.
+The warning provides **Cancel** and **Delete Permanently**. This confirmation applies when routine cleanup confirmations are off.
+After confirmation, macOS can request administrator approval. Moppo does not receive the password.
+The command checks the reviewed application identity after administrator approval.
+The application path is a command argument. It is never executable shell text.
+Moppo records successful permanent removal as deleted. Put Back cannot restore the application.
+If you cancel or application removal fails, related files stay in place.
+Cancellation also stops the remaining applications in a batch.
+Related file removal, cleanup, Homebrew cleanup, Put Back, and Empty Trash use normal file permissions.
+
 **Homebrew manages package removal.** Homebrew applications keep their review and password flow in Moppo.
 The signed password helper sends the password directly to `sudo` when Homebrew requests it.
 Related file cleanup uses normal permissions after Homebrew removes the package.
@@ -654,6 +664,12 @@ persists that state across launches, and limits repeated crossings to one per da
 
 **Complete uninstall requires an existing application bundle.** App Uninstaller
 attributes related files from the selected app's verified identity.
+
+App Uninstaller and Cleanup find applications in nested folders under `/Applications` and `~/Applications`.
+Discovery stops at each application bundle. Embedded helpers stay part of their parent application.
+Visible lists skip hidden folders, symbolic links, and excluded paths.
+Ownership checks still include excluded applications to protect their related files.
+Cancellation stops discovery before the app publishes results.
 
 Application details keep completed results in memory for three minutes, with a limit of 32 applications.
 Reopening details checks the application identity and bundle metadata before reusing a result.

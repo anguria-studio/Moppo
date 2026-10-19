@@ -36,7 +36,7 @@ struct AppUninstallDetailView: View {
                     resultsContent(plan)
                 } else {
                     PageState(
-                        title: "Could Not Find Related Files",
+                        title: model.appUninstallApplicationMissing ? "Application Not Found" : "Could Not Find Related Files",
                         symbol: "exclamationmark.triangle",
                         detail: model.appUninstallError ?? "Review the application again."
                     )
@@ -135,6 +135,10 @@ struct AppUninstallDetailView: View {
                 Button("Uninstall") {}
                     .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
                     .disabled(true)
+            } else if model.appUninstallApplicationMissing {
+                Button("Review Leftovers", action: model.reviewApplicationLeftovers)
+                    .buttonStyle(PageActionButtonStyle(size: .small))
+                    .disabled(model.isBusyWithDisk)
             } else if let url = model.appUninstallReviewURL {
                 Button("Try Again") { model.planAppUninstall(url) }
                     .buttonStyle(PageActionButtonStyle(size: .small))

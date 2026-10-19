@@ -17,10 +17,11 @@ struct RemovalPreferences: Sendable {
     }
 }
 
-/// Describes a captured selection that can be restored after removal.
+/// Describes a captured selection and its removal method.
 enum RemovalConfirmation: Equatable {
     case trash(itemCount: Int, totalBytes: Int64, protectedDataCount: Int = 0)
     case photos(itemCount: Int)
+    case permanentApplication(name: String)
 }
 
 extension RemovalPreferences {

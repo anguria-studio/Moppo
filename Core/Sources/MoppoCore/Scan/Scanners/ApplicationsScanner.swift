@@ -74,24 +74,28 @@ public struct ApplicationsScanner: CategoryScanner {
             .union(context.registeredApplicationBundleIdentifiers)
 
         for directory in applicationDirectories {
-            guard let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else {
+            guard (try? fileManager.contentsOfDirectory(atPath: directory.path)) != nil else {
                 continue
             }
             readAnyDirectory = true
 
-            for name in names where name.hasSuffix(".app") {
+            let applications = try AppUninstallPlanner.installedApplications(
+                in: [directory], fileManager: fileManager,
+                excluding: context.isWithinExclusion,
+                checkCancellation: { try Task.checkCancellation() }
+            )
+            for appURL in applications {
                 // Apps skipped by the exclusion rules never reach the measurer, so the
                 // loop can run for a long time without one — check here too.
                 try Task.checkCancellation()
 
-                let appURL = directory.appendingPathComponent(name)
                 // Explicit rules are absolute: an app on the exclusion list is not
                 // walked, not listed, not counted. A running app is handled
                 // separately below — that *protects* rather than hides.
                 guard !context.isExcluded(appURL) else { continue }
 
                 let bundleID = Bundle(url: appURL)?.bundleIdentifier
-                let baseName = String(name.dropLast(".app".count))
+                let baseName = appURL.deletingPathExtension().lastPathComponent
 
                 // Curation, where it applies, takes over the whole support folder:
                 // it splits those bytes into cache entries plus one locked
