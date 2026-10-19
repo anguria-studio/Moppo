@@ -308,6 +308,8 @@ struct MainWindow: View {
             .cleanUp(itemCount: count, totalBytes: bytes, protectedDataCount: protected, saving: nil)
         case .photos(let count):
             .photos(itemCount: count)
+        case .permanentApplication(let name):
+            .permanentApplication(name: name)
         }
     }
 

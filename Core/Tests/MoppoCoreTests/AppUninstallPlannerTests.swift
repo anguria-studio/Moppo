@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import MoppoCore
 
@@ -71,24 +72,92 @@ struct AppUninstallPlannerTests {
         }
     }
 
-    @Test("denied application removal keeps its related data")
-    func deniedApplicationKeepsRelatedData() async throws {
+    @Test("a missing application has a distinct review failure")
+    func missingApplication() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        try FileManager.default.removeItem(at: app)
+        await #expect(throws: AppUninstallPlanningError.applicationMissing) {
+            try await sandbox.planner().plan(applicationURL: app)
+        }
+        let invalid = try sandbox.write("not-an-application.txt")
+        await #expect(throws: AppUninstallPlanningError.notAnApplication) {
+            try await sandbox.planner().plan(applicationURL: invalid)
+        }
+    }
+
+    enum PermanentResult: CaseIterable {
+        case trashed, noConfirmation, declined, deleted, authorizationCancelled, changedDuringConfirmation, noDeletion, missingReply, relatedMeasurementFailure, newOwnerDuringApproval
+    }
+
+    @Test("permanent application removal requires consent and verified deletion", arguments: PermanentResult.allCases)
+    func permanentApplicationRemoval(result: PermanentResult) async throws {
         let sandbox = try Sandbox()
         let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
         let cache = try sandbox.write("Library/Caches/com.vendor.editor/blob")
         let plan = try await sandbox.planner().plan(applicationURL: app)
-        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: sandbox.applications.path)
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: sandbox.applications.path)
-        }
+        let parent = sandbox.applications
+        let displaced = sandbox.root.appendingPathComponent("Original.app")
         let log = RemovalLog(directory: sandbox.root.appendingPathComponent("receipts"))
-        let outcome = try await CleanupService(log: log).uninstall(plan)
-        #expect(outcome.removedCount == 0)
-        #expect(outcome.failed == [app.path])
-        #expect(outcome.permissionDenied == [app.path])
-        #expect(FileManager.default.fileExists(atPath: app.path))
-        #expect(FileManager.default.fileExists(atPath: cache.path))
-        #expect(log.recentEntries().map(\.disposition) == [.failed])
+        try FileManager.default.setAttributes([.posixPermissions: result == .trashed ? 0o755 : 0o555], ofItemAtPath: parent.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path)
+            for record in log.recentEntries() {
+                if let path = record.trashedPath { try? FileManager.default.removeItem(atPath: path) }
+            }
+        }
+        let service = CleanupService(measureSize: { url in
+            if url != app, result == .relatedMeasurementFailure { throw CocoaError(.fileReadNoPermission) }
+            return try await AllocatedSizeMeasurer().measure(url)
+        }, log: log, applicationRemovalFallback: { url, stillMatches in
+            #expect(result != .trashed && result != .noConfirmation && result != .declined && result != .changedDuringConfirmation)
+            #expect(url == app)
+            #expect(stillMatches())
+            if result == .authorizationCancelled { throw ApplicationRemovalError.cancelled }
+            if result == .noDeletion { return }
+            if result == .missingReply { throw CocoaError(.fileNoSuchFile) }
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path)
+            if result == .newOwnerDuringApproval {
+                try FileManager.default.copyItem(at: url, to: parent.appendingPathComponent("Second Copy.app"))
+            }
+            try FileManager.default.removeItem(at: url)
+        })
+        let confirmation: @Sendable () async -> Bool = {
+            #expect(result != .trashed)
+            if result == .changedDuringConfirmation {
+                do {
+                    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path)
+                    try FileManager.default.moveItem(at: app, to: displaced)
+                    try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+                } catch { Issue.record("Could not replace the fixture: \(error)") }
+            }
+            return result != .declined
+        }
+        let outcome = result == .noConfirmation
+            ? try await service.uninstall(plan)
+            : try await service.uninstall(plan, confirmPermanentRemoval: confirmation)
+        let receipt = try #require(log.recentEntries().first { $0.originalPath == app.path })
+        if result == .relatedMeasurementFailure || result == .newOwnerDuringApproval {
+            #expect(outcome.deletedCount == 1)
+            #expect(outcome.failed == plan.items.dropFirst().map { $0.url.path })
+            #expect(receipt.disposition == .deleted)
+            #expect(receipt.trashedPath == nil)
+            #expect(FileManager.default.fileExists(atPath: cache.path))
+        } else if result == .deleted || result == .trashed {
+            #expect(outcome.failed.isEmpty)
+            #expect(outcome.deletedCount == (result == .deleted ? 1 : 0))
+            #expect(outcome.trashedCount == plan.items.count - outcome.deletedCount)
+            #expect(receipt.disposition == (result == .deleted ? .deleted : .trashed))
+            #expect((receipt.trashedPath == nil) == (result == .deleted))
+            #expect(!FileManager.default.fileExists(atPath: cache.path))
+        } else {
+            #expect(outcome.failed == [app.path])
+            #expect(outcome.removedCount == 0)
+            #expect(outcome.applicationRemovalCancelled == (result == .noConfirmation || result == .declined || result == .authorizationCancelled))
+            #expect(FileManager.default.fileExists(atPath: app.path))
+            #expect(FileManager.default.fileExists(atPath: cache.path))
+            #expect(receipt.disposition == .failed)
+        }
     }
 
     @Test("an untrusted bundle identifier creates an application-only plan")
@@ -157,6 +226,52 @@ struct AppUninstallPlannerTests {
         #expect(plan.items.map(\.id) == [selected.path])
     }
 
+    @Test("Batch reviews share current owners and one Homebrew lookup", arguments: [false, true])
+    func batchOwnership(catalogFails: Bool) async throws {
+        let sandbox = try Sandbox()
+        let editor = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        let duplicate = try sandbox.application("Editor Copy", identifier: "com.vendor.editor")
+        let player = try sandbox.application("Player", identifier: "com.vendor.player")
+        _ = try sandbox.write("Library/Caches/com.vendor.editor/shared")
+        let cache = try sandbox.write("Library/Caches/com.vendor.player/private").deletingLastPathComponent()
+        let lookups = Mutex(0)
+        let planner = AppUninstallPlanner(
+            home: sandbox.home, systemLibrary: sandbox.systemLibrary,
+            applicationRoots: [sandbox.applications], darwinCache: nil, darwinTemp: nil,
+            homebrewExecutable: "/fixture/brew", loadHomebrewCatalog: { _ in
+                lookups.withLock { $0 += 1 }
+                if catalogFails { throw CocoaError(.fileReadNoPermission) }
+                return Data(#"{"casks":[]}"#.utf8)
+            }
+        )
+        let diagnostics = try ScanDiagnostics(directory: sandbox.root.appendingPathComponent("diagnostics"))
+        let results = try await ScanDiagnostics.$current.withValue(diagnostics.context) {
+            try await planner.plans(
+                applicationURLs: [editor, player], context: ScanContext(excludedPaths: [duplicate.path])
+            )
+        }
+        diagnostics.finish(outcome: "completed")
+        diagnostics.flush()
+        #expect(lookups.withLock { $0 } == 1)
+        #expect(results.count == 2)
+        if catalogFails {
+            for result in results {
+                #expect(throws: AppUninstallPlanningError.packageOwnershipUnavailable) { try result.get() }
+            }
+        } else {
+            #expect(try results[0].get().items.map(\.url) == [editor])
+            #expect(try results[1].get().items.map(\.url) == [player, cache])
+        }
+        let records = try Data(contentsOf: diagnostics.fileURL).split(separator: 10).map {
+            try #require(try JSONSerialization.jsonObject(with: Data($0)) as? [String: Any])
+        }
+        let walks = records.filter {
+            $0["event"] as? String == "span_start"
+                && ($0["details"] as? [String: String])?["operation"] == "application_bundle_identifiers"
+        }
+        #expect(walks.count == 3)
+    }
+
     @Test("Homebrew ownership requires one exact app artifact target")
     func homebrewOwnershipIsExact() throws {
         let data = Data(#"""
@@ -205,32 +320,46 @@ struct AppUninstallPlannerTests {
         )
         let helperCache = try sandbox.write("Library/Caches/com.vendor.editor.background/blob")
             .deletingLastPathComponent()
-        _ = try sandbox.write("Library/Caches/com.unrelated.helper/blob")
+        let outside = sandbox.home.appendingPathComponent("Outside")
+        try sandbox.application("External", identifier: "com.vendor.editor.external", under: outside)
+        try FileManager.default.createSymbolicLink(
+            at: helpers.appendingPathComponent("LinkedFolder"), withDestinationURL: outside
+        )
+        _ = try sandbox.write("Library/Caches/com.vendor.editor.external/blob")
 
         let plan = try await sandbox.planner().plan(applicationURL: app)
 
         #expect(plan.items.contains { $0.url == helperCache })
-        #expect(!plan.items.contains { $0.url.path.contains("com.unrelated.helper") })
+        #expect(!plan.items.contains { $0.url.path.contains("com.vendor.editor.external") })
     }
 
-    @Test("Cancellation interrupts an ownership walk without returning partial identifiers")
-    func cancelledOwnershipWalk() throws {
+    @Test("Cancellation interrupts discovery and ownership walks", arguments: [false, true])
+    func cancelledOwnershipWalk(discovery: Bool) throws {
         let sandbox = try Sandbox()
         let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
-        let resources = app.appendingPathComponent("Contents/Resources", isDirectory: true)
+        let resources = discovery
+            ? sandbox.applications.appendingPathComponent("Vendor/Resources", isDirectory: true)
+            : app.appendingPathComponent("Contents/Resources", isDirectory: true)
         try FileManager.default.createDirectory(at: resources, withIntermediateDirectories: true)
         for index in 0..<64 {
             try Data([0]).write(to: resources.appendingPathComponent("resource-\(index)"))
         }
         var checkpoints = 0
         #expect(throws: CancellationError.self) {
-            try AppUninstallPlanner.installedBundleIdentifiers(
-                in: [sandbox.applications],
-                checkCancellation: {
-                    checkpoints += 1
-                    if checkpoints == 8 { throw CancellationError() }
-                }
-            )
+            let checkCancellation = {
+                checkpoints += 1
+                if checkpoints == 8 { throw CancellationError() }
+            }
+            if discovery {
+                _ = try AppUninstallPlanner.installedApplications(
+                    in: [sandbox.applications], fileManager: .default,
+                    checkCancellation: checkCancellation
+                )
+            } else {
+                _ = try AppUninstallPlanner.installedBundleIdentifiers(
+                    in: [sandbox.applications], checkCancellation: checkCancellation
+                )
+            }
         }
         #expect(checkpoints == 8)
     }
@@ -319,10 +448,11 @@ struct AppUninstallPlannerTests {
 
         try FileManager.default.removeItem(at: cache)
         _ = try sandbox.write("Library/Caches/com.vendor.editor/replacement")
-        let exclusive = AppUninstallPlanner.exclusiveBundleIdentifiers(
+        let exclusive = try AppUninstallPlanner.exclusiveBundleIdentifiers(
             candidates: plan.candidateBundleIdentifiers,
             selectedApplication: plan.applicationURL,
-            applicationRoots: plan.applicationRoots
+            applicationRoots: plan.applicationRoots,
+            checkCancellation: Task.checkCancellation
         )
 
         #expect(!AppUninstallPlanner.removalIsStillSafe(
@@ -347,7 +477,11 @@ struct AppUninstallPlannerTests {
         _ = try sandbox.application("Editor", identifier: "com.vendor.editor")
 
         let outcome = try await CleanupService(
-            log: RemovalLog(directory: sandbox.root.appendingPathComponent("log"))
+            log: RemovalLog(directory: sandbox.root.appendingPathComponent("log")),
+            applicationRemovalFallback: { _, _ in
+                Issue.record("A changed application must not request authorization.")
+                throw CocoaError(.fileWriteUnknown)
+            }
         ).uninstall(plan)
 
         #expect(outcome.removedCount == 0)
@@ -428,14 +562,32 @@ struct AppUninstallPlannerTests {
             at: sandbox.applications.appendingPathComponent("Linked.app"),
             withDestinationURL: real
         )
-        // One level into a vendor folder — `Python 3.12/IDLE.app` — and no further.
+        // Application discovery includes all folder depths.
         let vendor = sandbox.applications.appendingPathComponent("Vendor", isDirectory: true)
         try sandbox.application("Nested", identifier: "com.vendor.nested", under: vendor)
         try sandbox.application(
             "Buried", identifier: "com.vendor.buried",
-            under: vendor.appendingPathComponent("Deeper", isDirectory: true)
+            under: vendor.appendingPathComponent("Deeper/ACC", isDirectory: true)
         )
-        // What an excluded vendor folder holds is excluded with it.
+        try sandbox.application(
+            "User Nested", identifier: "com.vendor.user",
+            under: sandbox.userApplications.appendingPathComponent("Tools/Vendor/Current")
+        )
+        try sandbox.application(
+            "Embedded", identifier: "com.vendor.real.helper",
+            under: real.appendingPathComponent("Contents/Library/LoginItems")
+        )
+        try sandbox.application(
+            "Invisible", identifier: "com.vendor.invisible",
+            under: vendor.appendingPathComponent(".Hidden")
+        )
+        try sandbox.application(".Hidden", identifier: "com.vendor.hiddenapp")
+        try sandbox.application(
+            "Pattern", identifier: "com.vendor.pattern", under: vendor.appendingPathComponent("Folder.skip")
+        )
+        // An exclusion inside this bundle must not hide applications in sibling folders.
+        let guarded = try sandbox.application("Guarded", identifier: "com.vendor.guarded", under: vendor)
+        // Excluding this folder must keep all its applications out of the list.
         let shut = sandbox.applications.appendingPathComponent("Shut", isDirectory: true)
         try sandbox.application("Hidden", identifier: "com.vendor.hidden", under: shut)
         // A link out of the root is not a vendor folder.
@@ -446,10 +598,13 @@ struct AppUninstallPlannerTests {
             withDestinationURL: outside
         )
 
-        let context = ScanContext(excludedPaths: [excluded.path, shut.path])
+        let context = ScanContext(
+            excludedPaths: [excluded.path, shut.path, guarded.appendingPathComponent("Contents").path],
+            excludedPatterns: ["*.skip"]
+        )
         let listed = sandbox.planner().installedApplications(context: context)
 
-        #expect(listed.map(\.name) == ["alpha", "Nested", "No Identifier", "Real", "Zed"])
+        #expect(listed.map(\.name) == ["alpha", "Buried", "Nested", "No Identifier", "Real", "User Nested", "Zed"])
         #expect(listed.first { $0.name == "No Identifier" }?.bundleIdentifier == nil)
         // Every card must open a review: nothing listed may be refused by the plan.
         for application in listed {

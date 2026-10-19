@@ -431,7 +431,14 @@ struct AppUninstallerView: View {
             isSuccess: failed.isEmpty && !applicationFailed
         ) {
             VStack(spacing: 12) {
-                Text("Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                if outcome.removedCount > 0 {
+                    Text(outcome.deletedCount > 0
+                         ? "Removed \(ByteFormatting.string(outcome.removedBytes))."
+                         : "Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                }
+                if outcome.deletedCount > 0 {
+                    Text("The application was permanently deleted. It cannot be restored from the Trash.")
+                }
                 if let error = model.appUninstallError {
                     Text(error)
                         .foregroundStyle(Token.textColor(.orange))
@@ -441,35 +448,38 @@ struct AppUninstallerView: View {
                 }
             }
         } actions: {
-            completionActions
+            VStack(spacing: 22) {
+                if model.appUninstallApplicationMissing {
+                    PageStateActions {
+                        Button("Review Leftovers", action: model.reviewApplicationLeftovers)
+                    }
+                } else if applicationFailed, let url = model.appUninstallReviewURL {
+                    PageStateActions {
+                        Button("Review Application") { model.planAppUninstall(url) }
+                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    }
+                }
+                completionActions
+            }
         }
     }
 
     // MARK: Several applications
 
     private func batchReviewState(_ review: AppUninstallerModel.BatchUninstallReview) -> some View {
-        VStack(spacing: 0) {
+        let ordinary = review.plans.filter { $0.managedPackage == nil }
+        let homebrew = review.plans.filter { $0.managedPackage != nil }
+        return VStack(spacing: 0) {
             batchReviewHeader(review)
             UninstallerDivider()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if review.homebrewCount > 0 {
-                        GroupedBox {
-                            HomebrewRemovalExplanation(isBatchReview: true)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(14)
-                        }
+                    if !ordinary.isEmpty {
+                        batchPlanGroup(ordinary, usesHomebrew: false)
                     }
-                    if !review.plans.isEmpty {
-                        GroupedBox {
-                            VStack(spacing: 0) {
-                                ForEach(Array(review.plans.enumerated()), id: \.element.applicationURL) { index, plan in
-                                    if index > 0 { UninstallerDivider() }
-                                    batchPlanRow(plan)
-                                }
-                            }
-                        }
+                    if !homebrew.isEmpty {
+                        batchPlanGroup(homebrew, usesHomebrew: true)
                     }
                     if !review.setAside.isEmpty {
                         setAsideBox(review.setAside, title: "Not attempted")
@@ -479,6 +489,39 @@ struct AppUninstallerView: View {
                 .padding(.vertical, 14)
             }
 
+        }
+    }
+
+    private func batchPlanGroup(_ plans: [AppUninstallPlan], usesHomebrew: Bool) -> some View {
+        GroupedBox {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(usesHomebrew ? "Uninstall with Homebrew" : "Uninstall with Moppo")
+                            .font(.mcBody.weight(.semibold))
+                            .foregroundStyle(Token.Text.primary)
+                        Spacer(minLength: 0)
+                        Text("\(plans.count) \(plans.count == 1 ? "application" : "applications")")
+                            .font(.mcCaption)
+                            .foregroundStyle(Token.Text.secondary)
+                            .fixedSize()
+                    }
+                    if usesHomebrew {
+                        HomebrewRemovalExplanation(isBatchReview: true)
+                    } else {
+                        Text("Moppo tries to move these applications to the Trash. Moppo asks again before permanent deletion. Related files move to the Trash.")
+                            .font(.mcSubtitle)
+                            .foregroundStyle(Token.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                ForEach(plans) { plan in
+                    UninstallerDivider()
+                    batchPlanRow(plan)
+                }
+            }
         }
     }
 
@@ -524,7 +567,7 @@ struct AppUninstallerView: View {
                 }
                 Text(plan.managedPackage.map { "Homebrew · \($0.name) · \(plan.items.count - 1) related \(plan.items.count == 2 ? "item" : "items")" } ?? (plan.isApplicationOnly
                     ? "Application only — related files cannot be identified safely"
-                    : "Trash · application and \(plan.items.count - 1) related "
+                    : "Application and \(plan.items.count - 1) related "
                         + (plan.items.count == 2 ? "item" : "items")))
                     .font(.mcCaption)
                     .foregroundStyle(plan.isApplicationOnly
@@ -556,9 +599,7 @@ struct AppUninstallerView: View {
         } review: { url in
             model.planAppUninstall(url)
         } reviewLeftovers: {
-            model.resetAppUninstall()
-            model.uninstallerTab = .leftovers
-            model.loadApplicationLeftovers()
+            model.reviewApplicationLeftovers()
         } viewDashboard: {
             model.resetAppUninstall()
             onViewDashboard()
@@ -567,7 +608,7 @@ struct AppUninstallerView: View {
 
     private var completionActions: some View {
         PageStateActions {
-            Button("Continue") {
+            Button("Back to Applications") {
                 model.resetAppUninstall()
                 model.loadInstalledApplications()
             }

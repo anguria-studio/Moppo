@@ -176,6 +176,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
 
 public enum AppUninstallPlanningError: Error, Sendable, Equatable, LocalizedError {
     case notAnApplication
+    case applicationMissing
     case untrustedLocation
     case protectedApplication
     case symbolicLink
@@ -187,6 +188,8 @@ public enum AppUninstallPlanningError: Error, Sendable, Equatable, LocalizedErro
         switch self {
         case .notAnApplication:
             "Choose a valid macOS application bundle."
+        case .applicationMissing:
+            "The application is no longer at its original location. Review Leftovers to check for remaining data."
         case .untrustedLocation:
             "Only applications installed in /Applications or your Applications folder can be uninstalled."
         case .protectedApplication:
@@ -276,10 +279,74 @@ public struct AppUninstallPlanner: Sendable {
         applicationURL: URL,
         context: ScanContext = ScanContext()
     ) async throws -> AppUninstallPlan {
-        var plan = try await planWithoutReceipts(applicationURL: applicationURL, context: context)
+        try await plan(applicationURL: applicationURL, context: context, ownership: nil, catalog: nil)
+    }
+
+    /// Shares ownership checks within one review. Removal always checks current owners again.
+    public func plans(
+        applicationURLs: [URL],
+        context: ScanContext = ScanContext(),
+        onProgress: @escaping @Sendable (Int) async -> Void = { _ in }
+    ) async throws -> [Result<AppUninstallPlan, Error>] {
+        guard !applicationURLs.isEmpty else { return [] }
+        try Task.checkCancellation()
+        let ownership = try Self.applicationOwnership(in: applicationRoots)
+        let catalog: Result<Data, Error>?
+        if let homebrewExecutable {
+            do { catalog = .success(try await loadHomebrewCatalog(homebrewExecutable)) }
+            catch is CancellationError { throw CancellationError() }
+            catch { catalog = .failure(error) }
+        } else { catalog = nil }
+        return try await Self.planBatch(applicationURLs: applicationURLs, onProgress: onProgress) { url in
+            try await plan(applicationURL: url, context: context, ownership: ownership, catalog: catalog)
+        }
+    }
+
+    static func planBatch(
+        applicationURLs: [URL],
+        onProgress: @escaping @Sendable (Int) async -> Void,
+        plan: @escaping @Sendable (URL) async throws -> AppUninstallPlan
+    ) async throws -> [Result<AppUninstallPlan, Error>] {
+        try await withThrowingTaskGroup(of: (Int, Result<AppUninstallPlan, Error>).self) { group in
+            var next = 0
+            var results: [Int: Result<AppUninstallPlan, Error>] = [:]
+            func submit() {
+                guard next < applicationURLs.count else { return }
+                let index = next
+                let url = applicationURLs[index]
+                next += 1
+                group.addTask {
+                    try Task.checkCancellation()
+                    do { return (index, .success(try await plan(url))) }
+                    catch is CancellationError { throw CancellationError() }
+                    catch { return (index, .failure(error)) }
+                }
+            }
+            try Task.checkCancellation()
+            for _ in 0..<min(3, applicationURLs.count) { submit() }
+            for try await (index, result) in group {
+                try Task.checkCancellation()
+                results[index] = result
+                await onProgress(results.count)
+                try Task.checkCancellation()
+                submit()
+            }
+            try Task.checkCancellation()
+            return applicationURLs.indices.compactMap { results[$0] }
+        }
+    }
+
+    private func plan(
+        applicationURL: URL, context: ScanContext,
+        ownership: [String: Set<String>]?, catalog: Result<Data, Error>?
+    ) async throws -> AppUninstallPlan {
+        var plan = try await planWithoutReceipts(
+            applicationURL: applicationURL, context: context, ownership: ownership, catalog: catalog
+        )
         if let identifier = plan.bundleIdentifier,
            AppleSoundLibrary.ownerIdentifiers.contains(identifier), let soundLibraries {
-            let installed = Self.installedBundleIdentifiers(in: applicationRoots)
+            let installed = (ownership.map { $0.values.reduce(into: Set<String>()) { $0.formUnion($1) } }
+                ?? Self.installedBundleIdentifiers(in: applicationRoots))
                 .union(context.registeredApplicationBundleIdentifiers)
             let content = try await soundLibraries.scan(
                 context: context, installedOwners: installed, applicationIdentifier: identifier
@@ -298,10 +365,15 @@ public struct AppUninstallPlanner: Sendable {
 
     private func planWithoutReceipts(
         applicationURL rawApplicationURL: URL,
-        context: ScanContext
+        context: ScanContext,
+        ownership: [String: Set<String>]?, catalog: Result<Data, Error>?
     ) async throws -> AppUninstallPlan {
+        try Task.checkCancellation()
         let fm = FileManager.default
         let applicationURL = rawApplicationURL.standardizedFileURL
+        if applicationURL.pathExtension.lowercased() == "app", FileIdentity.isAbsent(applicationURL) {
+            throw AppUninstallPlanningError.applicationMissing
+        }
         guard applicationURL.pathExtension.lowercased() == "app",
               fm.fileExists(atPath: applicationURL.path),
               let bundle = Bundle(url: applicationURL)
@@ -329,7 +401,7 @@ public struct AppUninstallPlanner: Sendable {
 
         let managedPackage: AppUninstallPlan.ManagedPackage?
         do {
-            managedPackage = try await homebrewPackage(managing: applicationURL)
+            managedPackage = try await homebrewPackage(managing: applicationURL, catalog: catalog)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
@@ -369,13 +441,16 @@ public struct AppUninstallPlanner: Sendable {
         let candidateIDs = scope == .exactIdentifier
             ? [bundleIdentifier]
             : Self.ownedBundleIdentifiers(
-                in: applicationURL, primary: bundleIdentifier, fileManager: fm
+                in: applicationURL, primary: bundleIdentifier, fileManager: fm,
+                knownIdentifiers: ownership?[applicationURL.path]
             )
-        let exclusiveIDs = Self.exclusiveBundleIdentifiers(
+        let exclusiveIDs = try Self.exclusiveBundleIdentifiers(
             candidates: candidateIDs,
             selectedApplication: applicationURL,
             applicationRoots: applicationRoots,
-            fileManager: fm
+            fileManager: fm,
+            ownership: ownership,
+            checkCancellation: Task.checkCancellation
         )
 
         var items: [AppUninstallPlan.Item] = [applicationItem]
@@ -568,10 +643,12 @@ public struct AppUninstallPlanner: Sendable {
     ]
 
     private func homebrewPackage(
-        managing applicationURL: URL
+        managing applicationURL: URL, catalog: Result<Data, Error>?
     ) async throws -> AppUninstallPlan.ManagedPackage? {
         guard let homebrewExecutable else { return nil }
-        let data = try await loadHomebrewCatalog(homebrewExecutable)
+        let data: Data
+        if let catalog { data = try catalog.get() }
+        else { data = try await loadHomebrewCatalog(homebrewExecutable) }
         return try Self.homebrewPackage(
             in: data, managing: applicationURL, executable: homebrewExecutable
         )
@@ -749,10 +826,11 @@ public struct AppUninstallPlanner: Sendable {
     static func ownedBundleIdentifiers(
         in applicationURL: URL,
         primary: String,
-        fileManager: FileManager
+        fileManager: FileManager,
+        knownIdentifiers: Set<String>? = nil
     ) -> Set<String> {
         var result: Set<String> = [primary]
-        for identifier in allBundleIdentifiers(in: applicationURL, fileManager: fileManager)
+        for identifier in knownIdentifiers ?? allBundleIdentifiers(in: applicationURL, fileManager: fileManager)
         where identifier.hasPrefix(primary + ".") {
             result.insert(identifier)
         }
@@ -760,19 +838,40 @@ public struct AppUninstallPlanner: Sendable {
     }
 
     static func exclusiveBundleIdentifiers(
-        candidates: Set<String>,
-        selectedApplication: URL,
-        applicationRoots: [URL],
-        fileManager: FileManager = .default
-    ) -> Set<String> {
+        candidates: Set<String>, selectedApplication: URL, applicationRoots: [URL],
+        fileManager: FileManager = .default, ownership: [String: Set<String>]? = nil,
+        checkCancellation: () throws -> Void
+    ) throws -> Set<String> {
+        try checkCancellation()
+        guard !candidates.isEmpty else { return [] }
         let selectedPath = selectedApplication.resolvingSymlinksInPath().standardizedFileURL.path
         var ownedElsewhere = Set<String>()
-        for application in installedApplications(in: applicationRoots, fileManager: fileManager) {
+        let applications = try ownership.map { $0.keys.map { URL(fileURLWithPath: $0) } }
+            ?? installedApplications(in: applicationRoots, fileManager: fileManager, checkCancellation: checkCancellation)
+        for application in applications {
+            try checkCancellation()
             let path = application.resolvingSymlinksInPath().standardizedFileURL.path
             guard path != selectedPath, !path.hasPrefix(selectedPath + "/") else { continue }
-            ownedElsewhere.formUnion(allBundleIdentifiers(in: application, fileManager: fileManager))
+            let identifiers = try ownership?[path] ?? allBundleIdentifiers(
+                in: application, fileManager: fileManager, checkCancellation: checkCancellation
+            )
+            ownedElsewhere.formUnion(identifiers)
+            if candidates.isSubset(of: ownedElsewhere) { return [] }
         }
         return candidates.subtracting(ownedElsewhere)
+    }
+
+    private static func applicationOwnership(in roots: [URL]) throws -> [String: Set<String>] {
+        var ownership: [String: Set<String>] = [:]
+        for application in try installedApplications(
+            in: roots, fileManager: .default, checkCancellation: Task.checkCancellation
+        ) {
+            let path = application.resolvingSymlinksInPath().standardizedFileURL.path
+            ownership[path] = try allBundleIdentifiers(
+                in: application, fileManager: .default, checkCancellation: Task.checkCancellation
+            )
+        }
+        return ownership
     }
 
     static func removalIsStillSafe(
@@ -825,8 +924,10 @@ public struct AppUninstallPlanner: Sendable {
         (try? installedApplications(in: roots, fileManager: fileManager, checkCancellation: {})) ?? []
     }
 
-    private static func installedApplications(
-        in roots: [URL], fileManager: FileManager, checkCancellation: () throws -> Void
+    static func installedApplications(
+        in roots: [URL], fileManager: FileManager,
+        excluding isExcluded: (URL) -> Bool = { _ in false },
+        checkCancellation: () throws -> Void
     ) throws -> [URL] {
         let diagnostics = ScanDiagnostics.current
         let span = diagnostics?.begin("installed_application_discovery", details: ["roots": roots.map(\.path).joined(separator: "\n")])
@@ -836,6 +937,7 @@ public struct AppUninstallPlanner: Sendable {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         for root in roots where fileManager.fileExists(atPath: root.path) {
             try checkCancellation()
+            guard !isExcluded(root) else { continue }
             guard let enumerator = fileManager.enumerator(
                 at: root, includingPropertiesForKeys: keys,
                 options: [.skipsHiddenFiles], errorHandler: nil
@@ -844,8 +946,10 @@ public struct AppUninstallPlanner: Sendable {
                 diagnostics?.update(span, path: url.path)
                 try checkCancellation()
                 let values = try? url.resourceValues(forKeys: Set(keys))
-                if values?.isSymbolicLink == true {
-                    enumerator.skipDescendants()
+                // The enumerator does not follow symbolic links. Skipping their descendants can skip the next folder.
+                if values?.isSymbolicLink == true { continue }
+                if isExcluded(url) {
+                    if values?.isDirectory == true { enumerator.skipDescendants() }
                     continue
                 }
                 guard values?.isDirectory == true,
@@ -875,23 +979,18 @@ public struct AppUninstallPlanner: Sendable {
         if let identifier = verifiedBundleIdentifier(Bundle(url: applicationURL)?.bundleIdentifier) {
             result.insert(identifier)
         }
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         guard let enumerator = fileManager.enumerator(
-            at: applicationURL, includingPropertiesForKeys: keys,
+            at: applicationURL, includingPropertiesForKeys: [],
             options: [.skipsHiddenFiles], errorHandler: nil
         ) else { return result }
         for case let url as URL in enumerator {
             diagnostics?.update(span, path: url.path)
             try checkCancellation()
-            let values = try? url.resourceValues(forKeys: Set(keys))
-            if values?.isSymbolicLink == true {
-                enumerator.skipDescendants()
-                continue
-            }
-            guard values?.isDirectory == true else { continue }
             let extensionName = url.pathExtension.lowercased()
             guard ["app", "appex", "xpc", "plugin", "bundle"].contains(extensionName)
             else { continue }
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard values?.isDirectory == true, values?.isSymbolicLink != true else { continue }
             if let identifier = verifiedBundleIdentifier(Bundle(url: url)?.bundleIdentifier) {
                 result.insert(identifier)
             }

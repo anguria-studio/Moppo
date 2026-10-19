@@ -18,6 +18,7 @@ struct ConfirmationSheet: View {
         case emptyTrash(itemCount: Int, totalBytes: Int64)
         case soundLibrary(totalBytes: Int64)
         case photos(itemCount: Int)
+        case permanentApplication(name: String)
 
     }
 
@@ -169,7 +170,7 @@ struct ConfirmationSheet: View {
         if codexSessionCount > 0 { return true }
         return switch variant {
         case .cleanUp(_, _, let protected, _): protected > 0 || dockerImageCount > 0
-        case .emptyTrash: true
+        case .emptyTrash, .permanentApplication: true
         case .soundLibrary: false
         case .photos: false
         }
@@ -188,6 +189,8 @@ struct ConfirmationSheet: View {
             }
             if dockerImageCount > 0 { return "Remove \(count) \(noun)?" }
             return "Move \(count) \(noun) to the Trash?"
+        case .permanentApplication(let name):
+            return "Permanently delete \(name)?"
         case .emptyTrash(let count, _):
             return "Permanently erase the \(count) items in the Trash?"
         case .soundLibrary:
@@ -231,6 +234,9 @@ struct ConfirmationSheet: View {
                 + "Nothing is erased until you empty it."
                 + sharing
                 + warning
+        case .permanentApplication:
+            return "This application cannot move to the Trash. Deletion cannot be undone. "
+                + "Related files will move to the Trash."
         case .emptyTrash(_, let bytes):
             return "This erases \(ByteFormatting.string(bytes)) immediately. "
                 + "Items already in the Trash cannot be put back afterwards."
@@ -287,6 +293,7 @@ struct ConfirmationSheet: View {
         case .cleanUp(_, _, let protected, _):
             return protected > 0 ? "Remove Anyway" : dockerImageCount > 0 ? "Remove" : "Move to Trash"
         case .emptyTrash:   return "Erase"
+        case .permanentApplication: return "Delete Permanently"
         case .soundLibrary: return "Move to Trash"
         case .photos: return "Move to Recently Deleted"
         }

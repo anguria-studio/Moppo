@@ -3,6 +3,10 @@ import MoppoCore
 
 protocol AppUninstallerScanning: Sendable {
     func plan(applicationURL: URL, context: ScanContext) async throws -> AppUninstallPlan
+    func plans(
+        applicationURLs: [URL], context: ScanContext,
+        onProgress: @escaping @Sendable (Int) async -> Void
+    ) async throws -> [Result<AppUninstallPlan, Error>]
     func installedApplications(context: ScanContext) async -> [InstalledApplication]
     func allocatedBytes(at url: URL, context: ScanContext) async throws -> Int64
     func leftovers(context: ScanContext) async throws -> OrphanedAppLeftoverPlan
@@ -16,10 +20,23 @@ struct AppUninstallerScanService: AppUninstallerScanning {
         try await planner.plan(applicationURL: applicationURL, context: context)
     }
 
+    func plans(
+        applicationURLs: [URL], context: ScanContext,
+        onProgress: @escaping @Sendable (Int) async -> Void
+    ) async throws -> [Result<AppUninstallPlan, Error>] {
+        try await planner.plans(applicationURLs: applicationURLs, context: context, onProgress: onProgress)
+    }
+
     func installedApplications(context: ScanContext) async -> [InstalledApplication] {
-        await Task.detached(priority: .userInitiated) {
+        let worker = Task.detached(priority: .userInitiated) {
             planner.installedApplications(context: context)
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            let applications = await worker.value
+            return Task.isCancelled ? [] : applications
+        } onCancel: {
+            worker.cancel()
+        }
     }
 
     func allocatedBytes(at url: URL, context: ScanContext) async throws -> Int64 {
@@ -49,7 +66,8 @@ protocol AppUninstallRemoving: Sendable {
     ) async throws -> CleanupOutcome
 
     func uninstall(
-        _ plan: AppUninstallPlan, keepReceipt: Bool
+        _ plan: AppUninstallPlan, keepReceipt: Bool,
+        confirmPermanentRemoval: @escaping @Sendable () async -> Bool
     ) async throws -> CleanupOutcome
 
     func removeOrphanedAppLeftovers(

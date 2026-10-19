@@ -114,6 +114,10 @@ struct UninstallAttentionList: View {
             CopyHomebrewCommandButton(package: package)
         }
         if let url = application.applicationURL {
+            if application.kind == .failed {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    .buttonStyle(PageActionButtonStyle())
+            }
             Button("Review Application") { review(url) }
                 .buttonStyle(PageActionButtonStyle())
                 .accessibilityLabel("Review \(application.name)")
@@ -160,11 +164,18 @@ struct AppUninstallResultView: View {
             VStack(spacing: 8) {
                 Text(ListFormatter.localizedString(byJoining: outcome.uninstalled))
                 if outcome.removedBytes > 0 {
-                    Text("Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                    Text(outcome.permanentlyRemovedCount > 0
+                         ? "Removed \(ByteFormatting.string(outcome.removedBytes))."
+                         : "Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
                 }
                 if !outcome.homebrewUninstalled.isEmpty {
                     Text("Removed through Homebrew: \(ListFormatter.localizedString(byJoining: outcome.homebrewUninstalled)).")
                     Text("Reinstall the application through Homebrew. Put Back can restore its recorded profiles and settings.")
+                }
+                if outcome.permanentlyRemovedCount > 0 {
+                    Text(outcome.permanentlyRemovedCount == 1
+                         ? "One application was permanently deleted. It cannot be restored from the Trash."
+                         : "\(outcome.permanentlyRemovedCount) applications were permanently deleted. They cannot be restored from the Trash.")
                 }
                 if outcome.survivorCount > 0 {
                     Text("Moppo could not move \(outcome.survivorCount) related items to the Trash.")
@@ -178,7 +189,9 @@ struct AppUninstallResultView: View {
     private var completionActions: some View {
         Button("Back to Applications", action: back)
             .buttonStyle(PageStateButtonStyle.primary)
-        if outcome.survivorCount > 0 || outcome.setAside.contains(where: { $0.kind == .failed && $0.applicationURL == nil }) {
+        if outcome.survivorCount > 0 || outcome.setAside.contains(where: {
+            $0.kind == .failed && $0.applicationURL == nil
+        }) {
             Button("Review Leftovers", action: reviewLeftovers)
         }
         if isSuccess {

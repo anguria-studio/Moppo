@@ -39,7 +39,7 @@ final class AppModel {
         cleanupHistoryService: CleanupHistoryService = CleanupHistoryService(),
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
-        cleanupService: CleanupService = CleanupService(),
+        cleanupService: CleanupService = CleanupService(applicationRemovalFallback: ApplicationRemovalService().removePermanently),
         uninstallerScanner: (any AppUninstallerScanning)? = nil,
         uninstallerRemover: (any AppUninstallRemoving)? = nil,
         storageExplorerService: any StorageExplorerScanning = StorageExplorerService(),
@@ -531,7 +531,7 @@ final class AppModel {
                 }
                 return applicationOnly
                     ? "Related files stay on disk."
-                    : "The application moves first. Related data stays if that move fails."
+                    : "Moppo removes the application first. Related files stay if application removal fails."
             }
         }
     }

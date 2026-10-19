@@ -77,20 +77,15 @@ public enum TrashError: Error, Equatable {
 ///
 /// ### Nothing here scripts Finder
 ///
-/// "Empty Trash" is one AppleScript line away, and the predecessor used it. Sending
-/// Finder an Apple event makes macOS raise an Automation consent prompt naming
-/// another app — a dialog that is indistinguishable from malware behaviour to a user
-/// who just clicked a button in *this* app, and one that permanently disables the
-/// feature if they decline. Removing the Trash's contents through `FileManager`
-/// needs no consent beyond the files already being the user's own.
+/// This service uses normal file permissions. App Uninstaller can separately request
+/// permanent deletion when a reviewed application Trash move fails.
 ///
 /// ### Why Put Back has no public API
 ///
 /// Finder's Put Back works because Finder itself wrote down where each item came
 /// from, in a private record it does not publish; macOS exposes no API for reading a
-/// trashed item's original location. The two ways to reach it are both refused here:
-/// scripting Finder brings back the Automation prompt above, and reverse-engineering
-/// its private store would break on any macOS release.
+/// trashed item's original location. This service does not read Finder's private store
+/// or request Automation permission to restore items.
 ///
 /// So Moppo restores only what Moppo trashed. ``RemovalLog`` already
 /// records the original path of everything this app removes, and that record is the

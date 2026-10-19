@@ -346,8 +346,10 @@ struct AppUninstallerModelTests {
         #expect(model.selectedApplicationIDs.isEmpty)
     }
 
-    @Test("Reviews capture exclusions and report planning failures")
-    func planningPreferences() async throws {
+    @Test("Reviews capture exclusions and report planning failures", arguments: [
+        AppUninstallPlanningError.applicationExcluded, .applicationMissing
+    ])
+    func planningPreferences(_ failure: AppUninstallPlanningError) async throws {
         let scanner = HeldUninstallerScanner()
         var preferences = AppUninstallerModel.Preferences(excludedPaths: ["/excluded"], excludedPatterns: ["*.keep"])
         let operations = OperationCoordinator()
@@ -359,9 +361,10 @@ struct AppUninstallerModelTests {
         #expect(context.isExcluded(URL(fileURLWithPath: "/excluded/item")))
         #expect(context.isExcluded(URL(fileURLWithPath: "/folder/file.keep")))
         #expect(!context.isExcluded(URL(fileURLWithPath: "/later/item")))
-        await scanner.failPlan(0)
+        await scanner.failPlan(0, error: failure)
         try await waitUntil { !model.isPlanningAppUninstall }
         #expect(model.appUninstallError != nil)
+        #expect(model.appUninstallApplicationMissing == (failure == .applicationMissing))
         #expect(model.appUninstallPlan == nil)
         #expect(model.isShowingAppUninstallDetail)
         #expect(!model.isShowingUninstallerLibrary)
@@ -369,6 +372,23 @@ struct AppUninstallerModelTests {
         model.resetAppUninstall()
         #expect(!model.isShowingAppUninstallDetail)
         #expect(model.appUninstallError == nil)
+        #expect(!model.appUninstallApplicationMissing)
+    }
+
+    @Test("Application discovery service respects cancellation", arguments: [false, true])
+    func applicationDiscoveryCancellation(cancel: Bool) async throws {
+        let fixture = try UninstallerFixture()
+        let planner = AppUninstallPlanner(
+            home: fixture.root, systemLibrary: fixture.root.appendingPathComponent("SystemLibrary"),
+            applicationRoots: [fixture.root.appendingPathComponent("Applications")], darwinCache: nil, darwinTemp: nil
+        )
+        let service = AppUninstallerScanService(planner: planner)
+        let task = Task {
+            if cancel { withUnsafeCurrentTask { $0?.cancel() } }
+            return await service.installedApplications(context: ScanContext())
+        }
+        let applications = await task.value
+        #expect(applications.map(\.url.path) == (cancel ? [] : [fixture.application.path]))
     }
 
     @Test("Replaced list loads cannot restore old applications or selection")
@@ -470,7 +490,9 @@ struct AppUninstallerModelTests {
             app.finishRemovalConfirmation(choice == .confirm)
             if choice == .cancel {
                 try await waitUntil { !model.isUninstallingApp }
-                #expect(model.appUninstallPlan == plan)
+                #expect(model.appUninstallPlan == nil)
+                #expect(model.isShowingUninstallerLibrary)
+                #expect(!model.isShowingAppUninstallDetail)
                 #expect(!operations.isBusy)
                 #expect(refreshes == 0)
                 #expect(model.appUninstallOutcome == nil)
@@ -527,8 +549,8 @@ struct AppUninstallerModelTests {
         #expect(!operations.isBusy)
     }
 
-    @Test("A batch follows confirmation settings and retains failed applications", arguments: [true, false])
-    func batchRemoval(confirm: Bool) async throws {
+    @Test("A batch follows confirmation settings and retains failed applications", arguments: [true, false], [false, true])
+    func batchRemoval(confirm: Bool, cancelled: Bool) async throws {
         let operations = OperationCoordinator()
         let scanner = HeldUninstallerScanner()
         let remover = HeldUninstallerRemoval()
@@ -536,23 +558,27 @@ struct AppUninstallerModelTests {
         let model = AppUninstallerModel(
             operations: operations, scanner: scanner, remover: remover, preferences: { preferences }
         )
-        let apps = [installedApplication("First"), installedApplication("Second")]
+        let folder = try TemporaryFolder()
+        let apps = try ["First", "Second", "Third"].map { name in
+            InstalledApplication(url: try folder.write("\(name).app"), name: name, bundleIdentifier: "org.moppo.\(name)")
+        }
         model.loadInstalledApplications()
         try await waitUntil { await scanner.listCount == 1 }
         await scanner.finishList(0, apps)
-        for i in 0..<2 {
+        for i in apps.indices {
             try await waitUntil { await scanner.measurements.count == i + 1 }
             await scanner.finishMeasurement(i, 64)
         }
         try await waitUntil { model.installedApplicationsMeasured }
         for app in apps { model.toggleApplicationSelection(app) }
         model.moveSelectedApplicationsToTrash()
-        for i in 0..<2 {
-            try await waitUntil { await scanner.plans.count == i + 1 }
-            await scanner.finishPlan(i, uninstallPlan(apps[i].name))
+        try await waitUntil { await scanner.plans.count == apps.count }
+        for (i, request) in await scanner.plans.enumerated().reversed() {
+            let app = try #require(apps.first { $0.url == request.0 })
+            await scanner.finishPlan(i, uninstallPlan(app.name, at: app.url))
         }
         try await waitUntil { !model.isPlanningAppUninstall }
-        #expect(model.batchUninstallReview?.plans.count == 2)
+        #expect(model.batchUninstallReview?.plans.count == 3)
         if confirm {
             #expect(await remover.requests.isEmpty)
             model.requestBatchUninstall()
@@ -563,12 +589,226 @@ struct AppUninstallerModelTests {
         try await waitUntil { await remover.requests.count == 2 }
         #expect(await remover.requests.allSatisfy { !$0.keepReceipt })
         #expect(operations.isBusy)
-        await remover.finish(1, CleanupOutcome(failed: [apps[1].id]))
+        await remover.finish(1, CleanupOutcome(
+            failed: [apps[1].id], permissionDenied: [apps[1].id],
+            applicationRemovalCancelled: cancelled
+        ))
+        if !cancelled {
+            try await waitUntil { await remover.requests.count == 3 }
+            await remover.finish(2, CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
+        }
         try await waitUntil { !model.isUninstallingApp }
-        #expect(model.batchUninstallOutcome?.uninstalled == ["First"])
+        #expect(model.batchUninstallOutcome?.uninstalled == (cancelled ? ["First"] : ["First", "Third"]))
         #expect(model.batchUninstallOutcome?.setAside.first?.name == "Second")
-        #expect(model.selectedApplicationIDs == [apps[1].id])
+        #expect(model.batchUninstallOutcome?.setAside.first?.reason.contains(cancelled ? "cancelled" : "denied access") == true)
+        #expect(model.selectedApplicationIDs == (cancelled ? [apps[1].id, apps[2].id] : [apps[1].id]))
+        if cancelled {
+            #expect(await remover.requests.count == 2)
+            #expect(model.batchUninstallOutcome?.setAside.last?.kind == .notAttempted)
+        }
         #expect(!operations.isBusy)
+    }
+
+    @Test("Batch reviews limit parallel work and discard cancelled results", arguments: [false, true])
+    func parallelBatchPlanning(cancelled: Bool) async throws {
+        let operations = OperationCoordinator()
+        let scanner = HeldUninstallerScanner()
+        let remover = HeldUninstallerRemoval()
+        let model = AppUninstallerModel(
+            operations: operations, scanner: scanner, remover: remover,
+            preferences: { .init(confirmBeforeCleanup: !cancelled) }
+        )
+        let folder = try TemporaryFolder()
+        let apps = try (0..<5).map { index in
+            InstalledApplication(url: try folder.write("App\(index).app"), name: "App\(index)", bundleIdentifier: "org.moppo.app\(index)")
+        }
+        model.loadInstalledApplications()
+        try await waitUntil { await scanner.listCount == 1 }
+        await scanner.finishList(0, apps)
+        for index in apps.indices {
+            try await waitUntil { await scanner.measurements.count == index + 1 }
+            await scanner.finishMeasurement(index, 64)
+        }
+        try await waitUntil { model.installedApplicationsMeasured }
+        for app in apps { model.toggleApplicationSelection(app) }
+        model.moveSelectedApplicationsToTrash()
+        try await waitUntil { await scanner.plans.count == 3 }
+        let failedURL = await scanner.plans[2].0
+        await scanner.failPlan(2)
+        try await waitUntil { await scanner.plans.count == 4 }
+        #expect(model.appUninstallPlanningDetail == "1 of 5 applications reviewed")
+        if cancelled { model.resetAppUninstall() }
+        #expect(operations.isBusy)
+        for index in [3, 1, 0] {
+            let url = await scanner.plans[index].0
+            let app = try #require(apps.first { $0.url == url })
+            await scanner.finishPlan(index, uninstallPlan(app.name, at: url))
+        }
+        if cancelled {
+            try await waitUntil { !model.isPlanningAppUninstall }
+            #expect(await scanner.plans.count == 4)
+            #expect(model.batchUninstallReview == nil)
+        } else {
+            try await waitUntil { await scanner.plans.count == 5 }
+            let url = await scanner.plans[4].0
+            let app = try #require(apps.first { $0.url == url })
+            await scanner.finishPlan(4, uninstallPlan(app.name, at: url))
+            try await waitUntil { !model.isPlanningAppUninstall }
+            #expect(model.batchUninstallReview?.plans.map(\.applicationURL) == apps.map(\.url).filter { $0 != failedURL })
+            #expect(model.batchUninstallReview?.setAside.map(\.applicationURL) == [failedURL])
+        }
+        #expect(await remover.requests.isEmpty)
+        #expect(!operations.isBusy)
+    }
+
+    @Test("Permanent removal always requests separate confirmation", arguments: [false, true], [false, true])
+    func permanentConfirmation(cleanupConfirmation: Bool, accepted: Bool) async throws {
+        let fixture = try UninstallerFixture()
+        let remover = HeldUninstallerRemoval()
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), remover: remover,
+            preferences: { .init(confirmBeforeCleanup: cleanupConfirmation) }
+        )
+        var requests: [RemovalConfirmation] = []
+        model.confirmRemoval = { request in
+            requests.append(request)
+            if case .permanentApplication = request { return accepted }
+            return true
+        }
+        let plan = uninstallPlan("Reviewed", at: fixture.application)
+        model.appUninstallPlan = plan
+        model.requestAppUninstall()
+        try await waitUntil { await remover.requests.count == 1 }
+        let confirm = try #require(await remover.permanentConfirmations.first)
+        #expect(await confirm() == accepted)
+        #expect(requests.last == .permanentApplication(name: "Reviewed"))
+        #expect(requests.count == (cleanupConfirmation ? 2 : 1))
+        await remover.finish(0, accepted
+            ? CleanupOutcome(removedBytes: 64, removedCount: 1, deletedCount: 1)
+            : CleanupOutcome(failed: [plan.applicationURL.path], applicationRemovalCancelled: true))
+        try await waitUntil { !model.isUninstallingApp }
+        if accepted {
+            #expect(model.appUninstallOutcome?.deletedCount == 1)
+            #expect(model.appUninstallOutcome?.trashedCount == 0)
+        } else {
+            #expect(model.isShowingUninstallerLibrary)
+            #expect(model.appUninstallOutcome == nil)
+            #expect(model.appUninstallError == nil)
+        }
+    }
+
+    @Test("Denied access shows a failure; cancellation returns to applications", arguments: [false, true], [false, true])
+    func singleAuthorizationFailure(cancelled: Bool, batch: Bool) async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        let remover = HeldUninstallerRemoval()
+        let operations = OperationCoordinator()
+        let model = AppUninstallerModel(
+            operations: operations, scanner: scanner, remover: remover,
+            preferences: { .init(confirmBeforeCleanup: false) }
+        )
+        var refreshes = 0
+        model.refreshAfterRemoval = { refreshes += 1 }
+        let plan = uninstallPlan("Reviewed", at: fixture.application)
+        let app = InstalledApplication(url: fixture.application, name: "Reviewed", bundleIdentifier: plan.bundleIdentifier)
+        model.loadInstalledApplications()
+        try await waitUntil { await scanner.listCount == 1 }
+        await scanner.finishList(0, [app])
+        try await waitUntil { await scanner.measurements.count == 1 }
+        await scanner.finishMeasurement(0, 64)
+        try await waitUntil { model.installedApplicationsMeasured }
+        model.toggleApplicationSelection(app)
+        if batch {
+            model.moveSelectedApplicationsToTrash()
+            try await waitUntil { await scanner.plans.count == 1 }
+            await scanner.finishPlan(0, plan)
+        } else {
+            model.planAppUninstall(fixture.application)
+            try await waitUntil { await scanner.plans.count == 1 }
+            await scanner.finishPlan(0, plan)
+            try await waitUntil { !model.isPlanningAppUninstall }
+            model.requestAppUninstall()
+        }
+        try await waitUntil { await remover.requests.count == 1 }
+        await remover.finish(0, CleanupOutcome(
+            failed: [plan.applicationURL.path], permissionDenied: [plan.applicationURL.path],
+            applicationRemovalCancelled: cancelled
+        ))
+        try await waitUntil { !model.isUninstallingApp }
+        if cancelled {
+            #expect(model.isShowingUninstallerLibrary)
+            #expect(!model.isShowingAppUninstallDetail)
+            #expect(model.uninstallerTab == .installed)
+            #expect(model.appUninstallPlan == nil)
+            #expect(model.appUninstallReviewURL == nil)
+            #expect(model.appUninstallOutcome == nil)
+            #expect(model.batchUninstallReview == nil)
+            #expect(model.batchUninstallOutcome == nil)
+            #expect(model.appUninstallError == nil)
+            #expect(refreshes == 0)
+        } else {
+            let reason = batch ? model.batchUninstallOutcome?.setAside.first?.reason : model.appUninstallError
+            #expect(reason?.contains("denied access") == true)
+            #expect(reason?.contains("No related files were removed") == true)
+            #expect(refreshes == 1)
+            #expect(!model.isShowingUninstallerLibrary)
+        }
+        #expect(model.selectedApplicationIDs == [app.id])
+        #expect(model.installedApplications?.map(\.id) == [app.id])
+        #expect(!model.appUninstallApplicationMissing)
+        #expect(!operations.isBusy)
+    }
+
+    @Test("An unverified move offers leftover review", arguments: [false, true])
+    func missingApplicationAfterRemoval(batch: Bool) async throws {
+        let fixture = try UninstallerFixture()
+        let scanner = HeldUninstallerScanner()
+        let remover = HeldUninstallerRemoval()
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), scanner: scanner, remover: remover,
+            preferences: { .init(confirmBeforeCleanup: false) }
+        )
+        let plan = uninstallPlan("Reviewed", at: fixture.application)
+        if batch {
+            let app = InstalledApplication(url: fixture.application, name: "Reviewed", bundleIdentifier: plan.bundleIdentifier)
+            model.loadInstalledApplications()
+            try await waitUntil { await scanner.listCount == 1 }
+            await scanner.finishList(0, [app])
+            try await waitUntil { await scanner.measurements.count == 1 }
+            await scanner.finishMeasurement(0, 64)
+            try await waitUntil { model.installedApplicationsMeasured }
+            model.toggleApplicationSelection(app)
+            model.moveSelectedApplicationsToTrash()
+            try await waitUntil { await scanner.plans.count == 1 }
+            await scanner.finishPlan(0, plan)
+        } else {
+            model.appUninstallPlan = plan
+            model.requestAppUninstall()
+        }
+        try await waitUntil { await remover.requests.count == 1 }
+        try FileManager.default.removeItem(at: fixture.application)
+        await remover.finish(0, CleanupOutcome(failed: [fixture.application.path]))
+        try await waitUntil { !model.isUninstallingApp }
+        if batch {
+            let result = try #require(model.batchUninstallOutcome)
+            #expect(result.uninstalled.isEmpty)
+            let failure = try #require(result.setAside.first)
+            #expect(failure.kind == .failed)
+            #expect(failure.applicationURL == nil)
+            #expect(failure.reason.contains("could not verify a Trash move"))
+        } else {
+            #expect(model.appUninstallApplicationMissing)
+            #expect(model.appUninstallOutcome?.removedCount == 0)
+            #expect(model.appUninstallError?.contains("could not verify a Trash move") == true)
+        }
+        #expect(FileManager.default.fileExists(atPath: fixture.profile.path))
+        model.reviewApplicationLeftovers()
+        #expect(model.uninstallerTab == .leftovers)
+        #expect(model.isShowingUninstallerLibrary)
+        #expect(!model.appUninstallApplicationMissing)
+        try await waitUntil { await scanner.leftoverCount == 1 }
+        await scanner.finishLeftovers(0, leftoverPlan("org.moppo.uninstallerfixture"))
+        try await waitUntil { !model.isLoadingApplicationLeftovers }
     }
 
     @Test("Leftover refresh rejects old results and removal rechecks owners")
@@ -838,6 +1078,14 @@ private actor HeldUninstallerScanner: AppUninstallerScanning {
         plans.append((applicationURL, context))
         return try await withCheckedThrowingContinuation { planReplies[index] = $0 }
     }
+    func plans(
+        applicationURLs: [URL], context: ScanContext,
+        onProgress: @escaping @Sendable (Int) async -> Void
+    ) async throws -> [Result<AppUninstallPlan, Error>] {
+        try await AppUninstallPlanner.planBatch(applicationURLs: applicationURLs, onProgress: onProgress) { url in
+            try await self.plan(applicationURL: url, context: context)
+        }
+    }
     func installedApplications(context: ScanContext) async -> [InstalledApplication] {
         let index = listCount
         listCount += 1
@@ -854,7 +1102,9 @@ private actor HeldUninstallerScanner: AppUninstallerScanning {
         return await withCheckedContinuation { leftoverReplies[index] = $0 }
     }
     func finishPlan(_ index: Int, _ plan: AppUninstallPlan) { planReplies.removeValue(forKey: index)?.resume(returning: plan) }
-    func failPlan(_ index: Int) { planReplies.removeValue(forKey: index)?.resume(throwing: AppUninstallPlanningError.applicationExcluded) }
+    func failPlan(_ index: Int, error: AppUninstallPlanningError = .applicationExcluded) {
+        planReplies.removeValue(forKey: index)?.resume(throwing: error)
+    }
     func finishList(_ index: Int, _ apps: [InstalledApplication]) { listReplies.removeValue(forKey: index)?.resume(returning: apps) }
     func finishMeasurement(_ index: Int, _ bytes: Int64) { measurementReplies.removeValue(forKey: index)?.resume(returning: bytes) }
     func finishLeftovers(_ index: Int, _ plan: OrphanedAppLeftoverPlan) { leftoverReplies.removeValue(forKey: index)?.resume(returning: plan) }
@@ -889,7 +1139,12 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
     private var replies: [Int: CheckedContinuation<CleanupOutcome, Never>] = [:]
     private var leftoverReply: CheckedContinuation<CleanupOutcome, Never>?
     private var soundReply: CheckedContinuation<CleanupOutcome, Never>?
-    func uninstall(_ plan: AppUninstallPlan, keepReceipt: Bool) async throws -> CleanupOutcome {
+    private(set) var permanentConfirmations: [@Sendable () async -> Bool] = []
+    func uninstall(
+        _ plan: AppUninstallPlan, keepReceipt: Bool,
+        confirmPermanentRemoval: @escaping @Sendable () async -> Bool
+    ) async throws -> CleanupOutcome {
+        permanentConfirmations.append(confirmPermanentRemoval)
         let index = requests.count
         requests.append(Request(plan: plan, keepReceipt: keepReceipt))
         let result = await withCheckedContinuation { replies[index] = $0 }

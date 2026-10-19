@@ -72,6 +72,12 @@ public struct RemovalRecord: Sendable, Equatable {
 /// Read through the filesystem rather than `URLResourceValues.fileResourceIdentifier`,
 /// which is an opaque object that cannot be written to a log and compared later.
 public enum FileIdentity {
+    /// Access errors do not prove that a path is absent.
+    public static func isAbsent(_ url: URL) -> Bool {
+        var info = stat()
+        return lstat(url.path, &info) != 0 && errno == ENOENT
+    }
+
     public static func of(_ url: URL) -> String? {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { return nil }

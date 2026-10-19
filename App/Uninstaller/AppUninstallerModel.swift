@@ -38,7 +38,7 @@ final class AppUninstallerModel {
     init(
         operations: OperationCoordinator,
         scanner: any AppUninstallerScanning = AppUninstallerScanService(),
-        remover: any AppUninstallRemoving = CleanupService(),
+        remover: any AppUninstallRemoving = CleanupService(applicationRemovalFallback: ApplicationRemovalService().removePermanently),
         homebrewRemover: any HomebrewUninstallRemoving = HomebrewAuthentication.service(),
         preferences: @escaping () -> Preferences = { Preferences() },
         applications: AppUninstallApplications = AppUninstallApplications(),
@@ -176,6 +176,7 @@ final class AppUninstallerModel {
             || (appUninstallReviewURL != nil && (isPlanningAppUninstall || appUninstallError != nil))
     }
     private(set) var appUninstallError: String?
+    private(set) var appUninstallApplicationMissing = false
     private(set) var appUninstallOutcome: CleanupOutcome?
     private(set) var lastUninstalledApplicationName: String?
 
@@ -209,6 +210,7 @@ final class AppUninstallerModel {
                 guard !Task.isCancelled, appUninstallPlanningID == planningID else { return }
                 // Shown on the review page itself, where the user is waiting.
                 appUninstallError = error.localizedDescription
+                appUninstallApplicationMissing = (error as? AppUninstallPlanningError) == .applicationMissing
             }
             try? await presentation.wait()
             guard !Task.isCancelled, appUninstallPlanningID == planningID,
@@ -228,6 +230,12 @@ final class AppUninstallerModel {
             appUninstallTask?.cancel()
             return
         }
+        clearAppUninstall()
+    }
+
+    /// Clears review state after planning or removal has stopped.
+    private func clearAppUninstall() {
+        appUninstallReviewURL = nil
         appUninstallTask?.cancel()
         appUninstallTask = nil
         appUninstallPlanningID = nil
@@ -236,6 +244,7 @@ final class AppUninstallerModel {
         pendingSoundLibraryRemoval = nil
         pendingLeftoverRemoval = nil
         appUninstallError = nil
+        appUninstallApplicationMissing = false
         appUninstallOutcome = nil
         lastUninstalledApplicationName = nil
         isPlanningAppUninstall = false
@@ -462,7 +471,11 @@ final class AppUninstallerModel {
                 guard await settings.confirmRemoval(
                     .trash(itemCount: plan.items.count, totalBytes: plan.totalBytes,
                            protectedDataCount: plan.protectedItems.count), using: confirmRemoval
-                ) else { return false }
+                ) else {
+                    clearAppUninstall()
+                    uninstallerTab = .installed
+                    return false
+                }
             }
             return await performAppUninstall(plan, keepReceipt: settings.keepReceipt)
         }
@@ -495,15 +508,24 @@ final class AppUninstallerModel {
 
         do {
             return .finished(try await remover.uninstall(
-                plan, keepReceipt: keepReceipt
+                plan, keepReceipt: keepReceipt,
+                confirmPermanentRemoval: { [weak self] in
+                    await self?.confirmPermanentApplicationRemoval(plan.applicationName) ?? false
+                }
             ))
         } catch {
             return .interrupted
         }
     }
 
+    private func confirmPermanentApplicationRemoval(_ name: String) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        return await confirmRemoval(.permanentApplication(name: name))
+    }
+
     private func performAppUninstall(_ plan: AppUninstallPlan, keepReceipt: Bool) async -> Bool {
         appUninstallError = nil
+        appUninstallApplicationMissing = false
         let presentation = OperationPresentationDuration()
 
         let outcome: CleanupOutcome
@@ -527,17 +549,23 @@ final class AppUninstallerModel {
             return true
         }
 
+        if outcome.applicationRemovalCancelled, outcome.removedCount == 0 {
+            clearAppUninstall()
+            uninstallerTab = .installed
+            return false
+        }
+
         appUninstallOutcome = outcome
         lastUninstalledApplicationName = plan.applicationName
         appUninstallPlan = nil
-        selectedApplicationIDs.remove(plan.applicationURL.path)
-
         let applicationFailed = outcome.failed.contains(plan.applicationURL.path)
         if applicationFailed {
-            let relatedFilesMessage = plan.isApplicationOnly
-                ? "" : " No related files were removed."
-            appUninstallError = "\(plan.applicationName) could not be moved to the Trash."
-                + relatedFilesMessage
+            appUninstallApplicationMissing = FileIdentity.isAbsent(plan.applicationURL)
+            appUninstallError = Self.removalFailureReason(
+                outcome, applicationURL: plan.applicationURL, applicationMissing: appUninstallApplicationMissing
+            )
+        } else {
+            selectedApplicationIDs.remove(plan.applicationURL.path)
         }
 
         try? await presentation.wait()
@@ -552,6 +580,13 @@ final class AppUninstallerModel {
         case leftovers = "Leftovers"
     }
     var uninstallerTab: UninstallerTab = .installed
+
+    func reviewApplicationLeftovers() {
+        guard !isBusyWithDisk else { return }
+        resetAppUninstall()
+        uninstallerTab = .leftovers
+        loadApplicationLeftovers()
+    }
 
     /// Reviews and results supply their own actions.
     var isShowingUninstallerLibrary: Bool {
@@ -592,6 +627,24 @@ final class AppUninstallerModel {
         var details: String?
     }
 
+    static func removalFailureReason(
+        _ outcome: CleanupOutcome, applicationURL: URL, applicationMissing: Bool
+    ) -> String {
+        if applicationMissing {
+            return "The application is no longer at its original location. "
+                + "Moppo could not verify a Trash move. No related files were removed."
+        }
+        let reason: String
+        if outcome.applicationRemovalCancelled {
+            reason = "Permanent removal was cancelled. The application stays in place."
+        } else {
+            reason = outcome.permissionDenied.contains(applicationURL.path)
+                ? "macOS denied access. Open the application in Finder to check its permissions."
+                : "The application could not be removed."
+        }
+        return reason + " No related files were removed."
+    }
+
     /// Captures checked application plans and applications that cannot be removed.
     struct BatchUninstallReview {
         let plans: [AppUninstallPlan]
@@ -606,6 +659,7 @@ final class AppUninstallerModel {
         var removedBytes: Int64 = 0
         var survivorCount = 0
         var homebrewUninstalled: [String] = []
+        var permanentlyRemovedCount = 0
 
         var title: String {
             if uninstalled.isEmpty {
@@ -640,7 +694,7 @@ final class AppUninstallerModel {
 
     private(set) var batchUninstallReview: BatchUninstallReview?
     private(set) var batchUninstallOutcome: BatchUninstallOutcome?
-    /// "Slack · 2 of 5" under the planning spinner; nil for a single application.
+    /// Completed reviews in the batch; nil for a single application.
     private(set) var appUninstallPlanningDetail: String?
 
     /// Checks selected applications before removal. Homebrew always requires a review.
@@ -660,22 +714,27 @@ final class AppUninstallerModel {
         }) { [self] planningID in
             var plans: [AppUninstallPlan] = []
             var setAside: [SetAsideApplication] = []
-            for (index, application) in selected.enumerated() {
-                guard !Task.isCancelled else { return }
-                appUninstallPlanningDetail = "\(application.name) · \(index + 1) of \(selected.count)"
-                do {
-                    let plan = try await scanner.plan(
-                        applicationURL: application.url, context: context
-                    )
-                    plans.append(plan)
-                } catch is CancellationError {
-                    return
-                } catch {
-                    setAside.append(SetAsideApplication(
-                        name: application.name, reason: error.localizedDescription,
-                        applicationURL: application.url
-                    ))
+            appUninstallPlanningDetail = "Checking applications…"
+            do {
+                let results = try await scanner.plans(applicationURLs: selected.map(\.url), context: context) { completed in
+                    await MainActor.run {
+                        guard self.appUninstallPlanningID == planningID, !self.isInterruptingAppUninstall else { return }
+                        self.appUninstallPlanningDetail = "\(completed) of \(selected.count) applications reviewed"
+                    }
                 }
+                for (application, result) in zip(selected, results) {
+                    switch result {
+                    case .success(let plan): plans.append(plan)
+                    case .failure(let error):
+                        setAside.append(SetAsideApplication(
+                            name: application.name, reason: error.localizedDescription, applicationURL: application.url
+                        ))
+                    }
+                }
+            } catch is CancellationError { return }
+            catch {
+                appUninstallError = error.localizedDescription
+                return
             }
             guard !Task.isCancelled, appUninstallPlanningID == planningID else { return }
             batchUninstallReview = BatchUninstallReview(plans: plans, setAside: setAside)
@@ -701,7 +760,8 @@ final class AppUninstallerModel {
         let presentation = OperationPresentationDuration()
 
         var result = BatchUninstallOutcome(setAside: request.setAside)
-        for plan in request.plans {
+        var removedAnyItems = false
+        applicationLoop: for (index, plan) in request.plans.enumerated() {
             let name = plan.applicationName
             switch await attemptUninstall(plan, keepReceipt: keepReceipt) {
             case .stillRunning:
@@ -715,20 +775,41 @@ final class AppUninstallerModel {
                     applicationURL: plan.applicationURL
                 ))
             case .homebrew(let outcome):
+                removedAnyItems = removedAnyItems || outcome.applicationRemoved || outcome.relatedCleanup.removedCount > 0
                 result.recordHomebrew(outcome, plan: plan)
                 if outcome.applicationRemoved { selectedApplicationIDs.remove(plan.applicationURL.path) }
             case .finished(let outcome):
+                removedAnyItems = removedAnyItems || outcome.removedCount > 0
+                if outcome.applicationRemovalCancelled, !removedAnyItems {
+                    clearAppUninstall()
+                    uninstallerTab = .installed
+                    return false
+                }
                 result.removedBytes += outcome.removedBytes
                 if outcome.failed.contains(plan.applicationURL.path) {
+                    let applicationMissing = FileIdentity.isAbsent(plan.applicationURL)
                     result.setAside.append(SetAsideApplication(
                         name: name,
-                        reason: "Could not be moved to the Trash. No related files were removed.",
-                        kind: .failed, applicationURL: plan.applicationURL
+                        reason: Self.removalFailureReason(
+                            outcome, applicationURL: plan.applicationURL, applicationMissing: applicationMissing
+                        ),
+                        kind: outcome.applicationRemovalCancelled ? .notAttempted : .failed,
+                        applicationURL: applicationMissing ? nil : plan.applicationURL
                     ))
                 } else {
                     result.uninstalled.append(name)
                     result.survivorCount += outcome.failed.count
                     selectedApplicationIDs.remove(plan.applicationURL.path)
+                    result.permanentlyRemovedCount += outcome.deletedCount
+                }
+                if outcome.applicationRemovalCancelled {
+                    result.setAside.append(contentsOf: request.plans.dropFirst(index + 1).map {
+                        SetAsideApplication(
+                            name: $0.applicationName, reason: "Not attempted after permanent removal was cancelled.",
+                            applicationURL: $0.applicationURL, managedPackage: $0.managedPackage
+                        )
+                    })
+                    break applicationLoop
                 }
             }
         }

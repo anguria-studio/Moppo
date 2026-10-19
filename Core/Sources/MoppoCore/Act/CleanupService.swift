@@ -1,5 +1,10 @@
 import Foundation
 
+/// The user cancelled permanent application removal.
+public enum ApplicationRemovalError: Error, Sendable, Equatable {
+    case cancelled
+}
+
 /// What a cleanup actually did.
 public struct CleanupOutcome: Sendable, Equatable {
 
@@ -48,6 +53,7 @@ public struct CleanupOutcome: Sendable, Equatable {
     public var failed: [String]
     /// Paths that failed because macOS denied access.
     public var permissionDenied: [String]
+    public var applicationRemovalCancelled: Bool
     /// Worktree paths excluded because their removal checks changed.
     public var skippedWorktrees: [String]
 
@@ -58,6 +64,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         removedCount: Int = 0,
         failed: [String] = [],
         permissionDenied: [String] = [],
+        applicationRemovalCancelled: Bool = false,
         trashedCount: Int = 0,
         deletedCount: Int = 0,
         skippedWorktrees: [String] = []
@@ -68,6 +75,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         self.removedCount = removedCount
         self.failed = failed
         self.permissionDenied = permissionDenied
+        self.applicationRemovalCancelled = applicationRemovalCancelled
         self.trashedCount = trashedCount
         self.deletedCount = deletedCount
         self.skippedWorktrees = skippedWorktrees
@@ -86,6 +94,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         deletedCount += other.deletedCount
         failed.append(contentsOf: other.failed)
         permissionDenied.append(contentsOf: other.permissionDenied)
+        applicationRemovalCancelled = applicationRemovalCancelled || other.applicationRemovalCancelled
         skippedWorktrees.append(contentsOf: other.skippedWorktrees)
     }
 }
@@ -99,6 +108,11 @@ public struct CleanupOutcome: Sendable, Equatable {
 /// app had done to the user's disk.
 public struct CleanupService: Sendable {
 
+    /// Permanently removes an application after separate confirmation and a fresh safety check.
+    public typealias ApplicationRemovalFallback = @Sendable (
+        URL, @escaping @Sendable () -> Bool
+    ) async throws -> Void
+    private let applicationRemovalFallback: ApplicationRemovalFallback?
     private let measureSize: @Sendable (URL) async throws -> SizeMeasurement
     /// Read per item in the instant before that item is removed. Kept out of the
     /// scan's measurement entirely — see ``PrivateSizeMeasurer`` for the 62 % that
@@ -113,11 +127,13 @@ public struct CleanupService: Sendable {
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         log: RemovalLog = RemovalLog(),
-        dockerImages: DockerImageService = DockerImageService()
+        dockerImages: DockerImageService = DockerImageService(),
+        applicationRemovalFallback: ApplicationRemovalFallback? = nil
     ) {
         self.init(measureSize: { try await measurer.measure($0) }, log: log,
                   registeredApplications: AppleSoundLibrary.registeredOwners, dockerImages: dockerImages,
-                  reviewBuildCache: { try await XcodeBuildCache.measureForRemoval($0, with: measurer) })
+                  reviewBuildCache: { try await XcodeBuildCache.measureForRemoval($0, with: measurer) },
+                  applicationRemovalFallback: applicationRemovalFallback)
     }
 
     init(
@@ -130,7 +146,8 @@ public struct CleanupService: Sendable {
         },
         reviewBuildCache: @escaping @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement? = {
             try await XcodeBuildCache.measureForRemoval($0, with: AllocatedSizeMeasurer())
-        }
+        },
+        applicationRemovalFallback: ApplicationRemovalFallback? = nil
     ) {
         self.measureSize = measureSize
         self.log = log
@@ -138,6 +155,7 @@ public struct CleanupService: Sendable {
         self.dockerImages = dockerImages
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
+        self.applicationRemovalFallback = applicationRemovalFallback
     }
 
     /// - Parameters:
@@ -376,15 +394,12 @@ public struct CleanupService: Sendable {
 
     /// Executes a dedicated application uninstall plan.
     ///
-    /// The application bundle moves first.
-    /// If that move fails, Moppo keeps its related files.
-    /// Once the bundle is safely in the Trash, each reviewed related item follows
-    /// independently and any survivor is reported in ``CleanupOutcome/failed``.
-    /// Every item always goes to the Trash, regardless of the global cleanup
-    /// preference.
+    /// The application moves to Trash first. A denied move can request separate permanent-removal confirmation.
+    /// Related files move to Trash only after successful application removal.
     public func uninstall(
         _ plan: AppUninstallPlan,
-        keepReceipt: Bool = true
+        keepReceipt: Bool = true,
+        confirmPermanentRemoval: @escaping @Sendable () async -> Bool = { false }
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
         guard plan.managedPackage == nil else {
@@ -397,7 +412,7 @@ public struct CleanupService: Sendable {
             return outcome
         }
         return try await removeApplicationItems(
-            plan, includingApplication: true, keepReceipt: keepReceipt
+            plan, includingApplication: true, keepReceipt: keepReceipt, confirmPermanentRemoval: confirmPermanentRemoval
         )
     }
 
@@ -422,7 +437,8 @@ public struct CleanupService: Sendable {
     private func removeApplicationItems(
         _ plan: AppUninstallPlan,
         includingApplication: Bool,
-        keepReceipt: Bool
+        keepReceipt: Bool,
+        confirmPermanentRemoval: @escaping @Sendable () async -> Bool = { false }
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
         var failedSubtrees = Set<String>()
@@ -439,25 +455,22 @@ public struct CleanupService: Sendable {
             }
         }
 
-        // Re-run the ownership oracle immediately before removal. A second copy may
-        // have been installed while the review sheet was open; its shared data then
-        // stops being ours to remove, even though it was valid at scan time.
-        let exclusiveBundleIdentifiers = AppUninstallPlanner.exclusiveBundleIdentifiers(
-            candidates: plan.candidateBundleIdentifiers,
-            selectedApplication: plan.applicationURL,
-            applicationRoots: plan.applicationRoots
-        )
+        var exclusiveBundleIdentifiers: Set<String>?
 
         for (index, item) in removalOrder.enumerated() {
             if includingApplication {
-                try Task.checkCancellation()
-            } else {
-                // A replacement application at the same path must keep its data.
-                guard !Task.isCancelled, Self.pathIsAbsent(plan.applicationURL) else {
+                if Task.isCancelled, index > 0 {
                     for remaining in removalOrder[index...] { recordFailure(remaining) }
                     return outcome
                 }
-                if Self.pathIsAbsent(item.url) { continue }
+                try Task.checkCancellation()
+            } else {
+                // A replacement application at the same path must keep its data.
+                guard !Task.isCancelled, FileIdentity.isAbsent(plan.applicationURL) else {
+                    for remaining in removalOrder[index...] { recordFailure(remaining) }
+                    return outcome
+                }
+                if FileIdentity.isAbsent(item.url) { continue }
             }
             // A planned containing folder must not smuggle through a descendant
             // that just failed its own identity, ownership, or permission check.
@@ -468,8 +481,22 @@ public struct CleanupService: Sendable {
                 recordFailure(item)
                 continue
             }
+            // Check current owners only when related files can be removed, after the application removal succeeds.
+            if item.content != .application, exclusiveBundleIdentifiers == nil {
+                do {
+                    exclusiveBundleIdentifiers = try AppUninstallPlanner.exclusiveBundleIdentifiers(
+                        candidates: Set(removalOrder.compactMap(\.ownerBundleIdentifier)),
+                        selectedApplication: plan.applicationURL,
+                        applicationRoots: plan.applicationRoots,
+                        checkCancellation: Task.checkCancellation
+                    )
+                } catch {
+                    for remaining in removalOrder[index...] { recordFailure(remaining) }
+                    return outcome
+                }
+            }
             guard AppUninstallPlanner.removalIsStillSafe(
-                item, in: plan, exclusiveBundleIdentifiers: exclusiveBundleIdentifiers
+                item, in: plan, exclusiveBundleIdentifiers: exclusiveBundleIdentifiers ?? []
             ) else {
                 recordFailure(item)
                 // The bundle is the transaction gate. Nothing related moves when
@@ -482,24 +509,50 @@ public struct CleanupService: Sendable {
             do {
                 measured = try await measureSize(item.url).allocatedBytes
             } catch {
-                if includingApplication { throw error }
+                if includingApplication && index == 0 { throw error }
                 recordFailure(item)
                 continue
             }
             let freed = try? await privateMeasurer.measure([item.url])
             do {
-                let landed = try Self.discard(item.url, disposition: .trashed)
+                var disposition: RemovalDisposition = .trashed
+                let landed: URL?
+                do {
+                    landed = try Self.discard(item.url, disposition: .trashed)
+                } catch {
+                    guard includingApplication, index == 0, FileAccessFailure.isPermissionDenied(error),
+                          let applicationRemovalFallback else { throw error }
+                    try Task.checkCancellation()
+                    guard await confirmPermanentRemoval() else { throw ApplicationRemovalError.cancelled }
+                    try Task.checkCancellation()
+                    guard AppUninstallPlanner.removalIsStillSafe(
+                        item, in: plan, exclusiveBundleIdentifiers: []
+                    ), FileIdentity.of(item.url) == item.plannedIdentity else { throw CocoaError(.fileWriteUnknown) }
+                    do {
+                        try await applicationRemovalFallback(item.url) {
+                            AppUninstallPlanner.removalIsStillSafe(
+                                item, in: plan, exclusiveBundleIdentifiers: []
+                            ) && FileIdentity.of(item.url) == item.plannedIdentity
+                        }
+                    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+                        throw CocoaError(.fileWriteUnknown)
+                    }
+                    guard FileIdentity.isAbsent(item.url) else { throw CocoaError(.fileWriteUnknown) }
+                    disposition = .deleted
+                    landed = nil
+                }
                 outcome.removedBytes += measured
                 if let freed { outcome.freedBytes += freed.privateBytes }
                 else { outcome.unreportedFreedCount += 1 }
                 outcome.removedCount += 1
-                outcome.trashedCount += 1
+                if disposition == .deleted { outcome.deletedCount += 1 }
+                else { outcome.trashedCount += 1 }
                 if keepReceipt {
                     try? log.append([RemovalRecord(
                         timestamp: Date(),
                         originalPath: item.url.path,
                         bytes: measured,
-                        disposition: .trashed,
+                        disposition: disposition,
                         trashedPath: landed?.path,
                         trashedIdentity: landed.flatMap(FileIdentity.of)
                     )])
@@ -512,20 +565,15 @@ public struct CleanupService: Sendable {
             } catch {
                 recordFailure(item, bytes: measured)
                 if FileAccessFailure.isPermissionDenied(error) { outcome.permissionDenied.append(item.url.path) }
+                if error is ApplicationRemovalError {
+                    outcome.applicationRemovalCancelled = true
+                    return outcome
+                }
                 if includingApplication && index == 0 { return outcome }
             }
         }
 
         return outcome
-    }
-
-    private static func pathIsAbsent(_ url: URL) -> Bool {
-        do {
-            _ = try url.resourceValues(forKeys: [.isDirectoryKey])
-            return false
-        } catch let error as NSError {
-            return error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError
-        }
     }
 
     /// Moves selected application leftovers to the Trash after a second owner check.

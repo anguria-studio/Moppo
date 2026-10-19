@@ -163,12 +163,10 @@ struct HomebrewUninstallFlowTests {
         #expect(model.uninstaller.isShowingAppUninstallDetail)
 
         model.finishRemovalConfirmation(false)
-        try await waitUntil { panel.attachedSheet == nil && !model.uninstaller.isUninstallingApp }
-        #expect(panel.isVisible)
-        #expect(model.uninstaller.appUninstallPlan == plan)
+        try await waitUntil { !panel.isVisible && !model.uninstaller.isUninstallingApp }
+        #expect(model.uninstaller.appUninstallPlan == nil)
+        #expect(model.uninstaller.isShowingUninstallerLibrary)
         #expect(FileManager.default.fileExists(atPath: application.path))
-        model.uninstaller.resetAppUninstall()
-        try await waitUntil { !panel.isVisible }
         parent.contentView?.layoutSubtreeIfNeeded()
         #expect(libraryScroll.hasVerticalScroller)
         #expect(libraryScroll.contentView.bounds == contentBounds)
@@ -189,10 +187,16 @@ struct HomebrewUninstallFlowTests {
         let batchModel = fixture.model()
         batchModel.uninstaller.loadInstalledApplications()
         try await waitUntil(timeout: .seconds(15)) { batchModel.uninstaller.installedApplicationsMeasured }
-        let application = try #require(batchModel.uninstaller.installedApplications?.first { $0.url == plan.applicationURL })
-        batchModel.uninstaller.toggleApplicationSelection(application)
+        let selectedIdentifiers = Set(["managed", "ordinary", "changed"].map { "test.moppo.\($0)" })
+        for application in batchModel.uninstaller.installedApplications ?? []
+        where selectedIdentifiers.contains(application.bundleIdentifier ?? "") {
+            batchModel.uninstaller.toggleApplicationSelection(application)
+        }
         batchModel.uninstaller.moveSelectedApplicationsToTrash()
         try await waitUntil(timeout: .seconds(15)) { !batchModel.uninstaller.isPlanningAppUninstall }
+        let batchReview = try #require(batchModel.uninstaller.batchUninstallReview)
+        #expect(batchReview.plans.count == 3)
+        #expect(batchReview.homebrewCount == 1)
         var result = AppUninstallerModel.BatchUninstallOutcome()
         result.uninstalled = ["Ordinary application", "Managed application"]
         result.homebrewUninstalled = ["Managed application"]
@@ -262,7 +266,13 @@ struct HomebrewUninstallFlowTests {
                 expectFixedRegions(soundReview, progress)
             }
             model.uninstaller.appUninstallPlan = plan
-            try await render(AppUninstallerView(model: batchModel.uninstaller), name: "batch-review-\(dark ? "dark" : "light")", dark: dark)
+            for width in [520, 900] {
+                try await render(
+                    AppUninstallerView(model: batchModel.uninstaller),
+                    name: "batch-review-mixed-\(width)-\(dark ? "dark" : "light")", dark: dark,
+                    size: NSSize(width: width, height: 700)
+                )
+            }
             let failed = AppUninstallerModel.BatchUninstallOutcome(setAside: [result.setAside[0]])
             try await render(
                 AppUninstallResultView(outcome: failed, back: {}, review: { _ in }, reviewLeftovers: {}),

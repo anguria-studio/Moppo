@@ -33,8 +33,10 @@ struct ApplicationsScanTests {
 
         /// A bundle real enough for `Bundle(url:)` to read an identifier out of it.
         @discardableResult
-        func app(_ name: String, bundleID: String?, bytes: Int = 2 * 1024 * 1024) throws -> URL {
-            let bundle = applications.appendingPathComponent("\(name).app", isDirectory: true)
+        func app(
+            _ name: String, bundleID: String?, bytes: Int = 2 * 1024 * 1024, under root: URL? = nil
+        ) throws -> URL {
+            let bundle = (root ?? applications).appendingPathComponent("\(name).app", isDirectory: true)
             let macOS = bundle.appendingPathComponent("Contents/MacOS", isDirectory: true)
             try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
             try Data(count: bytes).write(to: macOS.appendingPathComponent(name))
@@ -101,6 +103,34 @@ struct ApplicationsScanTests {
         #expect(row.childCount == row.children.count)
         // The headline figure is the bundle plus everything that goes with it.
         #expect(row.totalBytesIncludingChildren >= 4 * 1024 * 1024)
+    }
+
+    @Test("Nested applications keep their data and embedded helpers in one row")
+    func nestedApplications() async throws {
+        let sandbox = try Sandbox()
+        let vendor = sandbox.applications.appendingPathComponent("Utilities/Vendor/ACC")
+        let app = try sandbox.app("Nested", bundleID: "com.example.nested", under: vendor)
+        try sandbox.app(
+            "Helper", bundleID: "com.example.nested.helper",
+            under: app.appendingPathComponent("Contents/Library/LoginItems")
+        )
+        let excluded = try sandbox.app("Excluded", bundleID: "com.example.excluded", under: vendor)
+        try sandbox.app("Hidden", bundleID: "com.example.hidden", under: vendor.appendingPathComponent(".Hidden"))
+        let outside = sandbox.home.appendingPathComponent("Outside")
+        let external = try sandbox.app("External", bundleID: "com.example.external", under: outside)
+        try FileManager.default.createSymbolicLink(at: vendor.appendingPathComponent("Linked.app"), withDestinationURL: external)
+        try FileManager.default.createSymbolicLink(at: vendor.appendingPathComponent("LinkedFolder"), withDestinationURL: outside)
+        try sandbox.file("Library/Caches/com.example.nested/cache.bin")
+        let result = try await sandbox.scanner().scan(context: context(excludedPaths: [excluded.path]))
+
+        let row = try #require(result.entries.first)
+        #expect(result.entries.count == 1)
+        #expect(row.url.path == app.path)
+        #expect(row.displayName == "Nested")
+        #expect(row.children.map(\.url.lastPathComponent) == ["com.example.nested"])
+        let bundleSize = try await AllocatedSizeMeasurer().measure(app)
+        #expect(row.allocatedBytes == bundleSize.allocatedBytes)
+        #expect(result.totalBytes == row.totalBytesIncludingChildren)
     }
 
     @Test("a cache regenerates; support and preferences are the user's own data")
