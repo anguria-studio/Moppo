@@ -163,6 +163,8 @@ struct SystemCachesScanTests {
             "PassKit",
             // macOS refuses to remove these two even with Full Disk Access.
             "CloudKit", "FamilyCircle",
+            // macOS maintains its own cache management records.
+            "com.apple.cache_delete",
             // Not on any list: refused for what its name says it is.
             "com.apple.SomeFutureAuthKitHelper"
         ] {

@@ -194,9 +194,11 @@ public struct SystemCachesScanner: CategoryScanner {
                    Self.packageManagerOwnedDotCacheNames.contains(url.lastPathComponent) {
                     continue
                 }
-                // Account and identity daemons' caches — see `IdentityState`. Only
-                // under the cache root: a log is a log, whoever wrote it.
-                if root == cachesRoot, IdentityState.isIdentityCache(named: url.lastPathComponent) {
+                // Keep account state and macOS cache management records out of cleanup.
+                // These rules apply only under the cache root.
+                if root == cachesRoot,
+                   (IdentityState.isIdentityCache(named: url.lastPathComponent)
+                    || url.lastPathComponent.lowercased() == "com.apple.cache_delete") {
                     continue
                 }
                 // AI Tools owns model stores and downloaded runtimes.
