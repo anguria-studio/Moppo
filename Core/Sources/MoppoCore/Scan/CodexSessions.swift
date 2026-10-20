@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import SQLite3
 
 /// Reads session metadata. Codex owns deletion and database changes.
 struct CodexSessions: Sendable {
@@ -92,8 +93,7 @@ struct CodexSessions: Sendable {
         SELECT 'edge', child_thread_id, NULL, NULL, parent_thread_id FROM thread_spawn_edges;
         COMMIT;
         """
-        let data = try await runner.run("/usr/bin/sqlite3", ["-readonly", "-json", "-cmd", ".timeout 1000", database.path, query],
-                                        timeout: .seconds(10), allowsInput: false)
+        let data = try await queryDatabase(database, query: query, operation: "session_inventory")
         let rows = try JSONDecoder().decode([Record].self, from: data)
         var records: [String: Record] = [:]
         var children: [String: [String]] = [:]
@@ -148,12 +148,85 @@ struct CodexSessions: Sendable {
             .filter({ $0.lastPathComponent.hasPrefix("state_") && $0.pathExtension == "sqlite" }),
               databases.count == 1, let database = databases.first, owned(database) else { return [:] }
         struct Title: Decodable { let id: String; let title: String }
-        guard let data = try? await runner.run("/usr/bin/sqlite3",
-            ["-readonly", "-json", "-cmd", ".timeout 1000", database.path, "SELECT id, title FROM threads WHERE title IS NOT NULL;"],
-            timeout: .seconds(10), allowsInput: false),
+        guard let data = try? await queryDatabase(database,
+            query: "SELECT id, title FROM threads WHERE title IS NOT NULL;", operation: "session_titles"),
               let rows = try? JSONDecoder().decode([Title].self, from: data) else { return [:] }
         return Dictionary(rows.filter { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map { ($0.id, $0.title) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func queryDatabase(_ database: URL, query: String, operation: String) async throws -> Data {
+        do {
+            return try await runner.run("/usr/bin/sqlite3",
+                ["-readonly", "-json", "-cmd", ".timeout 1000", database.path, query],
+                timeout: .seconds(10), allowsInput: false)
+        } catch is CancellationError { throw CancellationError() }
+        catch {
+            recordDatabaseFailure(database, operation: operation)
+            throw error
+        }
+    }
+
+    /// Records access errors without reading history or changing database contents.
+    private func recordDatabaseFailure(_ database: URL, operation: String) {
+        guard let diagnostics = ScanDiagnostics.current else { return }
+        let paths = [home, database, URL(fileURLWithPath: database.path + "-wal"),
+                     URL(fileURLWithPath: database.path + "-shm")]
+        var canProbe = true
+        for path in paths {
+            var fields = ["path": path.path, "operation": operation]
+            var info = stat()
+            if lstat(path.path, &info) == 0 {
+                let type = info.st_mode & S_IFMT
+                fields["type"] = type == S_IFREG ? "file" : type == S_IFDIR ? "directory" : type == S_IFLNK ? "symbolic_link" : "other"
+                fields["mode"] = String(info.st_mode & 0o7777, radix: 8)
+                fields["owner_uid"] = "\(info.st_uid)"
+                fields["owner_gid"] = "\(info.st_gid)"
+                fields["size_bytes"] = "\(info.st_size)"
+                if type == S_IFREG || (path == home && type == S_IFDIR) {
+                    let descriptor = open(path.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+                    let failure = descriptor < 0 ? errno : 0
+                    fields["read_open_errno"] = "\(failure)"
+                    if failure != 0 { fields["read_open_error"] = String(cString: strerror(failure)) }
+                    if descriptor >= 0 { close(descriptor) }
+                } else {
+                    fields["read_open"] = "skipped"
+                    canProbe = false
+                }
+            } else {
+                let failure = errno
+                fields["stat_errno"] = "\(failure)"
+                fields["stat_error"] = String(cString: strerror(failure))
+                if path == home || path == database || failure != ENOENT { canProbe = false }
+            }
+            diagnostics.record("codex_database_file_access", details: fields)
+        }
+        guard canProbe, owned(database) else { return }
+
+        var connection: OpaquePointer?
+        var statement: OpaquePointer?
+        defer {
+            sqlite3_finalize(statement)
+            sqlite3_close(connection)
+        }
+        var stage = "open"
+        var result = sqlite3_open_v2(database.path, &connection, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOFOLLOW, nil)
+        if result == SQLITE_OK {
+            sqlite3_busy_timeout(connection, 1000)
+            stage = "prepare"
+            result = sqlite3_prepare_v2(connection, "SELECT name FROM sqlite_schema LIMIT 1", -1, &statement, nil)
+            if result == SQLITE_OK {
+                stage = "step"
+                result = sqlite3_step(statement)
+            }
+        }
+        diagnostics.record("codex_database_read_probe", details: [
+            "path": database.path, "operation": operation, "stage": stage,
+            "result_code": "\(result)", "extended_error_code": "\(sqlite3_extended_errcode(connection))",
+            "system_errno": "\(sqlite3_system_errno(connection))", "message": String(cString: sqlite3_errmsg(connection)),
+            "sqlite_version": String(cString: sqlite3_libversion()),
+            "readable": "\(result == SQLITE_ROW || result == SQLITE_DONE)"
+        ])
     }
 
     /// Protects open history files, including clients that predate Codex writer locks.

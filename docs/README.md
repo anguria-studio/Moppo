@@ -118,6 +118,15 @@ An interrupted application can leave an unfinished log with its last recorded op
 Diagnostic builds also write `app-*.jsonl` files in the scan log folder.
 These files record startup, permission changes, quit decisions, and termination with the process identifier and app path.
 They remain available when no scan is running.
+After a Codex database query fails, diagnostic builds record access checks for the database, its folder, and SQLite supporting files.
+A bounded read-only SQLite probe records error codes and the operating system error without logging database contents.
+Unverified Codex conversations remain protected.
+
+Documents & Files shows the current folder, measured file count, and worktree review progress.
+Measurement counts update at most twice each second. Phase changes appear immediately.
+The percentage advances when categories finish.
+Open symbolic links use their own file identities during worktree checks.
+A link outside a worktree does not make that worktree's activity check incomplete.
 
 Cloud directories use up to half the shared measurement workers while other Cleanup categories run.
 When only Hidden & System Data remains, that scan can use all four workers.
@@ -528,22 +537,54 @@ The status pill reports one result, in this order:
 - **Unpushed commits:** commits absent from the compared remote-tracking branches.
 - **Has local files:** ignored files can contain local settings or user data.
 - **`Couldn't verify`:** a check failed or could not finish.
-- **Safe to remove:** all checks passed, and ignored files have recognized removal evidence.
+- **Safe to remove:** all checks passed. Ignored files have removal evidence, or Moppo confirmed the worktree merge.
 
 The dialog verdict uses the same title and color as the row.
 The sentence reports every known problem.
-Checks show local changes, unpushed commits, ignored files, Git locks, and process use.
+Checks show merges, local changes, unpushed commits, ignored files, Git locks, and process use.
 Unpushed commits includes the last fetch date. There is no separate push comparison row.
 The date gives context. Its age does not change the status.
 An incomplete check shows **`Couldn't check`**. Its question mark icon shows the reason in a tooltip.
 
-Branches use their upstream branch for comparison. Detached worktrees use all
+Moppo first checks whether a saved remote default branch contains the worktree commits.
+The remote HEAD reference identifies the default branch.
+The upstream selects the remote. Without an upstream, one default branch must be available.
+Confirmed merges include all readable ignored files in removal, including `.env` and temporary files.
+The Merge check shows the target branch and available pull request number.
+When Moppo cannot confirm a merge, the check shows **Not confirmed**.
+The question mark tooltip gives the reason.
+The dialog marks included local ignored files as **Included**.
+Protected files, incomplete checks, uncommitted changes, open processes, and Git locks still prevent Safe to Remove.
+Merge checks require complete Git history.
+When saved history cannot confirm a merge, Moppo checks GitHub through the installed GitHub CLI and its existing sign-in.
+This check supports `github.com` repositories with a saved remote default branch.
+The merged pull request must match the exact worktree commit and the current GitHub default branch.
+The merge commit must exist in saved default-branch history.
+Moppo checks local file status, the worktree commit, the remote URL, and the default branch again before it accepts the result.
+This also supports squash merges, whose original commit identities differ.
+Missing access, incomplete responses, and failed requests leave the merge unverified.
+If GitHub cannot find the exact commit, the tooltip explains that the commit may exist only on this Mac.
+
+GitHub requests group up to 20 commits from one repository.
+At most two repositories use the network at once.
+Each request has a five-second timeout.
+Each repository lookup has a ten-second budget, including its queue wait.
+Process shutdown can add a short delay.
+Successful results stay in memory until Moppo quits or the cache exceeds 2,048 entries.
+Each cache entry identifies the repository and exact commit.
+Failed results expire after 30 seconds. Connection and access failures also pause repeated requests for 30 seconds.
+Cached results still require the local Git checks.
+Cleanup repeats these checks before removal.
+
+Otherwise, branches use their upstream branch for comparison. Detached worktrees use all
 local remote-tracking branches. Branches without an upstream have unknown push
 status. Incomplete Git history also gives unknown push status.
 
-Checks make no network requests. Local remote data can be out of date.
+GitHub verification sends repository names and commit identifiers to GitHub.
+It does not send local file paths or file contents.
+Moppo does not fetch remote Git data. Saved remote data can be out of date.
 Moppo checks installed Git before use. It does not start a Git installation.
-The review measures ignored files separately. Unknown ignored content remains under review.
+The review measures ignored files separately. Without a confirmed merge, unknown ignored content remains under review.
 Ignored files inside verified caches inherit the cache classification.
 The same rule applies to dependency stores with reinstall evidence.
 Moppo uses the existing cache tags, source checks, and lockfile rules.
@@ -562,7 +603,7 @@ Next.js output needs a Next.js dependency, generated manifests, and server outpu
 Generated Next.js type declarations must contain only recognized generated lines.
 TypeScript build information needs a nearby configuration file and a recognized data structure.
 Generated-file checks use bounded reads. They do not execute project code.
-Environment files and generated project bundles with dependency lock files remain under review.
+Without a confirmed merge, environment files and generated project bundles with dependency lock files remain under review.
 Classification stops at the worktree root and does not cross symbolic links.
 Parent classifications remain cached only during that review.
 Protected, unreadable, and cloud-only content cannot receive a regenerable classification.

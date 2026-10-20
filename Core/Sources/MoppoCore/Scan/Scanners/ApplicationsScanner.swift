@@ -68,6 +68,7 @@ public struct ApplicationsScanner: CategoryScanner {
         var entries: [FileEntry] = []
         var unreadableCount = 0
         var readAnyDirectory = false
+        context.onPhase?("Finding applications")
         let installed = try AppUninstallPlanner.installedBundleIdentifiers(
             in: applicationDirectories, checkCancellation: { try Task.checkCancellation() }
         )
@@ -96,6 +97,14 @@ public struct ApplicationsScanner: CategoryScanner {
 
                 let bundleID = Bundle(url: appURL)?.bundleIdentifier
                 let baseName = appURL.deletingPathExtension().lastPathComponent
+                let onPhase: (@Sendable (String) -> Void)?
+                if let report = context.onPhase {
+                    onPhase = { detail in report("Scanning \(baseName)\n\(detail)") }
+                } else {
+                    onPhase = nil
+                }
+                let progress = ScanPhaseReporter(onPhase: onPhase)
+                progress.report(force: true, "Checking application data")
 
                 // Curation, where it applies, takes over the whole support folder:
                 // it splits those bytes into cache entries plus one locked
@@ -123,7 +132,7 @@ public struct ApplicationsScanner: CategoryScanner {
                     // path means "never touch this". Such a file is simply skipped.
                     guard !context.isExcluded(candidate.url) else { continue }
                     let childOpened = lastOpenedDate(for: candidate.url)
-                    let size = try await context.measurer.measure(candidate.url)
+                    let size = try await progress.measure(candidate.url, with: context.measurer)
                     guard size.allocatedBytes > 0 else { continue }
                     // See `SizeMeasurement.containsProtectedPattern`.
                     guard !size.containsProtectedPattern else { continue }
@@ -142,7 +151,7 @@ public struct ApplicationsScanner: CategoryScanner {
                 var supportIsProtected = false
                 if let curation,
                    let curated = try await Self.curatedChildren(
-                       curation, home: home, context: context
+                       curation, home: home, context: context, progress: progress
                    ) {
                     unreadableCount += curated.unreadableCount
                     supportIsProtected = curated.holdsProtectedContent
@@ -162,13 +171,14 @@ public struct ApplicationsScanner: CategoryScanner {
                 // what withdraws the whole application, and that is the other rule.
                 if let containerCuration,
                    let curated = try await Self.curatedChildren(
-                       containerCuration, home: home, context: context
+                       containerCuration, home: home, context: context, progress: progress
                    ) {
                     unreadableCount += curated.unreadableCount
                     children.append(contentsOf: curated.entries)
                 }
 
                 if let bundleID, AppleSoundLibrary.ownerIdentifiers.contains(bundleID), let soundLibraries {
+                    progress.report(force: true, "Checking sound libraries")
                     let content = try await soundLibraries.scan(
                         context: context, installedOwners: installed, applicationIdentifier: bundleID
                     )
@@ -176,7 +186,7 @@ public struct ApplicationsScanner: CategoryScanner {
                     children.append(contentsOf: content.items.map(\.fileEntry))
                 }
 
-                let bundleSize = try await context.measurer.measure(appURL)
+                let bundleSize = try await progress.measure(appURL, with: context.measurer)
                 guard bundleSize.allocatedBytes > 0 else { continue }
                 guard !bundleSize.containsProtectedPattern else { continue }
                 unreadableCount += bundleSize.unreadableCount
@@ -609,8 +619,10 @@ public struct ApplicationsScanner: CategoryScanner {
     static func curatedChildren(
         _ curation: AppDataCuration,
         home: URL,
-        context: ScanContext
+        context: ScanContext,
+        progress: ScanPhaseReporter? = nil
     ) async throws -> CuratedData? {
+        let progress = progress ?? ScanPhaseReporter(onPhase: context.onPhase)
         let fileManager = FileManager.default
         let root = home.appendingPathComponent(curation.root)
         guard fileManager.fileExists(atPath: root.path) else { return nil }
@@ -648,7 +660,7 @@ public struct ApplicationsScanner: CategoryScanner {
                 // everything this table knows.
                 guard !context.isExcluded(url) else { continue }
 
-                let size = try await context.measurer.measure(url)
+                let size = try await progress.measure(url, with: context.measurer)
                 guard size.allocatedBytes > 0 else { continue }
                 // See `SizeMeasurement.containsProtectedPattern`. Skipped rather
                 // than carved out, so the bytes stay inside the locked remainder.
@@ -676,7 +688,7 @@ public struct ApplicationsScanner: CategoryScanner {
         // Everything else is the user's data. The entry is listed so the bytes are
         // visible and locked by default; the app can authorize this exact row only
         // after showing the destructive warning.
-        let total = try await context.measurer.measure(root)
+        let total = try await progress.measure(root, with: context.measurer)
         let preserveBytes = max(0, total.allocatedBytes - curatedBytes)
         if preserveBytes > 0 {
             // The remaining items, which is what `· N items` is supposed to mean.

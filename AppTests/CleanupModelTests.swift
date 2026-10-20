@@ -125,7 +125,11 @@ struct CleanupModelTests {
 
     @Test("Worktrees seed only safe rows and warn before explicit unsafe selection")
     func worktreeSelectionAndReview() {
-        let safe = safeWorktreeReview()
+        var safe = safeWorktreeReview()
+        safe.mergedInto = "origin/main"
+        var ignored = GitWorktreeReview.File(path: ".env", status: .ignored, regeneratesSafely: false)
+        ignored.canRemoveWhenMerged = true
+        safe.ignoredFiles = [ignored]
         var local = safe
         local.status = .uncommittedChanges
         local.localFiles = [.init(path: "notes.txt", status: .untracked)]
@@ -207,7 +211,7 @@ struct CleanupModelTests {
         #expect(SettingsStore(defaults: defaults, managesLoginItem: false).isEnabled(.docker))
     }
 
-    enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable }
+    enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable, mergeLost }
 
     @Test("Docker setup remains visible across filters only for an installed application", arguments: CleanupModel.ScanFilter.allCases)
     func dockerCategoryVisibility(filter: CleanupModel.ScanFilter) {
@@ -228,18 +232,24 @@ struct CleanupModelTests {
     func changedWorktree(_ change: WorktreeChange) async throws {
         let fixture = try CleanupFixture()
         var worktree = try fixture.entry("worktree")
-        worktree.gitWorktreeReview = safeWorktreeReview()
+        var initial = safeWorktreeReview()
+        initial.mergedInto = "origin/main"
+        var ignored = GitWorktreeReview.File(path: ".env", status: .ignored, regeneratesSafely: false)
+        ignored.canRemoveWhenMerged = true
+        initial.ignoredFiles = [ignored]
+        worktree.gitWorktreeReview = initial
         let cache = try fixture.entry("cache")
         let removal = HeldCleanupRemoval()
         let operations = OperationCoordinator()
         let cleanup = CleanupModel(operations: operations, remover: removal,
             reviewWorktree: { _ in
-                var review = safeWorktreeReview()
+                var review = initial
                 switch change {
                 case .unchanged: break
                 case .localChanges: review.status = .uncommittedChanges
                 case .inUse: review.activity = .found("Active process")
                 case .unavailable: throw CocoaError(.fileReadNoPermission)
+                case .mergeLost: review.mergedInto = nil
                 }
                 return review
             }, measureSaving: { _ in nil })
@@ -549,8 +559,10 @@ struct CleanupModelTests {
         await scanner.report(1, percent: 32, phase: "Measuring local iCloud files")
         try await waitUntil { cleanup.scanProgress == 32 }
         #expect(cleanup.scanProgressDetail == "32% · Measuring local iCloud files")
-        await scanner.report(1, percent: 32, phase: "Finding large archives")
-        try await waitUntil { cleanup.scanPhase == "Finding large archives" }
+        let measurementPhase = "Measuring Project\nFiles checked: 1,024 · Worktrees found: 12"
+        await scanner.report(1, percent: 32, phase: measurementPhase)
+        try await waitUntil { cleanup.scanPhase == measurementPhase }
+        #expect(cleanup.scanProgressDetail == "32% · \(measurementPhase)")
         #expect(cleanup.scanProgress == 32)
         await scanner.report(0, percent: 98, phase: "Old phase")
         let latest = cleanupResults([])
@@ -558,7 +570,7 @@ struct CleanupModelTests {
         try await waitUntil { !cleanup.isScanning }
         #expect(cleanup.scanResults == latest)
         #expect(cleanup.scanProgress == 32)
-        #expect(cleanup.scanPhase == "Finding large archives")
+        #expect(cleanup.scanPhase == measurementPhase)
         #expect(!app.isBusyWithDisk)
         #expect(app.view == .history)
     }

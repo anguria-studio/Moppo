@@ -265,6 +265,9 @@ public struct DocumentsFilesScanner: CategoryScanner {
     /// Their bytes leave the parent remainder before they become children. Thus,
     /// removal totals count each byte once.
     private func measure(_ candidate: Candidate, context: ScanContext) async throws -> Measured {
+        let progress = ScanPhaseReporter(onPhase: context.onPhase)
+        let folder = candidate.url.lastPathComponent
+        progress.report(force: true, "Checking \(folder)")
         guard candidate.isDirectory else {
             // A plain file has no subtree, so the "one traversal, not N" rule that
             // makes `measureChildren` the right tool for folders does not apply: this
@@ -294,20 +297,31 @@ public struct DocumentsFilesScanner: CategoryScanner {
         let shouldCarve = !Self.atomicDirectoryNames.contains(candidate.url.lastPathComponent)
             && listing.candidates.count <= Self.maximumChildrenToMeasureIndividually
             && !listing.candidates.isEmpty
+        progress.report(force: true, "Finding build folders in \(folder)")
         let outputs = (shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
             : XcodeBuildCache.releaseCaches(under: candidate.url).map {
                 BuildOutputDetector.Root(url: $0.url, kind: .xcodeDerivedData, xcodeBuildCacheReview: $0)
             }).filter { !context.isExcluded($0.url) }
+        progress.report(force: true, "Finding worktrees in \(folder)")
         let roots = try GitWorktreeDetector.isWorktree(candidate.url)
             ? [candidate.url] : GitWorktreeDetector.roots(under: candidate.url, context: context)
         let worktrees = try await WorktreeScan.prepare(roots.filter { root in
             !outputs.contains {
                 $0.kind.isXcodeOutput && (root.path == $0.url.path || root.path.hasPrefix($0.url.path + "/"))
             }
+        }, onProgress: { completed, total in
+            progress.report(force: completed == 0 || completed == total,
+                "Reviewing worktrees in \(folder)\n\(completed.formatted()) of \(total.formatted()) Git reviews complete")
         })
-        let worktreeResult = try await worktrees.measure(candidate.url, with: context.measurer, retaining: outputs.map(\.url))
+        progress.report(force: true, "Measuring \(folder)\nFiles checked: 0 · Worktrees found: \(worktrees.roots.count.formatted())")
+        let worktreeResult = try await worktrees.measure(candidate.url, with: context.measurer,
+            retaining: outputs.map(\.url), progress: { measurement in
+                progress.report("Measuring \(folder)\nFiles checked: \(measurement.fileCount.formatted()) · Worktrees found: \(worktrees.roots.count.formatted())")
+            })
         let measured = worktreeResult.measurements
         let total = measured[candidate.url.standardizedFileURL] ?? .zero
+        progress.report(force: true,
+            "Checked \(folder)\nFiles checked: \(total.fileCount.formatted()) · Worktrees reviewed: \(worktreeResult.roots.count.formatted())")
         result.bytes = total.allocatedBytes
         result.unreadableCount = total.unreadableCount
         result.containsProtectedPattern = total.containsProtectedPattern

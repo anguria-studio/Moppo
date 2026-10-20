@@ -19,5 +19,9 @@ The first public release is in preparation.
 - Request Photos access through the native macOS permission prompt.
 - Cancel Cleanup while it waits for applications to quit.
 - Set up iCloud storage measurements and control the Dashboard card in Settings.
+- Show application names, folder names, file counts, and worktree review progress during Cleanup scans.
+- Recognize open symbolic links during worktree activity checks.
+- Include ignored local files when saved remote data confirms a worktree merge and all remaining checks pass.
+- Verify squash merges through GitHub and show the pull request in the worktree checks.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/

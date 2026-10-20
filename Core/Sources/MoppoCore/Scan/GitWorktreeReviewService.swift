@@ -1,13 +1,21 @@
 import Foundation
 
-/// Checks a worktree without fetching remote data or installing Git.
+/// Checks a worktree using saved Git history and verified GitHub merge records.
 public struct GitWorktreeReviewService: Sendable {
     private let gitExecutable: @Sendable () async throws -> String?
-    public init() { gitExecutable = { try await GitWorktreeDetector.executable() } }
-    init(gitExecutable: @escaping @Sendable () async throws -> String?) { self.gitExecutable = gitExecutable }
+    private let github: GitHubMergeVerifier
+    public init() {
+        gitExecutable = { try await GitWorktreeDetector.executable() }
+        github = .shared
+    }
+    init(gitExecutable: @escaping @Sendable () async throws -> String?, github: GitHubMergeVerifier = .shared) {
+        self.gitExecutable = gitExecutable
+        self.github = github
+    }
 
     public func review(_ directory: URL) async throws -> GitWorktreeReview {
-        try await review(directory, includeFileChecks: true)
+        let review = try await review(directory, includeFileChecks: true)
+        return try await completeMerges([directory: review])[directory] ?? review
     }
 
     /// Reads Git metadata before the scan measures the worktree.
@@ -23,7 +31,8 @@ public struct GitWorktreeReviewService: Sendable {
             diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed", details: [
                 "review_status": review.statusLabel, "branch": review.branch,
                 "local_files": "\(review.localFiles.count)", "ignored_files": "\(review.ignoredFiles.count)",
-                "push_status": "\(review.pushStatus)", "activity": "\(review.activity)", "locks": "\(review.locks)"
+                "push_status": "\(review.pushStatus)", "merged_into": review.mergedInto ?? "",
+                "activity": "\(review.activity)", "locks": "\(review.locks)"
             ])
         }
         guard GitWorktreeDetector.isWorktree(directory) else {
@@ -46,6 +55,9 @@ public struct GitWorktreeReviewService: Sendable {
         }
         let comparison = try await GitWorktreeDetector.pushStatus(of: directory, executable: git)
         review.pushStatus = comparison.status
+        review.mergedInto = comparison.mergedInto
+        review.mergeIssue = comparison.mergeIssue
+        review.mergeCandidate = comparison.mergeCandidate
         if let reason = comparison.reason { review.pushIssue = reason }
         if let output = try? await run(["symbolic-ref", "--quiet", "--short", "HEAD"]) {
             review.branch = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -105,6 +117,75 @@ public struct GitWorktreeReviewService: Sendable {
         return review
     }
 
+    /// Groups GitHub lookups after local metadata checks finish.
+    func completeMerges(_ reviews: [URL: GitWorktreeReview]) async throws -> [URL: GitWorktreeReview] {
+        let requests = reviews.values.compactMap(\.mergeCandidate).map(\.request)
+        guard !requests.isEmpty else { return reviews }
+        let results = try await github.lookup(requests)
+        var updated = reviews
+        guard let git = try await gitExecutable() else { return reviews }
+        for (directory, original) in reviews {
+            try Task.checkCancellation()
+            guard let candidate = original.mergeCandidate, let result = results[candidate.request] else { continue }
+            var review = original
+            func invalidate(_ reason: String) {
+                review.mergeIssue = reason
+                review.status = .unavailable
+                review.filesChecked = false
+                review.pushStatus = .unknown
+                review.filesIssue = reason
+                review.pushIssue = reason
+            }
+            switch result {
+            case .unavailable(let reason): review.mergeIssue = reason
+            case .verified(let proof):
+                review.mergeIssue = "The GitHub merge is absent from the saved default branch. Fetch remote data in your Git tool."
+                if proof.baseBranch != candidate.baseBranch {
+                    review.mergeIssue = "The GitHub default branch differs from the saved remote default branch."
+                    break
+                }
+                do {
+                    func run(_ arguments: [String]) async throws -> Data {
+                        try await ProcessRunner().run(git,
+                            ["--no-optional-locks", "--no-lazy-fetch", "-c", "core.fsmonitor=false", "-C", directory.path] + arguments,
+                            timeout: .seconds(5), environment: ["GIT_TERMINAL_PROMPT": "0"], allowsInput: false)
+                    }
+                    func value(_ arguments: [String]) async throws -> String {
+                        String(decoding: try await run(arguments), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    let current = try await value(["rev-parse", "--verify", "HEAD"])
+                    let remote = try await value(["remote", "get-url", candidate.remote])
+                    let defaultRef = try await value(["symbolic-ref", "refs/remotes/" + candidate.remote + "/HEAD"])
+                    let status = try await run(["status", "--porcelain=v1", "-z", "--untracked-files=all",
+                                                "--ignore-submodules=none", "--ignored=matching"])
+                    let files = Self.files(in: status, directory: directory)
+                    guard current == candidate.request.head,
+                          defaultRef == candidate.defaultRef,
+                          GitHubMergeVerifier.Repository(remoteURL: remote) == candidate.request.repository,
+                          files.complete, files.local == original.localFiles,
+                          files.ignored.map(\.path) == original.ignoredFiles.map(\.path) else {
+                        invalidate("The worktree changed during merge verification. Run the review again.")
+                        break
+                    }
+                    do { _ = try await run(["merge-base", "--is-ancestor", proof.mergeCommit, candidate.defaultRef]) }
+                    catch ProcessError.failed(_, let status, _) where status == 1 || status == 128 { break }
+                    review.mergedInto = candidate.target
+                    review.mergePullRequestNumber = proof.number
+                    review.mergeIssue = ""
+                    review.pushStatus = .noUnpushedCommits
+                } catch is CancellationError { throw CancellationError() }
+                catch { invalidate(GitWorktreeReview.failureReason(error, tool: "Git")) }
+            }
+            updated[directory] = review
+            ScanDiagnostics.current?.record("worktree_github_merge", details: [
+                "path": directory.path, "merged_into": review.mergedInto ?? "",
+                "pull_request": review.mergePullRequestNumber.map(String.init) ?? "",
+                "reason": review.mergedInto == nil ? review.mergeIssue : "verified"
+            ])
+        }
+        return updated
+    }
+
     /// Applies scan measurements without another filesystem traversal.
     static func applyMeasurements(_ measurements: [URL: SizeMeasurement], directory: URL, to review: inout GitWorktreeReview) {
         var classifier = IgnoredFileClassifier(root: directory, verifiedProjects: review.verifiedGeneratedProjects)
@@ -112,6 +193,7 @@ public struct GitWorktreeReviewService: Sendable {
             let url = directory.appendingPathComponent(review.ignoredFiles[index].path).standardizedFileURL
             guard let measured = measurements[url] else {
                 review.ignoredFiles[index].regeneratesSafely = nil
+                review.ignoredFiles[index].canRemoveWhenMerged = false
                 ScanDiagnostics.current?.record("worktree_ignored_file", details: [
                     "path": url.path, "worktree": directory.path,
                     "classification": "unverified", "reason": "missing_measurement"
@@ -128,17 +210,20 @@ public struct GitWorktreeReviewService: Sendable {
         let regenerates = classifier.regenerates(url)
         review.ignoredFiles[index].allocatedBytes = measured.allocatedBytes
         review.ignoredFiles[index].regeneratesSafely = nil
-        if measured.containsProtectedPattern || regenerates == false {
+        review.ignoredFiles[index].canRemoveWhenMerged = false
+        if measured.containsProtectedPattern {
             review.ignoredFiles[index].regeneratesSafely = false
         } else if measured.unreadableCount > 0 || measured.containsCloudOnlyItem {
             review.ignoredFilesIssue = "Some ignored files could not be read. Check folder access permissions."
         } else {
             review.ignoredFiles[index].regeneratesSafely = regenerates
+            review.ignoredFiles[index].canRemoveWhenMerged = regenerates != nil
         }
         let classification = review.ignoredFiles[index].regeneratesSafely
         ScanDiagnostics.current?.record("worktree_ignored_file", details: [
             "path": url.path, "worktree": directory.path,
             "classification": classification == true ? "regenerable" : classification == false ? "local" : "unverified",
+            "included_after_merge": "\(review.includesAfterMerge(review.ignoredFiles[index]))",
             "allocated_bytes": "\(measured.allocatedBytes)"
         ])
     }

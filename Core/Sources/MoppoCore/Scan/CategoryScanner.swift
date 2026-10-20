@@ -1,5 +1,43 @@
 import Foundation
 
+/// Limits measurement updates to two each second. Phase changes appear immediately.
+final class ScanPhaseReporter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let onPhase: (@Sendable (String) -> Void)?
+    private var nextReport = ContinuousClock.now
+    private var checkedFiles = 0
+
+    init(onPhase: (@Sendable (String) -> Void)?) {
+        self.onPhase = onPhase
+    }
+
+    func report(force: Bool = false, _ phase: @autoclosure () -> String) {
+        guard let onPhase else { return }
+        lock.withLock {
+            let now = ContinuousClock.now
+            guard force || now >= nextReport else { return }
+            nextReport = now + .milliseconds(500)
+            onPhase(phase())
+        }
+    }
+
+    /// Counts file visits across sequential measurements from the same reporter.
+    func measure(_ url: URL, with measurer: AllocatedSizeMeasurer) async throws -> SizeMeasurement {
+        guard onPhase != nil else { return try await measurer.measure(url) }
+        let previousFiles = lock.withLock { checkedFiles }
+        report(force: true, "Files checked: \(previousFiles.formatted())")
+        let result = try await measurer.measure(url, progress: { measurement in
+            self.report("Files checked: \((previousFiles + measurement.fileCount).formatted())")
+        })
+        let total = lock.withLock {
+            checkedFiles += result.fileCount
+            return checkedFiles
+        }
+        report(force: true, "Files checked: \(total.formatted())")
+        return result
+    }
+}
+
 /// Rules a scan must respect, supplied by settings and the exclusion list.
 public struct ScanContext: Sendable {
     /// Measures every tree this scan sizes. Carries the protected globs, so a

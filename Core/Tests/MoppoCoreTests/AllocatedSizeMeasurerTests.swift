@@ -307,8 +307,10 @@ struct AllocatedSizeMeasurerTests {
         #expect(direct.allocatedBytes == 0)
     }
 
-    @Test("progress callbacks are serial, ordered, and not duplicated", arguments: [MeasurementReader.foundation, .filesystem])
-    func progressCallbacksAreSerialAndOrdered(reader: MeasurementReader) async throws {
+    enum ProgressMeasurement: CaseIterable { case foundation, filesystem, selectedTotals }
+
+    @Test("Progress callbacks are serial, ordered, and not duplicated", arguments: ProgressMeasurement.allCases)
+    func progressCallbacksAreSerialAndOrdered(measurement: ProgressMeasurement) async throws {
         let sandbox = try Sandbox()
         for directory in 0..<4 {
             for file in 0..<520 {
@@ -317,10 +319,15 @@ struct AllocatedSizeMeasurerTests {
         }
         let recorder = ProgressRecorder()
 
-        let result = try await AllocatedSizeMeasurer().measure(
-            sandbox.root, reader: reader,
-            progress: { recorder.record($0) }
-        )
+        let result: SizeMeasurement
+        if measurement == .selectedTotals {
+            let totals = try await AllocatedSizeMeasurer().measure(sandbox.root,
+                retaining: [sandbox.root.appendingPathComponent("dir-0")], progress: { recorder.record($0) })
+            result = try #require(totals[sandbox.root.standardizedFileURL])
+        } else {
+            result = try await AllocatedSizeMeasurer().measure(sandbox.root,
+                reader: measurement == .foundation ? .foundation : .filesystem, progress: { recorder.record($0) })
+        }
         let recorded = recorder.result
 
         #expect(result.fileCount == 2_080)
