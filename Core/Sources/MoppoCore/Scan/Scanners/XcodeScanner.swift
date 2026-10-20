@@ -270,51 +270,72 @@ public struct XcodeScanner: CategoryScanner {
         additionalCaches = additionalCaches.filter { review in
             let path = review.url.resolvingSymlinksInPath().path
             return !existing.contains { path == $0 || path.hasPrefix($0 + "/") }
-                && seen.insert(path).inserted && !XcodeBuildCache.excluded(review.url, context: context)
+                && seen.insert(path).inserted && !context.isWithinExclusion(review.url)
+                && !context.isWithinExclusion(review.url.resolvingSymlinksInPath())
         }
         if !additionalCaches.isEmpty {
-            let activity = try await captureBuildActivity(additionalCaches.map(\.url))
-            for (root, reviews) in Dictionary(grouping: additionalCaches, by: \.root).sorted(by: { $0.key.path < $1.key.path }) {
+            let folders = try additionalCaches.sorted(by: { $0.root.path < $1.root.path }).map {
+                ($0, try XcodeBuildCache.inspect($0, context: context))
+            }
+            let activity = try await captureBuildActivity(folders.flatMap { [$0.0.root] + $0.1.children })
+            for (folder, inspection) in folders {
                 try Task.checkCancellation()
-                var children: [FileEntry] = []
-                for review in reviews {
-                    guard XcodeBuildCache.isCurrent(review) else { continue }
-                    let measured = try await context.measurer.measure(review.url, retaining: []) {
-                        activity.observe($0, values: $1, attribution: $2)
-                    }[review.url] ?? .zero
-                    unreadableCount += measured.unreadableCount
-                    guard measured.allocatedBytes > 0, !measured.containsProtectedPattern else { continue }
-                    let check = activity.check(review.url, measurement: measured)
-                    let protection: FileEntry.ProtectionReason?
-                    let explanation: String?
-                    switch check {
-                    case .clear:
-                        protection = measured.containsCloudOnlyItem ? .inventory : nil
-                        explanation = measured.containsCloudOnlyItem ? "Some cache files are stored only in the cloud." : nil
-                    case .found(let names):
-                        protection = .running
-                        explanation = "Files are open in: \(names). Stop the build or close the tool, then scan again."
-                    case .unknown:
-                        protection = .inventory
-                        explanation = "Open files could not be checked. Scan again before removing this cache."
-                    }
-                    children.append(FileEntry(url: review.url, kind: .cache, allocatedBytes: measured.allocatedBytes,
-                        lastOpened: lastOpenedDate(for: review.url), isRegenerable: true,
-                        protectionReason: protection, protectionExplanation: explanation,
-                        inUseBy: Self.runningOwner(of: review.url, context: context), xcodeBuildCacheReview: review))
-                    ScanDiagnostics.current?.record("xcode_build_cache", details: [
-                        "path": review.url.path, "root": root.path, "activity": "\(check)",
-                        "allocated_bytes": "\(measured.allocatedBytes)"
-                    ])
+                let root = folder.root
+                var measurer = context.measurer
+                measurer.detectCloudOnlyItems = true
+                let measurements = try await measurer.measure(root, retaining: inspection.children) {
+                    activity.observe($0, values: $1, attribution: $2)
                 }
-                guard !children.isEmpty, let review = reviews.first else { continue }
+                let total = measurements[root] ?? .zero
+                unreadableCount += total.unreadableCount
+                let owner = Self.runningOwner(of: root, context: context)
+                func protection(for url: URL, measured: SizeMeasurement, isRegenerable: Bool)
+                    -> (FileEntry.ProtectionReason?, String?) {
+                    if let issue = inspection.issue(for: url) { return (.inventory, issue) }
+                    if measured.unreadableCount > 0 || measured.containsProtectedPattern || measured.containsCloudOnlyItem {
+                        return (.inventory, "Some files are unreadable, protected, or stored only in the cloud.")
+                    }
+                    switch activity.check(url, measurement: measured) {
+                    case .found(let names):
+                        return (.running, "Files are open in: \(names). Stop the build or close the tool, then scan again.")
+                    case .unknown:
+                        return (.inventory, "Open files could not be checked. Scan again before removal.")
+                    case .clear:
+                        if !isRegenerable, let owner {
+                            return (.running, "\(owner.name) is open. Close \(owner.name), then scan again before removing this item.")
+                        }
+                        return (nil, nil)
+                    }
+                }
+                var children: [FileEntry] = []
+                for url in inspection.children {
+                    guard !XcodeBuildCache.excluded(url, context: context) else { continue }
+                    let measured = measurements[url] ?? .zero
+                    let review = inspection.review(for: url, in: folder, context: context)
+                    let regenerable = review?.isRegenerable == true
+                    let (reason, explanation) = protection(for: url, measured: measured, isRegenerable: regenerable)
+                    let kind: FileEntry.Kind = regenerable ? .cache
+                        : ((try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true ? .folder : .file)
+                    children.append(FileEntry(url: url, kind: kind, allocatedBytes: measured.allocatedBytes,
+                        lastOpened: lastOpenedDate(for: url), isRegenerable: regenerable,
+                        protectionReason: reason, protectionExplanation: explanation,
+                        inUseBy: owner, xcodeBuildCacheReview: review))
+                }
+                let review = inspection.review(for: root, in: folder, context: context)
+                let (reason, explanation) = protection(for: root, measured: total, isRegenerable: false)
                 let temporary = temporaryRoots.contains {
                     root.path.hasPrefix($0.resolvingSymlinksInPath().path + "/")
                 }
                 entries.append(FileEntry(url: root,
-                    displayName: review.projectName + (temporary ? " — temporary build cache" : " — release build cache"),
-                    parentDisplay: FileEntry.abbreviate(root.path), kind: .cache, allocatedBytes: 0, protectionReason: .inventory,
-                    protectionExplanation: "Select the verified cache folders inside. Other files stay in place.", children: children))
+                    displayName: folder.projectName + (temporary ? " — temporary build cache" : " — release build cache"),
+                    parentDisplay: FileEntry.abbreviate(root.path), kind: .cache,
+                    allocatedBytes: max(0, total.allocatedBytes - children.reduce(0) { $0 + $1.allocatedBytes }),
+                    protectionReason: reason, protectionExplanation: explanation,
+                    inUseBy: owner, xcodeBuildCacheReview: review ?? folder, children: children))
+                ScanDiagnostics.current?.record("xcode_build_cache", details: [
+                    "path": root.path, "allocated_bytes": "\(total.allocatedBytes)",
+                    "protection": "\(String(describing: reason))"
+                ])
             }
         }
 

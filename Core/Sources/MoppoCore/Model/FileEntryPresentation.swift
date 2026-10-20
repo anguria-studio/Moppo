@@ -9,8 +9,19 @@ public struct FileEntryPresentation: Sendable, Equatable {
 
     public let summary: String
     public let icon: Icon
+    public let runningGuidance: String?
+    public let runningOwner: FileEntry.RunningOwner?
 
     public init(entry: FileEntry, project: Project? = nil, showsSafetyCaveat: Bool = true) {
+        let isBuildCacheGroup = entry.xcodeBuildCacheReview?.isWholeFolder == true || entry.children.contains { $0.xcodeBuildCacheReview?.root == entry.url }
+        runningOwner = entry.inUseBy ?? (isBuildCacheGroup ? entry.children.compactMap(\.inUseBy).first : nil)
+        if entry.protectionReason == .running, let explanation = entry.protectionExplanation {
+            runningGuidance = explanation
+        } else if let owner = entry.inUseBy, entry.protectionReason == nil || entry.protectionReason == .running {
+            runningGuidance = "\(owner.name) is open. Close \(owner.name), then scan again to check whether these files are safe to remove."
+        } else {
+            runningGuidance = nil
+        }
         let name = entry.url.lastPathComponent.lowercased()
         let ext = entry.url.pathExtension.lowercased()
         let parentURL = entry.url.deletingLastPathComponent()
@@ -35,6 +46,10 @@ public struct FileEntryPresentation: Sendable, Equatable {
         } else if entry.url.scheme == "docker" {
             summary = "Docker storage · Docker Desktop"
             icon = .diskImage
+            return
+        } else if isBuildCacheGroup {
+            summary = FileEntry.abbreviate(entry.url.path)
+            icon = .cache
             return
         } else if entry.isGitWorktree {
             type = entry.gitWorktreeReview?.branch ?? "Branch unknown"
