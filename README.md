@@ -260,15 +260,16 @@ Run the tests and writing checks from the repository root:
 ```sh
 python3 -m unittest discover -s scripts -p 'test_*.py'
 swift test --package-path Core --no-parallel \
-  --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud'
+  --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests'
 swift test --package-path Core \
-  --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud'
+  --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests'
 xcodegen generate
 xcodebuild -project Moppo.xcodeproj -scheme MoppoAppTests -destination 'platform=macOS' test
 vale README.md AGENTS.md WRITING_STYLE.md
 ```
 
-Timing tests run separately because they temporarily block shared workers or check process deadlines.
+Timing and process integration tests run separately to avoid interference from other test fixtures.
+These tests check worker limits, process deadlines, Git commands, and Codex deletion.
 The remaining core tests run in parallel.
 
 The app state tests use temporary files and a separate test process.
@@ -277,7 +278,7 @@ They do not launch Moppo or delete personal photos.
 GitHub Actions runs these tests and writing checks for pull requests that target `main`.
 Merging a pull request does not start another CI run.
 CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
-CI runs process timing tests separately to prevent other test fixtures from delaying their timers.
+CI runs timing and process integration tests sequentially before the parallel core tests.
 CI does not build or launch the signed Moppo app.
 Pull request checks also validate branch names and Conventional Commit titles.
 
