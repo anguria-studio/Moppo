@@ -345,12 +345,22 @@ struct GitWorktreeTests {
         #expect(fresh.isSafeToRemove == (style != .squash))
         #expect(fresh.localIgnoredFiles.map(\.path) == [".env", "temp/"])
         #expect(fresh.ignoredFiles.allSatisfy { $0.canRemoveWhenMerged })
-        let batch = try await WorktreeScan.prepare([tree])
+        let batch = try await WorktreeScan.prepare([tree], captureActivity: { WorktreeActivity(roots: $0, processes: [:]) })
         let measured = try await batch.measure(tree, with: AllocatedSizeMeasurer())
         let shared = try #require(measured.reviews[tree.standardizedFileURL])
         #expect(shared.mergedInto == fresh.mergedInto)
         #expect(shared.ignoredFiles == fresh.ignoredFiles)
         #expect(shared.isSafeToRemove == fresh.isSafeToRemove)
+        if style == .fastForward {
+            let incomplete = try await WorktreeScan.prepare([tree], captureActivity: {
+                WorktreeActivity(roots: $0, processes: [:], issue: "Incomplete process information.")
+            })
+            let blocked = try await incomplete.measure(tree, with: AllocatedSizeMeasurer())
+            let review = try #require(blocked.reviews[tree.standardizedFileURL])
+            #expect(review.mergedInto == fresh.mergedInto)
+            #expect(review.activity == .unknown("Incomplete process information."))
+            #expect(!review.isSafeToRemove)
+        }
 
         var service = GitWorktreeReviewService()
         if style == .squash {
@@ -368,7 +378,8 @@ struct GitWorktreeTests {
             #expect(verified.isSafeToRemove)
             #expect(verified.mergedInto == "origin/trunk")
             #expect(verified.mergePullRequestNumber == 190)
-            let verifiedBatch = try await WorktreeScan.prepare([tree], github: verifier)
+            let verifiedBatch = try await WorktreeScan.prepare([tree], github: verifier,
+                captureActivity: { WorktreeActivity(roots: $0, processes: [:]) })
             let verifiedMeasurement = try await verifiedBatch.measure(tree, with: AllocatedSizeMeasurer())
             #expect(verifiedMeasurement.reviews[tree.standardizedFileURL]?.isSafeToRemove == true)
             try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD^"])

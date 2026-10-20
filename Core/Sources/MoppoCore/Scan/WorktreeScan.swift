@@ -19,7 +19,8 @@ struct WorktreeScan: Sendable {
     }
 
     static func prepare(_ roots: [URL], onProgress: (@Sendable (Int, Int) -> Void)? = nil,
-                        github: GitHubMergeVerifier = .shared) async throws -> Self {
+                        github: GitHubMergeVerifier = .shared,
+                        captureActivity: @Sendable ([URL]) async throws -> WorktreeActivity = WorktreeActivity.capture) async throws -> Self {
         let roots = roots.map(\.standardizedFileURL)
         guard !roots.isEmpty else { return Self(roots: [], reviews: [:], activity: nil) }
         onProgress?(0, roots.count)
@@ -48,7 +49,7 @@ struct WorktreeScan: Sendable {
         }
         reviews = try await service.completeMerges(reviews)
         onProgress?(roots.count, roots.count)
-        let activity = try await WorktreeActivity.capture(roots: roots)
+        let activity = try await captureActivity(roots)
         return Self(roots: roots, reviews: reviews, activity: activity)
     }
 
