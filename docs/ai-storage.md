@@ -199,6 +199,28 @@ No retention or inactivity rule carries from one tool to another.
 
 ## Test coverage
 
+### Workflow validation
+
+Use a disposable macOS environment for real application checks.
+Install each tool from its official source.
+Record the tool version, install method, Moppo build, macOS version, and permissions.
+Measure storage before first use and after a small task.
+Repeat the scan with the desktop application closed and a CLI task still running.
+Repeat the scan after all tool processes stop.
+Use disposable data for removal and uninstall checks.
+Compare the resulting files, protection decisions, allocated bytes, and task behavior.
+Keep conversation content and credentials out of published evidence.
+Record results and untested cases in [issue #216](https://github.com/anguria-studio/Moppo/issues/216).
+
+A temporary CLI experiment tested Codex `0.162.0-alpha.17.2` and Claude Code `2.1.283` on 20 October 2026.
+It verified Codex executable discovery, active session protection, archived session deletion, Claude Code storage protection, and allocated totals.
+The experiment used private profiles and local test responses.
+It did not verify desktop workflows, cloud authentication, or Codex CLI `0.160`.
+The experimental harness stays outside the maintained regression suite.
+The initial findings remain in [issue #199](https://github.com/anguria-studio/Moppo/issues/199).
+
+### Regression fixtures
+
 - [AI scanner fixtures](../Core/Tests/MoppoCoreTests/AIToolsScannerTests.swift) cover credentials, memories, attachments, child transcripts, storage ownership, and totals.
 - [Codex session fixtures](../Core/Tests/MoppoCoreTests/CodexSessionsTests.swift) cover child sessions, writer locks, open files, changed reviews, unsupported history, deletion failures, and receipts.
 - [Cleanup state tests](../AppTests/CleanupModelTests.swift) cover group unlocking, separate selection, changed reviews, child counts, and required confirmation.
