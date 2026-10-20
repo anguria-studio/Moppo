@@ -95,6 +95,11 @@ struct GitWorktreeTests {
         }
         let completed = events.filter { $0["event"] as? String == "span_end" }
             .compactMap { $0["details"] as? [String: String] }
+        let phases = events.filter { $0["event"] as? String == "progress" }
+            .compactMap { ($0["details"] as? [String: String])?["phase"] }
+        #expect(phases.contains("Finding worktrees in Project"))
+        #expect(phases.contains("Reviewing worktrees in Project\n1 of 1 Git reviews complete"))
+        #expect(phases.contains { $0.hasPrefix("Checked Project\n") && $0.hasSuffix("Worktrees reviewed: 1") })
         #expect(completed.filter { $0["operation"]?.hasPrefix("measure_") == true }.count == 3)
         let processChecks = completed.filter { $0["operation"] == "process" && $0["path"] == "/usr/sbin/lsof" }
         #expect(processChecks.count == 3)
@@ -277,6 +282,12 @@ struct GitWorktreeTests {
         try sandbox.git(["-C", tree.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Local change"])
         #expect((try await GitWorktreeReviewService().review(tree)).status == .clean)
         #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unpushedCommits(1))
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
+        try sandbox.git(["-C", repo.path, "config", "--remove-section", "remote.origin"])
+        let missingURL = try await GitWorktreeDetector.pushStatus(of: tree)
+        #expect(missingURL.status == .unpushedCommits(1))
+        #expect(missingURL.mergeIssue.contains("remote URL"))
+        try sandbox.git(["-C", repo.path, "remote", "add", "origin", sandbox.home.appendingPathComponent("remote.git").path])
         try sandbox.file("Worktrees/task/untracked.swift", text: "// Local changes\n")
         #expect((try await GitWorktreeReviewService().review(tree)).status == .uncommittedChanges)
         #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unpushedCommits(1))
@@ -293,15 +304,340 @@ struct GitWorktreeTests {
         #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unknown)
     }
 
+    enum MergeStyle: CaseIterable { case fastForward, mergeCommit, squash }
+
+    @Test("Saved default branches confirm merges after upstream deletion", arguments: MergeStyle.allCases)
+    func mergedIgnoredFiles(style: MergeStyle) async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        try sandbox.git(["-C", repo.path, "branch", "-M", "trunk"])
+        try sandbox.git(["-C", repo.path, "remote", "add", "origin", sandbox.home.appendingPathComponent("remote.git").path])
+        try sandbox.file("Documents/Project/.git/info/exclude", text: ".env\ntemp/\n")
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD"])
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"])
+        let tree = try sandbox.worktree("Worktrees/merged", repository: repo)
+        try sandbox.git(["-C", tree.path, "switch", "-c", "completed"])
+        try sandbox.file("Worktrees/merged/feature.txt", text: "Committed feature")
+        try sandbox.git(["-C", tree.path, "add", "feature.txt"])
+        try sandbox.git(["-C", tree.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Feature"])
+        try sandbox.git(["-C", tree.path, "update-ref", "refs/remotes/origin/completed", "HEAD"])
+        try sandbox.git(["-C", tree.path, "branch", "--set-upstream-to=origin/completed"])
+        try sandbox.file("Worktrees/merged/.env", text: "Local settings")
+        try sandbox.file("Worktrees/merged/temp/notes.txt", text: "Ignored local notes")
+        let pushed = try await GitWorktreeReviewService().review(tree)
+        #expect(pushed.pushStatus == .noUnpushedCommits)
+        #expect(pushed.mergedInto == nil)
+        #expect(pushed.outcome == .hasLocalFiles)
+
+        let mergeOptions: [String] = switch style {
+        case .fastForward: ["--ff-only"]
+        case .mergeCommit: ["--no-ff", "--no-edit"]
+        case .squash: ["--squash"]
+        }
+        try sandbox.git(["-C", repo.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "merge"] + mergeOptions + ["completed"])
+        if style == .squash {
+            try sandbox.git(["-C", repo.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Squashed feature"])
+        }
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD"])
+        try sandbox.git(["-C", repo.path, "update-ref", "-d", "refs/remotes/origin/completed"])
+        let fresh = try await GitWorktreeReviewService().review(tree)
+        #expect(fresh.mergedInto == (style == .squash ? nil : "origin/trunk"))
+        #expect(fresh.isSafeToRemove == (style != .squash))
+        #expect(fresh.localIgnoredFiles.map(\.path) == [".env", "temp/"])
+        #expect(fresh.ignoredFiles.allSatisfy { $0.canRemoveWhenMerged })
+        let batch = try await WorktreeScan.prepare([tree], captureActivity: { WorktreeActivity(roots: $0, processes: [:]) })
+        let measured = try await batch.measure(tree, with: AllocatedSizeMeasurer())
+        let shared = try #require(measured.reviews[tree.standardizedFileURL])
+        #expect(shared.mergedInto == fresh.mergedInto)
+        #expect(shared.ignoredFiles == fresh.ignoredFiles)
+        #expect(shared.isSafeToRemove == fresh.isSafeToRemove)
+        if style == .fastForward {
+            let incomplete = try await WorktreeScan.prepare([tree], captureActivity: {
+                WorktreeActivity(roots: $0, processes: [:], issue: "Incomplete process information.")
+            })
+            let blocked = try await incomplete.measure(tree, with: AllocatedSizeMeasurer())
+            let review = try #require(blocked.reviews[tree.standardizedFileURL])
+            #expect(review.mergedInto == fresh.mergedInto)
+            #expect(review.activity == .unknown("Incomplete process information."))
+            #expect(!review.isSafeToRemove)
+        }
+
+        var service = GitWorktreeReviewService()
+        if style == .squash {
+            try sandbox.git(["-C", repo.path, "remote", "set-url", "origin", "https://github.com/example/project.git"])
+            let runner = ProcessRunner()
+            let mergeData = try await runner.run("/usr/bin/git", ["-C", repo.path, "rev-parse", "HEAD"])
+            let headData = try await runner.run("/usr/bin/git", ["-C", tree.path, "rev-parse", "HEAD"])
+            let merge = String(decoding: mergeData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            let head = String(decoding: headData, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            let verifier = GitHubMergeVerifier { repository, heads, _ in
+                try Self.githubResponse(repository, heads: heads, mergeCommit: merge, base: "trunk", headOverride: head)
+            }
+            service = GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, github: verifier)
+            let verified = try await service.review(tree)
+            #expect(verified.isSafeToRemove)
+            #expect(verified.mergedInto == "origin/trunk")
+            #expect(verified.mergePullRequestNumber == 190)
+            let verifiedBatch = try await WorktreeScan.prepare([tree], github: verifier,
+                captureActivity: { WorktreeActivity(roots: $0, processes: [:]) })
+            let verifiedMeasurement = try await verifiedBatch.measure(tree, with: AllocatedSizeMeasurer())
+            #expect(verifiedMeasurement.reviews[tree.standardizedFileURL]?.isSafeToRemove == true)
+            try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD^"])
+            let stale = try await service.review(tree)
+            #expect(stale.mergedInto == nil)
+            #expect(stale.mergeIssue.contains("absent"))
+            #expect(!stale.isSafeToRemove)
+            try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD"])
+            for change in ["metadata", "file", "commit"] {
+                let file = tree.appendingPathComponent("concurrent.txt")
+                let marker = tree.appendingPathComponent(".git")
+                let markerData = try Data(contentsOf: marker)
+                let changing = GitHubMergeVerifier { repository, heads, _ in
+                    if change == "commit" {
+                        _ = try await ProcessRunner().run("/usr/bin/git", ["-C", tree.path, "-c", "user.name=Test",
+                            "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "Concurrent work"])
+                    } else if change == "metadata" {
+                        try Data("gitdir: /missing/.git/worktrees/task\n".utf8).write(to: marker)
+                    } else {
+                        try Data("Concurrent local work".utf8).write(to: file)
+                    }
+                    return try Self.githubResponse(repository, heads: heads, mergeCommit: merge, base: "trunk", headOverride: head)
+                }
+                let raced = try await GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, github: changing).review(tree)
+                #expect(raced.mergeIssue.contains(change == "metadata" ? "could not complete" : "changed during"))
+                #expect(raced.status == .unavailable)
+                #expect(raced.pushStatus == .unknown)
+                #expect(!raced.isSafeToRemove)
+                if change == "metadata" { try markerData.write(to: marker) }
+                if change == "file" { try FileManager.default.removeItem(at: file) }
+            }
+        }
+
+        try sandbox.file("Worktrees/merged/feature.txt", text: "Later local work")
+        #expect((try await service.review(tree)).outcome == .uncommittedChanges)
+        try sandbox.git(["-C", tree.path, "add", "feature.txt"])
+        try sandbox.git(["-C", tree.path, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Later work"])
+        let changed = try await service.review(tree)
+        #expect(changed.mergedInto == nil)
+        #expect(!changed.isSafeToRemove)
+    }
+
+    @Test("GitHub requests group commits and reuse exact commit proofs")
+    func githubBatchCache() async throws {
+        let repository = try #require(GitHubMergeVerifier.Repository(remoteURL: "git@github.com:Example/Project.git"))
+        let recorder = GitHubRequests()
+        let verifier = GitHubMergeVerifier { repo, heads, timeout in
+            await recorder.record(heads: heads, timeout: timeout)
+            return try Self.githubResponse(repo, heads: heads)
+        }
+        let requests = (1...191).map { GitHubMergeVerifier.Request(repository: repository, head: String(format: "%040x", $0)) }
+        async let first = verifier.lookup(requests + [requests[0]])
+        async let overlapping = verifier.lookup(requests)
+        let (cold, shared) = try await (first, overlapping)
+        #expect(cold.count == 191)
+        #expect(shared == cold)
+        #expect(cold.values.allSatisfy { if case .verified = $0 { true } else { false } })
+        #expect(await recorder.count == 10)
+        #expect(await recorder.sizes == [20, 20, 20, 20, 20, 20, 20, 20, 20, 11])
+        #expect(try await verifier.lookup(requests) == cold)
+        #expect(await recorder.count == 10)
+        let changed = GitHubMergeVerifier.Request(repository: repository, head: String(repeating: "e", count: 40))
+        _ = try await verifier.lookup([changed])
+        let other = try #require(GitHubMergeVerifier.Repository(remoteURL: "https://github.com/example/other.git"))
+        _ = try await verifier.lookup([.init(repository: other, head: changed.head)])
+        #expect(await recorder.count == 12)
+        #expect(await recorder.timeouts.allSatisfy { $0 > .zero && $0 <= .seconds(5) })
+    }
+
+    @Test("GitHub remote parsing keeps requests on the supported host")
+    func githubAddresses() throws {
+        for address in ["git@github.com:Owner/Project.git", "https://github.com/Owner/Project.git", "ssh://git@github.com/Owner/Project"] {
+            #expect(GitHubMergeVerifier.Repository(remoteURL: address)?.fullName == "owner/project")
+        }
+        for address in ["/tmp/repo.git", "https://github.com.evil.test/owner/repo", "https://github.com/owner/repo/extra", "https://github.com/owner/repo?query=x", "http://github.com/owner/repo", "https://github.com/../repo", "git@elsewhere:owner/repo"] {
+            #expect(GitHubMergeVerifier.Repository(remoteURL: address) == nil)
+        }
+    }
+
+    enum GitHubResponseChange: CaseIterable {
+        case valid, head, base, repository, open, missingMerge, invalidMerge, partial, object, missingObject, unavailableCommit, incompletePage
+    }
+
+    @Test("GitHub proof requires a complete merged PR for the exact commit", arguments: GitHubResponseChange.allCases)
+    func githubProof(change: GitHubResponseChange) throws {
+        let repo = try #require(GitHubMergeVerifier.Repository(remoteURL: "https://github.com/example/project"))
+        let head = String(repeating: "a", count: 40)
+        var root = try #require(JSONSerialization.jsonObject(with: Self.githubResponse(repo, heads: [head])) as? [String: Any])
+        var payload = try #require(root["data"] as? [String: Any])
+        var repository = try #require(payload["repository"] as? [String: Any])
+        var commit = try #require(repository["c0"] as? [String: Any])
+        var connection = try #require(commit["associatedPullRequests"] as? [String: Any])
+        var pull = try #require((connection["nodes"] as? [[String: Any]])?.first)
+        switch change {
+        case .valid: break
+        case .head: pull["headRefOid"] = String(repeating: "b", count: 40)
+        case .base: pull["baseRefName"] = "release"
+        case .repository: pull["repository"] = ["nameWithOwner": "other/repository"]
+        case .open: pull["state"] = "OPEN"; pull["merged"] = false
+        case .missingMerge: pull["mergeCommit"] = NSNull()
+        case .invalidMerge: pull["mergeCommit"] = ["oid": "--invalid"]
+        case .partial: root["errors"] = [["message": "Partial response"]]
+        case .object: commit["oid"] = String(repeating: "c", count: 40)
+        case .missingObject, .unavailableCommit, .incompletePage: break
+        }
+        connection["nodes"] = change == .incompletePage ? [] : [pull]
+        connection["pageInfo"] = ["hasNextPage": change == .incompletePage]
+        commit["associatedPullRequests"] = connection
+        repository["c0"] = change == .unavailableCommit ? NSNull() : commit
+        if change == .missingObject { repository.removeValue(forKey: "c0") }
+        payload["repository"] = repository
+        root["data"] = payload
+        let request = GitHubMergeVerifier.Request(repository: repo, head: head)
+        let results = GitHubMergeVerifier.parse(try JSONSerialization.data(withJSONObject: root), repository: repo, requests: [request])
+        if change == .valid {
+            #expect(results[request] == .verified(.init(number: 190, mergeCommit: String(repeating: "f", count: 40), baseBranch: "main")))
+        } else {
+            guard case .unavailable(let reason) = results[request] else { Issue.record("Invalid proof was accepted"); return }
+            #expect(!reason.isEmpty)
+            if change == .unavailableCommit {
+                #expect(reason == "GitHub could not find this worktree commit. It may exist only on this Mac.")
+            } else if change == .missingObject {
+                #expect(reason == "GitHub returned incomplete merge data.")
+            }
+        }
+    }
+
+    enum GitHubFailure: CaseIterable { case missingCLI, timeout, signIn, rateLimit, repository, connection }
+
+    @Test("Unavailable GitHub checks stop repeated requests and retain the reason", arguments: GitHubFailure.allCases)
+    func githubFailures(_ failure: GitHubFailure) async throws {
+        let repo = try #require(GitHubMergeVerifier.Repository(remoteURL: "https://github.com/example/project"))
+        let recorder = GitHubRequests()
+        let verifier = GitHubMergeVerifier { repo, heads, timeout in
+            await recorder.record(heads: heads, timeout: timeout)
+            switch failure {
+            case .missingCLI: throw ProcessError.executableMissing("gh")
+            case .timeout: throw ProcessError.timedOut("gh")
+            case .signIn: throw ProcessError.failed(command: "gh", status: 4, stderr: "Run gh auth login")
+            case .rateLimit: throw ProcessError.failed(command: "gh", status: 1, stderr: "API rate limit exceeded")
+            case .repository: throw ProcessError.failed(command: "gh", status: 1, stderr: "HTTP 404")
+            case .connection: throw ProcessError.failed(command: "gh", status: 1, stderr: "Could not resolve host: api.github.com")
+            }
+        }
+        let requests = (1...41).map { GitHubMergeVerifier.Request(repository: repo, head: String(format: "%040x", $0)) }
+        let results = try await verifier.lookup(requests)
+        #expect(results.count == requests.count)
+        #expect(await recorder.count == 1)
+        let phrase = switch failure {
+        case .missingCLI: "not installed"
+        case .timeout: "timed out"
+        case .signIn: "sign-in"
+        case .rateLimit: "request rate"
+        case .repository: "account access"
+        case .connection: "connection"
+        }
+        #expect(results.values.allSatisfy { if case .unavailable(let reason) = $0 { reason.contains(phrase) } else { false } })
+        _ = try await verifier.lookup(requests)
+        #expect(await recorder.count == 1)
+        let other = try #require(GitHubMergeVerifier.Repository(remoteURL: "https://github.com/example/other"))
+        _ = try await verifier.lookup([.init(repository: other, head: requests[0].head)])
+        #expect(await recorder.count == (failure == .repository ? 2 : 1))
+    }
+
+    @Test("GitHub cancellation stops active requests and releases queued repositories")
+    func githubCancellation() async throws {
+        let starts = AsyncStream<GitHubMergeVerifier.Repository>.makeStream()
+        let transport = HeldGitHubRequest(starts: starts.continuation)
+        let verifier = GitHubMergeVerifier { repo, heads, _ in try await transport.fetch(repo, heads: heads) }
+        let requests = try (1...3).map { index in
+            GitHubMergeVerifier.Request(repository: try #require(GitHubMergeVerifier.Repository(remoteURL: "https://github.com/example/repo\(index)")), head: String(repeating: "a", count: 40))
+        }
+        let task = Task { try await verifier.lookup(requests) }
+        var iterator = starts.stream.makeAsyncIterator()
+        _ = await iterator.next()
+        _ = await iterator.next()
+        #expect(await transport.active == 2)
+        task.cancel()
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(await transport.active == 0)
+        await transport.allowCompletion()
+        #expect(try await verifier.lookup(requests).count == 3)
+        #expect(await transport.maximumActive == 2)
+        starts.continuation.finish()
+    }
+
+    private actor GitHubRequests {
+        private(set) var sizes: [Int] = []
+        private(set) var timeouts: [Duration] = []
+        var count: Int { sizes.count }
+        func record(heads: [String], timeout: Duration) {
+            sizes.append(heads.count)
+            timeouts.append(timeout)
+        }
+    }
+
+    private actor HeldGitHubRequest {
+        let starts: AsyncStream<GitHubMergeVerifier.Repository>.Continuation
+        private var held = true
+        private(set) var active = 0
+        private(set) var maximumActive = 0
+        init(starts: AsyncStream<GitHubMergeVerifier.Repository>.Continuation) { self.starts = starts }
+        func allowCompletion() { held = false }
+        func fetch(_ repository: GitHubMergeVerifier.Repository, heads: [String]) async throws -> Data {
+            active += 1
+            maximumActive = max(maximumActive, active)
+            defer { active -= 1 }
+            starts.yield(repository)
+            if held { try await Task.sleep(for: .seconds(30)) }
+            return try GitWorktreeTests.githubResponse(repository, heads: heads)
+        }
+    }
+
+    private static func githubResponse(_ repository: GitHubMergeVerifier.Repository, heads: [String],
+                                       mergeCommit: String = String(repeating: "f", count: 40), base: String = "main", headOverride: String? = nil) throws -> Data {
+        var repo: [String: Any] = ["nameWithOwner": repository.fullName, "defaultBranchRef": ["name": base]]
+        for (index, head) in heads.enumerated() {
+            repo["c\(index)"] = ["oid": head, "associatedPullRequests": [
+                "nodes": [["number": 190, "state": "MERGED", "merged": true, "headRefOid": headOverride ?? head,
+                    "baseRefName": base, "mergeCommit": ["oid": mergeCommit], "repository": ["nameWithOwner": repository.fullName]]],
+                "pageInfo": ["hasNextPage": false]
+            ]]
+        }
+        return try JSONSerialization.data(withJSONObject: ["data": ["repository": repo]])
+    }
+
+    @Test("Merge evidence requires an identified default branch and remote")
+    func mergeTargets() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let tree = try sandbox.worktree("Worktrees/task", repository: repo)
+        try sandbox.git(["-C", repo.path, "remote", "add", "origin", sandbox.home.appendingPathComponent("remote.git").path])
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).mergedInto == nil)
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).mergedInto == "origin/main")
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/second/main", "HEAD"])
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/second/HEAD", "refs/remotes/second/main"])
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).mergedInto == nil)
+        try sandbox.git(["-C", tree.path, "switch", "-c", "task"])
+        try sandbox.git(["-C", tree.path, "branch", "--set-upstream-to=origin/main"])
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).mergedInto == "origin/main")
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/second/main"])
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).mergedInto == nil)
+    }
+
     @Test("Incomplete history and failed push checks remain unknown")
     func unknownPushStatus() async throws {
         let sandbox = try Sandbox()
         let repo = try sandbox.repository()
         let tree = try sandbox.worktree("Worktrees/task", repository: repo)
         try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
         let head = try await ProcessRunner().run("/usr/bin/git", ["-C", repo.path, "rev-parse", "HEAD"])
         try head.write(to: repo.appendingPathComponent(".git/shallow"))
-        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unknown)
+        let shallow = try await GitWorktreeDetector.pushStatus(of: tree)
+        #expect(shallow.status == .unknown)
+        #expect(shallow.mergedInto == nil)
         #expect((try await GitWorktreeDetector.pushStatus(of: sandbox.home.appendingPathComponent("missing"))).status == .unknown)
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
@@ -613,12 +949,14 @@ struct GitWorktreeTests {
         for failure in [SizeMeasurement(unreadableCount: 1), SizeMeasurement(containsCloudOnlyItem: true)] {
             GitWorktreeReviewService.applyMeasurements([cacheFile: failure], directory: root, to: &review)
             #expect(review.ignoredFiles.first { $0.path == ".pytest_cache/README.md" }?.regeneratesSafely == nil)
+            #expect(review.ignoredFiles.allSatisfy { !$0.canRemoveWhenMerged })
         }
         GitWorktreeReviewService.applyMeasurements([cacheFile: SizeMeasurement(containsProtectedPattern: true)], directory: root, to: &review)
         #expect(review.ignoredFiles.first { $0.path == ".pytest_cache/README.md" }?.regeneratesSafely == false)
+        #expect(review.ignoredFiles.allSatisfy { !$0.canRemoveWhenMerged })
     }
 
-    @Test("A green verdict requires complete checks and regenerable ignored files")
+    @Test("A green verdict requires complete checks and ignored file evidence")
     func safeVerdict() {
         var review = GitWorktreeReview()
         review.status = .clean
@@ -634,7 +972,13 @@ struct GitWorktreeTests {
         review.pushStatus = .unknown
         #expect(review.outcome == .hasLocalFiles)
         review.pushStatus = .noUnpushedCommits
-        review.ignoredFiles = []
+        review.mergedInto = "origin/main"
+        #expect(review.outcome == .hasLocalFiles)
+        review.ignoredFiles[0].canRemoveWhenMerged = true
+        #expect(review.isSafeToRemove)
+        review.filesChecked = false
+        #expect(!review.isSafeToRemove)
+        review.filesChecked = true
         review.lastFetchDate = Date().addingTimeInterval(-90 * 24 * 60 * 60)
         #expect(review.isSafeToRemove)
         review.lastFetchDate = nil
@@ -705,7 +1049,7 @@ struct GitWorktreeTests {
         #expect(revoked.complete)
         #expect(revoked.revokedFiles == 1)
         #expect(revoked.processes == parsed.processes)
-        for record in ["f4\0\n", "f4\0nPermission denied\0\n", "f4\0tREG\0n(revoked)\0\n"] {
+        for record in ["f4\0\n", "f4\0nPermission denied\0\n", "f4\0tREG\0n(revoked)\0\n", "f4\0tLINK\0\n"] {
             let result = WorktreeActivity.parse(output + Data(record.utf8))
             #expect(!result.complete)
             #expect(result.incompleteFiles == 1)
@@ -713,6 +1057,29 @@ struct GitWorktreeTests {
         #expect(!WorktreeActivity.parse(output.dropLast()).complete)
         let incomplete = WorktreeActivity(roots: [root], processes: [:], issue: "Incomplete inventory.")
         #expect(incomplete.check(root, measurement: totals[root]) == .unknown("Incomplete inventory."))
+    }
+
+    @Test("Open symbolic links protect only their containing worktree", arguments: [false, true], [false, true])
+    func symbolicLinkActivity(inside: Bool, broken: Bool) async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file("tree/source.txt", text: "Local source")
+        try sandbox.file("outside/data.txt", text: "External data")
+        let root = sandbox.home.appendingPathComponent("tree").standardizedFileURL
+        let target = sandbox.home.appendingPathComponent(inside ? "outside/data.txt" : "tree/source.txt")
+        let link = sandbox.home.appendingPathComponent(inside ? "tree/open-link" : "outside/open-link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        if broken { try FileManager.default.removeItem(at: target) }
+        let identity = try #require(FileIdentity.of(link)).split(separator: ":")
+        let device = try #require(UInt32(identity[0]))
+        let output = Data("p123\0cLink owner\0\nf3\0tLINK\0D0x\(String(device, radix: 16))\0i\(identity[1])\0n\(link.path)\0\n".utf8)
+        let parsed = WorktreeActivity.parse(output)
+        #expect(parsed.complete)
+        #expect(parsed.incompleteFiles == 0)
+        let activity = WorktreeActivity(roots: [root], processes: parsed.processes)
+        let totals = try await AllocatedSizeMeasurer().measure(root, retaining: [],
+            observeEntry: { url, values, owners in activity.observe(url, values: values, attribution: owners) })
+        #expect(activity.check(root, measurement: totals[root]) == (inside ? .found("Link owner") : .clear))
+        #expect(totals[root]?.fileCount == ((!inside && broken) ? 0 : 1))
     }
 
     @Test("Status parsing handles renames, unusual names, and invalid paths")

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import SQLite3
 import Testing
 @testable import MoppoCore
 
@@ -163,7 +164,9 @@ struct CodexSessionsTests {
         #expect(!CleanupService.removalAllowed(unprotected, userDataRemovalOverrides: []))
     }
 
-    enum Installation: CaseIterable { case noDeletion, missingDatabase, legacySchema, differentDatabaseVersion }
+    enum Installation: CaseIterable {
+        case noDeletion, missingDatabase, legacySchema, differentDatabaseVersion, unreadableDatabase, unreadableWAL, invalidDatabase
+    }
 
     @Test("CLI history remains visible and protected when verified deletion is unavailable", arguments: Installation.allCases)
     func compatibleInventory(_ installation: Installation) async throws {
@@ -171,6 +174,14 @@ struct CodexSessionsTests {
         let parent = try await fixture.session(fixture.parent, name: "CLI conversation")
         let archived = try await fixture.session(fixture.archived, archived: true, name: "Archived CLI conversation")
         let database = fixture.home.appendingPathComponent("state_5.sqlite")
+        var connection: OpaquePointer?
+        var unreadablePath: String?
+        defer {
+            if let unreadablePath {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: unreadablePath)
+            }
+            sqlite3_close(connection)
+        }
         var executable = fixture.executable
         switch installation {
         case .noDeletion:
@@ -181,9 +192,24 @@ struct CodexSessionsTests {
             try await fixture.sql("ALTER TABLE threads DROP COLUMN name; DROP TABLE thread_spawn_edges;")
         case .differentDatabaseVersion:
             try FileManager.default.moveItem(at: database, to: fixture.home.appendingPathComponent("state_6.sqlite"))
+        case .unreadableDatabase:
+            unreadablePath = database.path
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: database.path)
+        case .unreadableWAL:
+            try #require(sqlite3_open(database.path, &connection) == SQLITE_OK)
+            try #require(sqlite3_exec(connection, "PRAGMA journal_mode=WAL; UPDATE threads SET title=title;", nil, nil, nil) == SQLITE_OK)
+            unreadablePath = database.path + "-wal"
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: database.path + "-wal")
+        case .invalidDatabase:
+            try Data("Private fixture contents must not appear in diagnostics.".utf8).write(to: database)
         }
         let scanner = AIToolsScanner(home: fixture.home.deletingLastPathComponent(), codexExecutable: executable)
-        let result = try await scanner.scan(context: .init())
+        let log = try ScanDiagnostics(directory: fixture.sandbox.root.appendingPathComponent("diagnostics"))
+        let result = try await ScanDiagnostics.$current.withValue(log.context) {
+            try await scanner.scan(context: .init())
+        }
+        log.finish(outcome: "completed")
+        log.flush()
         let groups = result.entries.filter { ["sessions", "archived_sessions"].contains($0.url.lastPathComponent) }
         let rows = groups.flatMap(\.children)
         #expect(groups.count == 2)
@@ -193,7 +219,7 @@ struct CodexSessionsTests {
         #expect(groups.allSatisfy { $0.aiStorageSection?.owner == .codex })
         #expect(result.safeToRemoveBytes == 0)
         #expect(result.totalBytes == (try await AllocatedSizeMeasurer().measure(fixture.home)).allocatedBytes)
-        if installation == .missingDatabase {
+        if [.missingDatabase, .unreadableDatabase, .unreadableWAL, .invalidDatabase].contains(installation) {
             #expect(rows.first { $0.url == parent }?.displayName.contains(fixture.parent) == true)
         } else {
             #expect(rows.first { $0.url == parent }?.displayName == "CLI conversation")
@@ -202,6 +228,27 @@ struct CodexSessionsTests {
         #expect(!excluded.entries.flatMap(\.children).contains { $0.url == parent })
         #expect(FileManager.default.fileExists(atPath: parent.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent("native-called").path))
+        if unreadablePath != nil || installation == .invalidDatabase {
+            let text = try String(contentsOf: log.fileURL, encoding: .utf8)
+            #expect(!text.contains("Private fixture contents"))
+            let events = try text.split(separator: "\n").map {
+                try #require(JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any])
+            }
+            let access = events.filter { $0["event"] as? String == "codex_database_file_access" }
+                .compactMap { $0["details"] as? [String: String] }
+            #expect(Set(access.compactMap { $0["path"] }) == [fixture.home.path, database.path,
+                database.path + "-wal", database.path + "-shm"])
+            let probes = events.filter { $0["event"] as? String == "codex_database_read_probe" }
+                .compactMap { $0["details"] as? [String: String] }
+            #expect(Set(probes.compactMap { $0["operation"] }) == ["session_inventory", "session_titles"])
+            #expect(probes.allSatisfy { $0["readable"] == "false" })
+            if let unreadablePath {
+                #expect(access.filter { $0["path"] == unreadablePath }.allSatisfy { $0["read_open_errno"] == "\(EACCES)" })
+                #expect(probes.allSatisfy { $0["system_errno"] == "\(EACCES)" })
+            } else {
+                #expect(probes.allSatisfy { $0["extended_error_code"] == "26" })
+            }
+        }
     }
 
     @Test("A partial native failure records removed history and retains the failure")

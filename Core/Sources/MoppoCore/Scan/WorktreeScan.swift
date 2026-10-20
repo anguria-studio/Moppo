@@ -18,14 +18,17 @@ struct WorktreeScan: Sendable {
         }
     }
 
-    static func prepare(_ roots: [URL]) async throws -> Self {
+    static func prepare(_ roots: [URL], onProgress: (@Sendable (Int, Int) -> Void)? = nil,
+                        github: GitHubMergeVerifier = .shared,
+                        captureActivity: @Sendable ([URL]) async throws -> WorktreeActivity = WorktreeActivity.capture) async throws -> Self {
         let roots = roots.map(\.standardizedFileURL)
         guard !roots.isEmpty else { return Self(roots: [], reviews: [:], activity: nil) }
+        onProgress?(0, roots.count)
         let diagnostics = ScanDiagnostics.current
         let span = diagnostics?.begin("worktree_batch", details: ["worktrees": "\(roots.count)", "review_limit": "2"])
         defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed") }
         let git = try await GitWorktreeDetector.executable()
-        let service = GitWorktreeReviewService(gitExecutable: { git })
+        let service = GitWorktreeReviewService(gitExecutable: { git }, github: github)
         var reviews: [URL: GitWorktreeReview] = [:]
         try await withThrowingTaskGroup(of: (URL, GitWorktreeReview).self) { group in
             var next = 0
@@ -40,20 +43,25 @@ struct WorktreeScan: Sendable {
                 reviews[root] = review
                 diagnostics?.update(span, details: ["reviewed": "\(reviews.count)"])
                 try Task.checkCancellation()
+                if reviews.count < roots.count { onProgress?(reviews.count, roots.count) }
                 submit()
             }
         }
-        let activity = try await WorktreeActivity.capture(roots: roots)
+        reviews = try await service.completeMerges(reviews)
+        onProgress?(roots.count, roots.count)
+        let activity = try await captureActivity(roots)
         return Self(roots: roots, reviews: reviews, activity: activity)
     }
 
     func measure(_ root: URL, with measurer: AllocatedSizeMeasurer,
-                 retaining paths: [URL] = []) async throws -> Result {
+                 retaining paths: [URL] = [],
+                 progress: (@Sendable (SizeMeasurement) -> Void)? = nil) async throws -> Result {
         let observer: (@Sendable (URL, URLResourceValues, [URL]) -> Void)?
         if let activity {
             observer = { url, values, owners in activity.observe(url, values: values, attribution: owners) }
         } else { observer = nil }
-        return finish(try await measurer.measure(root, retaining: paths + measurementPaths, observeEntry: observer))
+        return finish(try await measurer.measure(root, retaining: paths + measurementPaths,
+                                                observeEntry: observer, progress: progress))
     }
 
     private func finish(_ measurements: [URL: SizeMeasurement]) -> Result {
@@ -172,7 +180,7 @@ final class WorktreeActivity: @unchecked Sendable {
                 revokedFiles += 1
                 return
             }
-            guard type == "REG" || type == "DIR" else {
+            guard type == "REG" || type == "DIR" || type == "LINK" else {
                 let otherTypes: Set<String> = ["CHR", "BLK", "FIFO", "PIPE", "unix", "IPv4", "IPv6", "KQUEUE",
                                                "NPOLICY", "NEXUS", "systm", "CHAN", "PSXSEM", "PSXSHM", "FSEVENT"]
                 if !otherTypes.contains(type) {
@@ -240,7 +248,14 @@ final class WorktreeActivity: @unchecked Sendable {
         let owners = attribution.filter { roots.contains($0) }
         guard !owners.isEmpty, issue == nil else { return }
         let names: Set<String>?
-        if let volume = values.volumeIdentifier as? NSObject,
+        // Use the link identity without resolving its target.
+        if values.isSymbolicLink == true {
+            guard let identity = FileIdentity.of(url) else {
+                lock.withLock { unreadable.formUnion(owners) }
+                return
+            }
+            names = processes[identity]
+        } else if let volume = values.volumeIdentifier as? NSObject,
            let files = processesByVolume[volume], let inode = values.fileIdentifier {
             names = files[inode]
         } else {

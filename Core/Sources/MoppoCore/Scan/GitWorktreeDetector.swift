@@ -76,12 +76,22 @@ enum GitWorktreeDetector {
         return found
     }
 
-    /// Uses the upstream branch when available. Detached worktrees use all remote-tracking branches.
-    static func pushStatus(of directory: URL, executable suppliedExecutable: String? = nil) async throws -> (status: FileEntry.GitWorktreePushStatus, reason: String?) {
+    struct CommitComparison {
+        var status: FileEntry.GitWorktreePushStatus
+        var reason: String?
+        var mergedInto: String? = nil
+        var mergeIssue = "Saved default-branch data does not confirm this merge."
+        var mergeCandidate: GitHubMergeVerifier.Candidate?
+    }
+
+    /// Checks saved default branches before comparing the upstream or detached HEAD.
+    static func pushStatus(of directory: URL, executable suppliedExecutable: String? = nil) async throws -> CommitComparison {
         let resolvedExecutable: String?
         if let suppliedExecutable { resolvedExecutable = suppliedExecutable }
         else { resolvedExecutable = try await executable() }
-        guard let executable = resolvedExecutable else { return (.unknown, "Git is not installed.") }
+        guard let executable = resolvedExecutable else {
+            return .init(status: .unknown, reason: "Git is not installed.", mergeIssue: "Git is not installed.")
+        }
         func git(_ arguments: [String]) async throws -> String {
             try Task.checkCancellation()
             let data = try await ProcessRunner().run(
@@ -91,38 +101,80 @@ enum GitWorktreeDetector {
             )
             return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        var result = CommitComparison(status: .unknown, reason: nil)
         do {
-            // Incomplete history cannot prove that a commit reached a remote branch.
-            guard try await git(["rev-parse", "--is-shallow-repository"]) == "false" else { return (.unknown, "Incomplete Git history prevents the commit comparison.") }
-            let remotes = try await git(["for-each-ref", "--format=%(refname)", "refs/remotes/"])
-            guard !remotes.isEmpty else { return (.unknown, "No saved remote branches are available.") }
+            guard try await git(["rev-parse", "--is-shallow-repository"]) == "false" else {
+                result.mergeIssue = "Incomplete Git history prevents the commit comparison."
+                result.reason = result.mergeIssue
+                return result
+            }
+            let head = try await git(["rev-parse", "--verify", "HEAD"])
+            let remotes = try await git(["for-each-ref", "--format=%(refname)%00%(symref)", "refs/remotes/"])
+            guard !remotes.isEmpty else {
+                result.mergeIssue = "No saved remote branches are available."
+                result.reason = result.mergeIssue
+                return result
+            }
             let upstream: String?
-            do {
-                upstream = try await git(["rev-parse", "--symbolic-full-name", "@{upstream}"])
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                try Task.checkCancellation()
-                upstream = nil
+            do { upstream = try await git(["rev-parse", "--symbolic-full-name", "@{upstream}"]) }
+            catch is CancellationError { throw CancellationError() }
+            catch { try Task.checkCancellation(); upstream = nil }
+            let defaults = remotes.split(separator: "\n").compactMap { record -> (remote: String, ref: String)? in
+                let fields = record.split(separator: "\0", omittingEmptySubsequences: false)
+                guard fields.count == 2, fields[0].hasSuffix("/HEAD") else { return nil }
+                let prefix = fields[0].dropLast(4)
+                guard fields[1].hasPrefix(prefix), fields[1] != fields[0] else { return nil }
+                if let upstream, !upstream.hasPrefix(prefix) { return nil }
+                return (String(prefix.dropFirst("refs/remotes/".count).dropLast()), String(fields[1]))
+            }
+            if defaults.count == 1, let target = defaults.first {
+                do {
+                    _ = try await git(["merge-base", "--is-ancestor", head, target.ref])
+                    result.status = .noUnpushedCommits
+                    result.mergedInto = String(target.ref.dropFirst("refs/remotes/".count))
+                    result.mergeIssue = ""
+                    return result
+                } catch ProcessError.failed(_, let status, _) where status == 1 { }
+                do {
+                    let remoteURL = try await git(["remote", "get-url", target.remote])
+                    if let repository = GitHubMergeVerifier.Repository(remoteURL: remoteURL), GitHubMergeVerifier.isCommit(head) {
+                        result.mergeCandidate = .init(request: .init(repository: repository, head: head),
+                                                      defaultRef: target.ref, remote: target.remote)
+                    } else {
+                        result.mergeIssue = "Saved history does not confirm this merge. GitHub verification requires a supported github.com remote."
+                    }
+                } catch is CancellationError { throw CancellationError() }
+                catch { result.mergeIssue = "The saved remote URL could not be read." }
+            } else {
+                result.mergeIssue = "The saved remote default branch is missing or ambiguous."
             }
             let comparison: [String]
             if let upstream {
-                guard upstream.hasPrefix("refs/remotes/") else { return (.unknown, "The upstream is a local branch.") }
-                comparison = ["HEAD", "^" + upstream, "--"]
+                guard upstream.hasPrefix("refs/remotes/") else {
+                    result.reason = "The upstream is a local branch."
+                    return result
+                }
+                comparison = [head, "^" + upstream, "--"]
             } else {
-                // A branch without an upstream has no defined push destination.
-                let head = try await git(["rev-parse", "--abbrev-ref", "HEAD"])
-                guard head == "HEAD" else { return (.unknown, "No upstream branch is configured.") }
-                comparison = ["HEAD", "--not", "--remotes", "--"]
+                let branch = try await git(["rev-parse", "--abbrev-ref", "HEAD"])
+                guard branch == "HEAD" else {
+                    result.reason = "The upstream branch is missing or was deleted."
+                    return result
+                }
+                comparison = [head, "--not", "--remotes", "--"]
             }
             let output = try await git(["rev-list", "--count"] + comparison)
-            guard let count = Int(output), count >= 0 else { return (.unknown, "Git did not return a valid commit count.") }
-            return (count == 0 ? .noUnpushedCommits : .unpushedCommits(count), nil)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
+            guard let count = Int(output), count >= 0 else {
+                result.reason = "Git did not return a valid commit count."
+                return result
+            }
+            result.status = count == 0 ? .noUnpushedCommits : .unpushedCommits(count)
+            return result
+        } catch is CancellationError { throw CancellationError() }
+        catch {
             try Task.checkCancellation()
-            return (.unknown, GitWorktreeReview.failureReason(error, tool: "Git"))
+            let reason = GitWorktreeReview.failureReason(error, tool: "Git")
+            return .init(status: .unknown, reason: reason, mergeIssue: reason)
         }
     }
 

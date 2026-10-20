@@ -28,6 +28,7 @@ public struct GitWorktreeReview: Sendable, Equatable {
         public var status: Status
         public var allocatedBytes: Int64 = 0
         public var regeneratesSafely: Bool?
+        public var canRemoveWhenMerged = false
         public var id: String { path }
         public init(path: String, status: Status, allocatedBytes: Int64 = 0, regeneratesSafely: Bool? = nil) {
             self.path = path
@@ -40,6 +41,9 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public var branch = "Branch unknown"
     public var status: FileEntry.GitWorktreeStatus = .unavailable
     public var pushStatus: FileEntry.GitWorktreePushStatus = .unknown
+    public var mergedInto: String?
+    public var mergePullRequestNumber: Int?
+    public var mergeIssue = "The merge was not checked."
     public var localFiles: [File] = []
     public var ignoredFiles: [File] = []
     public var filesChecked = false
@@ -50,10 +54,12 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public var locks: Check = .unknown("Git locks were not checked.")
     public var activity: Check = .unknown("Open files and processes were not checked.")
     var verifiedGeneratedProjects: Set<URL> = []
+    var mergeCandidate: GitHubMergeVerifier.Candidate?
 
     public init() {}
 
     public var ignoredBytes: Int64 { ignoredFiles.reduce(0) { $0 + $1.allocatedBytes } }
+    public var mergeCheck: Check { mergedInto == nil ? .unknown(mergeIssue) : .clear }
     public var regenerableIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == true } }
     public var localIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false } }
     public var unverifiedIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == nil } }
@@ -71,11 +77,15 @@ public struct GitWorktreeReview: Sendable, Equatable {
     }
 
     public var ignoredFilesCheck: Check {
-        let local = localIgnoredFiles
+        let local = localIgnoredFiles.filter { !includesAfterMerge($0) }
         if !local.isEmpty { return .found(local.map(\.path).joined(separator: ", ")) }
         guard filesChecked, status != .unavailable else { return .unknown(filesIssue) }
-        guard ignoredFiles.allSatisfy({ $0.regeneratesSafely == true }) else { return .unknown(ignoredFilesIssue) }
+        guard ignoredFiles.allSatisfy({ $0.regeneratesSafely == true || includesAfterMerge($0) }) else { return .unknown(ignoredFilesIssue) }
         return .clear
+    }
+
+    public func includesAfterMerge(_ file: File) -> Bool {
+        mergedInto != nil && file.status == .ignored && file.canRemoveWhenMerged
     }
 
     public var pushCheck: Check {

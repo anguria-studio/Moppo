@@ -64,6 +64,13 @@ struct WorktreeReviewSheet: View {
                         .padding(14)
                     }
                     section("Checks") {
+                        check("Merge", state: review.mergeCheck,
+                            clear: review.mergedInto.map { target in
+                                review.mergePullRequestNumber.map { "PR #\($0) → " + target } ?? "Into " + target
+                            } ?? "",
+                            detail: review.mergePullRequestNumber == nil ? "Confirmed using saved remote data."
+                                : "Confirmed by GitHub and saved Git history.", unknown: "Not confirmed")
+                        Divider()
                         check("Uncommitted changes", state: review.localFilesCheck)
                         Divider()
                         check("Unpushed commits", state: review.pushCheck,
@@ -71,7 +78,8 @@ struct WorktreeReviewSheet: View {
                             detail: "Compared with saved remote data. Last fetch: " + fetchDate)
                         Divider()
                         check("Ignored files", state: review.ignoredFilesCheck,
-                            clear: review.ignoredFiles.isEmpty ? "None" : "Regenerable files only")
+                            clear: review.ignoredFiles.isEmpty ? "None" : review.mergedInto != nil
+                                ? "Included with merged worktree" : "Regenerable files only")
                         Divider()
                         check("Git locks", state: review.locks)
                         Divider()
@@ -79,7 +87,7 @@ struct WorktreeReviewSheet: View {
                     }
                     if !review.localFiles.isEmpty { files("Files only on this Mac", items: review.localFiles) }
                     if !review.localIgnoredFiles.isEmpty {
-                        files("Local files to review", items: review.localIgnoredFiles, showsBytes: true)
+                        files("Local ignored files", items: review.localIgnoredFiles, showsBytes: true)
                     }
                     if !review.unverifiedIgnoredFiles.isEmpty {
                         files("Unverified files", items: review.unverifiedIgnoredFiles, showsBytes: true)
@@ -87,8 +95,6 @@ struct WorktreeReviewSheet: View {
                     if !review.regenerableIgnoredFiles.isEmpty {
                         files("Regenerable files", items: review.regenerableIgnoredFiles, showsBytes: true)
                     }
-                    Text(nextStep).font(.mcSubtitle).foregroundStyle(Token.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -137,6 +143,7 @@ struct WorktreeReviewSheet: View {
 
     private var verificationDetails: String {
         [
+            ("Merge", review.mergeCheck),
             ("Uncommitted changes", review.localFilesCheck),
             ("Unpushed commits", review.pushCheck),
             ("Ignored files", review.ignoredFilesCheck),
@@ -150,6 +157,12 @@ struct WorktreeReviewSheet: View {
     private var verdict: String {
         if isChecking { return "Moppo is checking local files, commits, locks, and open files." }
         if isSafe {
+            if review.mergedInto != nil {
+                if review.mergePullRequestNumber != nil {
+                    return "GitHub and saved Git history confirm this merge. Removal includes all ignored local files, including environment files."
+                }
+                return "Saved remote data contains these commits. Removal includes all ignored local files, including environment files."
+            }
             return "All checks passed using saved remote data. Git and project tools can recreate these files."
         }
         var findings: [String] = []
@@ -170,29 +183,13 @@ struct WorktreeReviewSheet: View {
         return "Moppo could not complete every check."
     }
 
-    private var nextStep: String {
-        if isChecking { return "Wait for the checks before you select removal." }
-        switch review.outcome {
-        case .safeToRemove:
-            return "Select this worktree to move it to the Trash. You can put it back with a saved receipt."
-        case .inUse:
-            return "Close the tool session. Wait for Git to finish. If you select it anyway, Moppo moves it to the Trash."
-        case .uncommittedChanges, .unpushedCommits:
-            return "Save your local work before removal. If you select it anyway, Moppo moves it to the Trash."
-        case .hasLocalFiles:
-            return "Review the ignored files before removal. If you select it anyway, Moppo moves it to the Trash."
-        case .couldNotVerify:
-            return "Complete the checks in your Git tool before removal. If you select it anyway, Moppo moves it to the Trash."
-        }
-    }
-
     private func check(_ title: String, state: GitWorktreeReview.Check, clear: String = "None",
-                       detail: String? = nil) -> some View {
+                       detail: String? = nil, unknown: String = "Couldn't check") -> some View {
         let problem: Bool = if case .found = state { true } else { false }
         let value: String = switch state {
         case .clear: clear
         case .found(let value): value
-        case .unknown: "Couldn't check"
+        case .unknown: unknown
         }
         return HStack(spacing: 9) {
             HoverHelpIcon(
@@ -236,10 +233,12 @@ struct WorktreeReviewSheet: View {
                     HStack(spacing: 8) {
                         Text(file.path).font(.mcMonoPath).lineLimit(1).truncationMode(.middle).help(file.path)
                         Spacer(minLength: 8)
+                        let included = review.includesAfterMerge(file)
                         let label = file.status == .ignored
-                            ? (file.regeneratesSafely == true ? "Regenerable" : file.regeneratesSafely == false ? "Review" : "Unverified")
+                            ? (file.regeneratesSafely == true ? "Regenerable" : included ? "Included"
+                               : file.regeneratesSafely == false ? "Review" : "Unverified")
                             : file.status.rawValue
-                        Badge(text: label, style: file.regeneratesSafely == true ? .safe
+                        Badge(text: label, style: file.regeneratesSafely == true || included ? .safe
                             : file.status == .changed || file.regeneratesSafely == false ? .review : .neutral).fixedSize()
                     }.padding(.horizontal, 14).padding(.vertical, 7)
                 }

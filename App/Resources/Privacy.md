@@ -27,6 +27,10 @@ Photos and iCloud requests use Apple services and your existing Apple account.
 Homebrew removal uses your installed Homebrew tools.
 Homebrew can contact its package sources under its own settings.
 When Homebrew needs your password, Moppo sends it directly to sudo and does not save it.
+Worktree merge verification can use your installed GitHub CLI and its existing sign-in.
+These requests send repository names and commit identifiers to GitHub.
+They do not send local file paths or file contents.
+Moppo does not store your GitHub credentials.
 
 ## Support
 

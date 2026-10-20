@@ -266,8 +266,9 @@ public struct AllocatedSizeMeasurer: Sendable {
 
     /// Collects selected descendant totals in one traversal with shared hard-link accounting.
     func measure(_ root: URL, retaining paths: [URL],
-                 observeEntry: (@Sendable (URL, URLResourceValues, [URL]) -> Void)? = nil) async throws -> [URL: SizeMeasurement] {
-        try await measureSubtrees(of: root, depth: 0, retaining: paths, observeEntry: observeEntry, progress: nil)
+                 observeEntry: (@Sendable (URL, URLResourceValues, [URL]) -> Void)? = nil,
+                 progress: (@Sendable (SizeMeasurement) -> Void)? = nil) async throws -> [URL: SizeMeasurement] {
+        try await measureSubtrees(of: root, depth: 0, retaining: paths, observeEntry: observeEntry, progress: progress)
     }
 
     private func measureSubtrees(of root: URL, depth: Int, retaining paths: [URL],
