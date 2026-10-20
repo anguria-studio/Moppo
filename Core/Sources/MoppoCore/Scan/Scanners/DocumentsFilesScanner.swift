@@ -301,7 +301,10 @@ public struct DocumentsFilesScanner: CategoryScanner {
         let outputs = (shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
             : XcodeBuildCache.releaseCaches(under: candidate.url).map {
                 BuildOutputDetector.Root(url: $0.url, kind: .xcodeDerivedData, xcodeBuildCacheReview: $0)
-            }).filter { !context.isExcluded($0.url) }
+            }).filter {
+            $0.xcodeBuildCacheReview?.isWholeFolder == true
+                ? !context.isWithinExclusion($0.url) : !context.isExcluded($0.url)
+        }
         progress.report(force: true, "Finding worktrees in \(folder)")
         let roots = try GitWorktreeDetector.isWorktree(candidate.url)
             ? [candidate.url] : GitWorktreeDetector.roots(under: candidate.url, context: context)

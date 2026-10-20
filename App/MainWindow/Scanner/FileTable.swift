@@ -552,7 +552,7 @@ private struct FileRow: View {
                     .foregroundStyle(Token.Text.primary)
                     .lineLimit(1)
                     .fixedSize()
-                if isProtectedParent {
+                if isProtectedParent || entry.xcodeBuildCacheReview?.isWholeFolder == true {
                     Text("Total storage")
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
@@ -562,7 +562,9 @@ private struct FileRow: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(isProtectedParent
                 ? "Total storage, \(ByteFormatting.string(entry.rowDisplayBytes)). Includes child items and other protected files. This is not removable space."
-                : ByteFormatting.string(entry.rowDisplayBytes))
+                : entry.xcodeBuildCacheReview?.isWholeFolder == true
+                    ? "Total storage, \(ByteFormatting.string(entry.rowDisplayBytes)). Includes all child items."
+                    : ByteFormatting.string(entry.rowDisplayBytes))
 
             if entry.url.isFileURL {
                 FileRowMenu(entry: entry, isRowHovered: isRowHovered,
@@ -629,10 +631,13 @@ private struct FileRow: View {
                 ? "Use this checkbox to select child items. The parent folder stays protected."
                 : "Use the lock to review and unlock child items. Unlocking does not select items."
         }
+        if entry.xcodeBuildCacheReview?.isWholeFolder == true {
+            return entry.protectionExplanation
+                ?? "Select the whole folder, including its caches, logs, reports, and Xcode metadata. All contents move to the Trash."
+        }
         if isProtectedParent {
-            return "Moppo blocks removal of the whole folder to keep protected files, even after you close the application. "
-                + "Child items have separate removal checks. "
-                + (entry.protectionExplanation ?? "")
+            return entry.protectionExplanation
+                ?? "Moppo cannot remove this whole folder. Review its child items separately."
         }
         if let image = entry.dockerImage {
             if let count = image.containerCount, count > 0 {
@@ -656,11 +661,7 @@ private struct FileRow: View {
             return "This app cannot delete this item. Click the terminal badge for "
                 + "the command that does."
         }
-        if let owner = entry.inUseBy, entry.protectionReason == nil {
-            // Information, not a lock: the checkbox works.
-            return "\(owner.name) is open and may be using these files, so they are "
-                + "not counted as safe. Quit it first, or let Clean Up quit it for you."
-        }
+        if let guidance = presentation.runningGuidance { return guidance }
         switch entry.protectionReason {
         case .running:
             return "This app is running. Quit it to remove it. Its support files "
@@ -732,12 +733,14 @@ private struct FileRow: View {
                         if entry.protectionReason == .inventory {
                             Badge(text: "in use").fixedSize()
                         }
+                    } else if entry.xcodeBuildCacheReview?.isWholeFolder == true, let owner = presentation.runningOwner {
+                        Badge(text: "\(owner.name) is open").fixedSize()
                     } else if let reason = entry.protectionReason, !isProtectedParent {
                         // Says *why* the checkbox is locked without hovering anything,
                         // and says the true thing: "in use" on an app that was merely
                         // opened last week reads as a lie.
                         Badge(text: Self.badgeText(for: reason)).fixedSize()
-                    } else if let owner = entry.inUseBy {
+                    } else if let owner = presentation.runningOwner {
                         // Names the owner: "in use" alone sends the user hunting for
                         // which of their open apps is meant.
                         Badge(text: "\(owner.name) is open").fixedSize()
@@ -753,7 +756,7 @@ private struct FileRow: View {
                     .font(.mcBody)
                     .foregroundStyle(Token.Text.secondary)
                     .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
-                    .truncationMode(.tail)
+                    .truncationMode(entry.xcodeBuildCacheReview?.isWholeFolder == true ? .middle : .tail)
                     .help(entry.url.path)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -793,6 +796,10 @@ private struct ChildRow: View {
     var onReviewWorktree: (() -> Void)? = nil
     @FocusState private var isFocused: Bool
     @State private var isRowHovered = false
+
+    private var presentation: FileEntryPresentation {
+        FileEntryPresentation(entry: entry, showsSafetyCaveat: false)
+    }
 
     var body: some View {
         HStack(spacing: Metrics.gap) {
@@ -843,6 +850,10 @@ private struct ChildRow: View {
                         Badge(text: "with parent").fixedSize()
                     } else if entry.protectionReason == .userData {
                         Badge(text: "user data").fixedSize()
+                    } else if let owner = entry.inUseBy, entry.xcodeBuildCacheReview == nil {
+                        Badge(text: "\(owner.name) is open").fixedSize()
+                    } else if entry.protectionReason == .running {
+                        Badge(text: "in use").fixedSize()
                     } else if entry.isRegenerable {
                         // The badge follows the same safety rules as the filter.
                         if showsSafeToRemoveBadges && entry.regeneratesSafely {
@@ -852,10 +863,12 @@ private struct ChildRow: View {
                         Badge(text: caveat).fixedSize()
                     }
                 }
-                Text(FileEntryPresentation(entry: entry, showsSafetyCaveat: false).summary)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.secondary)
-                    .lineLimit(1)
+                if entry.xcodeBuildCacheReview == nil {
+                    Text(presentation.summary)
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.secondary)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help("\(childHelp)\n\(entry.url.path)")
@@ -933,13 +946,9 @@ private struct ChildRow: View {
                 : "Protected: profiles, logins, history and settings may live here. "
                     + "Use the lock to review and select it separately."
         }
+        if let guidance = presentation.runningGuidance { return guidance }
         if entry.isRemovalLocked {
             return "Protected while the app is running."
-        }
-        if let owner = entry.inUseBy {
-            // Information, not a lock: the checkbox works.
-            return "\(owner.name) is open and may be using these files, so they are "
-                + "not counted as safe. Quit it first, or let Clean Up quit it for you."
         }
         if let caveat = entry.safetyCaveat {
             if caveat == "Git worktree" {
@@ -1026,10 +1035,14 @@ struct ProtectedSelectionControl: View {
         if entry.codexSession != nil {
             return entry.protectionReason == .inventory ? "Session is in use" : "Conversation history"
         }
-        if entry.protectionReason == .inventory { return "Protected AI storage" }
+        if entry.protectionReason == .inventory {
+            return entry.children.isEmpty ? "Protected item" : "Whole folder removal blocked"
+        }
         if entry.protectionReason == .folderRemainder { return "Remove with parent" }
         if entry.protectionReason == .userData { return "Protected user data" }
-        if entry.protectionReason == .running { return "Application is running" }
+        if entry.protectionReason == .running {
+            return entry.kind == .cache ? "Cache files are in use" : "Application is running"
+        }
         if entry.manualRemoval != nil { return "Manual removal required" }
         return "Protected item"
     }
@@ -1047,10 +1060,7 @@ struct ProtectedSelectionControl: View {
             return "This item can contain profiles, logins, history, and settings. "
                 + "Click the lock to review and select it for removal."
         }
-        if entry.protectionReason == .running {
-            return "Quit the application before you remove it. "
-                + "You can remove its listed support files separately."
-        }
+        if entry.protectionReason == .running { return help }
         if entry.manualRemoval != nil {
             return "Moppo cannot remove this item directly. "
                 + "Use the terminal badge to review the command."

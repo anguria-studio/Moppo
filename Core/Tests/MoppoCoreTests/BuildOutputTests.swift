@@ -48,6 +48,15 @@ struct BuildOutputTests {
             try info.write(to: root.appendingPathComponent("info.plist"))
             return root
         }
+
+        @discardableResult
+        func testResultsMetadata(_ relative: String) throws -> URL {
+            let url = try file("\(relative)/TestResults/metadata.db")
+            let metadata: [String: Any] = ["FormatVersion": 1,
+                "Store": ["DemoTests": ["ExampleTests": ["example": ["mrnet": 0.01]]]]]
+            try PropertyListSerialization.data(fromPropertyList: metadata, format: .xml, options: 0).write(to: url)
+            return url
+        }
     }
 
     // MARK: - Detector
@@ -439,15 +448,36 @@ struct BuildOutputTests {
             temporaryRoots: [temporary, temporary])
         scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
         let context = ScanContext(excludedPaths: [root.appendingPathComponent("Index.noindex").path])
+        let xcode = FileEntry.RunningOwner(name: "Xcode", bundleIdentifier: "com.apple.dt.Xcode", bundlePath: "/Applications/Xcode.app")
+        let running = try await scanner.scan(context: ScanContext(
+            excludedPaths: context.excludedPaths, runningApplications: [xcode]))
+        #expect(running.entries.allSatisfy { FileEntryPresentation(entry: $0).runningOwner == xcode })
+        #expect(running.entries.allSatisfy { $0.inUseBy == xcode && $0.isRemovalLocked })
+        #expect(running.safeToRemoveBytes == 0)
+        #expect(running.filtered(safeToRemove: true).entries.isEmpty)
+        #expect(running.entries.flatMap(\.children).filter(\.isRegenerable).allSatisfy {
+            $0.inUseBy == xcode && FileEntryPresentation(entry: $0).runningGuidance?.contains("Close Xcode, then scan again") == true
+        })
+
         let result = try await scanner.scan(context: context)
         #expect(result.entries.count == 2)
+        #expect(result.entries.allSatisfy { FileEntryPresentation(entry: $0).runningOwner == nil })
+        let summaries = result.entries.map { FileEntryPresentation(entry: $0).summary }
+        #expect(Set(summaries).count == 2)
+        #expect(summaries.contains(FileEntry.abbreviate(root.path)))
+        #expect(summaries.contains(FileEntry.abbreviate(temporary.appendingPathComponent("another-job/DerivedData").path)))
+        #expect(Set(result.entries.flatMap(\.children).map(\.id)) == Set(running.entries.flatMap(\.children).map(\.id)))
+        #expect(result.entries.flatMap(\.children).allSatisfy { FileEntryPresentation(entry: $0).runningGuidance == nil })
         let group = try #require(result.entries.first { $0.url.path == root.path })
         #expect(group.displayName == "Demo — temporary build cache")
         #expect(group.isRemovalLocked)
-        #expect(Set(group.children.map(\.url.lastPathComponent)) == ["Build", "ModuleCache.noindex"])
-        #expect(result.totalBytes == result.safeToRemoveBytes)
+        #expect(Set(group.children.map(\.url.lastPathComponent)) ==
+            ["Build", "ModuleCache.noindex", "info.plist", "notes.txt", "SourcePackages", "Tests.xcresult", "Release.xcarchive"])
+        #expect(result.totalBytes > result.safeToRemoveBytes)
+        let keptRoots = Set(kept.compactMap { $0.split(separator: "/").first.map(String.init) })
+        #expect(group.children.filter { keptRoots.contains($0.url.lastPathComponent) }.allSatisfy { $0.isRemovalLocked })
         #expect(result.filtered(safeToRemove: true).entries.count == 3)
-        #expect(result.entries.flatMap(\.children).allSatisfy { $0.xcodeBuildCacheReview != nil })
+        #expect(result.entries.flatMap(\.children).filter(\.regeneratesSafely).allSatisfy { $0.xcodeBuildCacheReview != nil })
         #expect(kept.allSatisfy { FileManager.default.fileExists(atPath: root.appendingPathComponent($0).path) })
         #expect(try XcodeBuildCache.temporaryCaches(under: [temporary],
             context: ScanContext(excludedPaths: [temporary.path])).isEmpty)
@@ -486,23 +516,194 @@ struct BuildOutputTests {
         #expect(FileManager.default.fileExists(atPath: archive.path))
     }
 
-    @Test("Open files and incomplete process information protect discovered build caches", arguments: [false, true])
-    func activeBuildCaches(incomplete: Bool) async throws {
+    @Test("Open files and incomplete checks protect discovered build caches",
+          arguments: ["active", "incomplete-activity", "incomplete-contents"])
+    func activeBuildCaches(problem: String) async throws {
         let sandbox = try Sandbox()
         let temporary = try sandbox.directory("Temporary")
         let root = try sandbox.verifiedDerivedData("Temporary/job")
+        if problem == "incomplete-contents" {
+            try sandbox.directory("Temporary/job/Build/" + Array(repeating: "d", count: 129).joined(separator: "/"))
+        }
         let identity = try #require(FileIdentity.of(root.appendingPathComponent("Build/Products/Debug/app.o")))
         var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
             projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [temporary])
         scanner.captureBuildActivity = {
-            WorktreeActivity(roots: $0, processes: incomplete ? [:] : [identity: ["swift-frontend"]],
-                             issue: incomplete ? "Incomplete process information." : nil)
+            WorktreeActivity(roots: $0, processes: problem == "active" ? [identity: ["swift-frontend"]] : [:],
+                             issue: problem == "incomplete-activity" ? "Incomplete process information." : nil)
         }
         let result = try await scanner.scan(context: ScanContext())
+        let group = try #require(result.entries.first)
         let child = try #require(result.entries.first?.children.first)
-        #expect(child.protectionReason == (incomplete ? .inventory : .running))
+        #expect(FileEntryPresentation(entry: group).summary == FileEntry.abbreviate(root.path))
+        #expect(!CleanupService.removalAllowed(group, userDataRemovalOverrides: [group.id]))
+        if problem == "incomplete-contents" {
+            #expect(!XcodeBuildCache.isCurrent(try #require(group.xcodeBuildCacheReview)))
+        }
+        #expect(child.protectionReason == (problem == "active" ? .running : .inventory))
+        #expect(FileEntryPresentation(entry: child).runningGuidance == (problem == "active" ? child.protectionExplanation : nil))
         #expect(result.safeToRemoveBytes == 0)
         #expect(!CleanupService.removalAllowed(child, userDataRemovalOverrides: [child.id]))
+    }
+
+    @Test("Complete build folders include reviewed logs, test results, and metadata without automatic selection")
+    func completeBuildFolder() async throws {
+        let sandbox = try Sandbox()
+        let temporary = try sandbox.directory("Temporary")
+        let root = try sandbox.verifiedDerivedData("Temporary/reviewed-folder")
+        try sandbox.file("Temporary/reviewed-folder/Logs/Build/LogStoreManifest.plist")
+        try sandbox.file("Temporary/reviewed-folder/Logs/Build/first.xcactivitylog")
+        try sandbox.file("Temporary/reviewed-folder/Logs/Test/Tests.xcresult/Info.plist")
+        try sandbox.testResultsMetadata("Temporary/reviewed-folder")
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [temporary])
+        scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+        let category = try await scanner.scan(context: ScanContext())
+        let group = try #require(category.entries.first)
+        #expect(!group.isRemovalLocked)
+        #expect(!group.regeneratesSafely)
+        #expect(group.xcodeBuildCacheReview?.isWholeFolder == true)
+        #expect(Set(group.children.map(\.url.lastPathComponent)) == ["Build", "Logs", "TestResults", "info.plist"])
+        let measured = try await AllocatedSizeMeasurer().measure(root)
+        #expect(group.displayBytes == measured.allocatedBytes)
+        let cache = try #require(group.children.first { $0.url.lastPathComponent == "Build" })
+        #expect(category.filtered(safeToRemove: true).entries.map(\.id) == [cache.id])
+        let reviewed = group.children.filter { $0.url.lastPathComponent != "Build" }
+        #expect(reviewed.allSatisfy { !$0.isRemovalLocked && !$0.regeneratesSafely && $0.safetyCaveat == nil })
+        let testResults = try #require(reviewed.first { $0.url.lastPathComponent == "TestResults" })
+        let testReview = try #require(testResults.xcodeBuildCacheReview)
+        #expect(XcodeBuildCache.isCurrent(testReview))
+        #expect(CleanupService.alwaysMovesToTrash(testResults))
+        let testMeasurement = try await XcodeBuildCache.measureForRemoval(testReview, with: AllocatedSizeMeasurer(), capture: {
+            WorktreeActivity(roots: $0, processes: [:])
+        })
+        #expect(testMeasurement?.allocatedBytes == testResults.allocatedBytes)
+        let selected = Set(group.children.map(\.id)).union([group.id])
+        #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .safe) == [cache.id])
+        #expect(CleanupSelection.ids(in: [category], selected: selected, scope: .all) == [group.id])
+        let targets = CleanupService.removalTargets(for: group, removeProtectedAppData: false)
+        #expect(targets.map(\.id) == [group.id])
+        #expect(targets.first?.allocatedBytes == measured.allocatedBytes)
+        #expect(targets.first?.children.isEmpty == true)
+        #expect(CleanupService.alwaysMovesToTrash(group))
+
+        let log = RemovalLog(directory: sandbox.home.appendingPathComponent("receipts"))
+        defer {
+            for record in log.recentEntries() where record.originalPath == root.path {
+                if let path = record.trashedPath { try? FileManager.default.removeItem(atPath: path) }
+            }
+        }
+        let service = CleanupService(measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: log, reviewBuildCache: { review in
+            try await XcodeBuildCache.measureForRemoval(review, with: AllocatedSizeMeasurer(), capture: {
+                WorktreeActivity(roots: $0, processes: [:])
+            })
+        })
+        let outcome = try await service.remove(entries: [group], trashFirst: false)
+        #expect(outcome.failed.isEmpty)
+        #expect(outcome.removedCount == 1)
+        #expect(outcome.trashedCount == 1)
+        #expect(outcome.removedBytes == measured.allocatedBytes)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+        let receipt = try #require(log.recentEntries().first)
+        let trashed = URL(fileURLWithPath: try #require(receipt.trashedPath))
+        #expect(FileManager.default.fileExists(atPath: trashed.appendingPathComponent("Logs/Build/first.xcactivitylog").path))
+        #expect(FileManager.default.fileExists(atPath: trashed.appendingPathComponent("TestResults/metadata.db").path))
+    }
+
+    @Test("Test results remain protected when metadata, contents, or activity checks fail",
+          arguments: ["invalid-metadata", "wrong-version", "wrong-store", "unknown-file", "link", "active", "incomplete"])
+    func protectedTestResults(problem: String) async throws {
+        let sandbox = try Sandbox()
+        let temporary = try sandbox.directory("Temporary")
+        _ = try sandbox.verifiedDerivedData("Temporary/job")
+        let metadata = try sandbox.testResultsMetadata("Temporary/job")
+        switch problem {
+        case "invalid-metadata": try Data("not a property list".utf8).write(to: metadata)
+        case "wrong-version", "wrong-store":
+            let value: [String: Any] = problem == "wrong-version"
+                ? ["FormatVersion": 2, "Store": [:]] : ["FormatVersion": 1, "Store": "unknown"]
+            try PropertyListSerialization.data(fromPropertyList: value, format: .xml, options: 0).write(to: metadata)
+        case "unknown-file": try sandbox.file("Temporary/job/TestResults/source.swift")
+        case "link":
+            try FileManager.default.createSymbolicLink(at: metadata.deletingLastPathComponent().appendingPathComponent("alias"),
+                withDestinationURL: sandbox.home)
+        default: break
+        }
+        let identity = try #require(FileIdentity.of(metadata))
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [temporary])
+        scanner.captureBuildActivity = {
+            WorktreeActivity(roots: $0, processes: problem == "active" ? [identity: ["xcodebuild"]] : [:],
+                issue: problem == "incomplete" ? "Incomplete process information." : nil)
+        }
+        let category = try await scanner.scan(context: ScanContext())
+        let group = try #require(category.entries.first)
+        let results = try #require(group.children.first { $0.url.lastPathComponent == "TestResults" })
+        #expect(group.isRemovalLocked)
+        #expect(results.protectionReason == (problem == "active" ? .running : .inventory))
+        #expect(!CleanupService.removalAllowed(results, userDataRemovalOverrides: [results.id]))
+        #expect(!category.filtered(safeToRemove: true).entries.contains { $0.id == results.id })
+    }
+
+    @Test("Build folder links must stay within the same verified cache", arguments: [false, true])
+    func buildFolderLinks(external: Bool) async throws {
+        let sandbox = try Sandbox()
+        let temporary = try sandbox.directory("Temporary")
+        let root = try sandbox.verifiedDerivedData("Temporary/job")
+        let target = external ? try sandbox.file("source.swift")
+            : root.appendingPathComponent("Build/Products/Debug/app.o")
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("Build/alias"), withDestinationURL: target)
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [temporary])
+        scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+        let category = try await scanner.scan(context: ScanContext())
+        let group = try #require(category.entries.first)
+        let cache = try #require(group.children.first { $0.url.lastPathComponent == "Build" })
+        #expect(group.isRemovalLocked == external)
+        #expect(cache.regeneratesSafely == !external)
+        #expect(XcodeBuildCache.isCurrent(try #require(group.xcodeBuildCacheReview)) == !external)
+    }
+
+    @Test("Whole-folder removal rejects changed contents and incomplete activity checks",
+          arguments: ["new-file", "changed-log", "changed-test-results", "link", "replaced-folder", "active", "incomplete"])
+    func changedBuildFolder(change: String) async throws {
+        let sandbox = try Sandbox()
+        let temporary = try sandbox.directory("Temporary")
+        let root = try sandbox.verifiedDerivedData("Temporary/job")
+        let log = try sandbox.file("Temporary/job/Logs/Build/first.xcactivitylog")
+        let testMetadata = try sandbox.testResultsMetadata("Temporary/job")
+        var scanner = XcodeScanner(developerRoot: sandbox.home.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: sandbox.home.appendingPathComponent("no-simulators"), temporaryRoots: [temporary])
+        scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+        let category = try await scanner.scan(context: ScanContext())
+        let group = try #require(category.entries.first)
+        let review = try #require(group.xcodeBuildCacheReview)
+        let identity = try #require(FileIdentity.of(log))
+        switch change {
+        case "new-file": try sandbox.file("Temporary/job/source.swift")
+        case "changed-log": try Data("new build log".utf8).write(to: log)
+        case "changed-test-results":
+            let results = try #require(group.children.first { $0.url.lastPathComponent == "TestResults" })
+            let resultsReview = try #require(results.xcodeBuildCacheReview)
+            let changed: [String: Any] = ["FormatVersion": 1, "Store": ["NewTests": [:]]]
+            try PropertyListSerialization.data(fromPropertyList: changed, format: .xml, options: 0).write(to: testMetadata)
+            let measured = try await XcodeBuildCache.measureForRemoval(resultsReview, with: AllocatedSizeMeasurer(), capture: {
+                WorktreeActivity(roots: $0, processes: [:])
+            })
+            #expect(measured == nil)
+        case "link":
+            try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("linked"), withDestinationURL: sandbox.home)
+        case "replaced-folder":
+            try FileManager.default.moveItem(at: root, to: sandbox.home.appendingPathComponent("old-job"))
+            _ = try sandbox.verifiedDerivedData("Temporary/job")
+        default: break
+        }
+        let measured = try await XcodeBuildCache.measureForRemoval(review, with: AllocatedSizeMeasurer(), capture: {
+            WorktreeActivity(roots: $0, processes: change == "active" ? [identity: ["xcodebuild"]] : [:],
+                             issue: change == "incomplete" ? "Incomplete process information." : nil)
+        })
+        #expect(measured == nil)
+        #expect(FileManager.default.fileExists(atPath: root.path))
     }
 
     @Test("Build cache removal rechecks activity and identities while preserving neighboring files")

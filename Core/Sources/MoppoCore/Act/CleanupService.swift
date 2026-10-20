@@ -291,7 +291,9 @@ public struct CleanupService: Sendable {
                 // letting this propagate does not turn an unreadable file into an
                 // aborted batch.
                 let measured: Int64
+                var freed: PrivateSizeMeasurement?
                 if let review = target.xcodeBuildCacheReview {
+                    freed = try? await privateMeasurer.measure([target.url])
                     guard review.url == target.url, let checked = try await reviewBuildCache(review) else {
                         outcome.failed.append(target.url.path)
                         records.append(Self.failureRecord(for: target))
@@ -309,11 +311,10 @@ public struct CleanupService: Sendable {
                     continue
                 }
 
-                // The last read before the item goes. Private size is what this
-                // file holds alone, so a clone whose sibling an earlier iteration
-                // already removed reports here as the sole owner of those blocks —
-                // which is exactly what removing it now gives back.
-                let freed = try? await privateMeasurer.measure([target.url])
+                // Build folder checks run after private-size measurement, immediately before removal.
+                if target.xcodeBuildCacheReview == nil {
+                    freed = try? await privateMeasurer.measure([target.url])
+                }
 
                 guard soundLibraryIsStillSafe(target) else {
                     outcome.failed.append(target.url.path)
@@ -649,6 +650,12 @@ public struct CleanupService: Sendable {
         for entry: FileEntry,
         removeProtectedAppData: Bool
     ) -> [FileEntry] {
+        if entry.xcodeBuildCacheReview?.isWholeFolder == true {
+            var folder = entry
+            folder.allocatedBytes = entry.displayBytes
+            folder.children = []
+            return [folder]
+        }
         guard entry.kind == .appBundle else {
             var parent = entry
             // Remainder rows share paths with worktrees. Their bytes belong to the final parent target.
@@ -697,6 +704,7 @@ public struct CleanupService: Sendable {
         return (entry.kind == .appBundle && CategoryID.applications.alwaysMovesToTrash)
             || entry.protectionReason == .userData
             || entry.soundLibrary != nil
+            || entry.xcodeBuildCacheReview.map { !$0.isRegenerable } == true
             || entry.isGitWorktree || GitWorktreeDetector.isWorktree(entry.url)
             || entry.children.contains { $0.isGitWorktree || GitWorktreeDetector.isWorktree($0.url) }
     }

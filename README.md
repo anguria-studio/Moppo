@@ -73,6 +73,13 @@ Select the parent folder to review removal of the worktrees and other files toge
 Moppo blocks separate removal of the **Other files** row because its folder path also contains the worktrees.
 Worktrees inside protected groups keep their protection.
 
+Temporary and release Xcode build folders show caches, logs, test results, and metadata separately.
+**Safe to Remove** selects only verified caches from these folders.
+Select recognized logs, test results, and metadata manually.
+Select the parent folder to move all its reviewed contents to the Trash.
+Moppo checks the whole folder again before removal.
+Active, excluded, or unverified contents block whole-folder removal.
+
 Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer** or **Reveal in Finder**.
 Right-click a row to use the same actions.
 Application rows show **Reveal in Finder** and, where applicable, **Review Uninstall**.

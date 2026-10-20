@@ -331,6 +331,47 @@ struct CleanupModelTests {
         #expect(notice.finderURLs == [kept])
     }
 
+    @Test("A build folder review selects the whole folder while automatic selection keeps only caches")
+    func buildFolderSelection() async throws {
+        let fixture = try TemporaryFolder()
+        let root = fixture.url.appendingPathComponent("Temporary/job")
+        for path in ["Build/Products/Debug", "Logs/Build", "TestResults"] {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent(path), withIntermediateDirectories: true)
+        }
+        _ = try fixture.write("Temporary/job/Build/Products/Debug/app.o")
+        _ = try fixture.write("Temporary/job/Logs/Build/build.xcactivitylog")
+        let info = try PropertyListSerialization.data(fromPropertyList:
+            ["WorkspacePath": "/Projects/Demo/Demo.xcodeproj/project.xcworkspace"], format: .xml, options: 0)
+        try info.write(to: root.appendingPathComponent("info.plist"))
+        let testMetadata = try PropertyListSerialization.data(fromPropertyList:
+            ["FormatVersion": 1, "Store": [:]], format: .xml, options: 0)
+        try testMetadata.write(to: root.appendingPathComponent("TestResults/metadata.db"))
+        var scanner = XcodeScanner(developerRoot: fixture.url.appendingPathComponent("no-developer"),
+            projectRoots: [], systemSimulatorRoot: fixture.url.appendingPathComponent("no-simulators"),
+            temporaryRoots: [root.deletingLastPathComponent()])
+        scanner.captureBuildActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+        let category = try await scanner.scan(context: ScanContext())
+        let parent = try #require(category.entries.first)
+        let cache = try #require(parent.children.first { $0.isRegenerable })
+        let cleanup = CleanupModel(operations: OperationCoordinator(), measureSaving: { _ in nil })
+        let now = Date()
+        cleanup.scanResults = ScanResults(categories: [category], startedAt: now, finishedAt: now)
+        cleanup.scanFilter = .all
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection == [cache.id])
+        #expect(cleanup.selectedBytes(in: .xcode) == cache.allocatedBytes)
+        let testResults = try #require(parent.children.first { $0.url.lastPathComponent == "TestResults" })
+        cleanup.scannerSelection = [testResults.id]
+        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
+        #expect(cleanup.cleanupSelection(in: .all) == [testResults.id])
+        cleanup.scannerSelection = [parent.id, cache.id]
+        #expect(cleanup.cleanupSelection(in: .all) == [parent.id])
+        #expect(cleanup.selectedBytes(in: .xcode) == parent.displayBytes)
+        cleanup.requestCleanUp(in: .all)
+        #expect(cleanup.pendingCleanUp?.entries.map(\.id) == [parent.id])
+        #expect(cleanup.scannerSelection.contains(parent.id))
+    }
+
     @Test("AI inventory stays visible but cannot enter cleanup selection")
     func aiInventorySelection() {
         var cache = cleanupEntry("ai-cache")
