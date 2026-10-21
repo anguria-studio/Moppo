@@ -140,12 +140,15 @@ struct ScannerView: View {
                     .foregroundStyle(Token.Text.secondary)
                     .lineLimit(2)
                     .help(names)
-                Text("Save your work before you quit these apps. Their caches will appear in Safe to Remove.")
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
+            Button("Don’t show again") {
+                model.dismissRunningAppsNotice(permanently: true)
+            }
+                .buttonStyle(.plain)
+                .font(.mcControlLabel)
+                .foregroundStyle(Token.Text.secondary)
+                .fixedSize()
             Button("Quit Apps") {
                 Task { await model.quitAppsForCleanup() }
             }

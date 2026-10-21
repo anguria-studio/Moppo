@@ -616,6 +616,27 @@ struct CleanupModelTests {
         #expect(app.view == .history)
     }
 
+    @Test("Permanent notice dismissal remains saved across scans and model creation")
+    func permanentRunningAppsNoticeDismissal() async throws {
+        let suite = "CleanupModelTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let scanner = HeldCleanupScanner()
+        let cleanup = CleanupModel(operations: OperationCoordinator(), scanner: scanner, defaults: defaults)
+        #expect(!cleanup.isRunningAppsNoticeDismissed)
+        cleanup.dismissRunningAppsNotice(permanently: true)
+        #expect(cleanup.isRunningAppsNoticeDismissed)
+        cleanup.startScan(refreshOverview: false)
+        #expect(cleanup.isRunningAppsNoticeDismissed)
+        try await waitUntil { await scanner.requestCount == 1 }
+        await scanner.finish(0, results: cleanupResults([]))
+        try await waitUntil { !cleanup.isScanning }
+        #expect(cleanup.isRunningAppsNoticeDismissed)
+        let reopenedDefaults = try #require(UserDefaults(suiteName: suite))
+        let reopened = CleanupModel(operations: OperationCoordinator(), defaults: reopenedDefaults)
+        #expect(reopened.isRunningAppsNoticeDismissed)
+    }
+
     @Test("A failed scan releases the guard and permits another scan")
     func scanFailure() async throws {
         let scanner = HeldCleanupScanner()

@@ -69,7 +69,6 @@ struct StatTiles: View {
                         label: "Safe to Remove",
                         value: safeToRemoveBytes.map { ByteFormatting.string($0) },
                         emptyValue: savedScanNeedsRefresh ? "Scan Again" : nil,
-                        description: "Files that can be created again when needed.",
                         action: onSafeTap,
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
@@ -77,7 +76,6 @@ struct StatTiles: View {
                         label: "All",
                         value: totalBytes.map { ByteFormatting.string($0) },
                         emptyValue: savedScanNeedsRefresh ? "Scan Again" : nil,
-                        description: "Includes protected items. Not all storage can be removed.",
                         action: onAllTap,
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
@@ -104,7 +102,6 @@ struct StatTiles: View {
         label: String,
         value: String?,
         emptyValue: String?,
-        description: String,
         action: (() -> Void)?,
         emptyAction: (() -> Void)?
     ) -> some View {
@@ -114,7 +111,6 @@ struct StatTiles: View {
                     label: label,
                     value: value,
                     emptyValue: emptyValue,
-                    description: description,
                     showsChevron: true
                 )
                     .contentShape(Rectangle())
@@ -125,8 +121,7 @@ struct StatTiles: View {
             StatTile(
                 label: label,
                 value: value,
-                emptyValue: emptyValue,
-                description: description
+                emptyValue: emptyValue
             )
         }
     }
@@ -142,7 +137,6 @@ private struct StatTile: View {
     let value: String?
     /// Used in place of the em dash where the empty state has a word for itself.
     var emptyValue: String?
-    let description: String
     /// Set on a tile that opens a list, so the affordance is visible before hover.
     var showsChevron: Bool = false
 
@@ -178,12 +172,6 @@ private struct StatTile: View {
                     .minimumScaleFactor(0.7)
                     .accessibilityLabel(value ?? emptyValue ?? "Not measured yet")
                     .padding(.top, 4)
-
-                Text(description)
-                    .font(.mcCaption)
-                    .foregroundStyle(Token.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 6)
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
