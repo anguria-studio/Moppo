@@ -325,7 +325,7 @@ final class DashboardModel {
         cloudID = id
         cloudPlanBytes = planBytes
         let previous = iCloudState == .loading ? .idle : iCloudState
-        if iCloudStorage == nil { iCloudState = .loading }
+        if previous == .idle || previous == .requiresAccess { iCloudState = .loading }
         let task = Task { [self] in
             defer {
                 if cloudID == id {

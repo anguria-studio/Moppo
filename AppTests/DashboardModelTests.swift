@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import MoppoCore
 
@@ -492,10 +493,57 @@ struct DashboardModelTests {
         #expect(model.iCloudStorage == nil)
         let retry = Task { await model.loadICloud() }
         try await waitUntil { await service.cloudPlans.count == 2 }
-        let storage = ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80)
-        await service.finishCloud(1, storage)
+        #expect(model.iCloudState == .unavailable)
+        await service.failCloud(1)
         await retry.value
+        #expect(model.iCloudState == .unavailable)
+        let success = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 3 }
+        #expect(model.iCloudState == .unavailable)
+        let storage = ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80)
+        await service.finishCloud(2, storage)
+        await success.value
         #expect(model.iCloudState == .available(storage))
+    }
+
+    @Test("Cloud retries keep card and setup sizes unchanged", .serialized, arguments: [false, true])
+    func cloudRetryLayouts(dark: Bool) async throws {
+        let service = HeldDashboardMeasurements(holdCloud: true)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        let initial = Task { await model.loadICloud() }
+        try await waitUntil { await service.cloudPlans.count == 1 }
+        await service.failCloud(0)
+        await initial.value
+        let setup = ICloudSetupView(model: model, access: .preview(disk: true))
+        let sheetBefore = try await renderTestView(
+            setup, width: 560, dark: dark,
+            output: URL(fileURLWithPath: "/tmp/moppo-230-setup-before-\(dark).png")
+        )
+        for width in [788.0, 908.0] {
+            let before = try await renderTestView(
+                StatTiles(results: nil, iCloudState: model.iCloudState),
+                width: width, dark: dark,
+                output: URL(fileURLWithPath: "/tmp/moppo-230-card-before-\(Int(width))-\(dark).png")
+            )
+            let count = await service.cloudPlans.count
+            let retry = Task { await model.loadICloud() }
+            try await waitUntil { await service.cloudPlans.count > count }
+            #expect(model.iCloudState == .unavailable)
+            let during = try await renderTestView(
+                StatTiles(results: nil, iCloudState: model.iCloudState),
+                width: width, dark: dark,
+                output: URL(fileURLWithPath: "/tmp/moppo-230-card-during-\(Int(width))-\(dark).png")
+            )
+            let sheetDuring = try await renderTestView(
+                setup, width: 560, dark: dark,
+                output: URL(fileURLWithPath: "/tmp/moppo-230-setup-during-\(dark).png")
+            )
+            #expect(before == during)
+            #expect(sheetBefore == sheetDuring)
+            await service.failCloud(count)
+            await retry.value
+            #expect(model.iCloudState == .unavailable)
+        }
     }
 
     @Test("Hidden cloud cards skip measurements and reject an active result")
