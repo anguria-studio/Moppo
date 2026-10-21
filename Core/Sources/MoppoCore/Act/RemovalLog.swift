@@ -83,6 +83,14 @@ public enum FileIdentity {
         guard lstat(url.path, &info) == 0 else { return nil }
         return "\(Int64(info.st_dev)):\(UInt64(info.st_ino))"
     }
+
+    /// Adds the `/private` prefix that macOS hides for `/var` and `/tmp` paths.
+    static func physicalPath(_ path: String) -> String {
+        if path == "/var" || path.hasPrefix("/var/") || path == "/tmp" || path.hasPrefix("/tmp/") {
+            return "/private" + path
+        }
+        return path
+    }
 }
 
 public enum RemovalLogError: Error, Equatable {

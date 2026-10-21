@@ -46,7 +46,7 @@ struct CodexSessions: Sendable {
             for id in ids {
                 guard !unsupportedIDs.contains(id), let record = records[id], let path = record.path,
                       let candidates = files[id], candidates.count == 1,
-                      candidates[0].url.path == path,
+                      FileIdentity.physicalPath(candidates[0].url.path) == FileIdentity.physicalPath(path),
                       candidates[0].url.lastPathComponent.hasPrefix("rollout-"),
                       candidates[0].url.lastPathComponent.hasSuffix(id + ".jsonl") else { return nil }
                 members.append(candidates[0])
