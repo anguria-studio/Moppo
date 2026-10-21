@@ -49,7 +49,7 @@ struct CleanupModelTests {
         #expect(cleanup.visibleCategories.flatMap(\.entries).map(\.id) == [photo.id])
     }
 
-    @Test("Type selection replaces a whole parent and preserves selections outside the view")
+    @Test("Type filters preserve selections and limit cleanup totals and plans to visible items")
     func dataTypeSelection() throws {
         var node = cleanupEntry("project/node_modules")
         node.kind = .cache
@@ -58,38 +58,60 @@ struct CleanupModelTests {
         var project = cleanupEntry("project")
         project.kind = .folder
         project.children = [node, python]
+        var otherNode = cleanupEntry("other/node_modules")
+        otherNode.kind = .cache
         let audio = cleanupEntry("recording.wav")
         let cleanup = CleanupModel(operations: OperationCoordinator(), measureSaving: { _ in nil })
-        cleanup.scanResults = cleanupResults([project, audio])
+        cleanup.scanResults = cleanupResults([project, otherNode, audio])
         cleanup.scanFilter = .all
-        cleanup.scannerSelection = [project.id, audio.id]
+        cleanup.scannerSelection = [project.id, otherNode.id, audio.id]
+        cleanup.userDataRemovalOverrides = [project.id, audio.id]
         cleanup.dataTypeFilter = .nodeModules
+        #expect(cleanup.scannerSelection == [project.id, otherNode.id, audio.id])
+        #expect(cleanup.userDataRemovalOverrides == [project.id, audio.id])
         #expect(cleanup.hiddenSelectionCount == 2)
-        #expect(cleanup.selectAllStateInCurrentView == .off)
+        #expect(cleanup.cleanupSelectionBytes(in: .all) == otherNode.allocatedBytes)
+        #expect(cleanup.selectAllStateInCurrentView == .mixed)
+        cleanup.requestCleanUp(in: .all)
+        #expect(cleanup.pendingCleanUp?.entries.map(\.id) == [otherNode.id])
+        #expect(cleanup.pendingCleanUp?.totalBytes == otherNode.allocatedBytes)
+        #expect(cleanup.pendingCleanUp?.userDataRemovalOverrides.isEmpty == true)
+        cleanup.cancelCleanUp()
+        cleanup.dataTypeFilter = .all
+        #expect(cleanup.scannerSelection == [project.id, otherNode.id, audio.id])
+        #expect(cleanup.userDataRemovalOverrides == [project.id, audio.id])
+        let restoredBytes = [project, node, python, otherNode, audio].reduce(Int64(0)) { $0 + $1.allocatedBytes }
+        #expect(cleanup.cleanupSelectionBytes(in: .all) == restoredBytes)
+        cleanup.dataTypeFilter = .nodeModules
         cleanup.selectAllInCurrentView()
-        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
         #expect(cleanup.selectAllStateInCurrentView == .on)
         #expect(cleanup.hiddenSelectionCount == 1)
-        #expect(cleanup.selectedBytes(in: .systemCaches) == node.allocatedBytes)
+        #expect(cleanup.selectedBytes(in: .systemCaches) == node.allocatedBytes + otherNode.allocatedBytes)
         cleanup.requestCleanUp(in: .all)
-        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [node.id, audio.id])
+        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [node.id, otherNode.id])
         #expect(cleanup.pendingCleanUp?.entries.first { $0.id == node.id } == node)
         cleanup.cancelCleanUp()
         cleanup.dataTypeFilter = .pythonEnvironments
-        #expect(cleanup.scannerSelection == [node.id, audio.id])
-        #expect(cleanup.hiddenSelectionCount == 2)
+        #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
+        #expect(cleanup.hiddenSelectionCount == 3)
+        #expect(cleanup.cleanupSelectionBytes(in: .all) == 0)
+        cleanup.requestCleanUp(in: .all)
+        #expect(cleanup.pendingCleanUp == nil)
         cleanup.selectAllInCurrentView()
-        #expect(cleanup.scannerSelection == [node.id, python.id, audio.id])
+        #expect(cleanup.scannerSelection == [node.id, otherNode.id, python.id, audio.id])
         cleanup.deselectAllInCurrentView()
-        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
         cleanup.dataTypeFilter = .nodeModules
         let category = try #require(cleanup.visibleCategories.first)
         #expect(cleanup.selectAllState(in: category) == .on)
         cleanup.setSelected(false, in: category)
         #expect(cleanup.scannerSelection == [audio.id])
         cleanup.setSelected(true, in: category)
-        #expect(cleanup.scannerSelection == [node.id, audio.id])
+        #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
         cleanup.dataTypeFilter = .all
+        #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
+        #expect(!cleanup.scannerSelection.contains(python.id))
         #expect(cleanup.hiddenSelectionCount == 0)
     }
 
@@ -121,6 +143,46 @@ struct CleanupModelTests {
         cleanup.invalidateResults()
         #expect(cleanup.dataTypeFilter == .all)
         #expect(cleanup.hiddenSelectionCount == 0)
+    }
+
+    @Test("The cleanup button follows visible selections across type and safety filters")
+    func cleanupButtonScope() {
+        var node = cleanupEntry("project/node_modules")
+        node.kind = .cache
+        var archive = cleanupEntry("Installer.zip")
+        archive.kind = .archive
+        archive.isRegenerable = false
+        let image = FileEntry(
+            url: URL(string: "docker://images/fixture")!, kind: .diskImage, allocatedBytes: 200,
+            dockerImage: DockerImage(imageID: "fixture", context: "fixture", tags: ["fixture:latest"], containerCount: 0)
+        )
+        let app = AppModel()
+        app.view = .scanner
+        let cleanup = app.cleanup
+        cleanup.scanFilter = .all
+        cleanup.scanResults = cleanupResults([node, archive, image])
+        cleanup.scannerSelection = [node.id, archive.id, image.id]
+        #expect(cleanup.hasSelectedDockerImages)
+        cleanup.dataTypeFilter = .nodeModules
+        #expect(!cleanup.hasSelectedDockerImages)
+        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(node.allocatedBytes)))")
+        cleanup.setScannerSelection(cleanup.scannerSelection.subtracting([node.id]))
+        #expect(cleanup.cleanupSelection(in: cleanup.scanFilter).isEmpty)
+        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
+        cleanup.requestCleanUp(in: cleanup.scanFilter)
+        #expect(cleanup.pendingCleanUp == nil)
+        cleanup.dataTypeFilter = .all
+        #expect(cleanup.scannerSelection == [archive.id, image.id])
+        #expect(cleanup.hasSelectedDockerImages)
+        let remainingBytes = archive.allocatedBytes + image.allocatedBytes
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
+        cleanup.scanFilter = .safeToRemove
+        #expect(!cleanup.hasSelectedDockerImages)
+        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
+        cleanup.requestCleanUp(in: cleanup.scanFilter)
+        #expect(cleanup.pendingCleanUp == nil)
+        cleanup.scanFilter = .all
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
     }
 
     @Test("Worktrees seed only safe rows and warn before explicit unsafe selection")

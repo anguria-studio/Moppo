@@ -196,7 +196,7 @@ struct ScannerView: View {
                 CleanupTypePicker(model: model)
             }
             if model.hiddenSelectionCount > 0 {
-                Text("Removal also includes \(model.hiddenSelectionCount) selected \(model.hiddenSelectionCount == 1 ? "item" : "items") outside this view.")
+                Text("Cleanup excludes \(model.hiddenSelectionCount) selected \(model.hiddenSelectionCount == 1 ? "item" : "items") outside this view.")
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)

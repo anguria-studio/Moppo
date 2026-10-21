@@ -329,7 +329,7 @@ struct MainWindow: View {
     private var canRemove: Bool {
         guard !model.isBusyWithDisk else { return false }
         switch model.view {
-        case .scanner:         return !model.cleanup.cleanupSelection(in: .all).isEmpty
+        case .scanner:         return !model.cleanup.cleanupSelection(in: model.cleanup.scanFilter).isEmpty
         case .duplicates:      return model.duplicateKind == .files
             ? !model.fileDuplicates.selection.isEmpty && !model.fileDuplicates.isScanning
             : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping
@@ -346,7 +346,7 @@ struct MainWindow: View {
 
     private func removeTapped() {
         switch model.view {
-        case .scanner: model.cleanup.requestCleanUp(in: .all)
+        case .scanner: model.cleanup.requestCleanUp(in: model.cleanup.scanFilter)
         case .duplicates:
             if model.duplicateKind == .files {
                 Task { await model.fileDuplicates.removeSelected() }
@@ -386,8 +386,8 @@ struct MainWindow: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.removeLabel)
         .help(model.view == .scanner
               ? model.cleanup.hasSelectedDockerImages
-                ? "Docker permanently removes selected images. Other selected items move to the Trash."
-                : "Moves selected items from all filters to the Trash."
+                ? "Docker permanently removes selected images in this view. Other selected items in this view move to the Trash."
+                : "Moves selected items in this view to the Trash."
               : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
                 ? "Checks each selected application before uninstall."
                 : model.removeLabel)
