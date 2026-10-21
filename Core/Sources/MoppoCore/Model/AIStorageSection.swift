@@ -9,6 +9,7 @@ public struct AIStorageSection: Sendable, Equatable {
         case claude = "Claude"
         case cursor = "Cursor"
         case grokBot = "Grok Bot"
+        case t3Code = "T3 Code"
         case ollama = "Ollama"
         case huggingFace = "Hugging Face"
         case lmStudio = "LM Studio"
@@ -20,6 +21,7 @@ public struct AIStorageSection: Sendable, Equatable {
             case .claudeCode, .claude: .claude
             case .cursor: .cursor
             case .grokBot: .grokBot
+            case .t3Code: .t3Code
             case .ollama: .ollama
             case .huggingFace: .huggingFace
             case .lmStudio: .lmStudio
