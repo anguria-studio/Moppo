@@ -114,6 +114,9 @@ Review the logs before you share them.
 Use `scripts/package-dmg.sh --scan-logging` to enable detailed logging in a private test package.
 Normal packages keep this logging off.
 The diagnostic package records each Cleanup scan automatically.
+It also records requested worktree checks, including checks before removal.
+Worktree records identify the request source, process results, timeouts, and final status.
+Moppo writes these records to separate `worktree-review-*.jsonl` files.
 Select **Help > Show Scan Logs** to open `~/Library/Logs/Moppo/Scans`.
 Share the newest `scan-*.jsonl` file after the scan pauses, completes, or stops.
 The file remains readable while the scan runs.
@@ -525,7 +528,11 @@ Worktree metadata checks run two at a time within each project.
 One process inventory supplies file identities for that project scan.
 The measurement traversal checks those identities, including hard links and open directories.
 Incomplete process information keeps the activity check unknown.
-Worktree dialogs and cleanup use fresh checks.
+Worktree dialogs show completed results from the latest scan or check.
+Select **Check Again** to request fresh results.
+Cleanup always runs fresh checks before removal.
+One process inventory covers all selected worktrees.
+These checks use the same process inventory and file identity rules as the scan.
 
 Each worktree has one status pill and an information button in the name column.
 The branch icon and branch name identify the worktree.

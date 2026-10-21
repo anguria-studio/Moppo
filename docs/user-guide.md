@@ -56,6 +56,11 @@ When a group contains worktrees, its **Other files** row shows the remaining siz
 Select the parent folder to review removal of the worktrees and other files together.
 Moppo blocks separate removal of the **Other files** row because its folder path also contains the worktrees.
 Worktrees inside protected groups keep their protection.
+**Safe to remove** means all checks passed during the latest scan or requested check.
+The review dialog shows those completed results without starting another check.
+Select **Check Again** to update the results.
+Moppo checks again before removal because files and running processes can change.
+If a check fails, Moppo keeps the worktree on disk.
 
 ### Xcode build folders
 

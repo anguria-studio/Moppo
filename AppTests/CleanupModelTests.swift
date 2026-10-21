@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import MoppoCore
 
@@ -293,18 +294,23 @@ struct CleanupModelTests {
     @Test("Changed worktrees leave selection while other cleanup items proceed", arguments: WorktreeChange.allCases)
     func changedWorktree(_ change: WorktreeChange) async throws {
         let fixture = try CleanupFixture()
-        var worktree = try fixture.entry("worktree")
         var initial = safeWorktreeReview()
         initial.mergedInto = "origin/main"
         var ignored = GitWorktreeReview.File(path: ".env", status: .ignored, regeneratesSafely: false)
         ignored.canRemoveWhenMerged = true
         initial.ignoredFiles = [ignored]
-        worktree.gitWorktreeReview = initial
+        let worktrees = try (0..<3).map { index in
+            var entry = try fixture.entry("worktree-\(index)")
+            entry.gitWorktreeReview = initial
+            return entry
+        }
         let cache = try fixture.entry("cache")
         let removal = HeldCleanupRemoval()
+        let gate = TestGate()
         let operations = OperationCoordinator()
         let cleanup = CleanupModel(operations: operations, remover: removal,
-            reviewWorktree: { _ in
+            reviewWorktrees: { urls in
+                await gate.wait()
                 var review = initial
                 switch change {
                 case .unchanged: break
@@ -313,29 +319,78 @@ struct CleanupModelTests {
                 case .unavailable: throw CocoaError(.fileReadNoPermission)
                 case .mergeLost: review.mergedInto = nil
                 }
-                return review
+                return Dictionary(uniqueKeysWithValues: urls.map { ($0, review) })
             }, measureSaving: { _ in nil })
-        cleanup.scanResults = cleanupResults([worktree, cache])
-        cleanup.scannerSelection = [worktree.id, cache.id]
+        cleanup.scanResults = cleanupResults(worktrees + [cache])
+        cleanup.scannerSelection = Set((worktrees + [cache]).map(\.id))
         var failures = 0
         var announcedCount: Int?
+        var isCheckingWorktrees = false
         cleanup.onEvent = {
             if case .failure = $0 { failures += 1 }
+            if case .checkingWorktrees = $0 { isCheckingWorktrees = true }
             if case .removalStarted(let count, _) = $0 { announcedCount = count }
         }
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp(in: .safeToRemove)
         let task = Task { await cleanup.performCleanUp() }
+        try await waitUntil { await gate.isPending }
+        // One request checks every selected worktree with one process inventory.
+        #expect(await gate.count == 1)
+        #expect(isCheckingWorktrees)
+        #expect(announcedCount == nil)
+        #expect(cleanup.isRemoving)
+        #expect(operations.isBusy)
+        #expect(await removal.requestCount == 0)
+        #expect(cleanup.visibleCategories.flatMap(\.entries).count == 4)
+        #expect(worktrees.allSatisfy { cleanup.scannerSelection.contains($0.id) })
+        await gate.finish()
         try await waitUntil { await removal.isPending }
-        let expected = change == .unchanged ? [worktree, cache] : [cache]
+        let expected = change == .unchanged ? worktrees + [cache] : [cache]
         #expect(await removal.entries.map(\.id) == expected.map(\.id))
-        #expect(cleanup.scannerSelection.contains(worktree.id) == (change == .unchanged))
+        #expect(worktrees.allSatisfy { cleanup.scannerSelection.contains($0.id) == (change == .unchanged) })
         #expect(announcedCount == expected.count)
         await removal.finish(.init(removedCount: expected.count, trashedCount: expected.count))
         await task.value
-        #expect(cleanup.cleanupOutcome?.skippedWorktrees == (change == .unchanged ? [] : [worktree.id]))
+        #expect(cleanup.cleanupOutcome?.skippedWorktrees == (change == .unchanged ? [] : worktrees.map(\.id).sorted()))
         #expect(failures == 0)
         #expect(!operations.isBusy)
-        #expect(FileManager.default.fileExists(atPath: worktree.url.path))
+        #expect(worktrees.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
+    }
+
+    @Test("Opening worktree dialogs reuses completed checks", arguments: [false, true])
+    func cachedWorktreeDialog(safe: Bool) async throws {
+        var entry = cleanupEntry("reviewed-worktree")
+        var review = safeWorktreeReview()
+        if !safe { review.activity = .unknown("The process check timed out.") }
+        entry.gitWorktreeReview = review
+        let gate = TestGate()
+        let output = URL(fileURLWithPath: "/tmp/moppo-228-worktree-previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        var updates = 0
+        var probeRan = false
+        for dark in [false, true] {
+            let sheet = WorktreeReviewSheet(entry: entry, onReview: { _ in updates += 1 }, onSelect: {}, onClose: {},
+                reviewWorktree: { _ in await gate.wait(); return review })
+            _ = try await renderTestView(sheet.background(Token.chrome), width: 500, dark: dark,
+                output: output.appendingPathComponent("\(safe ? "safe" : "unknown")-\(dark ? "dark" : "light").png"))
+        }
+        // The probe shows that this window runs view tasks, so the sheet had a chance to start a check.
+        let host = NSHostingView(rootView: ZStack {
+            WorktreeReviewSheet(entry: entry, onReview: { _ in updates += 1 }, onSelect: {}, onClose: {},
+                reviewWorktree: { _ in await gate.wait(); return review })
+            Color.clear.task { probeRan = true }
+        }.frame(width: 500))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 620),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        try await waitUntil { probeRan }
+        try await Task.sleep(for: .milliseconds(100))
+        let requests = await gate.count
+        if await gate.isPending { await gate.finish() }
+        #expect(requests == 0)
+        #expect(updates == 0)
     }
 
     @Test("A changed worktree also protects a selected parent", arguments: [false, true])
@@ -351,11 +406,17 @@ struct CleanupModelTests {
         }
         let removal = HeldCleanupRemoval()
         let cleanup = CleanupModel(operations: OperationCoordinator(), remover: removal,
-            reviewWorktree: { _ in GitWorktreeReview() }, measureSaving: { _ in nil })
+            reviewWorktrees: { _ in [:] }, measureSaving: { _ in nil })
         cleanup.scanResults = cleanupResults([selected])
         cleanup.scannerSelection = [selected.id]
         cleanup.userDataRemovalOverrides = [selected.id, worktree.id]
         var refreshes = 0
+        var checkingEvents = 0
+        var removalEvents = 0
+        cleanup.onEvent = {
+            if case .checkingWorktrees = $0 { checkingEvents += 1 }
+            if case .removalStarted = $0 { removalEvents += 1 }
+        }
         cleanup.refreshAfterRemoval = { refreshes += 1 }
         cleanup.requestCleanUp(in: .all)
         await cleanup.performCleanUp()
@@ -366,6 +427,8 @@ struct CleanupModelTests {
         #expect(cleanup.cleanupOutcome?.skippedWorktrees == [worktree.id])
         #expect(cleanup.cleanupOutcome?.removedCount == 0)
         #expect(refreshes == 0)
+        #expect(checkingEvents == 1)
+        #expect(removalEvents == 0)
         #expect(cleanup.allEntries.first { $0.id == worktree.id }?.gitWorktreeReview?.isSafeToRemove == false)
     }
 
@@ -387,8 +450,9 @@ struct CleanupModelTests {
         await task.value
         try await waitUntil { !app.cleanup.isRemoving }
         let notice = try #require(app.notice)
-        #expect(notice.title == "Changed Worktrees Were Kept")
+        #expect(notice.title == "Worktrees Were Kept")
         #expect(notice.message.contains("changed-worktree"))
+        #expect(notice.message.contains("The folders remain on disk. Select All to review their current status."))
         #expect(notice.message.contains("Moppo removed 1 other item."))
         #expect(notice.finderURLs == [kept])
     }

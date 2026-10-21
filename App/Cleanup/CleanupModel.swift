@@ -22,6 +22,7 @@ final class CleanupModel {
         case confirmationDismissed
         case operationStarted
         case waitingForApplications(names: [String])
+        case checkingWorktrees
         case removalStarted(count: Int, bytes: Int64)
         case removed(CleanupOutcome)
         case operationFinished
@@ -35,7 +36,7 @@ final class CleanupModel {
     @ObservationIgnored private let applications: CleanupApplications
     @ObservationIgnored private let measureSaving: ([URL]) async throws -> PrivateSizeMeasurement?
     @ObservationIgnored private let scanDocker: (Preferences) async throws -> ScanCategoryResult
-    @ObservationIgnored private let reviewWorktree: (URL) async throws -> GitWorktreeReview
+    @ObservationIgnored private let reviewWorktrees: ([URL]) async throws -> [URL: GitWorktreeReview]
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var scanTask: Task<Bool, Never>?
     @ObservationIgnored private var scanID: UUID?
@@ -59,8 +60,8 @@ final class CleanupModel {
                 excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns
             ))
         },
-        reviewWorktree: @escaping (URL) async throws -> GitWorktreeReview = {
-            try await GitWorktreeReviewService().review($0)
+        reviewWorktrees: @escaping ([URL]) async throws -> [URL: GitWorktreeReview] = {
+            try await ScanLog.reviewWorktrees($0, source: "removal")
         },
         measureSaving: @escaping ([URL]) async throws -> PrivateSizeMeasurement? = {
             try await PrivateSizeMeasurer().measure($0)
@@ -74,7 +75,7 @@ final class CleanupModel {
         self.defaults = defaults
         self.measureSaving = measureSaving
         self.scanDocker = scanDocker
-        self.reviewWorktree = reviewWorktree
+        self.reviewWorktrees = reviewWorktrees
         lastScanFinishedAt = defaults.object(forKey: "lastScanFinishedAt") as? Date
         isRunningAppsNoticeDismissed = defaults.bool(forKey: Self.runningAppsNoticeHiddenKey)
     }
@@ -736,8 +737,14 @@ final class CleanupModel {
         var plan = capturedPlan
         var presentation = OperationPresentationDuration()
         var skippedWorktrees: Set<String> = []
-        for entry in plan.entries.flatMap(Self.plannedTargets) where entry.gitWorktreeReview?.isSafeToRemove == true {
-            let current = (try? await reviewWorktree(entry.url)) ?? GitWorktreeReview()
+        let worktrees = plan.entries.flatMap(Self.plannedTargets).filter { $0.gitWorktreeReview?.isSafeToRemove == true }
+        var currentReviews: [URL: GitWorktreeReview] = [:]
+        if !worktrees.isEmpty {
+            onEvent(.checkingWorktrees)
+            currentReviews = (try? await reviewWorktrees(worktrees.map(\.url))) ?? [:]
+        }
+        for entry in worktrees {
+            let current = currentReviews[entry.url] ?? GitWorktreeReview()
             if !current.isSafeToRemove {
                 updateWorktreeReview(current, for: entry.id)
                 skippedWorktrees.insert(entry.id)
@@ -757,6 +764,7 @@ final class CleanupModel {
         var outcome = CleanupOutcome(skippedWorktrees: skippedWorktrees.sorted())
         guard plan.itemCount > 0 else {
             cleanupOutcome = outcome
+            try? await presentation.wait()
             onEvent(.removed(outcome))
             return false
         }

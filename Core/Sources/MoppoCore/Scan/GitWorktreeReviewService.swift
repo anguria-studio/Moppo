@@ -4,29 +4,51 @@ import Foundation
 public struct GitWorktreeReviewService: Sendable {
     private let gitExecutable: @Sendable () async throws -> String?
     private let github: GitHubMergeVerifier
+    private let captureActivity: @Sendable ([URL]) async throws -> WorktreeActivity
     public init() {
         gitExecutable = { try await GitWorktreeDetector.executable() }
         github = .shared
+        captureActivity = WorktreeActivity.capture
     }
-    init(gitExecutable: @escaping @Sendable () async throws -> String?, github: GitHubMergeVerifier = .shared) {
+    init(gitExecutable: @escaping @Sendable () async throws -> String?, github: GitHubMergeVerifier = .shared,
+         captureActivity: @escaping @Sendable ([URL]) async throws -> WorktreeActivity = WorktreeActivity.capture) {
         self.gitExecutable = gitExecutable
         self.github = github
+        self.captureActivity = captureActivity
     }
 
     public func review(_ directory: URL) async throws -> GitWorktreeReview {
-        let review = try await review(directory, includeFileChecks: true)
-        return try await completeMerges([directory: review])[directory] ?? review
+        try await review([directory])[directory] ?? GitWorktreeReview()
+    }
+
+    /// Checks each worktree with one shared process inventory, as a scan does.
+    /// The result uses the given URLs as keys.
+    public func review(_ directories: [URL]) async throws -> [URL: GitWorktreeReview] {
+        guard !directories.isEmpty else { return [:] }
+        let diagnostics = ScanDiagnostics.current
+        let span = diagnostics?.begin("worktree_review", details: ["worktrees": "\(directories.count)"])
+        var reviews: [URL: GitWorktreeReview] = [:]
+        var completed = false
+        defer {
+            diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : completed ? "completed" : "failed")
+        }
+        let batch = try await WorktreeScan.prepare(directories, service: self, captureActivity: captureActivity)
+        for root in batch.roots where reviews[root] == nil {
+            try Task.checkCancellation()
+            let result = try await batch.measure(root, with: AllocatedSizeMeasurer())
+            reviews[root] = result.reviews[root]
+        }
+        completed = true
+        return directories.reduce(into: [:]) { results, directory in
+            results[directory] = reviews[directory.standardizedFileURL] ?? GitWorktreeReview()
+        }
     }
 
     /// Reads Git metadata before the scan measures the worktree.
     func metadata(_ directory: URL) async throws -> GitWorktreeReview {
-        try await review(directory, includeFileChecks: false)
-    }
-
-    private func review(_ directory: URL, includeFileChecks: Bool) async throws -> GitWorktreeReview {
         var review = GitWorktreeReview()
         let diagnostics = ScanDiagnostics.current
-        let span = diagnostics?.begin(includeFileChecks ? "worktree_review" : "worktree_metadata", path: directory.path)
+        let span = diagnostics?.begin("worktree_metadata", path: directory.path)
         defer {
             diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed", details: [
                 "review_status": review.statusLabel, "branch": review.branch,
@@ -40,7 +62,6 @@ public struct GitWorktreeReviewService: Sendable {
             review.pushIssue = review.filesIssue
             return review
         }
-        if includeFileChecks { review.activity = try await Self.activity(in: directory) }
         guard let git = try await gitExecutable() else {
             review.filesIssue = "Git is not installed."
             review.pushIssue = review.filesIssue
@@ -76,15 +97,6 @@ public struct GitWorktreeReviewService: Sendable {
             review.status = review.localFiles.isEmpty ? .clean : .uncommittedChanges
             review.verifiedGeneratedProjects = try await GeneratedXcodeProjectVerifier().verify(
                 directory, ignoredPaths: review.ignoredFiles.map(\.path), git: git)
-            if includeFileChecks {
-                var classifier = IgnoredFileClassifier(root: directory, verifiedProjects: review.verifiedGeneratedProjects)
-                for index in review.ignoredFiles.indices {
-                    try Task.checkCancellation()
-                    let url = directory.appendingPathComponent(review.ignoredFiles[index].path)
-                    let measured = try await AllocatedSizeMeasurer().measure(url)
-                    Self.apply(measured, at: index, directory: directory, classifier: &classifier, to: &review)
-                }
-            }
         } catch is CancellationError { throw CancellationError() }
         catch {
             review.status = .unavailable
@@ -300,17 +312,5 @@ public struct GitWorktreeReviewService: Sendable {
             }
             return generated.recognizes(url, isDirectory: isDirectory) ? .regenerable : .local
         }
-    }
-
-    private static func activity(in directory: URL) async throws -> GitWorktreeReview.Check {
-        do {
-            let data = try await ProcessRunner().run("/usr/sbin/lsof",
-                ["-n", "-P", "-a", "-u", NSUserName(), "-Fpcn", "+D", directory.path], timeout: .seconds(5), allowsInput: false)
-            let lines = String(decoding: data, as: UTF8.self).split(separator: "\n")
-            let names = Set(lines.filter { $0.hasPrefix("c") }.map { String($0.dropFirst()) })
-            return names.isEmpty ? .unknown("The process check returned no process names.") : .found(names.sorted().joined(separator: ", "))
-        } catch is CancellationError { throw CancellationError() }
-        catch ProcessError.failed(_, let status, let stderr) where status == 1 && stderr.isEmpty { return .clear }
-        catch { return .unknown(GitWorktreeReview.failureReason(error, tool: "The process check")) }
     }
 }

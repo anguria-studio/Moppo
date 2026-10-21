@@ -118,7 +118,7 @@ extension AppModel.Activity {
              .removingDuplicateFiles(_, let bytes),
              .removingStorageItems(_, let bytes):
             return .deletion(bytes: bytes)
-        case .reviewingStorageItems, .waitingForApplicationsToQuit:
+        case .checkingWorktrees, .reviewingStorageItems, .waitingForApplicationsToQuit:
             return .mascot(.search)
         case .restoringTrashItem, .uninstalling:
             return .hourglass

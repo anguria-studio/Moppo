@@ -6,7 +6,7 @@ import MoppoCore
 struct SupportReportTests {
     @Test("Only diagnostic builds create detailed scan logs", arguments: [false, true])
     @MainActor
-    func diagnosticBuild(enabled: Bool) throws {
+    func diagnosticBuild(enabled: Bool) async throws {
         let folder = try TemporaryFolder(prefix: "scan-log-configuration")
         let bundleURL = folder.url.appendingPathComponent("Diagnostic.bundle")
         try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
@@ -42,6 +42,30 @@ struct SupportReportTests {
             #expect(content.contains("documentsAndFiles"))
             #expect(content.contains("full_disk_access"))
             #expect(content.contains("17"))
+        }
+        let reviewDirectory = folder.url.appendingPathComponent("reviews")
+        var expected = GitWorktreeReview()
+        expected.activity = .unknown("The process check timed out.")
+        let result = expected
+        let url = folder.url
+        for source in ["dialog", "removal"] {
+            let actual = try await ScanLog.reviewWorktrees([url], source: source, bundle: bundle,
+                directory: reviewDirectory, review: { urls in Dictionary(uniqueKeysWithValues: urls.map { ($0, result) }) })
+            #expect(actual == [url: result])
+        }
+        #expect(FileManager.default.fileExists(atPath: reviewDirectory.path) == enabled)
+        if enabled {
+            let files = try FileManager.default.contentsOfDirectory(at: reviewDirectory, includingPropertiesForKeys: nil)
+            // Review logs keep a separate prefix, so the newest scan-*.jsonl file is still a scan.
+            #expect(files.count == 2)
+            #expect(files.allSatisfy { $0.lastPathComponent.hasPrefix("worktree-review-") })
+            let contents = try files.map { try String(contentsOf: $0, encoding: .utf8) }.joined(separator: "\n")
+            #expect(contents.contains("worktree_review_requested"))
+            #expect(contents.contains("worktree_review_result"))
+            #expect(contents.contains("dialog"))
+            #expect(contents.contains("removal"))
+            #expect(contents.contains("The process check timed out."))
+            #expect(!contents.contains("enabled_categories"))
         }
     }
     @Test("Reports use an allowlist and email drafts preserve the reviewed text")

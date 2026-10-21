@@ -50,15 +50,11 @@ enum ScanLog {
     static func begin(_ preferences: CleanupModel.Preferences, bundle: Bundle = .main,
                       directory: URL = ScanLog.directory) throws -> ScanDiagnostics? {
         guard enabled(in: bundle) else { return nil }
-        let log = try ScanDiagnostics(directory: directory, metadata: [
-            "app_version": bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
-            "app_build": bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
-            "app_path": bundle.bundlePath,
+        let log = try ScanDiagnostics(directory: directory, metadata: appMetadata(bundle).merging([
             "enabled_categories": preferences.enabledCategories?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
             "excluded_paths": preferences.excludedPaths.joined(separator: "\n"),
-            "excluded_patterns": preferences.excludedPatterns.joined(separator: "\n"),
-            "full_disk_access": "\(FullDiskAccess.isGranted)"
-        ])
+            "excluded_patterns": preferences.excludedPatterns.joined(separator: "\n")
+        ], uniquingKeysWith: { _, value in value }))
         let span = log.context.begin("volume_information", path: NSHomeDirectory())
         if let values = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()) {
             log.context.record("volume_information", details: [
@@ -68,6 +64,47 @@ enum ScanLog {
         }
         log.context.end(span)
         return log
+    }
+
+    private static func appMetadata(_ bundle: Bundle) -> [String: String] {
+        [
+            "app_version": bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+            "app_build": bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
+            "app_path": bundle.bundlePath,
+            "full_disk_access": "\(FullDiskAccess.isGranted)"
+        ]
+    }
+
+    /// Records worktree checks outside a scan in diagnostic builds.
+    /// These logs use the `worktree-review` prefix so that scan logs stay easy to find.
+    static func reviewWorktrees(
+        _ urls: [URL], source: String, bundle: Bundle = .main, directory: URL = ScanLog.directory,
+        review: @Sendable ([URL]) async throws -> [URL: GitWorktreeReview] = {
+            try await GitWorktreeReviewService().review($0)
+        }
+    ) async throws -> [URL: GitWorktreeReview] {
+        let log = enabled(in: bundle) ? try? ScanDiagnostics(directory: directory, filePrefix: "worktree-review",
+            metadata: appMetadata(bundle).merging(["source": source], uniquingKeysWith: { _, value in value })) : nil
+        return try await ScanDiagnostics.$current.withValue(log?.context) {
+            var outcome = "failed"
+            defer {
+                log?.finish(outcome: Task.isCancelled ? "cancelled" : outcome)
+                log?.flush()
+            }
+            log?.context.record("worktree_review_requested", details: [
+                "source": source, "paths": urls.map(\.path).joined(separator: "\n")
+            ])
+            let results = try await review(urls)
+            for url in urls {
+                let result = results[url] ?? GitWorktreeReview()
+                log?.context.record("worktree_review_result", details: [
+                    "source": source, "path": url.path, "review_status": result.statusLabel,
+                    "activity": "\(result.activity)", "locks": "\(result.locks)"
+                ])
+            }
+            outcome = "completed"
+            return results
+        }
     }
 
     @MainActor
