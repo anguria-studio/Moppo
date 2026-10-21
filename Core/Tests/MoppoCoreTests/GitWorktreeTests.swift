@@ -324,7 +324,7 @@ struct GitWorktreeTests {
         try sandbox.git(["-C", tree.path, "branch", "--set-upstream-to=origin/completed"])
         try sandbox.file("Worktrees/merged/.env", text: "Local settings")
         try sandbox.file("Worktrees/merged/temp/notes.txt", text: "Ignored local notes")
-        let pushed = try await GitWorktreeReviewService().review(tree)
+        let pushed = try await Self.reviewService().review(tree)
         #expect(pushed.pushStatus == .noUnpushedCommits)
         #expect(pushed.mergedInto == nil)
         #expect(pushed.outcome == .hasLocalFiles)
@@ -340,7 +340,7 @@ struct GitWorktreeTests {
         }
         try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD"])
         try sandbox.git(["-C", repo.path, "update-ref", "-d", "refs/remotes/origin/completed"])
-        let fresh = try await GitWorktreeReviewService().review(tree)
+        let fresh = try await Self.reviewService().review(tree)
         #expect(fresh.mergedInto == (style == .squash ? nil : "origin/trunk"))
         #expect(fresh.isSafeToRemove == (style != .squash))
         #expect(fresh.localIgnoredFiles.map(\.path) == [".env", "temp/"])
@@ -362,7 +362,7 @@ struct GitWorktreeTests {
             #expect(!review.isSafeToRemove)
         }
 
-        var service = GitWorktreeReviewService()
+        var service = Self.reviewService()
         if style == .squash {
             try sandbox.git(["-C", repo.path, "remote", "set-url", "origin", "https://github.com/example/project.git"])
             let runner = ProcessRunner()
@@ -373,7 +373,7 @@ struct GitWorktreeTests {
             let verifier = GitHubMergeVerifier { repository, heads, _ in
                 try Self.githubResponse(repository, heads: heads, mergeCommit: merge, base: "trunk", headOverride: head)
             }
-            service = GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, github: verifier)
+            service = Self.reviewService(github: verifier)
             let verified = try await service.review(tree)
             #expect(verified.isSafeToRemove)
             #expect(verified.mergedInto == "origin/trunk")
@@ -593,6 +593,13 @@ struct GitWorktreeTests {
         }
     }
 
+    /// Reviews worktrees without the system process inventory.
+    /// Some machines write lsof warnings, which make the process check unknown.
+    private static func reviewService(github: GitHubMergeVerifier = .shared) -> GitWorktreeReviewService {
+        GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, github: github,
+            captureActivity: { WorktreeActivity(roots: $0, processes: [:]) })
+    }
+
     private static func githubResponse(_ repository: GitHubMergeVerifier.Repository, heads: [String],
                                        mergeCommit: String = String(repeating: "f", count: 40), base: String = "main", headOverride: String? = nil) throws -> Data {
         var repo: [String: Any] = ["nameWithOwner": repository.fullName, "defaultBranchRef": ["name": base]]
@@ -739,7 +746,7 @@ struct GitWorktreeTests {
         try sandbox.file("Worktrees/caches/.venv/lib/package.py", text: "# Installed dependency\n")
         try sandbox.file("Worktrees/caches/__pycache__/source.cpython-313.pyc", text: "Compiled fixture")
 
-        let fresh = try await GitWorktreeReviewService().review(tree)
+        let fresh = try await Self.reviewService().review(tree)
         #expect(fresh.ignoredFiles.contains { $0.path == ".pytest_cache/README.md" })
         #expect(fresh.ignoredFiles.contains { $0.path == ".pytest_cache/CACHEDIR.TAG" })
         #expect(fresh.regenerableIgnoredFiles.count == fresh.ignoredFiles.count)
@@ -751,7 +758,7 @@ struct GitWorktreeTests {
 
         try sandbox.file("Worktrees/caches/.env", text: "Local settings")
         try sandbox.file("Worktrees/caches/database.sqlite", text: "Local data")
-        let mixed = try await GitWorktreeReviewService().review(tree)
+        let mixed = try await Self.reviewService().review(tree)
         #expect(mixed.localIgnoredFiles.map(\.path) == [".env", "database.sqlite"])
         #expect(mixed.regenerableIgnoredFiles.count == fresh.ignoredFiles.count)
         #expect(mixed.unverifiedIgnoredFiles.isEmpty)
