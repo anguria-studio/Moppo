@@ -126,6 +126,15 @@ struct CodexSessionsTests {
         #expect(!CleanupService.removalAllowed(active, userDataRemovalOverrides: [active.id]))
     }
 
+    @Test("A history path without the private folder prefix matches its scanned file")
+    func privateFolderPath() async throws {
+        let fixture = try await Fixture()
+        let url = try await fixture.session(fixture.parent)
+        try #require(url.path.hasPrefix("/private/"))
+        try await fixture.sql("UPDATE threads SET rollout_path='\(url.path.dropFirst("/private".count))';")
+        #expect(try await fixture.row(fixture.parent).codexSession?.members.map(\.url) == [url])
+    }
+
     @Test("Reviewed deletion uses Codex, includes children, and records permanent removal")
     func nativeDeletion() async throws {
         let fixture = try await Fixture()
