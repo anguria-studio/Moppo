@@ -956,12 +956,19 @@ private struct SegmentBoundsKey: PreferenceKey {
 
 /// Keeps operation progress visible for one second. Cancellation ends the wait immediately.
 struct OperationPresentationDuration: Sendable {
-    private var deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    #if MOPPO_APP_TESTS
+    // App state tests check the model state. They do not wait for the presentation time.
+    private static let isEnabled = false
+    #else
+    private static let isEnabled = true
+    #endif
+
+    private var deadline = ContinuousClock.now.advanced(by: isEnabled ? .seconds(1) : .zero)
 
     /// Keeps a deletion on screen until Moppo finishes the first pass of its rays.
     /// Call it when the progress appears. With Reduce Motion on, nothing changes because Moppo does not move.
     @MainActor mutating func extend(toShow icon: PageProgressView.Icon) {
-        guard case .mascot(let mode) = icon, let pass = mode.firstPassDuration,
+        guard Self.isEnabled, case .mascot(let mode) = icon, let pass = mode.firstPassDuration,
               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         else { return }
         deadline = max(deadline, ContinuousClock.now.advanced(by: pass))

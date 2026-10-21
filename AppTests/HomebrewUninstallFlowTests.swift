@@ -325,7 +325,7 @@ struct HomebrewUninstallFlowTests {
         window.contentView = host
         host.setFrameSize(size)
         host.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .milliseconds(400))
+        try await Task.sleep(for: .milliseconds(100))
         host.displayIfNeeded()
         let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: bitmap)
