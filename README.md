@@ -281,11 +281,16 @@ The remaining core tests run in parallel.
 
 The app state tests use temporary files and a separate test process.
 They do not launch Moppo or delete personal photos.
+In these tests, operation progress does not stay on screen for the minimum display time.
 
 GitHub Actions runs these tests and writing checks for pull requests that target `main`.
 Merging a pull request does not start another CI run.
 CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
+CI runs the core tests and the app state tests in separate jobs at the same time.
 CI runs timing and process integration tests sequentially before the parallel core tests.
+The app state tests job keeps the Xcode compilation cache between runs of the same pull request.
+If a pull request changes only Markdown files, `docs/`, or Vale rules, CI does not run the tests.
+The **Tests and writing** check passes only when all other CI jobs pass.
 CI does not build or launch the signed Moppo app.
 Pull request checks also validate branch names and Conventional Commit titles.
 

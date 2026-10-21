@@ -12,30 +12,103 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  TEST_FILTER: >-
+    ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests
+
 jobs:
-  tests-and-writing:
-    name: Tests and writing
+  changes:
+    name: Changed files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      # The checkout is the merge commit. Its first parent is the base branch.
+      # Changes to Markdown files, docs, or Vale rules do not need the tests.
+      - name: Find code changes
+        id: files
+        run: |
+          git diff --name-only HEAD^1 HEAD | tee changed-files.txt
+          if grep -qvE '(\.md$|^docs/|^\.vale/|^\.vale\.ini$)' changed-files.txt; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  writing:
+    name: Writing
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      VALE_VERSION: 3.18.0
+      VALE_SHA256: a6f71a75a12fe689345b754f2412b90367fe33648abb7d200fa19eaadc2dbf6d
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Install Vale
+        run: |
+          archive="vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$archive" "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/$archive"
+          echo "$VALE_SHA256  $RUNNER_TEMP/$archive" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" vale
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Check writing
+        run: vale README.md AGENTS.md WRITING_STYLE.md
+
+  core-tests:
+    name: Core tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Check release packaging
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Run timing and process tests
+        run: swift test --package-path Core --no-parallel --filter "$TEST_FILTER"
+      - name: Run core tests
+        run: swift test --package-path Core --skip "$TEST_FILTER"
+
+  app-tests:
+    name: App state tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: xcode-27
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
       HOMEBREW_NO_AUTO_UPDATE: "1"
+      DERIVED_DATA: ${{ github.workspace }}/DerivedData
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
-      - name: Install build and writing tools
-        run: brew install xcodegen vale
-      - name: Check release packaging
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - name: Run timing and process tests
-        run: >-
-          swift test --package-path Core --no-parallel
-          --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests'
-      - name: Run core tests
-        run: >-
-          swift test --package-path Core
-          --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests'
+      - name: Install build tools
+        run: brew install xcodegen
+      # The compilation cache matches files by content, so it works after a
+      # new checkout. Pull requests read the cache that main or the same
+      # branch saved.
+      - name: Restore build cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            DerivedData/CompilationCache.noindex
+            DerivedData/SourcePackages
+          key: app-build-${{ runner.os }}-xcode-27.0-${{ hashFiles('project.yml', 'Core/Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            app-build-${{ runner.os }}-xcode-27.0-${{ hashFiles('project.yml', 'Core/Package.swift') }}-
+            app-build-${{ runner.os }}-xcode-27.0-
       - name: Generate the Xcode project
         run: xcodegen generate
       - name: Run app state tests
@@ -43,8 +116,11 @@ jobs:
           xcodebuild -quiet
           -project Moppo.xcodeproj
           -scheme MoppoAppTests
-          -destination 'platform=macOS'
-          -resultBundlePath '${{ runner.temp }}/MoppoAppTests.xcresult'
+          -destination 'platform=macOS,arch=arm64'
+          -derivedDataPath "$DERIVED_DATA"
+          -clonedSourcePackagesDirPath "$DERIVED_DATA/SourcePackages"
+          -resultBundlePath "$RUNNER_TEMP/MoppoAppTests.xcresult"
+          COMPILATION_CACHE_ENABLE_CACHING=YES
           CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
           test
       - name: Read app test results
@@ -53,5 +129,32 @@ jobs:
           if [ -d "$RUNNER_TEMP/MoppoAppTests.xcresult" ]; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoppoAppTests.xcresult"
           fi
-      - name: Check writing
-        run: vale README.md AGENTS.md WRITING_STYLE.md
+
+  # Branch protection requires this check name. It passes only when every
+  # other job passes, or when the tests were skipped for documentation changes.
+  tests-and-writing:
+    name: Tests and writing
+    needs: [changes, writing, core-tests, app-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check job results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+          WRITING: ${{ needs.writing.result }}
+          CORE: ${{ needs.core-tests.result }}
+          APP: ${{ needs.app-tests.result }}
+        run: |
+          echo "Changed files: $CHANGES (code: $CODE)"
+          echo "Writing: $WRITING"
+          echo "Core tests: $CORE"
+          echo "App state tests: $APP"
+          [ "$CHANGES" = success ] || exit 1
+          [ "$WRITING" = success ] || exit 1
+          if [ "$CODE" = true ]; then
+            [ "$CORE" = success ] && [ "$APP" = success ] || exit 1
+          else
+            echo "Only documentation changed. The tests did not run."
+          fi
