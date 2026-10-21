@@ -94,6 +94,7 @@ Moppo calls `codex delete --force <UUID>` with the reviewed `CODEX_HOME`.
 Codex removes history files and related records. Moppo does not directly remove session folders or edit Codex databases.
 Native deletion errors do not fall back to ordinary file removal.
 Receipts record permanent deletions. They cannot restore deleted sessions.
+The [Codex session recovery research](codex-session-recovery.md) explains why Moppo does not offer session recovery.
 Credentials, settings, and unrelated stored files keep their existing protection.
 Deletion removes messages, tool results, and images embedded in the selected history files.
 Moppo does not select separate `attachments`, `generated_images`, or `memories` folders for session deletion.

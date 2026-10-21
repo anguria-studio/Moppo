@@ -487,6 +487,7 @@ The system disk can contain Linux, installed tools, and task files.
 A folder name or file age does not make these files disposable.
 
 Read the [AI storage sources and limits](ai-storage.md) before you add storage rules.
+Read the [Codex session recovery research](codex-session-recovery.md) before you add session recovery.
 
 ## Scanner rows and Git worktrees
 
