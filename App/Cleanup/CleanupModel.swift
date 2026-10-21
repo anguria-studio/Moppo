@@ -6,6 +6,8 @@ import MoppoCore
 @MainActor
 @Observable
 final class CleanupModel {
+    private static let runningAppsNoticeHiddenKey = "cleanup.runningAppsNoticeHidden"
+
     struct Preferences: Sendable {
         var enabledCategories: Set<CategoryID>?
         var excludedPaths: [String] = []
@@ -74,6 +76,7 @@ final class CleanupModel {
         self.scanDocker = scanDocker
         self.reviewWorktree = reviewWorktree
         lastScanFinishedAt = defaults.object(forKey: "lastScanFinishedAt") as? Date
+        isRunningAppsNoticeDismissed = defaults.bool(forKey: Self.runningAppsNoticeHiddenKey)
     }
 
     var scanResults: ScanResults? {
@@ -568,7 +571,8 @@ final class CleanupModel {
     private(set) var cleanupRunningOwners: [FileEntry.RunningOwner] = []
     private(set) var isRunningAppsNoticeDismissed = false
 
-    func dismissRunningAppsNotice() {
+    func dismissRunningAppsNotice(permanently: Bool = false) {
+        if permanently { defaults.set(true, forKey: Self.runningAppsNoticeHiddenKey) }
         isRunningAppsNoticeDismissed = true
     }
 
@@ -627,7 +631,7 @@ final class CleanupModel {
         guard canScan(automatic), pendingCleanUp == nil,
               let operation = operations.begin(.cleanupScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
         let preferences = preferences()
-        isRunningAppsNoticeDismissed = false
+        isRunningAppsNoticeDismissed = defaults.bool(forKey: Self.runningAppsNoticeHiddenKey)
         let scanID = UUID()
         self.scanID = scanID
         hasStartedInitialScan = true
