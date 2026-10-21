@@ -8,8 +8,22 @@ struct WorktreeReviewSheet: View {
     let onReview: (GitWorktreeReview) -> Void
     let onSelect: () -> Void
     let onClose: () -> Void
-    @State private var review = GitWorktreeReview()
-    @State private var isChecking = true
+    let reviewWorktree: (URL) async throws -> GitWorktreeReview
+    @State private var review: GitWorktreeReview
+    @State private var isChecking = false
+
+    init(entry: FileEntry, onReview: @escaping (GitWorktreeReview) -> Void,
+         onSelect: @escaping () -> Void, onClose: @escaping () -> Void,
+         reviewWorktree: @escaping (URL) async throws -> GitWorktreeReview = {
+             try await ScanLog.reviewWorktrees([$0], source: "dialog")[$0] ?? GitWorktreeReview()
+         }) {
+        self.entry = entry
+        self.onReview = onReview
+        self.onSelect = onSelect
+        self.onClose = onClose
+        self.reviewWorktree = reviewWorktree
+        _review = State(initialValue: entry.gitWorktreeReview ?? GitWorktreeReview())
+    }
 
     private var isSafe: Bool { !isChecking && review.isSafeToRemove }
     private var hasProblem: Bool { !isChecking && review.outcome.isProblem }
@@ -58,6 +72,10 @@ struct WorktreeReviewSheet: View {
                                     .font(.mcSectionHeader)
                                 Text(verdict).font(.mcBody).foregroundStyle(Token.Text.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
+                                if !isChecking {
+                                    Text("Moppo checks again before removal.")
+                                        .font(.mcSubtitle).foregroundStyle(Token.Text.secondary)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -102,6 +120,8 @@ struct WorktreeReviewSheet: View {
             Divider()
             HStack(spacing: 8) {
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
+                Button("Check Again") { isChecking = true }
+                    .disabled(isChecking)
                 Spacer()
                 if isSafe {
                     Button("Select for removal", action: onSelect)
@@ -123,17 +143,20 @@ struct WorktreeReviewSheet: View {
             Button("Close worktree review", action: onClose).keyboardShortcut(.cancelAction)
                 .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
         }
-        .task(id: entry.id) {
-            review = entry.gitWorktreeReview ?? GitWorktreeReview()
-            isChecking = true
+        .task(id: isChecking) {
+            guard isChecking else { return }
             do {
-                let current = try await GitWorktreeReviewService().review(entry.url)
+                let current = try await reviewWorktree(entry.url)
                 try Task.checkCancellation()
                 review = current
                 onReview(current)
                 isChecking = false
             } catch is CancellationError { }
-            catch { review = GitWorktreeReview(); isChecking = false }
+            catch {
+                review = GitWorktreeReview()
+                onReview(review)
+                isChecking = false
+            }
         }
     }
 
@@ -179,6 +202,7 @@ struct WorktreeReviewSheet: View {
         }
         if case .found = review.locks { findings.append("Git locks are present.") }
         if case .found = review.activity { findings.append("An open process uses this worktree.") }
+        if let reason = review.activity.reason { findings.append(reason) }
         if !findings.isEmpty { return findings.joined(separator: " ") }
         return "Moppo could not complete every check."
     }

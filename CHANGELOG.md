@@ -30,5 +30,8 @@ The first public release is in preparation.
 - Review T3 Code storage under AI Tools with all T3 data protected.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
+- Show progress during worktree safety checks before removal.
+- Keep completed worktree reviews until another scan or an explicit check.
+- Use the same process checks during scans, worktree reviews, and removal.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/

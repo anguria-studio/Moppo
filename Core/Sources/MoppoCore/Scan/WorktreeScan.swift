@@ -21,14 +21,22 @@ struct WorktreeScan: Sendable {
     static func prepare(_ roots: [URL], onProgress: (@Sendable (Int, Int) -> Void)? = nil,
                         github: GitHubMergeVerifier = .shared,
                         captureActivity: @Sendable ([URL]) async throws -> WorktreeActivity = WorktreeActivity.capture) async throws -> Self {
+        guard !roots.isEmpty else { return Self(roots: [], reviews: [:], activity: nil) }
+        let git = try await GitWorktreeDetector.executable()
+        return try await prepare(roots, service: GitWorktreeReviewService(gitExecutable: { git }, github: github),
+                                 onProgress: onProgress, captureActivity: captureActivity)
+    }
+
+    /// Reads Git metadata for each root, then takes one process inventory for all roots.
+    static func prepare(_ roots: [URL], service: GitWorktreeReviewService,
+                        onProgress: (@Sendable (Int, Int) -> Void)? = nil,
+                        captureActivity: @Sendable ([URL]) async throws -> WorktreeActivity) async throws -> Self {
         let roots = roots.map(\.standardizedFileURL)
         guard !roots.isEmpty else { return Self(roots: [], reviews: [:], activity: nil) }
         onProgress?(0, roots.count)
         let diagnostics = ScanDiagnostics.current
         let span = diagnostics?.begin("worktree_batch", details: ["worktrees": "\(roots.count)", "review_limit": "2"])
         defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : "completed") }
-        let git = try await GitWorktreeDetector.executable()
-        let service = GitWorktreeReviewService(gitExecutable: { git }, github: github)
         var reviews: [URL: GitWorktreeReview] = [:]
         try await withThrowingTaskGroup(of: (URL, GitWorktreeReview).self) { group in
             var next = 0

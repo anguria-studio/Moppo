@@ -467,6 +467,7 @@ final class AppModel {
     private(set) var activity: Activity?
 
     enum Activity: Equatable {
+        case checkingWorktrees
         case cleaningUp(itemCount: Int, totalBytes: Int64)
         case emptyingTrash(itemCount: Int, totalBytes: Int64)
         case removingDuplicateFiles(itemCount: Int, totalBytes: Int64)
@@ -478,6 +479,8 @@ final class AppModel {
 
         var title: String {
             switch self {
+            case .checkingWorktrees:
+                return "Checking selected worktrees"
             case .cleaningUp(let count, _):
                 let items = count == 1 ? "item" : "items"
                 return "Removing \(count) \(items)"
@@ -504,6 +507,8 @@ final class AppModel {
         /// Explains why the current disk operation can take time.
         var detail: String {
             switch self {
+            case .checkingWorktrees:
+                return "Moppo checks the selected worktrees again before removal. If a safety check fails, the worktrees stay on disk."
             case .cleaningUp(_, let bytes):
                 return "\(ByteFormatting.string(bytes)). Moppo checks the selected items before removal."
             case .emptyingTrash(_, let bytes),
@@ -537,8 +542,10 @@ final class AppModel {
     }
 
     var isCleaningUp: Bool {
-        if case .cleaningUp? = activity { return true }
-        return false
+        switch activity {
+        case .checkingWorktrees, .cleaningUp: true
+        default: false
+        }
     }
     var isRemovingDuplicateFiles: Bool {
         if case .removingDuplicateFiles? = activity { return true }
@@ -614,14 +621,15 @@ final class AppModel {
     private static func cleanUpNotice(_ outcome: CleanupOutcome) -> Notice? {
         if !outcome.skippedWorktrees.isEmpty {
             let names = outcome.skippedWorktrees.map { FileEntry.abbreviate($0) }.joined(separator: "\n")
-            var message = "Moppo kept these worktrees because their removal checks changed:\n\(names)"
+            var message = "Moppo kept these worktrees because the final safety check did not pass:\n\(names)"
+            message += "\nThe folders remain on disk. Select All to review their current status."
             if outcome.removedCount > 0 {
                 message += "\nMoppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
             }
             if !outcome.failed.isEmpty {
                 message += "\n\(outcome.failed.count) other \(outcome.failed.count == 1 ? "item could" : "items could") not be removed."
             }
-            return Notice(title: "Changed Worktrees Were Kept", message: message,
+            return Notice(title: "Worktrees Were Kept", message: message,
                 finderURLs: (outcome.skippedWorktrees + outcome.failed).map { URL(fileURLWithPath: $0) })
         }
         guard !outcome.failed.isEmpty else { return nil }
@@ -777,6 +785,8 @@ final class AppModel {
             removalCompletion = nil
         case .waitingForApplications(let names):
             activity = .waitingForApplicationsToQuit(names: names)
+        case .checkingWorktrees:
+            activity = .checkingWorktrees
         case .removalStarted(let count, let bytes):
             activity = .cleaningUp(itemCount: count, totalBytes: bytes)
         case .removed(let outcome):

@@ -109,11 +109,11 @@ public final class ScanDiagnostics: @unchecked Sendable {
     private var detailBytes = 0
     private var writeFailed = false
 
-    public init(directory: URL, metadata: [String: String] = [:],
+    public init(directory: URL, filePrefix: String = "scan", metadata: [String: String] = [:],
                 heartbeatInterval: Double = 1, maximumDetailBytes: Int = 128 * 1024 * 1024) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
-        fileURL = directory.appendingPathComponent("scan-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString).jsonl")
+        fileURL = directory.appendingPathComponent("\(filePrefix)-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString).jsonl")
         guard FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown)
         }

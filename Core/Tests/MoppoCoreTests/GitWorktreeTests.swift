@@ -324,7 +324,7 @@ struct GitWorktreeTests {
         try sandbox.git(["-C", tree.path, "branch", "--set-upstream-to=origin/completed"])
         try sandbox.file("Worktrees/merged/.env", text: "Local settings")
         try sandbox.file("Worktrees/merged/temp/notes.txt", text: "Ignored local notes")
-        let pushed = try await GitWorktreeReviewService().review(tree)
+        let pushed = try await Self.reviewService().review(tree)
         #expect(pushed.pushStatus == .noUnpushedCommits)
         #expect(pushed.mergedInto == nil)
         #expect(pushed.outcome == .hasLocalFiles)
@@ -340,7 +340,7 @@ struct GitWorktreeTests {
         }
         try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/trunk", "HEAD"])
         try sandbox.git(["-C", repo.path, "update-ref", "-d", "refs/remotes/origin/completed"])
-        let fresh = try await GitWorktreeReviewService().review(tree)
+        let fresh = try await Self.reviewService().review(tree)
         #expect(fresh.mergedInto == (style == .squash ? nil : "origin/trunk"))
         #expect(fresh.isSafeToRemove == (style != .squash))
         #expect(fresh.localIgnoredFiles.map(\.path) == [".env", "temp/"])
@@ -362,7 +362,7 @@ struct GitWorktreeTests {
             #expect(!review.isSafeToRemove)
         }
 
-        var service = GitWorktreeReviewService()
+        var service = Self.reviewService()
         if style == .squash {
             try sandbox.git(["-C", repo.path, "remote", "set-url", "origin", "https://github.com/example/project.git"])
             let runner = ProcessRunner()
@@ -373,7 +373,7 @@ struct GitWorktreeTests {
             let verifier = GitHubMergeVerifier { repository, heads, _ in
                 try Self.githubResponse(repository, heads: heads, mergeCommit: merge, base: "trunk", headOverride: head)
             }
-            service = GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, github: verifier)
+            service = Self.reviewService(github: verifier)
             let verified = try await service.review(tree)
             #expect(verified.isSafeToRemove)
             #expect(verified.mergedInto == "origin/trunk")
@@ -593,6 +593,13 @@ struct GitWorktreeTests {
         }
     }
 
+    /// Reviews worktrees without the system process inventory.
+    /// Some machines write lsof warnings, which make the process check unknown.
+    private static func reviewService(github: GitHubMergeVerifier = .shared) -> GitWorktreeReviewService {
+        GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, github: github,
+            captureActivity: { WorktreeActivity(roots: $0, processes: [:]) })
+    }
+
     private static func githubResponse(_ repository: GitHubMergeVerifier.Repository, heads: [String],
                                        mergeCommit: String = String(repeating: "f", count: 40), base: String = "main", headOverride: String? = nil) throws -> Data {
         var repo: [String: Any] = ["nameWithOwner": repository.fullName, "defaultBranchRef": ["name": base]]
@@ -739,7 +746,7 @@ struct GitWorktreeTests {
         try sandbox.file("Worktrees/caches/.venv/lib/package.py", text: "# Installed dependency\n")
         try sandbox.file("Worktrees/caches/__pycache__/source.cpython-313.pyc", text: "Compiled fixture")
 
-        let fresh = try await GitWorktreeReviewService().review(tree)
+        let fresh = try await Self.reviewService().review(tree)
         #expect(fresh.ignoredFiles.contains { $0.path == ".pytest_cache/README.md" })
         #expect(fresh.ignoredFiles.contains { $0.path == ".pytest_cache/CACHEDIR.TAG" })
         #expect(fresh.regenerableIgnoredFiles.count == fresh.ignoredFiles.count)
@@ -751,7 +758,7 @@ struct GitWorktreeTests {
 
         try sandbox.file("Worktrees/caches/.env", text: "Local settings")
         try sandbox.file("Worktrees/caches/database.sqlite", text: "Local data")
-        let mixed = try await GitWorktreeReviewService().review(tree)
+        let mixed = try await Self.reviewService().review(tree)
         #expect(mixed.localIgnoredFiles.map(\.path) == [".env", "database.sqlite"])
         #expect(mixed.regenerableIgnoredFiles.count == fresh.ignoredFiles.count)
         #expect(mixed.unverifiedIgnoredFiles.isEmpty)
@@ -1012,6 +1019,57 @@ struct GitWorktreeTests {
         #expect(!review.isSafeToRemove)
     }
 
+    @Test("Fresh worktree reviews use the scan activity checks", arguments: ["clear", "tracked", "ignored", "alias", "incomplete"])
+    func freshActivity(kind: String) async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        try sandbox.git(["-C", repo.path, "remote", "add", "origin", sandbox.home.appendingPathComponent("remote.git").path])
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
+        try sandbox.file("Documents/Project/.git/info/exclude", text: ".env\n")
+        let tree = try sandbox.worktree("Worktree", repository: repo).standardizedFileURL
+        try sandbox.file("Worktree/.env", text: "Local settings")
+        let file = tree.appendingPathComponent(kind == "tracked" ? "source.txt" : ".env")
+        let alias = sandbox.home.appendingPathComponent("alias")
+        try FileManager.default.linkItem(at: file, to: alias)
+        let identity = try #require(FileIdentity.of(kind == "alias" ? alias : file))
+        let capture: @Sendable ([URL]) async throws -> WorktreeActivity = { roots in
+            let processes: [String: Set<String>] = ["clear", "incomplete"].contains(kind) ? [:] : [identity: [kind + " writer"]]
+            return WorktreeActivity(roots: roots, processes: processes,
+                issue: kind == "incomplete" ? "Incomplete process information." : nil)
+        }
+        let batch = try await WorktreeScan.prepare([tree], captureActivity: capture)
+        let measured = try await batch.measure(tree, with: AllocatedSizeMeasurer())
+        let scanned = try #require(measured.reviews[tree])
+        let service = GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, captureActivity: capture)
+        for _ in 0..<2 {
+            let fresh = try await service.review(tree)
+            #expect(fresh.activity == scanned.activity)
+            #expect(fresh.ignoredFiles == scanned.ignoredFiles)
+            #expect(fresh.mergedInto == scanned.mergedInto)
+            #expect(fresh.isSafeToRemove == (kind == "clear"))
+            let expected: GitWorktreeReview.Check = kind == "clear" ? .clear
+                : kind == "incomplete" ? .unknown("Incomplete process information.") : .found(kind + " writer")
+            #expect(fresh.activity == expected)
+        }
+    }
+
+    @Test("One worktree review request shares one process inventory")
+    func batchedActivity() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let trees = try ["First", "Second"].map { try sandbox.worktree($0, repository: repo) }
+        let captures = CaptureCounter()
+        let service = GitWorktreeReviewService(gitExecutable: { "/usr/bin/git" }, captureActivity: { roots in
+            await captures.increment()
+            return WorktreeActivity(roots: roots, processes: [:])
+        })
+        let reviews = try await service.review(trees)
+        #expect(await captures.value == 1)
+        #expect(Set(reviews.keys) == Set(trees))
+        #expect(trees.allSatisfy { reviews[$0]?.activity == .clear })
+    }
+
     @Test("Shared process checks match hard links and reject incomplete inventories")
     func sharedActivity() async throws {
         let sandbox = try Sandbox()
@@ -1114,4 +1172,9 @@ struct GitWorktreeTests {
         #expect((try await GitWorktreeReviewService().review(tree)).status == .uncommittedChanges)
         #expect(!FileManager.default.fileExists(atPath: landed.path))
     }
+}
+
+private actor CaptureCounter {
+    private(set) var value = 0
+    func increment() { value += 1 }
 }
