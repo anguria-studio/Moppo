@@ -194,7 +194,10 @@ final class CleanupModel {
         }
     }
 
-    var hasSelectedDockerImages: Bool { selectedEntries.contains { $0.dockerImage != nil } }
+    var hasSelectedDockerImages: Bool {
+        let selected = cleanupSelection(in: scanFilter)
+        return selectedEntries.contains { selected.contains($0.id) && $0.dockerImage != nil }
+    }
 
     private var selectedOrphanApplicationEntries: [FileEntry] {
         let selected = scannerSelection
@@ -213,8 +216,7 @@ final class CleanupModel {
     }
 
     func selectedBytes(in category: CategoryID, filter: ScanFilter = .all) -> Int64 {
-        let selected = dataTypeFilter == .all ? cleanupSelection(in: filter)
-            : cleanupSelection(in: filter).intersection(idsInCurrentView)
+        let selected = cleanupSelection(in: filter)
         guard let result = scanResults?.categories.first(where: { $0.categoryID == category })
         else { return 0 }
         let entries = filter == .all
@@ -370,8 +372,9 @@ final class CleanupModel {
         case .all: .all
         case .safeToRemove: .safe
         }
+        let selected = dataTypeFilter == .all ? scannerSelection : scannerSelection.intersection(idsInCurrentView)
         return CleanupSelection.ids(
-            in: scanResults?.categories ?? [], selected: scannerSelection, scope: scope
+            in: scanResults?.categories ?? [], selected: selected, scope: scope
         )
     }
 

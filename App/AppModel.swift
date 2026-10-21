@@ -555,8 +555,8 @@ final class AppModel {
         switch view {
         case .scanner:
             cleanup.hasSelectedDockerImages
-                ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: .all))))"
-                : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: .all))))"
+                ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: cleanup.scanFilter))))"
+                : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: cleanup.scanFilter))))"
         case .duplicates:
             duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
