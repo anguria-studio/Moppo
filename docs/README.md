@@ -5,6 +5,9 @@
 These notes cover build setup, measurement rules, permissions, and current limits.
 Run the commands from the repository root unless a command changes the folder.
 
+Use the [user guide](user-guide.md) for app controls, permissions, and removal instructions.
+Use the [build and test guide](building.md) for development requirements and complete validation commands.
+
 ## Build and run
 
 ```sh
