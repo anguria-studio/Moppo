@@ -47,8 +47,8 @@ Set `SPARKLE_BIN` to the pinned Sparkle package's `bin` folder.
 Run the package tool from the repository root:
 
 ```sh
-scripts/package-dmg.sh --version 0.2.0 --build 14 \
-  --output dist/releases/Moppo-0.2.0-14 \
+scripts/package-dmg.sh --version 0.2.0 --build 42 \
+  --output dist/releases/Moppo-0.2.0-42 \
   --sparkle-tools "$SPARKLE_BIN" \
   --notes docs/releases/0.2.0.md
 ```
@@ -85,16 +85,16 @@ An unnotarized candidate must remain local.
 Do not distribute a candidate until notarization and the required release checks pass.
 
 ```sh
-scripts/package-dmg.sh --prepare --version 0.2.0 --build 14 \
-  --output dist/releases/Moppo-0.2.0-14
+scripts/package-dmg.sh --prepare --version 0.2.0 --build 42 \
+  --output dist/releases/Moppo-0.2.0-42
 ```
 
 Use `--archive` to export an existing Release archive.
 Finish the prepared candidate with the same version, build, and output folder:
 
 ```sh
-scripts/package-dmg.sh --finish --version 0.2.0 --build 14 \
-  --output dist/releases/Moppo-0.2.0-14 \
+scripts/package-dmg.sh --finish --version 0.2.0 --build 42 \
+  --output dist/releases/Moppo-0.2.0-42 \
   --sparkle-tools "$SPARKLE_BIN" \
   --notes docs/releases/0.2.0.md
 ```
@@ -134,8 +134,8 @@ Keep `release.json`, the archive, and notarization receipts outside the release 
 For version `0.2.0`, use the commit from the package manifest:
 
 ```sh
-RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.2.0-14/release.json"))["source_commit"])')
-gh release create v0.2.0 dist/releases/Moppo-0.2.0-14/assets/* \
+RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.2.0-42/release.json"))["source_commit"])')
+gh release create v0.2.0 dist/releases/Moppo-0.2.0-42/assets/* \
   --repo anguria-studio/Moppo --draft --target "$RELEASE_COMMIT" \
   --title 'Moppo 0.2.0' --notes-file docs/releases/0.2.0.md
 ```

@@ -23,5 +23,12 @@ The first public release is in preparation.
 - Recognize open symbolic links during worktree activity checks.
 - Include ignored local files when saved remote data confirms a worktree merge and all remaining checks pass.
 - Verify squash merges through GitHub and show the pull request in the worktree checks.
+- Filter Cleanup results by data type in All and Safe to Remove.
+- Keep selections across filters and remove only selected items in the current view.
+- Hide the running application notice across scans and launches when requested.
+- Review Xcode build folders with separate caches, logs, test results, and metadata.
+- Review T3 Code storage under AI Tools with all T3 data protected.
+- Recognize Codex history paths under private folders.
+- Check application access and administrator approval during uninstall.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/

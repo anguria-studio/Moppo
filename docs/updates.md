@@ -11,6 +11,25 @@ Keep this private key outside the repository and the update host.
 Back up the private key before distribution.
 A key loss can prevent existing installations from accepting later updates.
 
+### Private key backup
+
+Use an encrypted backup location outside this Mac.
+Keep the backup outside the repository and release assets.
+Do not paste the private key into a support report or chat.
+Set `SPARKLE_BIN` to the Sparkle tools folder described below.
+Replace the example path with a new file in your encrypted backup location.
+
+```sh
+umask 077
+"$SPARKLE_BIN/generate_keys" --account anguria-studio.Moppo \
+  -x /path/on/encrypted-backup/Moppo-Sparkle.key
+```
+
+Confirm that the backup exists and is readable through your backup system.
+Record the backup confirmation in issue #16 without including the key or its contents.
+
+## Update configuration
+
 The update feed address is `https://anguria.studio/moppo/appcast.xml`.
 The landing page is `https://anguria.studio/moppo/`.
 Publish privacy information at `https://anguria.studio/moppo/privacy/` before distribution.
