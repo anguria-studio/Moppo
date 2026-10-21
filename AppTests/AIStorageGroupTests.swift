@@ -55,6 +55,53 @@ struct AIStorageGroupTests {
         #expect(groups.first?.entries.first?.aiStorageSection?.title == "Cache")
     }
 
+    @Test("T3 Code grouping and selection keep scanned storage protected")
+    func t3Inventory() async throws {
+        let folder = try TemporaryFolder()
+        for path in ["userdata/state.db", "scratch/project/source.txt", "tools/codex", "caches/state.json", "worktrees/task/source.txt"] {
+            let url = folder.url.appendingPathComponent(".t3/" + path)
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(repeating: 0x41, count: 4096).write(to: url)
+        }
+        let category = try await AIToolsScanner(home: folder.url).scan(context: ScanContext())
+        let row = try #require(category.entries.first)
+        let group = try #require(FileTableGroup.make(from: category.entries, sortKey: .size, ascending: false).first)
+        #expect(group.owner == .t3Code)
+        #expect(group.totalBytes == category.totalBytes)
+        #expect(group.visibleEntries(expandedOwners: []).isEmpty)
+        #expect(group.visibleEntries(expandedOwners: [.t3Code]) == [row])
+        #expect(group.totalBytes == row.allocatedBytes + row.children.reduce(0) { $0 + $1.allocatedBytes })
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanResults = .init(categories: [category], startedAt: .now, finishedAt: .now)
+        cleanup.seedSafeToRemoveSelection()
+        cleanup.scanFilter = .all
+        cleanup.selectAllInCurrentView()
+        cleanup.setSelected(true, in: category)
+        cleanup.unlockChildren(in: row)
+        cleanup.setChildrenSelected(true, in: row.id)
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(cleanup.userDataRemovalOverrides.isEmpty)
+        let ids = Set(([row] + row.children).map(\.id))
+        cleanup.scannerSelection = ids
+        cleanup.userDataRemovalOverrides = ids
+        #expect(cleanup.selectedEntries.isEmpty)
+        #expect(cleanup.cleanupSelection(in: .all).isEmpty)
+        #expect(cleanup.cleanupSelectionBytes(in: .all) == 0)
+        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
+
+        for dark in [false, true] {
+            var collapsedHeight = 0.0
+            for expanded in [false, true] {
+                let table = FileTable(entries: category.entries, selection: .constant([]), userDataRemovalOverrides: .constant([]),
+                    expandedGroups: expanded ? [.t3Code] : [])
+                let output = URL(fileURLWithPath: "/tmp/moppo-223-\(expanded ? "expanded" : "collapsed")-\(dark ? "dark" : "light").png")
+                let size = try await renderTestView(table, width: 788, dark: dark, output: output)
+                if expanded { #expect(size.height > collapsedHeight) }
+                else { collapsedHeight = size.height }
+            }
+        }
+    }
+
     @Test("Cleanup filters reveal matching AI child rows when selected again", arguments: [false, true])
     func filteredChildVisibility(dark: Bool) async throws {
         let folder = try TemporaryFolder()

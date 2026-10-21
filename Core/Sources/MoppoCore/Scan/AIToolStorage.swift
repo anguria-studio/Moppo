@@ -15,10 +15,11 @@ enum AIToolStorage {
         var tool: FileEntry.AITool { section.owner.tool }
         var explanation: String = "Credentials, settings, memories, history, and installed files remain protected. Use the owning tool to manage them."
         var curationIdentifier: String? = nil
+        var reviewsWorktrees: Bool = true
         var parts: [Part] = []
     }
 
-    static let homeDotFolders: Set<String> = [".codex", ".claude", ".grokbot"]
+    static let homeDotFolders: Set<String> = [".codex", ".claude", ".grokbot", ".t3"]
     static let dotCacheFolders: Set<String> = ["codex-runtimes"]
 
     static let roots: [Root] = [
@@ -44,6 +45,17 @@ enum AIToolStorage {
             Part(path: "paste-cache", name: "Claude Code pasted text", explanation: "Saved pasted text can contain session content. The cache name does not make it disposable."),
             Part(path: "image-cache", name: "Claude Code saved images", explanation: "Earlier Claude Code versions stored attached images here. These files can be the only local copies."),
             Part(path: "uploads", name: "Claude Code uploaded files", explanation: "Files and photos attached to local sessions. These files can be the only local copies.")
+        ]),
+        Root(path: ".t3", name: "T3 Code data",
+             section: .init(owner: .t3Code, title: "Local data",
+                 summary: "Application data, scratch projects, downloaded tools, caches, and worktrees remain protected."),
+             explanation: "T3 Code manages this storage. Moppo keeps all files protected, including unknown files and worktrees.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "userdata", name: "T3 Code application data", explanation: "Settings, credentials, attachments, browser files, logs, and unknown state remain protected. Use T3 Code to manage them."),
+            Part(path: "scratch", name: "T3 Code scratch projects", explanation: "Scratch projects can contain source files and dependencies. Moppo keeps the whole folder protected."),
+            Part(path: "tools", name: "T3 Code downloaded tools", explanation: "Installed tools can be required by T3 Code. Moppo keeps them protected."),
+            Part(path: "caches", name: "T3 Code caches", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected."),
+            Part(path: "worktrees", name: "T3 Code worktrees", explanation: "Worktrees can contain project files and local changes. Moppo keeps all T3 Code worktrees protected.")
         ]),
         Root(path: ".cursor/projects", name: "Cursor project data",
              section: .init(owner: .cursor, title: "Project data",

@@ -23,10 +23,16 @@ public struct AIToolsScanner: CategoryScanner {
             let url = home.appendingPathComponent(root.path)
             guard !context.isExcluded(url), isOwnedPath(url),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
-            let roots = try GitWorktreeDetector.isWorktree(url)
-                ? [url] : GitWorktreeDetector.roots(under: url, context: context)
+            let parts = root.parts.map { (part: $0, paths: ApplicationsScanner.expand($0.path, under: url)) }
+            let roots: [URL]
+            if root.reviewsWorktrees {
+                roots = try GitWorktreeDetector.isWorktree(url)
+                    ? [url] : GitWorktreeDetector.roots(under: url, context: context)
+            } else {
+                roots = []
+            }
             let worktrees = try await WorktreeScan.prepare(roots)
-            let measured = try await worktrees.measure(url, with: context.measurer)
+            let measured = try await worktrees.measure(url, with: context.measurer, retaining: parts.flatMap(\.paths))
             let total = measured.measurements[url.standardizedFileURL] ?? .zero
             found.unreadableCount += total.unreadableCount
             guard total.allocatedBytes > 0, !total.containsProtectedPattern else { continue }
@@ -61,17 +67,20 @@ public struct AIToolsScanner: CategoryScanner {
                 entry.allocatedBytes -= groups.reduce(0) { $0 + $1.displayBytes }
                 found.entries.append(contentsOf: groups)
             }
-            for part in root.parts {
+            for (part, paths) in parts {
                 if sessionGroups.contains(where: { $0.url == url.appendingPathComponent(part.path) }) { continue }
-                for path in ApplicationsScanner.expand(part.path, under: url) {
-                    guard var child = try await measuredPart(path, context: context) else { continue }
+                for path in paths {
+                    guard var child = try await measuredPart(path, context: context,
+                        measurement: measured.measurements[path.standardizedFileURL] ?? .zero) else { continue }
                     child.displayName = part.name
                     child.protectionReason = .inventory
                     child.protectionExplanation = part.explanation
                     append(child, to: &entry)
                 }
             }
-            entry = try await GitWorktreeDetector.addingWorktrees(to: entry, context: context, prepared: measured)
+            if root.reviewsWorktrees {
+                entry = try await GitWorktreeDetector.addingWorktrees(to: entry, context: context, prepared: measured)
+            }
             found.entries.append(entry)
         }
         try await appendLocalModels(context: context, to: &found)
@@ -104,10 +113,13 @@ public struct AIToolsScanner: CategoryScanner {
         return true
     }
 
-    private func measuredPart(_ url: URL, context: ScanContext) async throws -> FileEntry? {
+    private func measuredPart(_ url: URL, context: ScanContext,
+                              measurement: SizeMeasurement? = nil) async throws -> FileEntry? {
         try Task.checkCancellation()
         guard !context.isExcluded(url), isOwnedPath(url) else { return nil }
-        let size = try await context.measurer.measure(url)
+        let size: SizeMeasurement
+        if let measurement { size = measurement }
+        else { size = try await context.measurer.measure(url) }
         guard size.allocatedBytes > 0, size.unreadableCount == 0, !size.containsProtectedPattern else { return nil }
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
         return FileEntry(

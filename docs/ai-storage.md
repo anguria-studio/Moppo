@@ -20,6 +20,7 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Claude Code | `~/.claude` | Conversations, memories, attachments, file history, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
+| T3 Code | `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
 | Ollama, Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. |
 
@@ -52,6 +53,50 @@ Allocated bytes include shared APFS storage. They do not prove how much a remova
 Sparse VM files can have a large virtual capacity and a small allocated size.
 
 Use `swift run --package-path Core moppo-cli ai` to inspect the default storage rows without removal.
+
+## T3 Code inventory
+
+Moppo discovers `~/.t3` without an installed T3 Code desktop application.
+Two complete diagnostic scans on 21 October 2026 verified this path on one installation.
+They measured 9,085,263,872 allocated bytes across 283,506 files, with no unreadable files.
+The root measurement took 14.924 and 14.383 seconds.
+The logs did not identify the installed T3 Code version.
+These results verify storage discovery and measurement. They do not establish safe removal.
+
+| Observed child | Displayed storage | Protection |
+| --- | --- | --- |
+| `userdata` | Application data | Settings, credentials, attachments, browser files, logs, and unknown state stay protected. |
+| `scratch` | Scratch projects | Project files and dependencies, including `node_modules/.pnpm`, stay protected. |
+| `tools` | Downloaded tools | Installed tools, including an observed Codex installation, stay protected. |
+| `caches` | Caches | Observed children include `codex.json` and `pull-requests`. Names do not establish safe removal. |
+| `worktrees` | Worktrees | This folder was empty in the supplied scans. All T3 Code worktrees stay protected. |
+
+Present children with measured data have separate rows and protection explanations.
+Unknown files remain in the protected parent remainder.
+The root measurement also collects child totals in one traversal.
+Generic Git worktree discovery and removal review do not run inside T3 Code storage.
+Other AI tools keep their existing worktree rules.
+No T3 Code storage contributes to Safe to Remove.
+User-data overrides cannot unlock these inventory rows.
+Hidden & System Data excludes the root and its archives, including when you disable AI Tools.
+Exclusions, protected patterns, unreadable paths, and symlinks retain their existing scan protections.
+The scanner reads file metadata. It does not parse T3 conversations, credentials, or databases.
+
+T3 Code can also use shared provider storage outside `~/.t3`.
+Shared `~/.claude` storage remains under Claude Code and counts once.
+The official [Claude provider guide](https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/docs/user/providers-claude.md) describes shared login and configuration.
+The [Claude home resolver](https://github.com/pingdotgg/t3code/blob/680152e27b2a961686389ca69a1557cbb2c55f08/apps/server/src/provider/Drivers/ClaudeHome.ts) uses `~/.claude` by default.
+Configured paths and `CLAUDE_CONFIG_DIR` can change that provider location.
+The source review used revision `680152e27b2a961686389ca69a1557cbb2c55f08` on 21 October 2026.
+It does not identify the installed T3 Code revision.
+
+The logs reached their directory-detail limit. Their detailed paths do not provide an exhaustive inventory.
+Raw logs remain private because they contain work project paths.
+Synthetic fixtures verify grouping, accounting, and protection.
+A scan on the reported laptop still needs to verify the new presentation, sizes, and timing.
+These checks remain in [issue #196](https://github.com/anguria-studio/Moppo/issues/196).
+Custom roots and provider discovery remain in [issue #66](https://github.com/anguria-studio/Moppo/issues/66).
+Automatic cache cleanup and T3 session deletion require separate evidence.
 
 ## Codex session deletion
 

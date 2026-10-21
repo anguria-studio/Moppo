@@ -77,16 +77,73 @@ struct AIToolsScannerTests {
         #expect(system.entries.isEmpty)
     }
 
-    @Test("Cursor CLI attachments cannot enter the archive sweep when AI Tools is disabled")
-    func cursorSessionArchives() async throws {
+    @Test("T3 Code sections retain unknown files and nested worktrees in one protected inventory")
+    func t3Storage() async throws {
         let sandbox = try Sandbox()
-        let attachment = try sandbox.file(".cursor/chats/workspace/session/attachment.zip", bytes: 260 * 1024 * 1024)
+        for path in ["userdata/state.db", "scratch/project/node_modules/.pnpm/dependency/index.js",
+                     "tools/codex/bin/codex", "caches/pull-requests/state.json", "worktrees/task/source.txt"] {
+            try sandbox.file(".t3/" + path)
+        }
+        for path in ["scratch/project/.git", "worktrees/task/.git", "unknown/task/.git"] {
+            let marker = try sandbox.file(".t3/" + path, bytes: 0)
+            try Data("gitdir: /missing/.git/worktrees/task\n".utf8).write(to: marker)
+            #expect(GitWorktreeDetector.isWorktree(marker.deletingLastPathComponent()))
+        }
+        let unknown = try sandbox.file(".t3/unknown/records.db", bytes: 4096)
+        let shared = try sandbox.file(".claude/projects/task/history.jsonl")
+        let source = sandbox.home.appendingPathComponent(".t3/scratch/project/node_modules/.pnpm/dependency/index.js")
+        try FileManager.default.linkItem(at: source, to: sandbox.home.appendingPathComponent(".t3/tools/shared.js"))
+        let context = ScanContext()
+        let log = try ScanDiagnostics(directory: sandbox.home.appendingPathComponent("logs"))
+        let ai = try await ScanDiagnostics.$current.withValue(log.context) {
+            try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        }
+        log.finish(outcome: "completed")
+        log.flush()
+        let spans = try Data(contentsOf: log.fileURL).split(separator: 10).compactMap { line -> [String: String]? in
+            let event = try #require(try JSONSerialization.jsonObject(with: Data(line)) as? [String: Any])
+            return event["event"] as? String == "span_end" ? event["details"] as? [String: String] : nil
+        }
+        let row = try #require(ai.entries.first { $0.aiStorageSection?.owner == .t3Code })
+        #expect(row.aiTool == .t3Code)
+        #expect(row.displayName == "T3 Code data")
+        #expect(row.children.map(\.displayName) == ["T3 Code application data", "T3 Code scratch projects",
+            "T3 Code downloaded tools", "T3 Code caches", "T3 Code worktrees"])
+        #expect(row.allocatedBytes >= (try await context.measurer.measure(unknown)).allocatedBytes)
+        #expect(row.displayBytes == (try await context.measurer.measure(row.url)).allocatedBytes)
+        #expect(row.worktreeCount == 0)
+        #expect(Set(([row] + row.children).map(\.id)).count == 6)
+        for entry in [row] + row.children {
+            #expect(entry.protectionReason == .inventory)
+            #expect(entry.protectionExplanation?.isEmpty == false)
+            #expect(!entry.regeneratesSafely)
+            #expect(!CleanupService.removalAllowed(entry, userDataRemovalOverrides: [entry.id]))
+        }
+        let claude = try #require(ai.entries.first { $0.aiStorageSection?.owner == .claudeCode })
+        #expect(claude.displayBytes == (try await context.measurer.measure(shared)).allocatedBytes)
+        #expect(ai.totalBytes == row.displayBytes + claude.displayBytes)
+        #expect(ai.safeToRemoveBytes == 0)
+        #expect(ai.claimedStoragePaths.contains(row.url.path))
+        #expect(spans.filter { $0["operation"]?.hasPrefix("measure_") == true
+            && $0["path"]?.hasPrefix(row.url.path) == true }.count == 1)
+        #expect(!spans.contains { $0["operation"] == "worktree_discovery" && $0["path"] == row.url.path })
+        let excluded = try await AIToolsScanner(home: sandbox.home).scan(
+            context: ScanContext(excludedPaths: [source.path]))
+        #expect(!excluded.entries.contains { $0.aiTool == .t3Code })
+        #expect(excluded.claimedStoragePaths.contains(row.url.path))
+    }
+
+    @Test("AI attachments cannot enter the archive sweep when AI Tools is disabled",
+          arguments: [".cursor/chats/workspace/session", ".t3/userdata"])
+    func sessionArchives(path: String) async throws {
+        let sandbox = try Sandbox()
+        let attachment = try sandbox.file(path + "/attachment.zip", bytes: 260 * 1024 * 1024)
         let context = ScanContext()
         let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
         #expect(hidden.entries.isEmpty)
         let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
         let row = try #require(ai.entries.first)
-        #expect(row.displayName == "Cursor CLI sessions")
+        #expect(row.displayName == (path.hasPrefix(".t3") ? "T3 Code data" : "Cursor CLI sessions"))
         #expect(row.displayBytes == (try await context.measurer.measure(attachment)).allocatedBytes)
         #expect(row.isRemovalLocked)
         #expect(!CleanupService.removalAllowed(row, userDataRemovalOverrides: [row.id]))
@@ -269,14 +326,22 @@ struct AIToolsScannerTests {
         #expect(installed.categories.first { $0.categoryID == .aiTools }?.entries.contains { $0.url == desktop } == true)
     }
 
-    @Test("Absent roots, protected patterns, and symlink targets do not produce removal rows")
-    func missingAndProtectedPaths() async throws {
+    @Test("Absent roots, protected patterns, and symlink targets do not produce removal rows",
+          arguments: [".claude", ".t3"])
+    func missingAndProtectedPaths(root: String) async throws {
         let sandbox = try Sandbox()
         #expect(try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext()).availability == .empty)
+        try FileManager.default.createDirectory(at: sandbox.home.appendingPathComponent(".t3/worktrees"),
+                                                withIntermediateDirectories: true)
+        #expect(try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext()).availability == .empty)
+        try FileManager.default.removeItem(at: sandbox.home.appendingPathComponent(".t3"))
         let external = try sandbox.file("outside/feature/Cache/data")
+        let linkedRoot = root == ".t3" ? ".claude" : ".t3"
+        try FileManager.default.createSymbolicLink(at: sandbox.home.appendingPathComponent(linkedRoot),
+                                                  withDestinationURL: external.deletingLastPathComponent())
         try FileManager.default.createSymbolicLink(at: sandbox.home.appendingPathComponent(".codex"),
                                                   withDestinationURL: external.deletingLastPathComponent())
-        try sandbox.file(".claude/projects/private.keychain-db")
+        try sandbox.file(root + "/userdata/private.keychain-db")
         try sandbox.file("Library/Application Support/Claude/Cookies")
         let partition = sandbox.home.appendingPathComponent("Library/Application Support/Claude/Partitions")
         try FileManager.default.createSymbolicLink(at: partition,
@@ -287,16 +352,16 @@ struct AIToolsScannerTests {
         #expect(result.safeToRemoveBytes == 0)
     }
 
-    @Test("Unreadable AI folders report a measurement gap and remain claimed")
-    func unreadableStorage() async throws {
+    @Test("Unreadable AI folders report a measurement gap and remain claimed", arguments: [".claude", ".t3"])
+    func unreadableStorage(root: String) async throws {
         let sandbox = try Sandbox()
-        let file = try sandbox.file(".claude/projects/task.jsonl")
+        let file = try sandbox.file(root + "/userdata/task.jsonl")
         let folder = file.deletingLastPathComponent()
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
         let result = try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext())
         #expect(result.unreadableCount > 0)
-        #expect(result.claimedStoragePaths.contains(sandbox.home.appendingPathComponent(".claude").path))
+        #expect(result.claimedStoragePaths.contains(sandbox.home.appendingPathComponent(root).path))
         #expect(result.safeToRemoveBytes == 0)
     }
 }
