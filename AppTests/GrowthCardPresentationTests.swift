@@ -5,12 +5,26 @@ import Testing
 @Suite("Storage comparison presentation", .serialized)
 @MainActor
 struct GrowthCardPresentationTests {
+    @Test("Seven days shows the real start until a week of history exists", arguments: [TimeInterval(2 * 60), TimeInterval(8 * 24 * 60 * 60)])
+    func shortWindowLabel(age: TimeInterval) {
+        let latest = Date.now
+        let start = latest.addingTimeInterval(-age)
+        let card = GrowthCard(presentation: .report(.init(
+            baselineDate: start, usedDeltaBytes: 0, classDeltas: [:], attributions: [], latestDate: latest
+        )), baseline: .sevenDays)
+        let isShort = age < 7 * 24 * 60 * 60
+        #expect(card.shortWindowStart == (isShort ? start : nil))
+        let day = Calendar.current.isDateInToday(start) ? start.formatted(date: .omitted, time: .shortened)
+            : start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        #expect(card.baselineLabel == (isShort ? "Since \(day)" : "7 days"))
+    }
+
     @Test("Comparison states and recovery actions fit both appearances", arguments: [false, true])
     func layouts(dark: Bool) async throws {
         let date = Date.now
         let measurement = GrowthCard.Measurement(date: date, usedBytes: 218_840_000_000)
         let report = GrowthCard.Report(
-            baselineDate: date, usedDeltaBytes: 0, classDeltas: [:], attributions: []
+            baselineDate: date, usedDeltaBytes: 0, classDeltas: [:], attributions: [], latestDate: date
         )
         var cards: [(String, GrowthCard)] = [
             ("first-run", GrowthCard(

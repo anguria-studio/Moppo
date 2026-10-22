@@ -23,6 +23,8 @@ struct GrowthCard: View {
         let usedDeltaBytes: Int64
         let classDeltas: [GrowthClass: Int64]
         let attributions: [GrowthAttribution]
+        /// The date of the newer measurement. It tells whether seven days of history exist.
+        var latestDate: Date? = nil
     }
 
     struct Measurement: Equatable {
@@ -132,9 +134,13 @@ struct GrowthCard: View {
                 Button(choice.displayName) { onSelectBaseline(choice) }
                     .disabled(choice == .lastCleanup && !canCompareSinceCleanup)
             }
+            if !canCompareSinceCleanup {
+                Divider()
+                Text("Since last cleanup becomes available after your next cleanup.")
+            }
         } label: {
             HStack(spacing: 5) {
-                Text(baseline.displayName)
+                Text(baselineLabel)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
             }
@@ -145,7 +151,25 @@ struct GrowthCard: View {
         // controls use rather than the one AppKit picks.
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Choose a comparison period")
+        .help(shortWindowStart.map {
+            "Seven days of measurements are not available yet. The comparison starts at \(Self.stamp($0))."
+        } ?? "Choose a comparison period")
+    }
+
+    /// The comparison start when "7 days" found a newer measurement.
+    var shortWindowStart: Date? {
+        guard baseline == .sevenDays, case .report(let report) = presentation, let latest = report.latestDate,
+              latest.timeIntervalSince(report.baselineDate) < 7 * 24 * 60 * 60 else { return nil }
+        return report.baselineDate
+    }
+
+    /// Names the real comparison start instead of a period that the history does not cover.
+    var baselineLabel: String {
+        guard let start = shortWindowStart else { return baseline.displayName }
+        let day = Calendar.current.isDateInToday(start)
+            ? start.formatted(date: .omitted, time: .shortened)
+            : start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+        return "Since \(day)"
     }
 
     // MARK: - Body
@@ -424,7 +448,8 @@ extension GrowthCard.Presentation {
                 baselineDate: report.baseline.measuredAt,
                 usedDeltaBytes: report.usedDeltaBytes,
                 classDeltas: report.classDeltas,
-                attributions: Self.oneRowPerEvent(report.attributions)
+                attributions: Self.oneRowPerEvent(report.attributions),
+                latestDate: report.latest.measuredAt
             ))
         case .notComparable:
             self = .notComparable
