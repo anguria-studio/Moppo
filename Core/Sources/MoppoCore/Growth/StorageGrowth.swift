@@ -71,7 +71,7 @@ public enum GrowthClass: String, Sendable, CaseIterable, Codable {
         // `other` never appears in a raw segment table — it is made by the merge —
         // and `free` is excluded before this is called. Both are named honestly
         // rather than filed under a category that did not produce them.
-        case .unmeasured, .other, .free:
+        case .unmeasured, .other, .free, .used:
             .unmeasured
         }
     }

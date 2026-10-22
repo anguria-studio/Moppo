@@ -25,8 +25,14 @@ struct GrowthCard: View {
         let attributions: [GrowthAttribution]
     }
 
+    struct Measurement: Equatable {
+        let date: Date
+        let usedBytes: Int64
+    }
+
     let presentation: Presentation
     let baseline: GrowthBaseline
+    var latestMeasurement: Measurement? = nil
     var lastScanAt: Date? = nil
     var canCompareSinceCleanup = true
     var cleanupMeasurementState: DashboardModel.CleanupMeasurementState = .none
@@ -52,7 +58,7 @@ struct GrowthCard: View {
                 content
                 cleanupGuidance
             }
-            .padding(.vertical, 18)
+            .padding(.vertical, 22)
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -61,35 +67,60 @@ struct GrowthCard: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Storage changes")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Token.Text.primary)
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Text(lastScanLabel(at: context.date))
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.tertiary)
-                        .help(lastScanAt.map(Self.stamp) ?? "Run a scan to find cleanup items.")
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                heading.fixedSize(horizontal: true, vertical: true)
+                Spacer(minLength: 8)
+                comparisonControls
             }
-            Spacer(minLength: 8)
-            baselineMenu
-            if case .report(let report) = presentation {
-                Text(ByteFormatting.signedString(report.usedDeltaBytes))
-                    .font(.mcSecondaryHero)
-                    .monospacedDigit()
-                    .foregroundStyle(Token.Text.emphasis)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .help("Used space change since \(Self.stamp(report.baselineDate))")
-                    .accessibilityLabel("Used space change")
-                    .accessibilityValue("\(ByteFormatting.signedString(report.usedDeltaBytes)) since \(Self.stamp(report.baselineDate))")
+            VStack(alignment: .leading, spacing: 14) {
+                heading
+                HStack(spacing: 16) {
+                    comparisonControls
+                    Spacer(minLength: 0)
+                }
             }
         }
     }
 
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("Storage changes")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Token.Text.primary)
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                Text(lastScanLabel(at: context.date))
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.tertiary)
+                    .help(waitsForCleanupMeasurement ? "Refresh storage to compare with the saved cleanup measurement."
+                          : (lastScanAt.map(Self.stamp) ?? "Run a scan to find cleanup items."))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var comparisonControls: some View {
+        baselineMenu
+        if waitsForCleanupMeasurement {
+            Text("—")
+                .font(.mcSecondaryHero)
+                .foregroundStyle(Token.Text.tertiary)
+                .accessibilityLabel("Waiting for a second measurement")
+        } else if case .report(let report) = presentation {
+            Text(ByteFormatting.signedString(report.usedDeltaBytes))
+                .font(.mcSecondaryHero)
+                .monospacedDigit()
+                .foregroundStyle(Token.Text.emphasis)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .help("Used space change since \(Self.stamp(report.baselineDate))")
+                .accessibilityLabel("Used space change")
+                .accessibilityValue("\(ByteFormatting.signedString(report.usedDeltaBytes)) since \(Self.stamp(report.baselineDate))")
+        }
+    }
+
     private func lastScanLabel(at now: Date) -> String {
+        if waitsForCleanupMeasurement { return "Waiting for a second measurement" }
         guard let lastScanAt else { return "No scan yet" }
         guard now.timeIntervalSince(lastScanAt) >= 60 else { return "Last scan · Just now" }
         return "Last scan · \(growthScanFormatter.localizedString(for: lastScanAt, relativeTo: now))"
@@ -121,13 +152,17 @@ struct GrowthCard: View {
 
     @ViewBuilder
     private var content: some View {
-        switch presentation {
-        case .report(let report):
-            reportBody(report)
-        case .insufficientHistory:
-            message("No storage comparison yet.", hint: "Storage changes need two measurements with the same access and settings.")
-        case .notComparable:
-            message("These measurements cannot be compared.", hint: "Storage changes need measurements with the same access and settings.")
+        if waitsForCleanupMeasurement {
+            measurementProgress
+        } else {
+            switch presentation {
+            case .report(let report):
+                reportBody(report)
+            case .insufficientHistory:
+                firstComparison
+            case .notComparable:
+                message("These measurements cannot be compared.", hint: "Storage changes need measurements with the same access and settings.")
+            }
         }
     }
 
@@ -135,6 +170,8 @@ struct GrowthCard: View {
     private var cleanupGuidance: some View {
         if let guidance = cleanupGuidanceText {
             VStack(alignment: .leading, spacing: 8) {
+                divider
+                    .padding(.bottom, 4)
                 Text(guidance)
                     .font(.mcSubtitle)
                     .foregroundStyle(Token.Text.secondary)
@@ -172,14 +209,149 @@ struct GrowthCard: View {
         case .cleared:
             "Storage history was cleared. The next cleanup starts a new cleanup comparison."
         case .none:
-            if cleanupBaselineDate == nil {
-                "Since last cleanup needs a storage measurement immediately after removal. No cleanup baseline is available."
-            } else if baseline == .lastCleanup && !hasLaterCleanupMeasurement {
-                "Cleanup baseline saved. Changes appear after the next storage measurement."
-            } else {
-                nil
+            nil
+        }
+    }
+
+    private var waitsForCleanupMeasurement: Bool {
+        baseline == .lastCleanup && cleanupBaselineDate != nil && !hasLaterCleanupMeasurement
+            && cleanupMeasurementState == .none
+    }
+
+    private var firstComparison: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 19, weight: .regular))
+                    .foregroundStyle(Token.Text.secondary)
+                    .frame(width: 40, height: 40)
+                    .background(Token.Fill.control, in: RoundedRectangle(cornerRadius: Token.Radius.box))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(latestMeasurement == nil ? "Your first comparison starts here" : "Your first comparison is on its way")
+                        .font(.mcRowTitle)
+                        .foregroundStyle(Token.Text.primary)
+                    Text(latestMeasurement == nil
+                         ? "Save a storage measurement to start. The next measurement will show which folders grew or shrank."
+                         : "Moppo saved a storage measurement. The next measurement will show which folders grew or shrank.")
+                        .font(.mcBody)
+                        .foregroundStyle(Token.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            divider
+            comparisonPreview
+            if cleanupGuidanceText == nil {
+                measurementFooter("Compare measurements with the same access and settings after your next cleanup or refresh.")
             }
         }
+        .padding(.top, 22)
+    }
+
+    private var measurementProgress: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Each column carries its own marker, so the second marker aligns with its text.
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Token.textColor(.green))
+                            .frame(width: 26, height: 26)
+                            .background(Token.Fill.safeBadge, in: Circle())
+                        HorizontalLine()
+                            .stroke(Token.Fill.controlBorder, style: StrokeStyle(lineWidth: 1.5, dash: [5, 5]))
+                            .frame(height: 26)
+                    }
+                    .padding(.trailing, 10)
+                    .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Baseline saved")
+                            .font(.mcRowTitle)
+                            .foregroundStyle(Token.Text.primary)
+                        if let cleanupBaselineDate {
+                            Text(Self.stamp(cleanupBaselineDate))
+                                .font(.mcSubtitle)
+                                .foregroundStyle(Token.Text.secondary)
+                        }
+                        if let latestMeasurement, latestMeasurement.date == cleanupBaselineDate {
+                            Text("\(ByteFormatting.string(latestMeasurement.usedBytes)) used")
+                                .font(.mcSubtitle)
+                                .foregroundStyle(Token.Text.secondary)
+                        }
+                    }
+                    .padding(.trailing, 20)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 10) {
+                    Circle()
+                        .strokeBorder(Token.Text.tertiary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                        .frame(width: 26, height: 26)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Next measurement")
+                            .font(.mcRowTitle)
+                            .foregroundStyle(Token.Text.primary)
+                        Text("After your next cleanup or refresh")
+                            .font(.mcSubtitle)
+                            .foregroundStyle(Token.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            divider
+            measurementFooter("The next measurement will show which folders grew or shrank.")
+        }
+        .padding(.top, 24)
+    }
+
+    private func measurementFooter(_ text: String) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 20) {
+                Text(text)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                measureButton
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                Text(text)
+                    .fixedSize(horizontal: false, vertical: true)
+                measureButton
+            }
+        }
+        .font(.mcSubtitle)
+        .foregroundStyle(Token.Text.secondary)
+    }
+
+    private var measureButton: some View {
+        Button(action: onRefresh) {
+            Label(isRefreshing ? "Measuring…" : "Measure Now", systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
+        .fixedSize()
+        .disabled(isRefreshing)
+        .accessibilityHint("Measure current storage and compare saved measurements.")
+    }
+
+    private var comparisonPreview: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<3) { row in
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Token.Fill.control)
+                        .frame(width: 7, height: 7)
+                    SkeletonBone(width: [132.0, 96, 114][row], height: 8)
+                    SkeletonBone(width: [78.0, 108, 62][row], height: 7)
+                        .opacity(0.5)
+                    Spacer(minLength: 12)
+                    SkeletonBone(width: 56, height: 8)
+                }
+                .frame(height: 32)
+            }
+        }
+        .opacity(0.55)
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
     }
 
     private func message(_ primary: String, hint: String) -> some View {
@@ -402,6 +574,16 @@ private struct GrowthChangeBar: View {
             context.stroke(zero, with: .color(Token.Fill.controlBorder), lineWidth: 1)
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// A line across the vertical center of its frame.
+private struct HorizontalLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
+        return path
     }
 }
 

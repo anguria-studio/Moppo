@@ -49,6 +49,55 @@ struct AllocatedSizeMeasurerTests {
 
     private static let oneMB = 1024 * 1024
 
+    enum BulkRecordFault: CaseIterable {
+        case truncated, nameOffset, nameLength, terminator, slash
+        case missingAttributes, entryError, negativeBytes, mount, firmlink
+    }
+
+    @Test("Invalid bulk records cannot supply unverified names or sizes", arguments: BulkRecordFault.allCases)
+    func invalidBulkRecords(fault: BulkRecordFault) throws {
+        var buffer = [UInt8](repeating: 0, count: 80)
+        func store<T>(_ value: T, at offset: Int) {
+            buffer.withUnsafeMutableBytes { $0.storeBytes(of: value, toByteOffset: offset, as: T.self) }
+        }
+        store(UInt32(80), at: 0)
+        let common = UInt32(ATTR_CMN_NAME | ATTR_CMN_DEVID | ATTR_CMN_OBJTYPE | ATTR_CMN_FLAGS | ATTR_CMN_FILEID)
+        store(common, at: 4)
+        store(UInt32(ATTR_DIR_MOUNTSTATUS), at: 12)
+        store(UInt32(ATTR_FILE_LINKCOUNT | ATTR_FILE_ALLOCSIZE), at: 16)
+        store(Int32(44), at: 28)
+        store(UInt32(5), at: 32)
+        store(UInt32(VREG.rawValue), at: 40)
+        store(UInt32(1), at: 56)
+        store(Int64(4096), at: 60)
+        buffer.replaceSubrange(72..<77, with: Array("file\0".utf8))
+        switch fault {
+        case .truncated: buffer.removeLast(25)
+        case .nameOffset: store(Int32.min, at: 28)
+        case .nameLength: store(UInt32.max, at: 32)
+        case .terminator: buffer[76] = 1
+        case .slash: buffer[73] = 47
+        case .missingAttributes: store(UInt32(ATTR_CMN_NAME), at: 4)
+        case .entryError: store(UInt32(EACCES), at: 24)
+        case .negativeBytes: store(Int64(-1), at: 60)
+        case .mount:
+            store(UInt32(VDIR.rawValue), at: 40)
+            store(UInt32(DIR_MNTSTATUS_MNTPOINT), at: 56)
+        case .firmlink: store(UInt32(SF_FIRMLINK), at: 44)
+        }
+        let parent = URL(fileURLWithPath: "/bulk-fixture", isDirectory: true)
+        switch fault {
+        case .truncated, .nameOffset, .nameLength, .terminator, .slash:
+            #expect(throws: POSIXError.self) {
+                try buffer.withUnsafeBytes { try BulkMeasurementReader.entry(in: $0, parent: parent) }
+            }
+        default:
+            let entry = try buffer.withUnsafeBytes { try BulkMeasurementReader.entry(in: $0, parent: parent) }
+            #expect(entry.url.lastPathComponent == "file")
+            #expect(entry.metadata == nil)
+        }
+    }
+
     @Test("Direct metadata preserves allocation for sparse files, resource forks, and protected names")
     func directMetadataAllocation() async throws {
         let sandbox = try Sandbox()
@@ -66,8 +115,10 @@ struct AllocatedSizeMeasurerTests {
         let measurer = AllocatedSizeMeasurer(protectedPatterns: ["*.keychain-db"])
         for url in [ordinary, sparse, fork, sandbox.root] {
             let foundation = try await measurer.measure(url)
-            let filesystem = try await measurer.measure(url, reader: .filesystem)
-            #expect(filesystem == foundation)
+            for reader in [MeasurementReader.filesystem, .bulk] {
+                let measured = try await measurer.measure(url, reader: reader)
+                #expect(measured == foundation)
+            }
         }
         let total = try await measurer.measure(sandbox.root, reader: .filesystem)
         #expect(total.containsProtectedPattern)
@@ -75,6 +126,9 @@ struct AllocatedSizeMeasurerTests {
         #expect(total.allocatedBytes < Int64(4 * Self.oneMB))
         let missing = try await measurer.measure(sandbox.root.appendingPathComponent("missing"), reader: .filesystem)
         #expect(missing.unreadableCount == 1)
+        let entries = try BulkMeasurementReader.entries(of: sandbox.root, cancelled: CancellationFlag())
+        #expect(!entries.isEmpty)
+        #expect(entries.allSatisfy { $0.metadata != nil })
     }
 
     private final class MeasurementRecorder: @unchecked Sendable {
@@ -157,7 +211,7 @@ struct AllocatedSizeMeasurerTests {
 
     // MARK: - The regression that motivated the rewrite
 
-    @Test("an unreadable subdirectory costs only itself — it never zeroes the total", arguments: [MeasurementReader.foundation, .filesystem])
+    @Test("an unreadable subdirectory costs only itself — it never zeroes the total", arguments: [MeasurementReader.foundation, .filesystem, .bulk])
     func unreadableSubdirectoryDoesNotZeroTheTotal(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         try sandbox.writeFile("readable/a.bin", bytes: Self.oneMB)
@@ -192,7 +246,7 @@ struct AllocatedSizeMeasurerTests {
 
     // MARK: - Counting rules
 
-    @Test("hard links to one inode are counted once", arguments: [MeasurementReader.foundation, .filesystem])
+    @Test("hard links to one inode are counted once", arguments: [MeasurementReader.foundation, .filesystem, .bulk])
     func hardLinksCountedOnce(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         let original = try sandbox.writeFile("original.bin", bytes: 4 * Self.oneMB)
@@ -205,7 +259,7 @@ struct AllocatedSizeMeasurerTests {
         #expect(result.allocatedBytes < Int64(8 * Self.oneMB), "must not double-count")
     }
 
-    @Test("symlinks are not followed by default", arguments: [MeasurementReader.foundation, .filesystem])
+    @Test("symlinks are not followed by default", arguments: [MeasurementReader.foundation, .filesystem, .bulk])
     func symlinksIgnoredByDefault(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         try sandbox.writeFile("real/payload.bin", bytes: 2 * Self.oneMB)
@@ -228,7 +282,7 @@ struct AllocatedSizeMeasurerTests {
     /// clones report their full allocated size. A reported total is therefore an
     /// upper bound on reclaimable space. This test pins the behaviour so nobody
     /// "fixes" it into a false promise, and so the UI copy stays honest.
-    @Test("APFS clones are counted per file — totals are an upper bound", arguments: [MeasurementReader.foundation, .filesystem])
+    @Test("APFS clones are counted per file — totals are an upper bound", arguments: [MeasurementReader.foundation, .filesystem, .bulk])
     func clonesAreCountedPerFile(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         let source = try sandbox.writeFile("source.bin", bytes: 16 * Self.oneMB)
@@ -305,9 +359,11 @@ struct AllocatedSizeMeasurerTests {
         let direct = try await AllocatedSizeMeasurer().measure(sandbox.root, reader: .filesystem)
         #expect(direct.fileCount == 0)
         #expect(direct.allocatedBytes == 0)
+        let subtrees = try await AllocatedSizeMeasurer().measureSubtrees(of: sandbox.root, depth: 2)
+        #expect(subtrees[sandbox.root.standardizedFileURL]?.fileCount == 0)
     }
 
-    enum ProgressMeasurement: CaseIterable { case foundation, filesystem, selectedTotals }
+    enum ProgressMeasurement: CaseIterable { case foundation, filesystem, bulk, selectedTotals }
 
     @Test("Progress callbacks are serial, ordered, and not duplicated", arguments: ProgressMeasurement.allCases)
     func progressCallbacksAreSerialAndOrdered(measurement: ProgressMeasurement) async throws {
@@ -325,8 +381,14 @@ struct AllocatedSizeMeasurerTests {
                 retaining: [sandbox.root.appendingPathComponent("dir-0")], progress: { recorder.record($0) })
             result = try #require(totals[sandbox.root.standardizedFileURL])
         } else {
+            let reader: MeasurementReader = switch measurement {
+            case .foundation: .foundation
+            case .filesystem: .filesystem
+            case .bulk: .bulk
+            case .selectedTotals: .foundation
+            }
             result = try await AllocatedSizeMeasurer().measure(sandbox.root,
-                reader: measurement == .foundation ? .foundation : .filesystem, progress: { recorder.record($0) })
+                reader: reader, progress: { recorder.record($0) })
         }
         let recorded = recorder.result
 
@@ -416,7 +478,7 @@ struct AllocatedSizeMeasurerTests {
     /// Regression: `.skipsPackageDescendants` was briefly set alongside the symlink
     /// option, which made `/Applications` measure as roughly zero — every .app is a
     /// package, so all their contents were skipped.
-    @Test("package contents are measured — an .app bundle is not opaque", arguments: [MeasurementReader.foundation, .filesystem])
+    @Test("package contents are measured — an .app bundle is not opaque", arguments: [MeasurementReader.foundation, .filesystem, .bulk])
     func descendsIntoPackages(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         try sandbox.writeFile("Demo.app/Contents/MacOS/Demo", bytes: 6 * Self.oneMB)
@@ -436,7 +498,7 @@ struct AllocatedSizeMeasurerTests {
         #expect(result.fileCount == 0)
     }
 
-    @Test("cancellation is honoured", arguments: [MeasurementReader.foundation, .filesystem])
+    @Test("cancellation is honoured", arguments: [MeasurementReader.foundation, .filesystem, .bulk])
     func cancellationHonoured(reader: MeasurementReader) async throws {
         let sandbox = try Sandbox()
         for index in 0..<2_000 {

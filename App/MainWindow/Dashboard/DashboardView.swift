@@ -65,6 +65,9 @@ struct DashboardView: View {
                     GrowthCard(
                         presentation: GrowthCard.Presentation(growth),
                         baseline: model.growthBaseline,
+                        latestMeasurement: model.latestStorageMeasurement.map {
+                            GrowthCard.Measurement(date: $0.measuredAt, usedBytes: $0.usedBytes)
+                        },
                         lastScanAt: scanResults?.finishedAt ?? lastScanAt,
                         canCompareSinceCleanup: model.hasCleanupGrowthBaseline,
                         cleanupMeasurementState: model.cleanupMeasurementState,

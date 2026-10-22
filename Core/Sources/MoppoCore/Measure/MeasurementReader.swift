@@ -5,11 +5,14 @@ import Foundation
 enum MeasurementReader: String, Sendable {
     case foundation
     case filesystem
+    case bulk
 
     func metadata(at url: URL, keys: Set<URLResourceKey>) throws -> MeasurementMetadata {
         switch self {
         case .foundation:
             return MeasurementMetadata(try url.resourceValues(forKeys: keys))
+        case .bulk:
+            return try Self.filesystem.metadata(at: url, keys: keys)
         case .filesystem:
             var info = stat()
             guard lstat(url.path, &info) == 0 else { throw POSIXError.current }
@@ -22,6 +25,20 @@ enum MeasurementReader: String, Sendable {
                 volumeIdentifier: NSNumber(value: info.st_dev), allocatedBytes: bytes,
                 isCloudOnly: false, resourceValues: nil
             )
+        }
+    }
+
+    func entries(of url: URL, keys: [URLResourceKey], cancelled: CancellationFlag) throws -> [MeasurementEntry] {
+        if self == .bulk {
+            do { return try BulkMeasurementReader.entries(of: url, cancelled: cancelled) }
+            catch is CancellationError { throw CancellationError() }
+            catch {
+                // Restart the complete directory if bulk attributes are unavailable.
+                return try Self.filesystem.entries(of: url, keys: keys, cancelled: cancelled)
+            }
+        }
+        return try contents(of: url, keys: keys, cancelled: cancelled).map {
+            MeasurementEntry.url($0)
         }
     }
 
@@ -79,6 +96,26 @@ enum MeasurementReader: String, Sendable {
             let bytes = raw.loadUnaligned(fromByteOffset: bytesOffset, as: off_t.self)
             guard bytes >= 0 else { throw POSIXError(.EIO) }
             return Int64(bytes)
+        }
+    }
+}
+
+enum MeasurementEntry {
+    case url(URL)
+    case bulk(parent: URL, name: String, isDirectory: Bool, metadata: MeasurementMetadata?)
+
+    var url: URL {
+        switch self {
+        case .url(let url): url
+        case .bulk(let parent, let name, let isDirectory, _):
+            parent.appendingPathComponent(name, isDirectory: isDirectory)
+        }
+    }
+
+    var metadata: MeasurementMetadata? {
+        switch self {
+        case .url: nil
+        case .bulk(_, _, _, let metadata): metadata
         }
     }
 }

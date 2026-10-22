@@ -136,4 +136,34 @@ struct BreakdownMathTests {
         #expect(reconciled.segments.reduce(0) { $0 + $1.bytes } == 100 * Self.gb)
         #expect(reconciled.unreadableCount == 4)
     }
+
+    @Test("Category overages preserve physical free space and measured categories", arguments: [Int64(80), 150])
+    func categoryOverage(namedGB: Int64) throws {
+        let original = StorageBreakdown.make(
+            capacityBytes: 100 * Self.gb,
+            rawSegments: [.applications: namedGB * Self.gb, .free: 80 * Self.gb], unreadableCount: 3
+        )
+        #expect(!original.isConsistent)
+        let reconciled = original.reconcilingVolume(capacityBytes: 100 * Self.gb, freeBytes: 80 * Self.gb)
+        #expect(reconciled.isConsistent)
+        #expect(reconciled.freeBytes == 80 * Self.gb)
+        #expect(reconciled.usedBytes == 20 * Self.gb)
+        #expect(reconciled.segments == [.init(id: .used, bytes: 20 * Self.gb), .init(id: .free, bytes: 80 * Self.gb)])
+        #expect(reconciled.legendEntries == [.init(id: .applications, bytes: namedGB * Self.gb)])
+        #expect(reconciled.allocationExcessBytes == (namedGB - 20) * Self.gb)
+        #expect(reconciled.unreadableCount == 3)
+        let data = try JSONEncoder().encode(reconciled)
+        // Earlier builds cannot read Used, so saved data stores it as Unmeasured.
+        let saved = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let savedIDs = try #require(saved["segments"] as? [[String: Any]]).compactMap { $0["id"] as? String }
+        #expect(savedIDs == ["unmeasured", "free"])
+        let decoded = try JSONDecoder().decode(StorageBreakdown.self, from: data)
+        #expect(decoded == reconciled)
+        let refreshed = decoded.reconcilingVolume(capacityBytes: 100 * Self.gb, freeBytes: 10 * Self.gb)
+        #expect(refreshed.isConsistent)
+        #expect(refreshed.freeBytes == 10 * Self.gb)
+        #expect(refreshed.legendEntries.contains { $0.id == .applications && $0.bytes == namedGB * Self.gb })
+        #expect((refreshed.categorySegments != nil) == (namedGB > 90))
+        #expect(refreshed.allocationExcessBytes == max(0, namedGB - 90) * Self.gb)
+    }
 }

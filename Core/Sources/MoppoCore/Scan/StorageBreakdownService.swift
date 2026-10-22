@@ -97,13 +97,23 @@ public struct StorageBreakdownService: Sendable {
     ) async throws -> StorageMeasurement {
         let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL
 
-        let volume = try await diskInfo.volumeInfo()
-        let dataUsed = try await diskInfo.dataVolumeUsedBytes()
+        let volume = try await DashboardDiagnostics.phase("measurement_volume_read") {
+            try await diskInfo.volumeInfo()
+        }
+        let dataUsed = try await DashboardDiagnostics.phase("data_volume_read") {
+            try await diskInfo.dataVolumeUsedBytes()
+        }
+        DashboardDiagnostics.current?.record("measurement_volume_result", details: [
+            "capacity_bytes": "\(volume.capacityBytes)", "physical_used_bytes": "\(volume.usedBytes)",
+            "physical_free_bytes": "\(volume.freeBytes)", "data_volume_used_bytes": "\(dataUsed)"
+        ])
         progress?(0.05)
 
         // One traversal of $HOME supplies every home figure below, including
         // `Library/Caches/Homebrew`.
-        let homeTree = try await measurer.measureSubtrees(of: home, depth: Self.homeWalkDepth)
+        let homeTree = try await DashboardDiagnostics.phase("home_walk") {
+            try await measurer.measureSubtrees(of: home, depth: Self.homeWalkDepth)
+        }
         progress?(0.55)
 
         func homeBytes(_ components: [String]) -> Int64 {
@@ -123,7 +133,9 @@ public struct StorageBreakdownService: Sendable {
         let dataSideSystemURL = URL(
             fileURLWithPath: DiskInfoService.dataVolumeMountPoint + "/System"
         ).standardizedFileURL
-        let dataSideSystem = try await measurer.measure(dataSideSystemURL)
+        let dataSideSystem = try await DashboardDiagnostics.phase("data_system_walk") {
+            try await measurer.measure(dataSideSystemURL)
+        }
         rootMeasurements[dataSideSystemURL] = dataSideSystem
         progress?(0.7)
 
@@ -131,7 +143,13 @@ public struct StorageBreakdownService: Sendable {
         var systemDataUnreadable = 0
         for root in Self.systemDataRoots {
             let url = URL(fileURLWithPath: root).standardizedFileURL
-            let measured = try await measurer.measure(url)
+            let measured = try await DashboardDiagnostics.phase("system_root_walk", details: ["root": root]) {
+                try await measurer.measure(url)
+            }
+            DashboardDiagnostics.current?.record("system_root_result", details: [
+                "root": root, "allocated_bytes": "\(measured.allocatedBytes)",
+                "file_count": "\(measured.fileCount)", "unreadable_count": "\(measured.unreadableCount)"
+            ])
             rootMeasurements[url] = measured
             systemDataBytes += measured.allocatedBytes
             systemDataUnreadable += measured.unreadableCount
@@ -139,7 +157,15 @@ public struct StorageBreakdownService: Sendable {
         progress?(0.9)
 
         let systemApplicationsURL = URL(fileURLWithPath: "/Applications").standardizedFileURL
-        let systemApplications = try await measurer.measure(systemApplicationsURL)
+        let systemApplications = try await DashboardDiagnostics.phase("applications_walk") {
+            try await measurer.measure(systemApplicationsURL)
+        }
+        DashboardDiagnostics.current?.record("walk_result", details: [
+            "home_allocated_bytes": "\(homeTotal)", "home_file_count": "\(homeTree[home]?.fileCount ?? 0)",
+            "home_unreadable_count": "\(homeUnreadable)",
+            "data_system_allocated_bytes": "\(dataSideSystem.allocatedBytes)",
+            "applications_allocated_bytes": "\(systemApplications.allocatedBytes)"
+        ])
         rootMeasurements[systemApplicationsURL] = systemApplications
 
         // Non-Data volumes: System, Preboot, Recovery, VM.
@@ -192,7 +218,7 @@ public struct StorageBreakdownService: Sendable {
             rawSegments: raw,
             unreadableCount: homeUnreadable + systemDataUnreadable
                 + dataSideSystem.unreadableCount + systemApplications.unreadableCount
-        )
+        ).reconcilingVolume(capacityBytes: volume.capacityBytes, freeBytes: volume.freeBytes)
 
         return StorageMeasurement(
             home: home,

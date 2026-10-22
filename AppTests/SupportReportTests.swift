@@ -16,10 +16,12 @@ struct SupportReportTests {
         let bundle = try #require(Bundle(url: bundleURL))
         let destination = folder.url.appendingPathComponent("logs")
         let log = try ScanLog.begin(.init(enabledCategories: [.documentsAndFiles]), bundle: bundle, directory: destination)
+        let dashboardLog = try ScanLog.beginDashboard(trigger: .removal, bundle: bundle, directory: destination)
         let appLog = try ScanLog.recordApplicationEvent("application_started", bundle: bundle, directory: destination)
         let finalLog = try ScanLog.recordApplicationEvent("termination_requested",
             details: ["operation": "cleanupScan", "decision": "after_cancellation"], bundle: bundle, directory: destination)
         #expect((log != nil) == enabled)
+        #expect((dashboardLog != nil) == enabled)
         #expect((appLog != nil) == enabled)
         #expect(finalLog == appLog)
         #expect(FileManager.default.fileExists(atPath: destination.path) == enabled)
@@ -43,6 +45,15 @@ struct SupportReportTests {
             #expect(content.contains("full_disk_access"))
             #expect(content.contains("17"))
         }
+        if let dashboardLog {
+            dashboardLog.finish(outcome: "completed")
+            let records = try diagnosticRecords(dashboardLog)
+            #expect(records.first?.details["source"] == "dashboard")
+            #expect(records.first?.details["trigger"] == "removal")
+            #expect(records.first?.details["detail_limit_bytes"] == "0")
+            #expect(records.last?.details["active_operations"] == "0")
+        }
+
         let reviewDirectory = folder.url.appendingPathComponent("reviews")
         var expected = GitWorktreeReview()
         expected.activity = .unknown("The process check timed out.")

@@ -39,15 +39,23 @@ actor DashboardPersistence: DashboardPersisting {
     func clearCache() { BreakdownCache.clear() }
     func loadHistory() -> [StorageSnapshot] { snapshots.load() }
     func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) throws -> [StorageSnapshot] {
-        guard let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) else {
-            throw CocoaError(.fileReadCorruptFile)
+        let snapshot = try DashboardDiagnostics.phase("snapshot_validation") {
+            guard let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            return snapshot
         }
-        try snapshots.save(snapshot)
-        let history = snapshots.load()
-        guard history.contains(where: { $0.id == snapshot.id }) else {
-            throw CocoaError(.fileReadUnknown)
+        try DashboardDiagnostics.phase("history_write") { try snapshots.save(snapshot) }
+        return try DashboardDiagnostics.phase("history_readback") {
+            let result = snapshots.loadWithDiagnostics()
+            DashboardDiagnostics.current?.record("history_readback_result", details: [
+                "snapshot_count": "\(result.snapshots.count)", "unreadable_count": "\(result.unreadableCount)"
+            ])
+            guard result.snapshots.contains(where: { $0.id == snapshot.id }) else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            return result.snapshots
         }
-        return history
     }
     func clearHistory() { try? snapshots.clear() }
 }

@@ -261,20 +261,23 @@ public struct AllocatedSizeMeasurer: Sendable {
         progress: (@Sendable (SizeMeasurement) -> Void)? = nil
     ) async throws -> [URL: SizeMeasurement] {
         precondition(depth >= 1, "depth must be at least 1")
-        return try await measureSubtrees(of: root, depth: depth, retaining: [], observeEntry: nil, progress: progress)
+        return try await measureSubtrees(of: root, depth: depth, reader: .bulk,
+                                        retaining: [], observeEntry: nil, progress: progress)
     }
 
     /// Collects selected descendant totals in one traversal with shared hard-link accounting.
     func measure(_ root: URL, retaining paths: [URL],
                  observeEntry: (@Sendable (URL, URLResourceValues, [URL]) -> Void)? = nil,
                  progress: (@Sendable (SizeMeasurement) -> Void)? = nil) async throws -> [URL: SizeMeasurement] {
-        try await measureSubtrees(of: root, depth: 0, retaining: paths, observeEntry: observeEntry, progress: progress)
+        try await measureSubtrees(of: root, depth: 0, reader: .foundation,
+                                 retaining: paths, observeEntry: observeEntry, progress: progress)
     }
 
-    private func measureSubtrees(of root: URL, depth: Int, retaining paths: [URL],
+    private func measureSubtrees(of root: URL, depth: Int, reader: MeasurementReader, retaining paths: [URL],
                                  observeEntry: (@Sendable (URL, URLResourceValues, [URL]) -> Void)?,
                                  progress: (@Sendable (SizeMeasurement) -> Void)?) async throws -> [URL: SizeMeasurement] {
         let followSymlinks = self.followSymlinks
+        let reader: MeasurementReader = detectCloudOnlyItems ? .foundation : reader
         let protectedPatterns = self.protectedPatterns
         let keys = Self.keys(detectingCloudItems: detectCloudOnlyItems)
             + (observeEntry == nil ? [] : [.fileIdentifierKey])
@@ -289,8 +292,9 @@ public struct AllocatedSizeMeasurer: Sendable {
         let result = try await withTaskCancellationHandler {
             try await Task.detached(priority: .utility) {
                 let standardRoot = root.standardizedFileURL
-                let rootValues = try? standardRoot.resourceValues(forKeys: Set(keys))
+                let rootValues = try? reader.metadata(at: standardRoot, keys: Set(keys))
                 let walker = ParallelTreeWalker(
+                    reader: reader,
                     diagnostics: diagnostics,
                     cloudWorkerReservation: cloudWorkerReservation,
                     followSymlinks: followSymlinks,
@@ -301,13 +305,13 @@ public struct AllocatedSizeMeasurer: Sendable {
                     retainedPaths: paths,
                     observeEntry: observeEntry
                 )
-                if let rootValues { observeEntry?(standardRoot, rootValues, [standardRoot]) }
-                if Self.isCloudOnly(rootValues) { walker.markCloudOnly(standardRoot) }
+                if let values = rootValues?.resourceValues { observeEntry?(standardRoot, values, [standardRoot]) }
+                if rootValues?.isCloudOnly == true { walker.markCloudOnly(standardRoot) }
                 walker.enqueue(
                     listing: standardRoot,
                     attribution: [standardRoot],
                     grow: depth,
-                    volume: rootValues?.volumeIdentifier as? NSObject
+                    volume: rootValues?.volumeIdentifier
                 )
                 var totals = try walker.run()
                 if totals[standardRoot] == nil { totals[standardRoot] = .zero }
@@ -728,9 +732,9 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             }
         }
         let listingStarted = diagnostics.map { _ in ContinuousClock.now }
-        var listed: [URL]?
+        var listed: [MeasurementEntry]?
         do {
-            listed = try reader.contents(of: item.listing, keys: keys, cancelled: cancelled)
+            listed = try reader.entries(of: item.listing, keys: keys, cancelled: cancelled)
         } catch {
             diagnostics?.update(span, details: ["error": "\(error)"])
         }
@@ -747,14 +751,26 @@ private final class ParallelTreeWalker: @unchecked Sendable {
         var localFiles: [Int64] = []
         let retained = retainedChildren[item.logicalURL.path]
 
-        for (index, entry) in entries.enumerated() {
+        for (index, listedEntry) in entries.enumerated() {
+            if index % Self.reportInterval == 0, cancelled.isCancelled { return }
+            // Ordinary bulk files need arithmetic, without a path or a Foundation metadata object.
+            if diagnostics == nil, protectedPatterns.isEmpty, observeEntry == nil, retainedChildren.isEmpty,
+               let values = listedEntry.metadata, values.isRegularFile, !values.isCloudOnly,
+               let bytes = values.allocatedBytes {
+                if let volume = item.volume, let entryVolume = values.volumeIdentifier,
+                   !entryVolume.isEqual(volume) { continue }
+                guard claimInode(values) else { continue }
+                localFiles.append(bytes)
+                if flushIfNeeded(&localFiles, attribution: item.attribution) { return }
+                continue
+            }
+            let entry = listedEntry.url
             if let diagnostics {
                 diagnostics.update(span, path: entry.path, details: ["entry_index": "\(index)", "stage": "read_metadata"])
             }
-            if index % Self.reportInterval == 0, cancelled.isCancelled { return }
             let name = entry.lastPathComponent
             let metadataStarted = diagnostics.map { _ in ContinuousClock.now }
-            let values = readMetadata(at: entry)
+            let values = listedEntry.metadata ?? readMetadata(at: entry)
             if let metadataStarted {
                 let seconds = ScanDiagnostics.Resources.seconds(metadataStarted.duration(to: .now))
                 metadataSeconds += seconds
@@ -821,14 +837,7 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                         logicalURL: childKey ?? item.logicalURL.appendingPathComponent(name, isDirectory: true)
                     )
                 } else if target.isRegularFile == true {
-                    if target.linkCount > 1 {
-                        condition.lock()
-                        let fresh = target.fileResourceIdentifier.map {
-                            claimedInodes.insert($0).inserted
-                        } ?? true
-                        condition.unlock()
-                        guard fresh else { continue }
-                    }
+                    guard claimInode(target) else { continue }
                     if let bytes = target.allocatedBytes {
                         localFiles.append(bytes)
                         if flushIfNeeded(&localFiles, attribution: item.attribution) { return }
@@ -843,21 +852,15 @@ private final class ParallelTreeWalker: @unchecked Sendable {
                     attribution: childAttribution,
                     grow: max(0, item.grow - 1),
                     volume: item.volume,
-                    logicalURL: childKey ?? item.logicalURL.appendingPathComponent(name, isDirectory: true)
+                    logicalURL: childKey ?? (retainedChildren.isEmpty ? item.logicalURL
+                        : item.logicalURL.appendingPathComponent(name, isDirectory: true))
                 )
                 continue
             }
 
             guard values.isRegularFile == true else { continue }
 
-            if values.linkCount > 1 {
-                condition.lock()
-                let fresh = values.fileResourceIdentifier.map {
-                    claimedInodes.insert($0).inserted
-                } ?? true
-                condition.unlock()
-                guard fresh else { continue }
-            }
+            guard claimInode(values) else { continue }
             guard let bytes = values.allocatedBytes else { continue }
             if let retainedKey {
                 var selected = [bytes]
@@ -872,6 +875,13 @@ private final class ParallelTreeWalker: @unchecked Sendable {
             let shouldDrain = flush(&localFiles, attribution: item.attribution)
             if shouldDrain { drainProgress() }
         }
+    }
+
+    private func claimInode(_ values: MeasurementMetadata) -> Bool {
+        guard values.linkCount > 1, let identity = values.fileResourceIdentifier else { return true }
+        condition.lock()
+        defer { condition.unlock() }
+        return claimedInodes.insert(identity).inserted
     }
 
     private func readMetadata(at url: URL) -> MeasurementMetadata? {
