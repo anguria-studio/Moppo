@@ -11,7 +11,7 @@ The first public release is in preparation.
 - Find duplicate files and photos.
 - Review applications and remove Homebrew packages through Homebrew.
 - Restore eligible items with History and Put Back.
-- Check for updates with optional automatic checks.
+- Check for updates automatically, with an option to turn off automatic checks.
 - Read privacy information and prepare a support report from the Help menu.
 - Choose System, Light, or Dark appearance in Settings.
 - Review AI storage by application with separate section and worktree controls.
