@@ -67,7 +67,7 @@ The Homebrew command above installs the same signed and notarized disk image.
 Use the full cask name as shown.
 
 Use **Moppo > Check for Updates…** to check for a new version.
-Automatic checks are optional in **Settings > Updates**.
+Moppo checks for updates automatically. You can turn off automatic checks in **Settings > Updates**.
 
 ## Removal and recovery
 

@@ -14,8 +14,9 @@ Moppo uses these records for History and Put Back.
 
 ## Application updates
 
-Automatic update checks are optional.
-When you check for updates, Moppo contacts the update website over HTTPS.
+Moppo checks for updates automatically.
+You can turn off automatic checks in Settings > Updates.
+When Moppo checks for updates, it contacts the update website over HTTPS.
 The website receives your IP address and normal connection information.
 Sparkle checks the installed Moppo version against the update feed.
 Moppo disables Sparkle system profile reporting.

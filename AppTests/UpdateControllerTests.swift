@@ -25,6 +25,19 @@ struct UpdateControllerTests {
         #expect(updates.statusMessage != nil)
     }
 
+    @Test("The app checks for updates automatically and asks before installation")
+    func shippedUpdateDefaults() throws {
+        // The test bundle runs without the app, so it reads the app's committed Info.plist.
+        let plist = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("App/Info.plist")
+        let info = try #require(NSDictionary(contentsOf: plist) as? [String: Any])
+        #expect(info["SUEnableAutomaticChecks"] as? Bool == true)
+        #expect(info["SUAutomaticallyUpdate"] as? Bool == false)
+        #expect(info["SUAllowsAutomaticUpdates"] as? Bool == false)
+        #expect(info["SUEnableSystemProfiling"] as? Bool == false)
+    }
+
     @Test("Update checks follow persisted preferences and current availability")
     func checkPreferences() {
         let service = TestUpdateService()

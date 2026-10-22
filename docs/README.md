@@ -862,7 +862,7 @@ for the project rules and the Vale command.
 [Release packages](distribution.md) covers Developer ID signing, notarization, and DMG preparation.
 [Changelog](../CHANGELOG.md) records changes for each public release.
 Sparkle 2.10.0 provides the standard update interface.
-Automatic checks are optional and initially disabled.
+Moppo checks for updates automatically by default. Users can turn off automatic checks in Settings.
 Installation requires approval.
 The installation guard waits for the active operation and then prevents new disk work.
 App termination waits for disk work, including when an approved update is waiting.

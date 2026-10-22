@@ -186,7 +186,8 @@ Read the [permissions notes](README.md#permissions) for local storage and develo
 ## Updates and support
 
 Use **Moppo > Check for Updates…** to check for a new version.
-Enable automatic checks in **Settings > Updates** if required.
+Moppo checks for updates automatically.
+To stop automatic checks, turn them off in **Settings > Updates**.
 Moppo asks before it installs an update.
 Installation waits for active scans, removal, and Put Back.
 
