@@ -5,18 +5,16 @@ import Testing
 @Suite("Storage comparison presentation", .serialized)
 @MainActor
 struct GrowthCardPresentationTests {
-    @Test("Seven days shows the real start until a week of history exists", arguments: [TimeInterval(2 * 60), TimeInterval(8 * 24 * 60 * 60)])
-    func shortWindowLabel(age: TimeInterval) {
-        let latest = Date.now
-        let start = latest.addingTimeInterval(-age)
-        let card = GrowthCard(presentation: .report(.init(
-            baselineDate: start, usedDeltaBytes: 0, classDeltas: [:], attributions: [], latestDate: latest
-        )), baseline: .sevenDays)
-        let isShort = age < 7 * 24 * 60 * 60
-        #expect(card.shortWindowStart == (isShort ? start : nil))
+    @Test("The button and menu name Last 7 days by its real start until a week of history exists",
+          arguments: [false, true])
+    func sevenDayLabels(hasShortHistory: Bool) {
+        let start = Date.now.addingTimeInterval(-2 * 60)
+        let card = GrowthCard(presentation: .insufficientHistory, baseline: .sevenDays,
+                              sevenDayStart: hasShortHistory ? start : nil)
         let day = Calendar.current.isDateInToday(start) ? start.formatted(date: .omitted, time: .shortened)
             : start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-        #expect(card.baselineLabel == (isShort ? "Since \(day)" : "7 days"))
+        #expect(card.label(for: .sevenDays) == (hasShortHistory ? "Since \(day)" : "Last 7 days"))
+        #expect(card.label(for: .lastCleanup) == "Since last cleanup")
     }
 
     @Test("Comparison states and recovery actions fit both appearances", arguments: [false, true])
@@ -24,7 +22,7 @@ struct GrowthCardPresentationTests {
         let date = Date.now
         let measurement = GrowthCard.Measurement(date: date, usedBytes: 218_840_000_000)
         let report = GrowthCard.Report(
-            baselineDate: date, usedDeltaBytes: 0, classDeltas: [:], attributions: [], latestDate: date
+            baselineDate: date, usedDeltaBytes: 0, classDeltas: [:], attributions: []
         )
         var cards: [(String, GrowthCard)] = [
             ("first-run", GrowthCard(
@@ -44,7 +42,11 @@ struct GrowthCardPresentationTests {
             )),
             ("report", GrowthCard(
                 presentation: .report(report), baseline: .lastCleanup,
-                cleanupBaselineDate: date, hasLaterCleanupMeasurement: true
+                cleanupBaselineDate: date, hasCleanupComparison: true
+            )),
+            ("seven-day-start", GrowthCard(
+                presentation: .report(report), baseline: .sevenDays, canCompareSinceCleanup: false,
+                sevenDayStart: date.addingTimeInterval(-3 * 24 * 60 * 60)
             )),
             ("not-comparable", GrowthCard(presentation: .notComparable, baseline: .sevenDays))
         ]

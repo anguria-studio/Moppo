@@ -95,10 +95,22 @@ final class DashboardModel {
     private(set) var cleanupMeasurementState: CleanupMeasurementState {
         didSet { defaults.set(cleanupMeasurementState.rawValue, forKey: "cleanupMeasurementState") }
     }
-    var cleanupBaselineDate: Date? { storageHistory.first { $0.trigger == .removal }?.measuredAt }
-    var hasLaterCleanupMeasurement: Bool {
-        guard let cleanupBaselineDate, let latest = storageHistory.first else { return false }
-        return latest.measuredAt > cleanupBaselineDate
+    /// The measurement before the newest cleanup, or the cleanup measurement when no earlier one exists.
+    private var cleanupComparisonStart: StorageSnapshot? {
+        storageHistory.first.flatMap { StorageGrowth.baseline(.lastCleanup, in: storageHistory, latest: $0) }
+    }
+    var cleanupBaselineDate: Date? { cleanupComparisonStart?.measuredAt }
+    /// The cleanup comparison has two different measurements to compare.
+    var hasCleanupComparison: Bool {
+        guard let start = cleanupComparisonStart, let latest = storageHistory.first else { return false }
+        return start.id != latest.id
+    }
+    /// The start of "Last 7 days" while less than seven days of measurements exist.
+    var sevenDayStart: Date? {
+        guard let latest = storageHistory.first,
+              let start = StorageGrowth.baseline(.sevenDays, in: storageHistory, latest: latest),
+              latest.measuredAt.timeIntervalSince(start.measuredAt) < 7 * 24 * 60 * 60 else { return nil }
+        return start.measuredAt
     }
     private(set) var hasCleanupGrowthBaseline = false
     private var preferredGrowthBaseline: GrowthBaseline?

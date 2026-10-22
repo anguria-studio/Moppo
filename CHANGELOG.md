@@ -39,5 +39,9 @@ The first public release is in preparation.
 - Show the real comparison start when less than seven days of measurements exist.
 - Remove a cleanup failure notice after a manual refresh when no cleanup baseline exists.
 - Explain when Since last cleanup becomes available.
+- Compare Since last cleanup with the measurement before the cleanup.
+- Use the same label for Last 7 days on the button and in the menu.
+- Show category colors in the capacity bar when categories exceed used space.
+- Keep Cleanup results after removal.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/

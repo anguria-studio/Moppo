@@ -189,20 +189,22 @@ struct StorageSnapshotStoreTests {
         #expect(kept.count == 2)
     }
 
-    @Test("a clean-up measurement is never thinned away")
+    @Test("a clean-up measurement and the measurement before it are never thinned away")
     func removalSurvivesThinning() {
         let sameHour = [
             snapshot(minutesAgo: 1),
             snapshot(minutesAgo: 10),
             snapshot(minutesAgo: 20),
             snapshot(minutesAgo: 30, trigger: .removal),
-            snapshot(minutesAgo: 40)
+            snapshot(minutesAgo: 40),
+            snapshot(minutesAgo: 50)
         ]
 
         let kept = StorageSnapshotStore.survivors(of: sameHour, now: GrowthFixture.noon)
 
-        #expect(kept.count == 3)
-        #expect(kept.contains { $0.trigger == .removal })
+        #expect(kept.map(\.measuredAt) == [1.0, 10, 30, 40].map { GrowthFixture.noon.addingTimeInterval(-$0 * 60) })
+        let latest = kept[0]
+        #expect(StorageGrowth.baseline(.lastCleanup, in: kept, latest: latest)?.measuredAt == kept[3].measuredAt)
     }
 
     @Test("nothing older than 30 days is kept")

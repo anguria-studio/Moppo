@@ -69,7 +69,8 @@ struct CapacityCard: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Category measurements").fontWeight(.semibold)
                             Text("Category totals exceed used space by \(ByteFormatting.string(breakdown.allocationExcessBytes)). "
-                                + "Shared storage and file changes can cause this difference.")
+                                + "Shared storage and file changes can cause this difference. "
+                                + "The bar scales the categories to fit the used space.")
                         }
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
@@ -412,19 +413,21 @@ private struct CapacityBar: View {
         // fault ever breaks it, the bar still may not draw outside itself, so the
         // denominator is whichever is larger. Proportions between segments stay
         // exactly as measured; nothing is invented to make them fit.
-        let denominator = max(breakdown.capacityBytes, breakdown.segments.reduce(0) { $0 + $1.bytes })
+        // When categories exceed used space, Core scales their widths to fit it. Tooltips keep measured values.
+        let segments = breakdown.barSegments
+        let denominator = max(Double(breakdown.capacityBytes), segments.reduce(0) { $0 + breakdown.barWidthBytes(of: $1) })
 
         func widths(of segments: [StorageSegment]) -> [CGFloat] {
             let available = space(for: segments.count)
             return segments.map {
-                available * CGFloat(Double($0.bytes) / Double(max(denominator, 1)))
+                available * CGFloat(breakdown.barWidthBytes(of: $0) / max(denominator, 1))
             }
         }
 
         // A segment narrower than a point reads as a rendering artifact wedged between
         // two gaps. Core already folds true slivers into `Other`; this guards the case
         // where a legitimate segment is squeezed out by a narrow window.
-        let visible = zip(breakdown.segments, widths(of: breakdown.segments))
+        let visible = zip(segments, widths(of: segments))
             .filter { $0.1 >= 1 }
             .map { $0.0 }
         guard !visible.isEmpty else { return [] }

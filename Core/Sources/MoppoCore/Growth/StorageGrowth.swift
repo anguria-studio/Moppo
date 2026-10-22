@@ -6,12 +6,12 @@ public enum GrowthBaseline: String, Codable, Sendable, CaseIterable {
     case sevenDays
     case lastCleanup
 
-    /// Interface text. The report names the baseline's real date beside this, because
-    /// "7 days" is a request and the date is what was actually found.
+    /// Interface text. The Dashboard replaces "Last 7 days" with the real start date
+    /// until seven days of measurements exist.
     public var displayName: String {
         switch self {
         case .previousMeasurement: "Previous measurement"
-        case .sevenDays:           "7 days"
+        case .sevenDays:           "Last 7 days"
         case .lastCleanup:         "Since last cleanup"
         }
     }
@@ -267,9 +267,11 @@ public enum StorageGrowth {
             // date. Silently reporting a two-day change as a week is the lie.
             return candidates.first { $0.measuredAt <= cutoff } ?? candidates.last
         case .lastCleanup:
-            // A new cleanup starts the comparison at zero.
-            if latest.trigger == .removal { return latest }
-            return older.first { $0.trigger == .removal }
+            // Start before the newest cleanup, so that the comparison includes what it removed.
+            let history = [latest] + older
+            guard let cleanup = history.firstIndex(where: { $0.trigger == .removal }) else { return nil }
+            // Without an earlier measurement, the cleanup measurement starts the comparison.
+            return history.indices.contains(cleanup + 1) ? history[cleanup + 1] : history[cleanup]
         }
     }
 

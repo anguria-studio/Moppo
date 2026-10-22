@@ -18,9 +18,9 @@ import Foundation
 ///    "Measure Again" fifteen minutes later, and the Dashboard reports "First
 ///    measurement" straight after the user's second one.
 /// 2. **One measurement per hour**, the newest in the hour. A measurement whose
-///    trigger is ``SnapshotTrigger/removal`` is never thinned: it is the baseline
-///    that "since the last clean-up" reads, and it is worth more than the launch
-///    measurement that follows it.
+///    trigger is ``SnapshotTrigger/removal`` is never thinned. The measurement
+///    immediately before it is never thinned either: "since the last clean-up"
+///    starts there, so the comparison includes what the cleanup removed.
 /// 3. **Nothing older than 30 days.**
 /// 4. **At most 240 files**, oldest deleted first.
 ///
@@ -153,9 +153,11 @@ public struct StorageSnapshotStore: Sendable {
             let isDenseTail = index < denseTailCount
             let hour = Self.hour(of: snapshot.measuredAt)
             let hourIsFree = claimedHours.insert(hour).inserted
+            // The measurement before a cleanup starts the "since last cleanup" comparison.
+            let precedesCleanup = index > 0 && snapshots[index - 1].trigger == .removal
 
-            // A clean-up baseline is never thinned, whichever hour it shares.
-            guard isDenseTail || hourIsFree || snapshot.trigger == .removal else { continue }
+            // A clean-up measurement and the measurement before it are never thinned.
+            guard isDenseTail || hourIsFree || snapshot.trigger == .removal || precedesCleanup else { continue }
             guard now.timeIntervalSince(snapshot.measuredAt) <= maximumAge else { continue }
             kept.append(snapshot)
         }

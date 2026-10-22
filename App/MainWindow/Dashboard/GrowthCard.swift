@@ -23,8 +23,6 @@ struct GrowthCard: View {
         let usedDeltaBytes: Int64
         let classDeltas: [GrowthClass: Int64]
         let attributions: [GrowthAttribution]
-        /// The date of the newer measurement. It tells whether seven days of history exist.
-        var latestDate: Date? = nil
     }
 
     struct Measurement: Equatable {
@@ -39,7 +37,9 @@ struct GrowthCard: View {
     var canCompareSinceCleanup = true
     var cleanupMeasurementState: DashboardModel.CleanupMeasurementState = .none
     var cleanupBaselineDate: Date? = nil
-    var hasLaterCleanupMeasurement = false
+    var hasCleanupComparison = false
+    /// The start of "Last 7 days" while less than seven days of measurements exist.
+    var sevenDayStart: Date? = nil
     var isRefreshing = false
     var onRefresh: () -> Void = {}
     var onOpenDiskAccess: () -> Void = {}
@@ -131,7 +131,7 @@ struct GrowthCard: View {
     private var baselineMenu: some View {
         Menu {
             ForEach([GrowthBaseline.lastCleanup, .sevenDays], id: \.self) { choice in
-                Button(choice.displayName) { onSelectBaseline(choice) }
+                Button(label(for: choice)) { onSelectBaseline(choice) }
                     .disabled(choice == .lastCleanup && !canCompareSinceCleanup)
             }
             if !canCompareSinceCleanup {
@@ -140,7 +140,7 @@ struct GrowthCard: View {
             }
         } label: {
             HStack(spacing: 5) {
-                Text(baselineLabel)
+                Text(label(for: baseline))
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
             }
@@ -151,21 +151,15 @@ struct GrowthCard: View {
         // controls use rather than the one AppKit picks.
         .menuIndicator(.hidden)
         .fixedSize()
-        .help(shortWindowStart.map {
+        .help(baseline == .sevenDays ? sevenDayStart.map {
             "Seven days of measurements are not available yet. The comparison starts at \(Self.stamp($0))."
-        } ?? "Choose a comparison period")
+        } ?? "Choose a comparison period" : "Choose a comparison period")
     }
 
-    /// The comparison start when "7 days" found a newer measurement.
-    var shortWindowStart: Date? {
-        guard baseline == .sevenDays, case .report(let report) = presentation, let latest = report.latestDate,
-              latest.timeIntervalSince(report.baselineDate) < 7 * 24 * 60 * 60 else { return nil }
-        return report.baselineDate
-    }
-
-    /// Names the real comparison start instead of a period that the history does not cover.
-    var baselineLabel: String {
-        guard let start = shortWindowStart else { return baseline.displayName }
+    /// The same text names an option in the menu and on the button.
+    /// "Last 7 days" names its real start until seven days of measurements exist.
+    func label(for choice: GrowthBaseline) -> String {
+        guard choice == .sevenDays, let start = sevenDayStart else { return choice.displayName }
         let day = Calendar.current.isDateInToday(start)
             ? start.formatted(date: .omitted, time: .shortened)
             : start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
@@ -238,7 +232,7 @@ struct GrowthCard: View {
     }
 
     private var waitsForCleanupMeasurement: Bool {
-        baseline == .lastCleanup && cleanupBaselineDate != nil && !hasLaterCleanupMeasurement
+        baseline == .lastCleanup && cleanupBaselineDate != nil && !hasCleanupComparison
             && cleanupMeasurementState == .none
     }
 
@@ -448,8 +442,7 @@ extension GrowthCard.Presentation {
                 baselineDate: report.baseline.measuredAt,
                 usedDeltaBytes: report.usedDeltaBytes,
                 classDeltas: report.classDeltas,
-                attributions: Self.oneRowPerEvent(report.attributions),
-                latestDate: report.latest.measuredAt
+                attributions: Self.oneRowPerEvent(report.attributions)
             ))
         case .notComparable:
             self = .notComparable

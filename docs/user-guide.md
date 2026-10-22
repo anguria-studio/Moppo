@@ -85,11 +85,16 @@ Dashboard shows physical Used and Free space for the volume.
 Category measurements use allocated file sizes and can include shared storage.
 Files can also change during a scan.
 These measurements can therefore total more than physical used space.
-When this occurs, the capacity bar shows Used and Free.
-The category list shows its separate measurements and states the difference.
+When this occurs, the capacity bar scales the categories to fit the used space.
+The category list shows the measured values and states the difference.
 Moppo keeps the physical Free value unchanged.
 Storage comparisons retain both accounts.
-A valid measurement after cleanup can become the next cleanup baseline.
+
+Storage changes compares the latest measurement with an earlier measurement.
+Since last cleanup starts at the measurement before the newest cleanup.
+The comparison therefore shows what the cleanup removed after one measurement.
+Last 7 days shows its real start until seven days of measurements exist.
+After a cleanup, the Cleanup totals keep the items that remain on the disk.
 
 ## Appearance and iCloud
 
