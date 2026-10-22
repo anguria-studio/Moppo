@@ -20,40 +20,27 @@ struct GrowthCardPresentationTests {
     @Test("Comparison states and recovery actions fit both appearances", arguments: [false, true])
     func layouts(dark: Bool) async throws {
         let date = Date.now
-        let measurement = GrowthCard.Measurement(date: date, usedBytes: 218_840_000_000)
         let report = GrowthCard.Report(
             baselineDate: date, usedDeltaBytes: 0, classDeltas: [:], attributions: []
         )
         var cards: [(String, GrowthCard)] = [
-            ("first-run", GrowthCard(
-                presentation: .insufficientHistory, baseline: .sevenDays, canCompareSinceCleanup: false
-            )),
+            ("first-run", GrowthCard(presentation: .insufficientHistory, baseline: .sevenDays)),
             ("first-saved", GrowthCard(
-                presentation: .insufficientHistory, baseline: .sevenDays,
-                latestMeasurement: measurement, lastScanAt: date, canCompareSinceCleanup: false
+                presentation: .insufficientHistory, baseline: .sevenDays, hasMeasurement: true, lastScanAt: date
             )),
-            ("cleanup-saved", GrowthCard(
-                presentation: .report(report), baseline: .lastCleanup,
-                latestMeasurement: measurement, cleanupBaselineDate: date
+            ("report-menu", GrowthCard(
+                presentation: .report(report), baseline: .lastCleanup, baselineOptions: [.lastCleanup, .sevenDays],
+                cleanupBaselineDate: date, sevenDayStart: date.addingTimeInterval(-3 * 24 * 60 * 60)
             )),
-            ("cleanup-refreshing", GrowthCard(
-                presentation: .report(report), baseline: .lastCleanup,
-                latestMeasurement: measurement, cleanupBaselineDate: date, isRefreshing: true
-            )),
-            ("report", GrowthCard(
-                presentation: .report(report), baseline: .lastCleanup,
-                cleanupBaselineDate: date, hasCleanupComparison: true
-            )),
-            ("seven-day-start", GrowthCard(
-                presentation: .report(report), baseline: .sevenDays, canCompareSinceCleanup: false,
-                sevenDayStart: date.addingTimeInterval(-3 * 24 * 60 * 60)
+            ("report-single-option", GrowthCard(
+                presentation: .report(report), baseline: .lastCleanup, baselineOptions: [.lastCleanup],
+                cleanupBaselineDate: date
             )),
             ("not-comparable", GrowthCard(presentation: .notComparable, baseline: .sevenDays))
         ]
         cards += DashboardModel.CleanupMeasurementState.allCases.map { state in
             (state.rawValue, GrowthCard(
-                presentation: .insufficientHistory, baseline: .sevenDays,
-                canCompareSinceCleanup: false, cleanupMeasurementState: state
+                presentation: .insufficientHistory, baseline: .sevenDays, cleanupMeasurementState: state
             ))
         }
         cards.append(("failed-with-baseline", GrowthCard(

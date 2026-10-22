@@ -68,9 +68,8 @@ struct CapacityCard: View {
                     if breakdown.categorySegments != nil {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Category measurements").fontWeight(.semibold)
-                            Text("Category totals exceed used space by \(ByteFormatting.string(breakdown.allocationExcessBytes)). "
-                                + "Shared storage and file changes can cause this difference. "
-                                + "The bar scales the categories to fit the used space.")
+                            Text("Some files share storage, so the categories add up to "
+                                + "\(ByteFormatting.string(breakdown.allocationExcessBytes)) more than used space.")
                         }
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)

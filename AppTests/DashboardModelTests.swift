@@ -291,7 +291,11 @@ struct DashboardModelTests {
         var logs: [ScanDiagnostics] = []
         let service = HeldDashboardMeasurements()
         let persistence = HeldDashboardPersistence()
-        let model = DashboardModel(service: service, persistence: persistence, beginDiagnostics: { _ in
+        // The test changes the comparison choice, so it uses its own settings.
+        let suite = "DashboardCleanupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = DashboardModel(service: service, persistence: persistence, defaults: defaults, beginDiagnostics: { _ in
             let log = try? ScanDiagnostics(directory: folder.url)
             if let log { logs.append(log) }
             return log
@@ -303,7 +307,9 @@ struct DashboardModelTests {
         await first.value
         let originalDate = try #require(model.cleanupBaselineDate)
         #expect(model.cleanupMeasurementState == .none)
-        #expect(!model.hasCleanupComparison)
+        // A cleanup without an earlier measurement has nothing to compare yet.
+        #expect(model.growth == .insufficientHistory)
+        #expect(model.growthBaselineOptions.isEmpty)
         let second = Task { await model.measureStorage(trigger: .removal) }
         model.recordTrashRemoval(.init(removedBytes: 300, removedCount: 1, trashedCount: 1))
         try await waitUntil { await service.measurementCount == 2 }
@@ -333,33 +339,41 @@ struct DashboardModelTests {
         #expect(await persistence.records == (saveFailure ? [.removal, .removal, .manual] : [.removal, .manual]))
         #expect(model.cleanupMeasurementState == .failed)
         #expect(model.cleanupBaselineDate == originalDate)
-        #expect(model.hasCleanupComparison)
+        // Both options start at the cleanup measurement, so only the cleanup option remains.
+        #expect(model.growthBaselineOptions == [.lastCleanup])
+        model.growthBaseline = .sevenDays
+        #expect(model.growthBaseline == .lastCleanup)
     }
 
-    @Test("A cleanup compares with the measurement before it without another measurement")
+    @Test("A cleanup compares with the measurement before it, and the menu offers different starts")
     func cleanupComparesWithEarlierMeasurement() async throws {
+        let suite = "DashboardCleanupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let service = HeldDashboardMeasurements()
-        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
-        let before = Task { await model.measureStorage() }
-        try await waitUntil { await service.measurementCount == 1 }
-        await service.finishMeasurement(0, dashboardMeasurement(free: 200))
-        await before.value
-        let start = try #require(model.latestStorageMeasurement?.measuredAt)
-        #expect(model.sevenDayStart == nil)
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence(), defaults: defaults)
+        var dates: [Date] = []
+        for (index, free) in [Int64(200), 250].enumerated() {
+            let refresh = Task { await model.measureStorage() }
+            try await waitUntil { await service.measurementCount == index + 1 }
+            await service.finishMeasurement(index, dashboardMeasurement(free: free))
+            await refresh.value
+            dates.append(try #require(model.latestStorageMeasurement?.measuredAt))
+        }
         model.recordCleanup()
         let after = Task { await model.refreshAfterRemoval() }
-        try await waitUntil { await service.measurementCount == 2 }
-        await service.finishMeasurement(1, dashboardMeasurement(free: 300))
+        try await waitUntil { await service.measurementCount == 3 }
+        await service.finishMeasurement(2, dashboardMeasurement(free: 300))
         await after.value
         #expect(model.growthBaseline == .lastCleanup)
-        #expect(model.hasCleanupComparison)
-        #expect(model.cleanupBaselineDate == start)
-        #expect(model.sevenDayStart == start)
+        #expect(model.growthBaselineOptions == [.lastCleanup, .sevenDays])
+        #expect(model.cleanupBaselineDate == dates[1])
+        #expect(model.sevenDayStart == dates[0])
         guard case .report(let report) = model.growth else {
             Issue.record("The cleanup measurement has no comparison")
             return
         }
-        #expect(report.usedDeltaBytes == -100)
+        #expect(report.usedDeltaBytes == -50)
     }
 
     @Test("Queued cleanup measurements retain a reason when access changes or history is cleared", arguments: [false, true])

@@ -229,8 +229,10 @@ public enum StorageGrowth {
         minimumAttributionBytes: Int64 = StorageGrowth.defaultMinimumAttributionBytes,
         maximumAttributions: Int = StorageGrowth.defaultMaximumAttributions
     ) -> GrowthComparison {
+        // A measurement compared with itself is not a comparison.
         guard let latest = snapshots.first,
-              let baseline = baseline(kind, in: snapshots, latest: latest)
+              let baseline = baseline(kind, in: snapshots, latest: latest),
+              baseline.id != latest.id
         else { return .insufficientHistory }
 
         return compare(

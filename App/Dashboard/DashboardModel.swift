@@ -100,10 +100,16 @@ final class DashboardModel {
         storageHistory.first.flatMap { StorageGrowth.baseline(.lastCleanup, in: storageHistory, latest: $0) }
     }
     var cleanupBaselineDate: Date? { cleanupComparisonStart?.measuredAt }
-    /// The cleanup comparison has two different measurements to compare.
-    var hasCleanupComparison: Bool {
-        guard let start = cleanupComparisonStart, let latest = storageHistory.first else { return false }
-        return start.id != latest.id
+    /// Comparison options that compare different measurements.
+    /// When two options start at the same measurement, only the cleanup option remains.
+    var growthBaselineOptions: [GrowthBaseline] {
+        guard let latest = storageHistory.first else { return [] }
+        var starts = Set<UUID>()
+        return [GrowthBaseline.lastCleanup, .sevenDays].filter { option in
+            guard let start = StorageGrowth.baseline(option, in: storageHistory, latest: latest),
+                  start.id != latest.id else { return false }
+            return starts.insert(start.id).inserted
+        }
     }
     /// The start of "Last 7 days" while less than seven days of measurements exist.
     var sevenDayStart: Date? {
@@ -117,7 +123,11 @@ final class DashboardModel {
 
     var growthBaseline: GrowthBaseline {
         get {
-            preferredGrowthBaseline == .sevenDays || !hasCleanupGrowthBaseline ? .sevenDays : .lastCleanup
+            let preferred: GrowthBaseline =
+                preferredGrowthBaseline == .sevenDays || !hasCleanupGrowthBaseline ? .sevenDays : .lastCleanup
+            // An option without its own comparison gives way to the option that starts at the same measurement.
+            let options = growthBaselineOptions
+            return options.isEmpty || options.contains(preferred) ? preferred : options[0]
         }
         set {
             guard newValue != .previousMeasurement else { return }
