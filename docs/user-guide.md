@@ -94,6 +94,9 @@ Storage changes compares the latest measurement with an earlier measurement.
 Since last cleanup starts at the measurement before the newest cleanup.
 The comparison therefore shows what the cleanup removed after one measurement.
 Last 7 days shows its real start until seven days of measurements exist.
+The comparison menu appears only when its options start at different measurements.
+With one option, the card shows its name as text.
+Without a comparison, the card shows no option.
 After a cleanup, the Cleanup totals keep the items that remain on the disk.
 
 ## Appearance and iCloud

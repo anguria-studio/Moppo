@@ -65,14 +65,11 @@ struct DashboardView: View {
                     GrowthCard(
                         presentation: GrowthCard.Presentation(growth),
                         baseline: model.growthBaseline,
-                        latestMeasurement: model.latestStorageMeasurement.map {
-                            GrowthCard.Measurement(date: $0.measuredAt, usedBytes: $0.usedBytes)
-                        },
+                        hasMeasurement: model.latestStorageMeasurement != nil,
                         lastScanAt: scanResults?.finishedAt ?? lastScanAt,
-                        canCompareSinceCleanup: model.hasCleanupGrowthBaseline,
+                        baselineOptions: model.growthBaselineOptions,
                         cleanupMeasurementState: model.cleanupMeasurementState,
                         cleanupBaselineDate: model.cleanupBaselineDate,
-                        hasCleanupComparison: model.hasCleanupComparison,
                         sevenDayStart: model.sevenDayStart,
                         isRefreshing: model.isLoadingBreakdown,
                         onRefresh: { Task { await model.measureStorage() } },

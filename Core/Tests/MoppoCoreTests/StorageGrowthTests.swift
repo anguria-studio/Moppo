@@ -303,12 +303,13 @@ struct StorageGrowthTests {
         #expect(chosen?.measuredAt == GrowthFixture.noon.addingTimeInterval(-9 * 24 * 3600))
     }
 
-    @Test("a cleanup without an earlier measurement starts its own comparison")
+    @Test("a cleanup without an earlier measurement starts its own comparison but has no report")
     func cleanupBaselineWithoutEarlierMeasurement() throws {
         let only = [GrowthFixture.snapshot(at: GrowthFixture.noon, trigger: .removal, used: 100 * gb)]
         let latest = try #require(only.first)
 
         #expect(StorageGrowth.baseline(.lastCleanup, in: only, latest: latest)?.id == latest.id)
+        #expect(StorageGrowth.comparison(.lastCleanup, in: only) == .insufficientHistory)
     }
 
     @Test("no clean-up yet means no clean-up baseline")

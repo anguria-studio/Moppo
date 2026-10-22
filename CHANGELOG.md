@@ -43,5 +43,8 @@ The first public release is in preparation.
 - Use the same label for Last 7 days on the button and in the menu.
 - Show category colors in the capacity bar when categories exceed used space.
 - Keep Cleanup results after removal.
+- Show the comparison menu only when its options start at different measurements.
+- Remove the separate measurement step and the Measure Now row from Storage changes.
+- Shorten the category note on the capacity card.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/
