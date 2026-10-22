@@ -46,20 +46,41 @@ struct MoppoMascotActTests {
     @Test("Each act draws and then gives Moppo back", arguments: MascotActKind.allCases)
     @MainActor
     func actFinishes(_ kind: MascotActKind) throws {
-        let geometry = try #require(MoppoMascotGeometry.shared)
         let motion = MoppoMascotMotion(mode: .search)
-        let renderer = ImageRenderer(content: Canvas { graphics, size in
-            motion.draw(geometry, in: &graphics, size: size, fit: 0.25)
-        }.frame(width: 120, height: 120))
         var date = Date(timeIntervalSinceReferenceDate: 0)
         motion.advance(to: date)
         motion.play(kind)
         #expect(motion.act != nil)
-        for frame in 1...(60 * 30) where motion.act != nil {
+        try run(motion, for: 30, from: &date) { motion.act != nil }
+        #expect(motion.act == nil)
+    }
+
+    @Test("The settings shape holds until the screen releases it")
+    @MainActor
+    func settingsShapeHolds() throws {
+        let motion = MoppoMascotMotion(mode: .search)
+        var date = Date(timeIntervalSinceReferenceDate: 0)
+        motion.advance(to: date)
+        motion.requestedShape = .settings
+        try run(motion, for: 10, from: &date)
+        #expect(motion.act is SettingsSlidersAct)
+        motion.requestedShape = nil
+        try run(motion, for: 5, from: &date) { motion.act != nil }
+        #expect(motion.act == nil)
+    }
+
+    /// Advances Moppo one frame at a time and draws every 15th frame.
+    @MainActor
+    private func run(_ motion: MoppoMascotMotion, for seconds: Double, from date: inout Date,
+                     while isRunning: () -> Bool = { true }) throws {
+        let geometry = try #require(MoppoMascotGeometry.shared)
+        let renderer = ImageRenderer(content: Canvas { graphics, size in
+            motion.draw(geometry, in: &graphics, size: size, fit: 0.25)
+        }.frame(width: 120, height: 120))
+        for frame in 1...Int(seconds * 60) where isRunning() {
             date += 1.0 / 60
             motion.advance(to: date)
             if frame.isMultiple(of: 15) { #expect(renderer.cgImage != nil) }
         }
-        #expect(motion.act == nil)
     }
 }

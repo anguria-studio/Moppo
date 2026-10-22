@@ -30,9 +30,12 @@ struct MoppoMascotView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var motion: MoppoMascotMotion
+    private let shape: MascotShape?
 
-    init(mode: Mode = .search) {
+    /// While `shape` is set, Moppo holds that shape. When it changes to nil, Moppo turns back.
+    init(mode: Mode = .search, shape: MascotShape? = nil) {
         _motion = State(initialValue: MoppoMascotMotion(mode: mode))
+        self.shape = shape
     }
 
     var body: some View {
@@ -51,10 +54,17 @@ struct MoppoMascotView: View {
                 .allowsHitTesting(false)
             }
             .accessibilityHidden(true)
+            .onChange(of: shape, initial: true) { motion.requestedShape = shape }
         } else {
             PageStateSymbol(name: "hourglass")
         }
     }
+}
+
+/// A shape that a screen can ask Moppo to hold.
+enum MascotShape: Equatable {
+    /// The settings icon: three tracks with knobs that slide.
+    case settings
 }
 
 #Preview("Moppo destroying") {
