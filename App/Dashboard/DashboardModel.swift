@@ -172,6 +172,10 @@ final class DashboardModel {
                 if revision == historyRevision {
                     storageHistory = history
                     recomputeGrowth()
+                    // An earlier build can leave a failure notice without any saved history.
+                    if history.isEmpty, cleanupMeasurementState == .failed || cleanupMeasurementState == .interrupted {
+                        cleanupMeasurementState = .none
+                    }
                 }
                 if canMeasure(true) {
                     await DashboardDiagnostics.phase("launch_measurement_wait") { await measureStorage(trigger: .launch) }
@@ -356,6 +360,11 @@ final class DashboardModel {
                     historyRevision = UUID()
                     storageHistory = history
                     recomputeGrowth()
+                    // After a manual refresh without a cleanup baseline, the comparison menu explains the next step.
+                    let notices: Set<CleanupMeasurementState> = [.failed, .interrupted, .requiresAccess, .cleared]
+                    if trigger == .manual, !hasCleanupGrowthBaseline, notices.contains(cleanupMeasurementState) {
+                        cleanupMeasurementState = .none
+                    }
                 } else {
                     diagnostics?.record("comparison_skipped", details: ["reason": "history_cleared"])
                 }

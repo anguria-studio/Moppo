@@ -36,5 +36,8 @@ The first public release is in preparation.
 - Save storage comparisons when category measurements exceed physical usage.
 - Keep physical Free space separate from category measurements in Dashboard.
 - Read home folder metadata in batches during Dashboard measurements.
+- Show the real comparison start when less than seven days of measurements exist.
+- Remove a cleanup failure notice after a manual refresh when no cleanup baseline exists.
+- Explain when Since last cleanup becomes available.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/

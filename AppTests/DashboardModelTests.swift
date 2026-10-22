@@ -244,7 +244,7 @@ struct DashboardModelTests {
         #expect(!model.isLoadingBreakdown)
     }
 
-    @Test("Blocked cleanup measurements survive restart without turning a manual refresh into a cleanup baseline")
+    @Test("Blocked cleanup measurements survive restart, and a manual refresh clears the notice without creating a cleanup baseline")
     func blockedCleanupMeasurement() async throws {
         let suite = "DashboardCleanupTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -266,7 +266,23 @@ struct DashboardModelTests {
         await refresh.value
         #expect(await persistence.records == [.manual])
         #expect(!reopened.hasCleanupGrowthBaseline)
-        #expect(reopened.cleanupMeasurementState == .requiresAccess)
+        #expect(reopened.cleanupMeasurementState == .none)
+    }
+
+    @Test("Launch removes a cleanup failure notice when no history exists", arguments: [
+        DashboardModel.CleanupMeasurementState.failed, .interrupted, .requiresAccess
+    ])
+    func launchWithoutHistory(state: DashboardModel.CleanupMeasurementState) async throws {
+        let suite = "DashboardCleanupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(state.rawValue, forKey: "cleanupMeasurementState")
+        let model = DashboardModel(service: HeldDashboardMeasurements(), persistence: HeldDashboardPersistence(),
+                                   defaults: defaults)
+        model.canMeasure = { !$0 }
+        await model.loadDashboard()
+        // Without access, the access notice keeps its Full Disk Access action.
+        #expect(model.cleanupMeasurementState == (state == .requiresAccess ? .requiresAccess : .none))
     }
 
     @Test("A failed cleanup measurement keeps the earlier baseline and its date", arguments: [false, true])
