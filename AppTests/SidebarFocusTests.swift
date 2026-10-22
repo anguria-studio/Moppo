@@ -180,17 +180,6 @@ struct SidebarFocusTests {
         #expect(window.firstResponder === responder)
     }
 
-    private func click(_ point: NSPoint, in host: NSView, window: NSWindow) throws {
-        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-            let event = try #require(NSEvent.mouseEvent(
-                with: type, location: host.convert(point, to: nil), modifierFlags: [], timestamp: 0,
-                windowNumber: window.windowNumber, context: nil, eventNumber: 0,
-                clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0
-            ))
-            NSApp.sendEvent(event)
-        }
-    }
-
     private func textField(in view: NSView) -> NSTextField? {
         if let field = view as? NSTextField { return field }
         return view.subviews.lazy.compactMap { textField(in: $0) }.first

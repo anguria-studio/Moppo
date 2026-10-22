@@ -39,7 +39,11 @@ public enum SnapshotCapture {
         maximumNodes: Int = SnapshotCapture.defaultMaximumNodes,
         identity: (URL) -> String? = FileIdentity.of
     ) -> StorageSnapshot? {
-        guard measurement.breakdown.isConsistent else { return nil }
+        let volume = measurement.volume
+        guard measurement.breakdown.isConsistent,
+              volume.capacityBytes > 0, volume.freeBytes >= 0, volume.freeBytes <= volume.capacityBytes,
+              measurement.breakdown.capacityBytes == volume.capacityBytes,
+              measurement.breakdown.freeBytes == volume.freeBytes else { return nil }
 
         let home = measurement.home.standardizedFileURL
         var nodes: [SnapshotNode] = []

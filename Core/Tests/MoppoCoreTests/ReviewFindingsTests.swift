@@ -603,5 +603,7 @@ struct ReviewFindingsTests {
         let following = try await AllocatedSizeMeasurer(followSymlinks: true).measure(root)
         #expect(following.fileCount == 2, "on: the target's file is counted")
         #expect(following.allocatedBytes > ignoring.allocatedBytes)
+        let subtrees = try await AllocatedSizeMeasurer(followSymlinks: true).measureSubtrees(of: root, depth: 2)
+        #expect(subtrees[root.standardizedFileURL] == following)
     }
 }

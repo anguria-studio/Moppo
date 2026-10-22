@@ -4,6 +4,7 @@
 
 - [File and Photos access](#file-and-photos-access)
 - [Cleanup filters and actions](#cleanup-filters-and-actions)
+- [Dashboard storage](#dashboard-storage)
 - [Appearance and iCloud](#appearance-and-icloud)
 - [Removal and Put Back](#removal-and-put-back)
 - [Your data](#your-data)
@@ -77,6 +78,18 @@ Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer**
 Right-click a row to use the same actions.
 Application rows show **Reveal in Finder** and, where applicable, **Review Uninstall**.
 Storage Explorer opens folder contents or highlights a file in its containing folder. Cleanup keeps its selections.
+
+## Dashboard storage
+
+Dashboard shows physical Used and Free space for the volume.
+Category measurements use allocated file sizes and can include shared storage.
+Files can also change during a scan.
+These measurements can therefore total more than physical used space.
+When this occurs, the capacity bar shows Used and Free.
+The category list shows its separate measurements and states the difference.
+Moppo keeps the physical Free value unchanged.
+Storage comparisons retain both accounts.
+A valid measurement after cleanup can become the next cleanup baseline.
 
 ## Appearance and iCloud
 

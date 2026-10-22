@@ -113,7 +113,7 @@ Review the logs before you share them.
 
 Use `scripts/package-dmg.sh --scan-logging` to enable detailed logging in a private test package.
 Normal packages keep this logging off.
-The diagnostic package records each Cleanup scan automatically.
+The diagnostic package records each Cleanup scan and Dashboard measurement automatically.
 It also records requested worktree checks, including checks before removal.
 Worktree records identify the request source, process results, timeouts, and final status.
 Moppo writes these records to separate `worktree-review-*.jsonl` files.
@@ -127,6 +127,28 @@ They remain available when no scan is running.
 After a Codex database query fails, diagnostic builds record access checks for the database, its folder, and SQLite supporting files.
 A bounded read-only SQLite probe records error codes and the operating system error without logging database contents.
 Unverified Codex conversations remain protected.
+
+Dashboard logs have `source: dashboard` in the first record.
+For Dashboard problems, share all Dashboard logs from the same run.
+Each request records its trigger, total duration, waiting periods, replacement result, and cancellation state.
+Launch logs also time cache loading, snapshot listing, and history loading.
+Measurement logs time volume reads, the home folder walk, each system root, and the applications folder walk.
+They time snapshot validation, history writing, history reading, and the minimum display wait separately.
+Queued cleanup requests record their identifiers and replaced requests.
+Waiting requests record the result of the shared measurement.
+The original request log contains the active measurements, including a queued cleanup measurement.
+Waiting request logs contain waiting time, without adding another directory walk.
+Cancellation events mark the request to stop workers. The active phase ends when those workers return.
+The separate iCloud card does not delay completion of the local storage measurement.
+
+Dashboard logs distinguish allocated category totals, physical volume usage, and display totals after reconciliation.
+They record segment totals and fixed error names with numeric codes.
+They do not record directory contents, private folder paths, command output, or error descriptions.
+Dashboard measurements do not enable detailed directory logging.
+Long measurements retain phase and shared worker information in the regular heartbeat records.
+If snapshot validation fails, the storage comparison does not enter history.
+A comparison failure preserves completed removal results and any earlier cleanup baseline.
+Display reconciliation does not make an invalid measurement eligible for history.
 
 Documents & Files shows the current folder, measured file count, and worktree review progress.
 Measurement counts update at most twice each second. Phase changes appear immediately.
@@ -192,8 +214,8 @@ Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory
 ```
 Core/                         Swift package
   Sources/MoppoCore/          Scanning engine and cleanup services
-    Measure/                 AllocatedSizeMeasurer, MeasurementReader, ByteFormatting
-    System/                  Disk information, snapshots, process execution, scan diagnostics
+    Measure/                 AllocatedSizeMeasurer, MeasurementReader, BulkMeasurementReader, ByteFormatting
+    System/                  Disk information, snapshots, process execution, scan and Dashboard diagnostics
     Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
     Duplicates/              File duplicate detection and removal
@@ -403,6 +425,24 @@ Dashboard background measurements keep their existing independent lifetime and d
 macOS can include space from removable temporary files in its available capacity estimate.
 These figures can differ without a measurement error.
 
+**Separate physical usage and category measurements.** Category measurements can exceed physical usage because files can share storage or change during a scan.
+Moppo preserves the measured category values and the physical Free value.
+When category totals exceed physical usage, the capacity bar shows Used and Free.
+The separate category list states the difference.
+Moppo does not reduce Free or scale category values to force them into the bar.
+Storage history retains the raw category measurements and the physical volume figures.
+Snapshot validation checks physical capacity, Free, nonnegative segments, and unique segment identifiers.
+The raw measurement rules and growth contract remain unchanged.
+
+**Read home metadata in batches.** Dashboard uses `getattrlistbulk` for its home folder walk.
+The kernel returns names, file types, identities, and allocated sizes together.
+The walker still visits the complete tree and counts hard links once.
+Ordinary files enter folder totals without a separate URL or Foundation metadata object.
+Mount points and firmlinks use separate metadata reads to preserve volume boundaries.
+Unsupported or invalid bulk results restart that directory through the existing filesystem reader.
+Cloud residency checks and selected-folder observers retain the Foundation reader.
+Each refresh reads current metadata. Moppo does not reuse earlier folder totals.
+
 **Explain category scope.** Dashboard categories follow folder locations.
 Applications measures `/Applications` and `~/Applications`.
 App data and apps in other locations remain in their folder categories.
@@ -414,12 +454,13 @@ The following rules address measurement errors from the Electron version.
 
 **Do not use `du`.** It stops at the first unreadable directory. The old code's
 `catch` converted this failure to `0`. One unreadable folder then zeroed an entire
-category. `AllocatedSizeMeasurer` uses `FileManager.enumerator`. Its error handler
-counts each failure and continues the scan.
+category. `AllocatedSizeMeasurer` uses shared workers to read directories.
+The walker counts each read failure and continues the scan.
 
-**Report what you could not read.** Each result contains
-`SizeMeasurement.unreadableCount`. The Dashboard puts unreadable data in its
-`Unmeasured` segment. Callers must see the gap to trust this segment.
+**Report what you could not read.** Each result contains `SizeMeasurement.unreadableCount`.
+When category totals fit within physical usage, Unmeasured contains the remaining used space.
+When category totals exceed physical usage, Moppo cannot assign an exact physical remainder.
+The measurement retains its unreadable count in both cases.
 
 **Keep the name `Unmeasured`.** The predecessor used two incorrect names: "APFS
 Snapshots & System Overhead" and "Other User Accounts". Both names presented

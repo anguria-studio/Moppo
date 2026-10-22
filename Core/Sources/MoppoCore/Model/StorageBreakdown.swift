@@ -13,6 +13,8 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     case documentsDesktop, downloads, photos, music, movies, developer
     case appDataCaches, packageBuildCaches, otherFilesInHome
     case applications
+    /// Physical usage when category measurements exceed the used space.
+    case used
     case unmeasured
     /// Slivers merged together so the capacity bar has no unreadable hairlines.
     case other
@@ -46,6 +48,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
         case .packageBuildCaches: "Package & Build Caches"
         case .otherFilesInHome:   "Other Files in Home"
         case .applications:       "Applications"
+        case .used:               "Used"
         case .unmeasured:         "Unmeasured"
         case .other:              "Other"
         case .free:               "Free"
@@ -68,6 +71,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
         // in the legend wearing the same dot.
         case .otherFilesInHome:   .brown
         case .applications:       .accent
+        case .used:               .gray
         case .unmeasured:         .darkGray
         case .other:              .gray
         case .free:               .freeSpace
@@ -82,7 +86,7 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
     /// the honest residual and it stays visible.
     var isMergeable: Bool {
         switch self {
-        case .unmeasured, .free, .other: false
+        case .unmeasured, .free, .other, .used: false
         default: true
         }
     }
@@ -118,22 +122,35 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
     public let segments: [StorageSegment]
     /// Entries an unprivileged scan could not read, summed across the run.
     public let unreadableCount: Int
+    /// Keeps category measurements separate when they exceed physical usage.
+    public let categorySegments: [StorageSegment]?
 
     public init(
         capacityBytes: Int64,
         segments: [StorageSegment],
-        unreadableCount: Int
+        unreadableCount: Int,
+        categorySegments: [StorageSegment]? = nil
     ) {
         self.capacityBytes = capacityBytes
         self.segments = segments
         self.unreadableCount = unreadableCount
+        self.categorySegments = categorySegments
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case capacityBytes, segments, unreadableCount, categorySegments
     }
 
     public init(from decoder: any Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         capacityBytes = try values.decode(Int64.self, forKey: .capacityBytes)
         unreadableCount = try values.decode(Int.self, forKey: .unreadableCount)
-        let saved = try values.decode([StorageSegment].self, forKey: .segments)
+        categorySegments = try values.decodeIfPresent([StorageSegment].self, forKey: .categorySegments)
+        var saved = try values.decode([StorageSegment].self, forKey: .segments)
+        // The encoder stores Used as Unmeasured. Restore it when category measurements are present.
+        if categorySegments != nil {
+            saved = saved.map { $0.id == .unmeasured ? StorageSegment(id: .used, bytes: $0.bytes) : $0 }
+        }
         var merged: [StorageSegment] = []
         for segment in saved {
             if let index = merged.firstIndex(where: { $0.id == segment.id }) {
@@ -150,6 +167,17 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         ).segments
     }
 
+    /// Stores Used as Unmeasured. Earlier builds do not know Used and cannot read it.
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(capacityBytes, forKey: .capacityBytes)
+        try values.encode(segments.map {
+            $0.id == .used ? StorageSegment(id: .unmeasured, bytes: $0.bytes) : $0
+        }, forKey: .segments)
+        try values.encode(unreadableCount, forKey: .unreadableCount)
+        try values.encodeIfPresent(categorySegments, forKey: .categorySegments)
+    }
+
     public var usedBytes: Int64 { capacityBytes - freeBytes }
     public var freeBytes: Int64 { segments.first { $0.id == .free }?.bytes ?? 0 }
 
@@ -161,13 +189,34 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
     /// against a breakdown that does not add up subtracts two different accounts of
     /// the disk and calls the difference growth.
     public var isConsistent: Bool {
-        capacityBytes > 0 && segments.reduce(Int64(0)) { $0 + $1.bytes } == capacityBytes
+        guard capacityBytes > 0, Self.total(segments) == capacityBytes else { return false }
+        guard let categorySegments else { return !segments.contains { $0.id == .used } }
+        guard let categoryBytes = Self.total(categorySegments), categoryBytes > usedBytes,
+              categorySegments.allSatisfy({ $0.id != .used && $0.id != .free && $0.id != .unmeasured })
+        else { return false }
+        return segments.allSatisfy { $0.id == .used || $0.id == .free }
     }
 
-    /// The Dashboard legend. Every measured segment stays visible so the listed
-    /// figures add up to the disk capacity.
+    private static func total(_ segments: [StorageSegment]) -> Int64? {
+        guard Set(segments.map(\.id)).count == segments.count else { return nil }
+        var total: Int64 = 0
+        for segment in segments {
+            guard segment.bytes >= 0 else { return nil }
+            let sum = total.addingReportingOverflow(segment.bytes)
+            guard !sum.overflow else { return nil }
+            total = sum.partialValue
+        }
+        return total
+    }
+
+    public var allocationExcessBytes: Int64 {
+        guard let categorySegments, let total = Self.total(categorySegments) else { return 0 }
+        return max(0, total - usedBytes)
+    }
+
+    /// Category measurements can exceed physical usage. Their values remain unchanged.
     public var legendEntries: [StorageSegment] {
-        segments.filter { $0.bytes > 0 }
+        (categorySegments ?? segments).filter { $0.bytes > 0 }
     }
 
     public func percent(of segment: StorageSegment) -> Double {
@@ -175,23 +224,32 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         return Double(segment.bytes) / Double(capacityBytes) * 100
     }
 
-    /// Aligns the volatile volume figures with a new disk snapshot. Named category
-    /// measurements stay unchanged. Any change since the walk lands in Unmeasured.
+    /// Keeps physical volume figures separate from category measurements.
+    /// Category measurements remain unchanged when their sum exceeds physical usage.
     public func reconcilingVolume(
         capacityBytes newCapacityBytes: Int64,
         freeBytes requestedFreeBytes: Int64
     ) -> StorageBreakdown {
         let capacity = max(0, newCapacityBytes)
-        let namedSegments = segments.filter { $0.id != .free && $0.id != .unmeasured }
-        let namedBytes = namedSegments.reduce(0) { $0 + $1.bytes }
+        let namedSegments = (categorySegments ?? segments).filter {
+            $0.id != .free && $0.id != .unmeasured && $0.id != .used
+        }
+        guard let namedBytes = Self.total(namedSegments) else { return self }
 
-        // A smaller replacement volume cannot contain the measured categories.
-        // Keep the measured snapshot until a new walk replaces it.
-        guard namedBytes <= capacity else { return self }
+        // Keep the earlier measurement when capacity changes below the category total.
+        guard capacity == capacityBytes || namedBytes <= capacity else { return self }
 
-        let maximumFreeBytes = capacity - namedBytes
-        let freeBytes = min(max(0, requestedFreeBytes), maximumFreeBytes)
-        let unmeasuredBytes = capacity - namedBytes - freeBytes
+        let freeBytes = min(max(0, requestedFreeBytes), capacity)
+        let usedBytes = capacity - freeBytes
+        if namedBytes > usedBytes {
+            return StorageBreakdown(
+                capacityBytes: capacity,
+                segments: [StorageSegment(id: .used, bytes: usedBytes), StorageSegment(id: .free, bytes: freeBytes)],
+                unreadableCount: unreadableCount,
+                categorySegments: namedSegments
+            )
+        }
+        let unmeasuredBytes = usedBytes - namedBytes
 
         var rawSegments = Dictionary(
             uniqueKeysWithValues: namedSegments.map { ($0.id, $0.bytes) }

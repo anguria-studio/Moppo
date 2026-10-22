@@ -33,5 +33,8 @@ The first public release is in preparation.
 - Show progress during worktree safety checks before removal.
 - Keep completed worktree reviews until another scan or an explicit check.
 - Use the same process checks during scans, worktree reviews, and removal.
+- Save storage comparisons when category measurements exceed physical usage.
+- Keep physical Free space separate from category measurements in Dashboard.
+- Read home folder metadata in batches during Dashboard measurements.
 
 [Unreleased]: https://github.com/anguria-studio/Moppo/commits/main/

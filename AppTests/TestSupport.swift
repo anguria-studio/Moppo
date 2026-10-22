@@ -111,6 +111,18 @@ final class TemporaryFolder {
     deinit { try? FileManager.default.removeItem(at: url) }
 }
 
+struct DiagnosticRecord: Decodable {
+    let event: String
+    let details: [String: String]
+}
+
+func diagnosticRecords(_ log: ScanDiagnostics) throws -> [DiagnosticRecord] {
+    log.flush()
+    return try Data(contentsOf: log.fileURL).split(separator: 10).map {
+        try JSONDecoder().decode(DiagnosticRecord.self, from: Data($0))
+    }
+}
+
 /// Supplies downloaded content for model tests without reading system libraries.
 func soundLibraryItem() -> AppUninstallPlan.Item {
     let url = URL(fileURLWithPath: "/moppo-fixture/Library/Application Support/Logic")
@@ -152,9 +164,9 @@ func nativeButtons(in view: NSView) -> [NSButton] {
     return view.subviews.flatMap(nativeButtons)
 }
 
-/// Renders a native view for layout checks and visual review.
+/// Renders a native view for layout checks. Give an output URL to save a PNG for visual review.
 @MainActor
-func renderTestView<V: View>(_ view: V, width: CGFloat, dark: Bool, output: URL) async throws -> CGSize {
+func renderTestView<V: View>(_ view: V, width: CGFloat, dark: Bool, output: URL? = nil) async throws -> CGSize {
     let host = NSHostingView(rootView: view
         .environment(\.colorScheme, dark ? .dark : .light)
         .frame(width: width).fixedSize(horizontal: false, vertical: true))
@@ -169,7 +181,35 @@ func renderTestView<V: View>(_ view: V, width: CGFloat, dark: Bool, output: URL)
     host.layoutSubtreeIfNeeded()
     let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
     host.cacheDisplay(in: host.bounds, to: bitmap)
-    let png = try #require(bitmap.representation(using: .png, properties: [:]))
-    try png.write(to: output)
+    if let output {
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: output)
+    }
     return host.fittingSize
+}
+
+func dashboardVolume(free: Int64 = 200) -> VolumeInfo {
+    VolumeInfo(name: "Fixture", capacityBytes: 1000, freeBytes: free, filesystem: "apfs", isEncrypted: true)
+}
+
+func dashboardMeasurement(free: Int64 = 200) -> StorageMeasurement {
+    let raw: [StorageSegmentID: Int64] = [.documentsDesktop: 1000 - free, .free: free]
+    return StorageMeasurement(
+        home: URL(fileURLWithPath: "/moppo-fixture"), volume: dashboardVolume(free: free),
+        breakdown: .make(capacityBytes: 1000, rawSegments: raw, unreadableCount: 0), rawSegments: raw,
+        homeTree: [:], rootMeasurements: [:], nodeDepth: 4
+    )
+}
+
+/// Sends a pointer click to a view in a test window.
+@MainActor
+func click(_ point: NSPoint, in host: NSView, window: NSWindow) throws {
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        let event = try #require(NSEvent.mouseEvent(
+            with: type, location: host.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+            clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0
+        ))
+        NSApp.sendEvent(event)
+    }
 }

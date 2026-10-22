@@ -11,8 +11,10 @@ final class DashboardModel {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let settings: SettingsStore?
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let beginDiagnostics: (SnapshotTrigger) -> ScanDiagnostics?
     @ObservationIgnored private var dashboardTask: Task<Void, Never>?
-    @ObservationIgnored private var measurementTask: Task<Void, Never>?
+    @ObservationIgnored private var measurementTask: Task<String, Never>?
+    @ObservationIgnored private var measurementDiagnostics: ScanDiagnostics.Context?
     @ObservationIgnored private var volumeTask: Task<Void, Never>?
     @ObservationIgnored private var volumeID: UUID?
     @ObservationIgnored private var cloudTask: Task<Void, Never>?
@@ -35,13 +37,15 @@ final class DashboardModel {
         persistence: any DashboardPersisting = DashboardPersistence(),
         defaults: UserDefaults = .standard,
         settings: SettingsStore? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        beginDiagnostics: @escaping (SnapshotTrigger) -> ScanDiagnostics? = { try? ScanLog.beginDashboard(trigger: $0) }
     ) {
         self.service = service
         self.persistence = persistence
         self.defaults = defaults
         self.settings = settings
         self.now = now
+        self.beginDiagnostics = beginDiagnostics
         let savedState = defaults.string(forKey: "cleanupMeasurementState")
             .flatMap(CleanupMeasurementState.init(rawValue:)) ?? .none
         cleanupMeasurementState = savedState == .measuring ? .interrupted : savedState
@@ -83,6 +87,7 @@ final class DashboardModel {
             && (iCloudState == .requiresAccess || iCloudState == .unavailable)
     }
     var iCloudPlanBytes: Int64?
+    var latestStorageMeasurement: StorageSnapshot? { storageHistory.first }
     private(set) var growth: GrowthComparison?
     enum CleanupMeasurementState: String, CaseIterable {
         case none, measuring, requiresAccess, failed, interrupted, cleared
@@ -144,29 +149,35 @@ final class DashboardModel {
         guard canLoad() else { return }
         if let dashboardTask { await dashboardTask.value; return }
         hasCompletedInitialDashboardLoad = false
+        let log = beginDiagnostics(.launch)
         let task = Task { [self] in
-            defer {
-                hasCompletedInitialDashboardLoad = true
-                dashboardTask = nil
-            }
-            let cached = await persistence.loadCache()
-            if breakdown == nil, !isLoadingBreakdown, let cached {
-                if volume == nil { volume = cached.volume }
-                breakdown = cached.breakdown
-                measuredAt = cached.measuredAt
-            }
-            snapshots = (try? await service.snapshots()) ?? []
-            let revision = historyRevision
-            await historyClearTask?.value
-            let history = await persistence.loadHistory()
-            if revision == historyRevision {
-                storageHistory = history
-                recomputeGrowth()
-            }
-            if canMeasure(true) {
-                await measureStorage(trigger: .launch)
-            } else {
-                await refreshVolumeInfo(notifyLowSpace: false)
+            await DashboardDiagnostics.$current.withValue(log?.context) {
+                let span = log?.context.begin("dashboard_load")
+                defer {
+                    hasCompletedInitialDashboardLoad = true
+                    dashboardTask = nil
+                    log?.context.end(span)
+                    log?.finish(outcome: "completed")
+                }
+                let cached = await DashboardDiagnostics.phase("cache_read") { await persistence.loadCache() }
+                if breakdown == nil, !isLoadingBreakdown, let cached {
+                    if volume == nil { volume = cached.volume }
+                    breakdown = cached.breakdown
+                    measuredAt = cached.measuredAt
+                }
+                snapshots = (try? await DashboardDiagnostics.phase("snapshot_list") { try await service.snapshots() }) ?? []
+                let revision = historyRevision
+                await DashboardDiagnostics.phase("history_clear_wait") { await historyClearTask?.value }
+                let history = await DashboardDiagnostics.phase("history_read") { await persistence.loadHistory() }
+                if revision == historyRevision {
+                    storageHistory = history
+                    recomputeGrowth()
+                }
+                if canMeasure(true) {
+                    await DashboardDiagnostics.phase("launch_measurement_wait") { await measureStorage(trigger: .launch) }
+                } else {
+                    await refreshVolumeInfo(notifyLowSpace: false)
+                }
             }
         }
         dashboardTask = task
@@ -188,6 +199,18 @@ final class DashboardModel {
 
     /// Queue cleanup measurements only within the active refresh.
     func measureStorage(trigger: SnapshotTrigger = .manual) async {
+        let log = beginDiagnostics(trigger)
+        let outcome = await DashboardDiagnostics.$current.withValue(log?.context) {
+            await requestMeasurement(trigger: trigger)
+        }
+        log?.finish(outcome: outcome)
+    }
+
+    private func requestMeasurement(trigger: SnapshotTrigger) async -> String {
+        let diagnostics = DashboardDiagnostics.current
+        let request = diagnostics?.begin("dashboard_request", details: ["trigger": trigger.rawValue])
+        var outcome = "completed"
+        defer { diagnostics?.end(request, outcome: outcome, details: ["caller_cancelled": "\(Task.isCancelled)"]) }
         let cleanupID: UUID? = trigger == .removal ? UUID() : nil
         if let cleanupID {
             latestCleanupID = cleanupID
@@ -196,46 +219,72 @@ final class DashboardModel {
         let automatic = trigger == .launch || trigger == .scheduled || trigger == .removal
         guard canMeasure(automatic) else {
             finishCleanup(cleanupID, state: .requiresAccess)
-            return
+            outcome = "requires_access"
+            return outcome
         }
-        guard await beforeMeasurement(), !Task.isCancelled else {
+        let ready = await DashboardDiagnostics.phase("cleanup_worker_wait") { await beforeMeasurement() }
+        guard ready, !Task.isCancelled else {
             finishCleanup(cleanupID, state: .interrupted)
-            return
+            outcome = Task.isCancelled ? "cancelled" : "interrupted"
+            return outcome
         }
-        if let cleanupID, latestCleanupID != cleanupID { return }
+        if let cleanupID, latestCleanupID != cleanupID {
+            outcome = "replaced"
+            return outcome
+        }
         guard canMeasure(automatic) else {
             finishCleanup(cleanupID, state: .requiresAccess)
-            return
+            outcome = "requires_access"
+            return outcome
         }
         if let measurementTask {
-            if let cleanupID { queuedCleanupID = cleanupID }
-            await measurementTask.value
-            return
+            if let cleanupID {
+                diagnostics?.record("cleanup_queued", details: [
+                    "cleanup_id": cleanupID.uuidString,
+                    "replaced_cleanup_id": queuedCleanupID?.uuidString ?? "none"
+                ])
+                queuedCleanupID = cleanupID
+            }
+            let joinedOutcome = await DashboardDiagnostics.phase("measurement_wait") { await measurementTask.value }
+            diagnostics?.record("joined_measurement_result", details: ["outcome": joinedOutcome])
+            outcome = cleanupID != nil && cleanupID != latestCleanupID ? "replaced" : "joined"
+            return outcome
         }
         isLoadingBreakdown = true
+        measurementDiagnostics = diagnostics
         let task = Task { [self] in
-            defer { isLoadingBreakdown = false; measurementTask = nil }
+            defer { isLoadingBreakdown = false; measurementTask = nil; measurementDiagnostics = nil }
             var next = trigger
             var nextCleanupID = cleanupID
+            var result = "completed"
             while true {
+                DashboardDiagnostics.current?.record("measurement_selected", details: [
+                    "trigger": next.rawValue, "cleanup_id": nextCleanupID?.uuidString ?? "none"
+                ])
                 let saved = await performMeasurement(trigger: next, cleanupID: nextCleanupID)
+                result = Task.isCancelled ? "cancelled" : (saved ? "saved" : "failed")
                 finishCleanup(nextCleanupID, state: saved ? .none : (Task.isCancelled ? .interrupted : .failed))
                 guard let queued = queuedCleanupID else { break }
                 queuedCleanupID = nil
                 guard !Task.isCancelled else {
                     finishCleanup(queued, state: .interrupted)
+                    DashboardDiagnostics.current?.record("queued_measurement_skipped", details: ["reason": "cancelled"])
                     break
                 }
                 guard canMeasure(true) else {
                     finishCleanup(queued, state: .requiresAccess)
+                    result = "requires_access"
+                    DashboardDiagnostics.current?.record("queued_measurement_skipped", details: ["reason": result])
                     break
                 }
                 next = .removal
                 nextCleanupID = queued
             }
+            return result
         }
         measurementTask = task
-        await task.value
+        outcome = await task.value
+        return outcome
     }
 
     private func finishCleanup(_ id: UUID?, state: CleanupMeasurementState) {
@@ -247,44 +296,79 @@ final class DashboardModel {
     func pauseMeasurementForScan() async {
         let measurement = measurementTask
         let cloud = cloudTask
+        measurementDiagnostics?.record("measurement_cancel_requested", details: ["reason": "cleanup_scan"])
         measurement?.cancel()
         cloud?.cancel()
-        await measurement?.value
+        _ = await measurement?.value
         await cloud?.value
     }
 
     private func performMeasurement(trigger: SnapshotTrigger, cleanupID: UUID?) async -> Bool {
+        let diagnostics = DashboardDiagnostics.current
+        let span = diagnostics?.begin("dashboard_measurement", details: [
+            "trigger": trigger.rawValue, "cleanup_id": cleanupID?.uuidString ?? "none"
+        ])
+        var outcome = "failed"
+        defer { diagnostics?.end(span, outcome: Task.isCancelled ? "cancelled" : outcome) }
         let revision = historyRevision
         let presentation = OperationPresentationDuration()
         startCloudLoad()
-        await refreshVolumeInfo()
+        await DashboardDiagnostics.phase("initial_volume_refresh") { await refreshVolumeInfo() }
         guard !Task.isCancelled else { return false }
-        guard let measured = try? await service.measure() else {
-            try? await presentation.wait()
+        let measured: StorageMeasurement
+        do {
+            measured = try await DashboardDiagnostics.phase("storage_measurement") { try await service.measure() }
+        } catch {
+            try? await DashboardDiagnostics.phase("presentation_wait") { try await presentation.wait() }
             return false
         }
+        if let diagnostics {
+            diagnostics.record("measurement_result", details: DashboardDiagnostics.measurementDetails(measured))
+        }
         guard !Task.isCancelled else { return false }
-        await refreshVolumeInfo()
+        await DashboardDiagnostics.phase("final_volume_refresh") { await refreshVolumeInfo() }
         guard !Task.isCancelled else { return false }
         breakdown = volume.map {
             measured.breakdown.reconcilingVolume(capacityBytes: $0.capacityBytes, freeBytes: $0.freeBytes)
         } ?? measured.breakdown
+        if let diagnostics, let volume, let breakdown {
+            var details = DashboardDiagnostics.breakdownDetails(breakdown)
+            details["physical_used_bytes"] = "\(volume.usedBytes)"
+            details["physical_free_bytes"] = "\(volume.freeBytes)"
+            diagnostics.record("display_reconciliation", details: details)
+        }
         measuredAt = now()
         isLowSpaceWarningDismissed = false
         if let volume, let breakdown, let measuredAt {
-            await persistence.saveCache(BreakdownCache(volume: volume, breakdown: breakdown, measuredAt: measuredAt))
-        }
-        await historyClearTask?.value
-        var saved = false
-        if revision == historyRevision, cleanupID == nil || cleanupID == latestCleanupID {
-            if let history = try? await persistence.record(measured, trigger: trigger), revision == historyRevision {
-                saved = true
-                historyRevision = UUID()
-                storageHistory = history
-                recomputeGrowth()
+            await DashboardDiagnostics.phase("cache_write") {
+                await persistence.saveCache(BreakdownCache(volume: volume, breakdown: breakdown, measuredAt: measuredAt))
             }
         }
-        try? await presentation.wait()
+        await DashboardDiagnostics.phase("history_clear_wait") { await historyClearTask?.value }
+        var saved = false
+        if revision == historyRevision, cleanupID == nil || cleanupID == latestCleanupID {
+            do {
+                let history = try await DashboardDiagnostics.phase("history_record") {
+                    try await persistence.record(measured, trigger: trigger)
+                }
+                if revision == historyRevision {
+                    saved = true
+                    historyRevision = UUID()
+                    storageHistory = history
+                    recomputeGrowth()
+                } else {
+                    diagnostics?.record("comparison_skipped", details: ["reason": "history_cleared"])
+                }
+            } catch {
+                diagnostics?.record("comparison_failed", details: DashboardDiagnostics.errorDetails(error))
+            }
+        } else {
+            diagnostics?.record("comparison_skipped", details: [
+                "reason": revision != historyRevision ? "history_cleared" : "cleanup_replaced"
+            ])
+        }
+        outcome = saved ? "saved" : "failed"
+        try? await DashboardDiagnostics.phase("presentation_wait") { try await presentation.wait() }
         return saved
     }
 
@@ -354,7 +438,7 @@ final class DashboardModel {
             defer {
                 if volumeID == id { volumeTask = nil; volumeID = nil }
             }
-            let current = try? await service.volumeInfo()
+            let current = try? await DashboardDiagnostics.phase("volume_read") { try await service.volumeInfo() }
             guard volumeID == id, !Task.isCancelled else { return }
             volume = current ?? volume
             if let volume, let breakdown {

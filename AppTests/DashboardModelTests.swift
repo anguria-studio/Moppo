@@ -271,9 +271,15 @@ struct DashboardModelTests {
 
     @Test("A failed cleanup measurement keeps the earlier baseline and its date", arguments: [false, true])
     func failedCleanupKeepsBaseline(saveFailure: Bool) async throws {
+        let folder = try TemporaryFolder()
+        var logs: [ScanDiagnostics] = []
         let service = HeldDashboardMeasurements()
         let persistence = HeldDashboardPersistence()
-        let model = DashboardModel(service: service, persistence: persistence)
+        let model = DashboardModel(service: service, persistence: persistence, beginDiagnostics: { _ in
+            let log = try? ScanDiagnostics(directory: folder.url)
+            if let log { logs.append(log) }
+            return log
+        })
         let first = Task { await model.measureStorage(trigger: .removal) }
         try await waitUntil { await service.measurementCount == 1 }
         #expect(model.cleanupMeasurementState == .measuring)
@@ -283,6 +289,7 @@ struct DashboardModelTests {
         #expect(model.cleanupMeasurementState == .none)
         #expect(!model.hasLaterCleanupMeasurement)
         let second = Task { await model.measureStorage(trigger: .removal) }
+        model.recordTrashRemoval(.init(removedBytes: 300, removedCount: 1, trashedCount: 1))
         try await waitUntil { await service.measurementCount == 2 }
         if saveFailure {
             await persistence.rejectNextRecord()
@@ -294,6 +301,15 @@ struct DashboardModelTests {
         #expect(model.cleanupMeasurementState == .failed)
         #expect(model.hasCleanupGrowthBaseline)
         #expect(model.cleanupBaselineDate == originalDate)
+        #expect(model.trashNotice?.bytes == 300)
+        let records = try diagnosticRecords(logs[1])
+        let failure = try #require(records.first {
+            $0.event == "span_end" && $0.details["outcome"] == "failed"
+        })
+        #expect(failure.details["operation"] == (saveFailure ? "history_record" : "storage_measurement"))
+        #expect(failure.details["error_kind"] == "cocoa")
+        #expect(failure.details["error_code"] != nil)
+        #expect(records.last?.details["active_operations"] == "0")
         let refresh = Task { await model.measureStorage() }
         try await waitUntil { await service.measurementCount == 3 }
         await service.finishMeasurement(2, dashboardMeasurement(free: 300))
@@ -801,24 +817,140 @@ struct DashboardModelTests {
         #expect(!model.isLowSpaceWarningDismissed)
         #expect(await persistence.records == [.manual])
     }
-}
 
-private func dashboardVolume(free: Int64 = 200) -> VolumeInfo {
-    VolumeInfo(name: "Fixture", capacityBytes: 1000, freeBytes: free, filesystem: "apfs", isEncrypted: true)
-}
+    enum Accounting: CaseIterable { case balanced, invalid, reconciled }
 
-private func dashboardMeasurement(free: Int64 = 200) -> StorageMeasurement {
-    let raw: [StorageSegmentID: Int64] = [.documentsDesktop: 1000 - free, .free: free]
-    return StorageMeasurement(
-        home: URL(fileURLWithPath: "/moppo-fixture"), volume: dashboardVolume(free: free),
-        breakdown: .make(capacityBytes: 1000, rawSegments: raw, unreadableCount: 0), rawSegments: raw,
-        homeTree: [:], rootMeasurements: [:], nodeDepth: 4
-    )
+    @Test("Captured laptop totals preserve free space and valid cleanup baselines", arguments: Accounting.allCases)
+    func allocatedTotalsExceedUsage(accounting: Accounting) async throws {
+        let folder = try TemporaryFolder()
+        let log = try ScanDiagnostics(directory: folder.url)
+        let capacity: Int64 = 1_995_165_736_960
+        let physicalUsed: Int64 = 218_835_329_024
+        let volume = VolumeInfo(name: "Fixture", capacityBytes: capacity, freeBytes: capacity - physicalUsed,
+                                filesystem: "apfs", isEncrypted: true)
+        var raw: [StorageSegmentID: Int64] = [
+            .documentsDesktop: 54_684_303_360, .macOSSystem: 50_250_059_776, .appDataCaches: 39_739_523_072,
+            .systemData: 28_558_753_792, .otherFilesInHome: 27_422_326_784, .packageBuildCaches: 21_540_864_000,
+            .applications: 19_171_778_560, .downloads: 552_005_632, .photos: 23_085_056, .music: 307_200,
+            .movies: 32_768, .developer: 0, .unmeasured: 0, .free: volume.freeBytes
+        ]
+        if accounting == .balanced { raw[.documentsDesktop]! -= 23_107_710_976 }
+        let allocated = raw.filter { $0.key != .free }.values.reduce(0, +)
+        let original = StorageBreakdown.make(capacityBytes: capacity, rawSegments: raw, unreadableCount: 234)
+        let breakdown = accounting == .reconciled
+            ? original.reconcilingVolume(capacityBytes: capacity, freeBytes: volume.freeBytes) : original
+        let measurement = StorageMeasurement(
+            home: URL(fileURLWithPath: "/private-fixture"), volume: volume,
+            breakdown: breakdown,
+            rawSegments: raw, homeTree: [:], rootMeasurements: [:], nodeDepth: 4
+        )
+        let store = StorageSnapshotStore(directory: folder.url.appendingPathComponent("history"))
+        let service = HeldDashboardMeasurements(volume: volume)
+        let history = DashboardPersistence(snapshots: store)
+        let persistence = HeldDashboardPersistence(recordHistory: { try await history.record($0, trigger: $1) })
+        let model = DashboardModel(service: service, persistence: persistence,
+                                   beginDiagnostics: { _ in log })
+        model.recordTrashRemoval(.init(removedBytes: 4_405_153_792, removedCount: 2, trashedCount: 2))
+        let task = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, measurement)
+        await task.value
+        let valid = accounting != .invalid
+        #expect(model.cleanupMeasurementState == (valid ? .none : .failed))
+        #expect(model.hasCleanupGrowthBaseline == valid)
+        #expect(store.load().count == (valid ? 1 : 0))
+        if let snapshot = store.load().first {
+            #expect(snapshot.rawSegments == raw)
+            #expect(snapshot.volume.freeBytes == volume.freeBytes)
+            #expect(snapshot.breakdown.freeBytes == volume.freeBytes)
+            #expect(snapshot.breakdown.categorySegments == breakdown.categorySegments)
+        }
+        #expect(model.trashNotice?.bytes == 4_405_153_792)
+        let records = try diagnosticRecords(log)
+        let result = try #require(records.first { $0.event == "measurement_result" })
+        #expect(result.details["allocated_category_bytes"] == "\(allocated)")
+        #expect(result.details["physical_used_bytes"] == "\(physicalUsed)")
+        #expect(result.details["consistent"] == "\(valid)")
+        let display = try #require(records.first { $0.event == "display_reconciliation" })
+        #expect(display.details["consistent"] == "true")
+        #expect(display.details["physical_free_bytes"] == "\(volume.freeBytes)")
+        #expect(display.details["free_bytes"] == "\(volume.freeBytes)")
+        let validation = try #require(records.first {
+            $0.event == "span_end" && $0.details["operation"] == "snapshot_validation"
+        })
+        #expect(validation.details["outcome"] == (valid ? "completed" : "failed"))
+        #expect(records.contains { $0.details["operation"] == "history_write" } == valid)
+        #expect(records.last?.details["active_operations"] == "0")
+        #expect(!String(decoding: try Data(contentsOf: log.fileURL), as: UTF8.self).contains("private-fixture"))
+        if accounting == .reconciled {
+            let previews = URL(fileURLWithPath: "/tmp/moppo-229-capacity-previews")
+            try FileManager.default.createDirectory(at: previews, withIntermediateDirectories: true)
+            for width: CGFloat in [500, 900] {
+                for dark in [false, true] {
+                    _ = try await renderTestView(CapacityCard(volume: volume, breakdown: model.breakdown).background(Token.chrome),
+                        width: width, dark: dark, output: previews.appendingPathComponent("\(Int(width))-\(dark).png"))
+                }
+            }
+        }
+    }
+
+    @Test("Dashboard logs separate waiting, replacement, active work, and cancellation")
+    func measurementDiagnostics() async throws {
+        let folder = try TemporaryFolder()
+        var logs: [ScanDiagnostics] = []
+        let gate = TestGate()
+        let service = HeldDashboardMeasurements()
+        let persistence = HeldDashboardPersistence()
+        let model = DashboardModel(service: service, persistence: persistence, beginDiagnostics: { _ in
+            let log = try? ScanDiagnostics(directory: folder.url)
+            if let log { logs.append(log) }
+            return log
+        })
+        model.beforeMeasurement = { await gate.wait(); return true }
+        let first = Task { await model.measureStorage() }
+        try await waitUntil { await gate.isPending }
+        #expect(await service.measurementCount == 0)
+        model.dismissLowSpaceWarning()
+        #expect(model.isLowSpaceWarningDismissed)
+        await gate.finish()
+        model.beforeMeasurement = { true }
+        try await waitUntil { await service.measurementCount == 1 }
+        let removal = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { logs.count == 2 && (try? diagnosticRecords(logs[1]).contains { $0.event == "cleanup_queued" }) == true }
+        let replacement = Task { await model.measureStorage(trigger: .removal) }
+        try await waitUntil { logs.count == 3 && (try? diagnosticRecords(logs[2]).contains { $0.event == "cleanup_queued" }) == true }
+        await service.finishMeasurement(0, dashboardMeasurement())
+        try await waitUntil { await service.measurementCount == 2 }
+        let pause = Task { await model.pauseMeasurementForScan() }
+        try await waitUntil { (try? diagnosticRecords(logs[0]).contains { $0.event == "measurement_cancel_requested" }) == true }
+        await service.finishMeasurement(1, dashboardMeasurement())
+        await pause.value
+        await first.value
+        await removal.value
+        await replacement.value
+        #expect(model.cleanupMeasurementState == .interrupted)
+        #expect(await persistence.records == [.manual])
+        let active = try diagnosticRecords(logs[0])
+        #expect(active.contains { $0.details["operation"] == "cleanup_worker_wait" && $0.event == "span_end" })
+        #expect(active.filter { $0.details["operation"] == "dashboard_measurement" && $0.event == "span_end" }.map {
+            $0.details["outcome"]
+        } == ["saved", "cancelled"])
+        #expect(try diagnosticRecords(logs[1]).last?.details["outcome"] == "replaced")
+        #expect(try diagnosticRecords(logs[2]).contains { $0.details["operation"] == "measurement_wait" })
+        for log in logs {
+            let records = try diagnosticRecords(log)
+            #expect(records.last?.details["active_operations"] == "0")
+            #expect(records.filter { $0.event == "span_end" }.allSatisfy {
+                Double($0.details["duration_seconds"] ?? "") != nil
+            })
+        }
+    }
 }
 
 private actor HeldDashboardMeasurements: DashboardMeasuring {
     let holdCloud: Bool
     let holdVolume: Bool
+    let volume: VolumeInfo
     private(set) var measurementCount = 0
     private(set) var cloudPlans: [Int64?] = []
     private(set) var volumeCount = 0
@@ -826,15 +958,16 @@ private actor HeldDashboardMeasurements: DashboardMeasuring {
     private var measurements: [Int: CheckedContinuation<StorageMeasurement, Error>] = [:]
     private var clouds: [Int: CheckedContinuation<ICloudStorage, Error>] = [:]
     private var volumes: [Int: CheckedContinuation<VolumeInfo, Never>] = [:]
-    init(holdCloud: Bool = false, holdVolume: Bool = false) {
+    init(holdCloud: Bool = false, holdVolume: Bool = false, volume: VolumeInfo = dashboardVolume()) {
         self.holdCloud = holdCloud
         self.holdVolume = holdVolume
+        self.volume = volume
     }
     func volumeInfo() async throws -> VolumeInfo {
         let index = volumeCount
         volumeCount += 1
         if holdVolume { return await withCheckedContinuation { volumes[index] = $0 } }
-        return dashboardVolume()
+        return volume
     }
     func snapshots() async throws -> [SnapshotInfo] {
         ["boot", "data"].map {
@@ -865,6 +998,7 @@ private actor HeldDashboardMeasurements: DashboardMeasuring {
 private actor HeldDashboardPersistence: DashboardPersisting {
     let holdHistory: Bool
     let holdRecord: Bool
+    let recordHistory: (@Sendable (StorageMeasurement, SnapshotTrigger) async throws -> [StorageSnapshot])?
     private(set) var cache: BreakdownCache?
     private(set) var cacheLoads = 0
     private(set) var cacheClears = 0
@@ -875,10 +1009,12 @@ private actor HeldDashboardPersistence: DashboardPersisting {
     private var rejectsNextRecord = false
     private var historyReply: CheckedContinuation<[StorageSnapshot], Never>?
     private var recordReply: CheckedContinuation<[StorageSnapshot], Never>?
-    init(cache: BreakdownCache? = nil, holdHistory: Bool = false, holdRecord: Bool = false) {
+    init(cache: BreakdownCache? = nil, holdHistory: Bool = false, holdRecord: Bool = false,
+         recordHistory: (@Sendable (StorageMeasurement, SnapshotTrigger) async throws -> [StorageSnapshot])? = nil) {
         self.cache = cache
         self.holdHistory = holdHistory
         self.holdRecord = holdRecord
+        self.recordHistory = recordHistory
     }
     func loadCache() -> BreakdownCache? { cacheLoads += 1; return cache }
     func saveCache(_ cache: BreakdownCache) { self.cache = cache }
@@ -896,6 +1032,10 @@ private actor HeldDashboardPersistence: DashboardPersisting {
             throw CocoaError(.fileWriteNoPermission)
         }
         if holdRecord { return await withCheckedContinuation { recordReply = $0 } }
+        if let recordHistory {
+            history = try await recordHistory(measurement, trigger)
+            return history
+        }
         if let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) { history.insert(snapshot, at: 0) }
         return history
     }

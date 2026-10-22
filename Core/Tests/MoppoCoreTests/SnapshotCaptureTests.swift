@@ -181,17 +181,31 @@ struct SnapshotCaptureTests {
         #expect(snapshot.nodes.first?.identity == "id:Downloads")
     }
 
-    @Test("a measurement that does not add up is not stored at all")
-    func refusesAnInconsistentMeasurement() {
+    enum Corruption: CaseIterable { case sum, negative, duplicate, overflow, volumeCapacity, volumeFree }
+
+    @Test("Invalid breakdowns and mismatched volume figures cannot enter history", arguments: Corruption.allCases)
+    func refusesAnInconsistentMeasurement(corruption: Corruption) {
         var broken = measurement(homeTree: ["Downloads": 4_000_000_000])
+        var volume = broken.volume
+        let segments: [StorageSegment]
+        switch corruption {
+        case .sum: segments = [.init(id: .free, bytes: GrowthFixture.capacity - 1)]
+        case .negative: segments = [.init(id: .free, bytes: GrowthFixture.capacity + 1), .init(id: .unmeasured, bytes: -1)]
+        case .duplicate: segments = [.init(id: .free, bytes: 1), .init(id: .free, bytes: GrowthFixture.capacity - 1)]
+        case .overflow: segments = [.init(id: .free, bytes: Int64.max), .init(id: .unmeasured, bytes: Int64.max)]
+        case .volumeCapacity:
+            volume.capacityBytes += 1
+            segments = broken.breakdown.segments
+        case .volumeFree:
+            volume.freeBytes += 1
+            segments = broken.breakdown.segments
+        }
         broken = StorageMeasurement(
             home: broken.home,
-            volume: broken.volume,
-            // One byte of capacity is unaccounted for. The CLI calls this drift, and
-            // drift must be zero.
+            volume: volume,
             breakdown: StorageBreakdown(
                 capacityBytes: GrowthFixture.capacity,
-                segments: [StorageSegment(id: .free, bytes: GrowthFixture.capacity - 1)],
+                segments: segments,
                 unreadableCount: 0
             ),
             rawSegments: broken.rawSegments,
@@ -200,7 +214,7 @@ struct SnapshotCaptureTests {
             nodeDepth: broken.nodeDepth
         )
 
-        #expect(!broken.breakdown.isConsistent)
+        #expect(broken.breakdown.isConsistent == (corruption == .volumeCapacity || corruption == .volumeFree))
         #expect(capture(broken) == nil)
     }
 

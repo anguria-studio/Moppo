@@ -66,6 +66,16 @@ enum ScanLog {
         return log
     }
 
+    static func beginDashboard(trigger: SnapshotTrigger, bundle: Bundle = .main,
+                               directory: URL = ScanLog.directory) throws -> ScanDiagnostics? {
+        guard enabled(in: bundle) else { return nil }
+        var metadata = appMetadata(bundle)
+        metadata["app_path"] = nil
+        metadata["source"] = "dashboard"
+        metadata["trigger"] = trigger.rawValue
+        return try ScanDiagnostics(directory: directory, metadata: metadata, maximumDetailBytes: 0)
+    }
+
     private static func appMetadata(_ bundle: Bundle) -> [String: String] {
         [
             "app_version": bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",

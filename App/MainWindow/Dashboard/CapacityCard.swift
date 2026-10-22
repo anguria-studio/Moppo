@@ -65,6 +65,18 @@ struct CapacityCard: View {
                     CapacityBar(breakdown: breakdown)
                         .padding(.top, 16)
 
+                    if breakdown.categorySegments != nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Category measurements").fontWeight(.semibold)
+                            Text("Category totals exceed used space by \(ByteFormatting.string(breakdown.allocationExcessBytes)). "
+                                + "Shared storage and file changes can cause this difference.")
+                        }
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 16)
+                    }
+
                     legend(breakdown)
                         .padding(.top, 16)
                 } else if let breakdown {
