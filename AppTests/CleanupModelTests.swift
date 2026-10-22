@@ -1008,8 +1008,9 @@ struct CleanupModelTests {
             failed: [protected.id], trashedCount: 1
         ))
         try await waitUntil { await refresh.isPending }
-        #expect(cleanup.scanResults == nil)
-        #expect(cleanup.scannerSelection.isEmpty)
+        // The results keep the entries that were not removed, and the later selection stays.
+        #expect(cleanup.scanResults?.categories.flatMap(\.entries).map(\.id) == [protected.id, later.id])
+        #expect(cleanup.scannerSelection == [later.id])
         #expect(cleanup.userDataRemovalOverrides.isEmpty)
         #expect(completed?.failed == [protected.id])
         await refresh.finish()
@@ -1242,7 +1243,7 @@ struct CleanupModelTests {
         #expect(app.cleanupCompletion == nil)
         #expect(app.notice?.title == "Some Items Could Not Be Removed")
         #expect(app.cleanup.cleanupOutcome?.removedCount == 1)
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults?.categories.flatMap(\.entries).map(\.id) == [protected.id])
         #expect(FileManager.default.fileExists(atPath: protected.url.path))
         let receipt = try #require(log.recentEntries(limit: 10).first { $0.disposition == .trashed })
         let trashed = URL(fileURLWithPath: try #require(receipt.trashedPath))

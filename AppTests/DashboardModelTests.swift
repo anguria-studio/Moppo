@@ -303,7 +303,7 @@ struct DashboardModelTests {
         await first.value
         let originalDate = try #require(model.cleanupBaselineDate)
         #expect(model.cleanupMeasurementState == .none)
-        #expect(!model.hasLaterCleanupMeasurement)
+        #expect(!model.hasCleanupComparison)
         let second = Task { await model.measureStorage(trigger: .removal) }
         model.recordTrashRemoval(.init(removedBytes: 300, removedCount: 1, trashedCount: 1))
         try await waitUntil { await service.measurementCount == 2 }
@@ -333,7 +333,33 @@ struct DashboardModelTests {
         #expect(await persistence.records == (saveFailure ? [.removal, .removal, .manual] : [.removal, .manual]))
         #expect(model.cleanupMeasurementState == .failed)
         #expect(model.cleanupBaselineDate == originalDate)
-        #expect(model.hasLaterCleanupMeasurement)
+        #expect(model.hasCleanupComparison)
+    }
+
+    @Test("A cleanup compares with the measurement before it without another measurement")
+    func cleanupComparesWithEarlierMeasurement() async throws {
+        let service = HeldDashboardMeasurements()
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        let before = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        await service.finishMeasurement(0, dashboardMeasurement(free: 200))
+        await before.value
+        let start = try #require(model.latestStorageMeasurement?.measuredAt)
+        #expect(model.sevenDayStart == nil)
+        model.recordCleanup()
+        let after = Task { await model.refreshAfterRemoval() }
+        try await waitUntil { await service.measurementCount == 2 }
+        await service.finishMeasurement(1, dashboardMeasurement(free: 300))
+        await after.value
+        #expect(model.growthBaseline == .lastCleanup)
+        #expect(model.hasCleanupComparison)
+        #expect(model.cleanupBaselineDate == start)
+        #expect(model.sevenDayStart == start)
+        guard case .report(let report) = model.growth else {
+            Issue.record("The cleanup measurement has no comparison")
+            return
+        }
+        #expect(report.usedDeltaBytes == -100)
     }
 
     @Test("Queued cleanup measurements retain a reason when access changes or history is cleared", arguments: [false, true])

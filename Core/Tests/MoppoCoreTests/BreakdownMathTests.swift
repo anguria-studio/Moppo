@@ -152,6 +152,10 @@ struct BreakdownMathTests {
         #expect(reconciled.legendEntries == [.init(id: .applications, bytes: namedGB * Self.gb)])
         #expect(reconciled.allocationExcessBytes == (namedGB - 20) * Self.gb)
         #expect(reconciled.unreadableCount == 3)
+        // The bar shows the measured category inside the used space.
+        let bar = reconciled.barSegments
+        #expect(bar == [.init(id: .applications, bytes: namedGB * Self.gb), .init(id: .free, bytes: 80 * Self.gb)])
+        #expect(bar.map { reconciled.barWidthBytes(of: $0) } == [Double(20 * Self.gb), Double(80 * Self.gb)])
         let data = try JSONEncoder().encode(reconciled)
         // Earlier builds cannot read Used, so saved data stores it as Unmeasured.
         let saved = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])

@@ -292,14 +292,23 @@ struct StorageGrowthTests {
         #expect(chosen?.measuredAt == GrowthFixture.noon.addingTimeInterval(-2 * 24 * 3600))
     }
 
-    @Test("the last clean-up baseline is the newest removal measurement")
-    func cleanupBaseline() throws {
-        let ring = ring()
+    @Test("the last clean-up comparison starts at the measurement before the newest cleanup", arguments: [false, true])
+    func cleanupBaseline(cleanupIsLatest: Bool) throws {
+        // The cleanup measurement is either older than the latest measurement or is the latest one.
+        let ring = Array(ring().dropFirst(cleanupIsLatest ? 2 : 0))
         let latest = try #require(ring.first)
 
         let chosen = StorageGrowth.baseline(.lastCleanup, in: ring, latest: latest)
-        #expect(chosen?.trigger == .removal)
-        #expect(chosen?.measuredAt == GrowthFixture.noon.addingTimeInterval(-5 * 24 * 3600))
+        #expect(chosen?.trigger == .scheduled)
+        #expect(chosen?.measuredAt == GrowthFixture.noon.addingTimeInterval(-9 * 24 * 3600))
+    }
+
+    @Test("a cleanup without an earlier measurement starts its own comparison")
+    func cleanupBaselineWithoutEarlierMeasurement() throws {
+        let only = [GrowthFixture.snapshot(at: GrowthFixture.noon, trigger: .removal, used: 100 * gb)]
+        let latest = try #require(only.first)
+
+        #expect(StorageGrowth.baseline(.lastCleanup, in: only, latest: latest)?.id == latest.id)
     }
 
     @Test("no clean-up yet means no clean-up baseline")

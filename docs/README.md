@@ -373,6 +373,8 @@ Failed removal attempts do not create cleanup baselines.
 Automatic cleanup measurements require Full Disk Access.
 A later manual refresh updates current storage without creating a cleanup baseline.
 The Dashboard explains missing cleanup baselines and shows the date of an earlier available baseline.
+The cleanup comparison starts at the measurement before the newest cleanup.
+History retention keeps that measurement with each cleanup measurement.
 The next successful cleanup measurement replaces that baseline.
 Moving files to Trash does not necessarily recover disk space.
 Background measurements remain separate from the shared scan and removal guard.

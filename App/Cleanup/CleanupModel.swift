@@ -842,7 +842,8 @@ final class CleanupModel {
         await refreshLeftovers(plan.orphanedApplicationBundleIdentifiers)
         try? await presentation.wait()
         onEvent(.removed(outcome))
-        if outcome.removedCount > 0, plan.dockerImageCount == 0 { invalidateResults() }
+        // The remaining results stay valid. Protected-data approvals apply to one removal only.
+        if outcome.removedCount > 0 { userDataRemovalOverrides.removeAll() }
         return true
     }
 

@@ -219,6 +219,20 @@ public struct StorageBreakdown: Sendable, Equatable, Codable {
         (categorySegments ?? segments).filter { $0.bytes > 0 }
     }
 
+    /// Capacity bar segments with their measured values.
+    /// When category measurements exceed used space, the categories share the used part of the bar.
+    public var barSegments: [StorageSegment] {
+        guard let categorySegments else { return segments }
+        return categorySegments.filter { $0.bytes > 0 } + segments.filter { $0.id == .free }
+    }
+
+    /// The bytes that set the width of a bar segment. Categories scale to fit the used space.
+    public func barWidthBytes(of segment: StorageSegment) -> Double {
+        guard segment.id != .free, let categorySegments,
+              let total = Self.total(categorySegments), total > 0 else { return Double(segment.bytes) }
+        return Double(segment.bytes) * Double(usedBytes) / Double(total)
+    }
+
     public func percent(of segment: StorageSegment) -> Double {
         guard capacityBytes > 0 else { return 0 }
         return Double(segment.bytes) / Double(capacityBytes) * 100
