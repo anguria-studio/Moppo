@@ -38,7 +38,7 @@ brew install vale
 Run the writing check:
 
 ```sh
-vale README.md AGENTS.md WRITING_STYLE.md
+vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs
 ```
 
 Vale cannot prove full ADS-STE100 compliance. Review terminology, instructions,

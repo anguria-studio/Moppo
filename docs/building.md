@@ -55,7 +55,7 @@ swift test --package-path Core \
   --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests'
 xcodegen generate
 xcodebuild -project Moppo.xcodeproj -scheme MoppoAppTests -destination 'platform=macOS' test
-vale README.md AGENTS.md WRITING_STYLE.md
+vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs
 ```
 
 Timing and process integration tests run separately to avoid interference from other test fixtures.
@@ -67,12 +67,12 @@ They do not launch Moppo or delete personal photos.
 In these tests, operation progress does not stay on screen for the minimum display time.
 
 GitHub Actions runs these tests and writing checks for pull requests that target `main`.
-Merging a pull request does not start another CI run.
+A push to `main` starts the same checks.
 CI uses Xcode 27 and an ad hoc signature for the separate test bundle.
 CI runs the core tests and the app state tests in separate jobs at the same time.
 CI runs timing and process integration tests sequentially before the parallel core tests.
 The app state tests job keeps the Xcode compilation cache between runs of the same pull request.
-If a pull request changes only Markdown files, `docs/`, or Vale rules, CI does not run the tests.
+If a change contains only Markdown files, `docs/`, or Vale rules, CI does not run the tests.
 The **Tests and writing** check passes only when all other CI jobs pass.
 CI does not build or launch the signed Moppo app.
 Pull request checks also validate branch names and Conventional Commit titles.

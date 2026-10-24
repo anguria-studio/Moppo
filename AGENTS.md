@@ -50,7 +50,9 @@ Read field identifiers with `gh project field-list` before you update a field.
 - Use one of these types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `revert`.
 - Open a pull request for each change to `main`.
 - Do not push directly to `main`.
-- Use only `pull_request` events to start GitHub Actions checks.
+- Start GitHub Actions checks for pull requests that target `main`.
+- Also start those checks after a push to `main`.
+- Do not start those checks after a push to another branch.
 - Require all CI checks to pass before a merge, except for the billing fallback below.
 - Use a squash merge with the pull request title as the commit title.
 - Merge only after an explicit instruction from the user.
@@ -91,9 +93,9 @@ Use ADS-STE100 Simplified Technical English for all new writing.
 Apply these rules to documentation, interface text, code comments, release notes,
 and messages for users.
 
-Run `vale README.md AGENTS.md WRITING_STYLE.md` after you change tracked
-documentation. Review interface text and code comments manually because Vale does
-not check Swift string literals.
+Run `vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs` after you change
+tracked documentation. Review interface text and code comments manually because
+Vale does not check Swift string literals.
 
 The file `design/README.md` contains the archived handoff. Do not revise it during
 a general writing pass.

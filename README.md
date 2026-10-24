@@ -21,6 +21,7 @@
 
 <p align="center">
   <a href="https://github.com/anguria-studio/Moppo/releases/latest"><img src="https://img.shields.io/github/v/release/anguria-studio/Moppo?label=release&amp;color=8a5fa8&amp;style=flat" alt="Latest release"></a>
+  <a href="https://github.com/anguria-studio/Moppo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/anguria-studio/Moppo/ci.yml?branch=main&amp;label=CI&amp;style=flat" alt="CI status"></a>
   <a href="#install-on-a-mac"><img src="https://img.shields.io/badge/Apple-notarized-black?style=flat&amp;logo=apple" alt="Apple notarized"></a>
   <a href="#install-on-a-mac"><img src="https://img.shields.io/badge/macOS-15%2B%20Apple%20silicon%20or%20Intel-black?style=flat" alt="macOS 15 and newer, Apple silicon or Intel"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8a5fa8?style=flat" alt="MIT License"></a>

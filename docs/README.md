@@ -15,7 +15,7 @@ xcodegen generate                 # regenerates Moppo.xcodeproj from project.yml
 open Moppo.xcodeproj              # ⌘R to run
 swift test --package-path Core    # check the engine
 swift run --package-path Core moppo-cli scan  # run the scanner
-vale README.md AGENTS.md WRITING_STYLE.md  # check project writing
+vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs  # check project writing
 ```
 
 `project.yml` generates `Moppo.xcodeproj`, and Git ignores the generated
