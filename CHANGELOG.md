@@ -4,6 +4,21 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Show progress during worktree safety checks before removal.
+- Keep completed worktree reviews until another scan or an explicit check.
+- Use the same process checks during scans, worktree reviews, and removal.
+- Save storage comparisons when category measurements exceed physical usage.
+- Keep physical Free space separate from category measurements in Dashboard.
+- Show the real comparison start when less than seven days of measurements exist.
+- Remove a cleanup failure notice after a manual refresh when no cleanup baseline exists.
+- Compare Since last cleanup with the measurement before the cleanup.
+- Use the same label for Last 7 days on the button and in the menu.
+- Show category colors in the capacity bar when categories exceed used space.
+- Keep Cleanup results after removal.
+- Show the comparison menu only when its options start at different measurements.
+- Explain shared storage on the capacity card when categories exceed used space.
+- Automatic update checks are now on by default, with a setting to turn them off.
+
 ## [0.2.0] - 2026-10-21
 
 0.2.0 is the first public release.
