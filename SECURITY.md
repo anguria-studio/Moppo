@@ -52,10 +52,11 @@ Sparkle reads a signed HTTPS feed at `https://anguria.studio/moppo/appcast.xml`.
 Moppo accepts only an HTTPS feed.
 Moppo requires a 32-byte Ed25519 public key.
 Moppo verifies the update signature before it extracts the archive.
-The current source turns automatic checks on.
+Automatic update checks are on by default.
+This default started with the change in pull request #237.
+You can turn automatic checks off with the **Check for updates automatically** setting in **Settings > Updates**.
+Release 0.2.0 and earlier versions keep automatic update checks off by default.
 Moppo starts the update controller after the welcome guide.
-Release 0.2.0 does not check for updates automatically.
-You can turn automatic checks on or off in **Settings > Updates**.
 Moppo does not download an update in the background.
 Moppo asks before it installs an update.
 After you approve an update, Moppo waits until active disk work finishes.
