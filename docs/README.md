@@ -850,6 +850,12 @@ Short operations show the hourglass mode.
 In this mode, Moppo turns into an hourglass until the operation ends.
 With Reduce Motion on, these operations show the static hourglass symbol.
 
+Onboarding shows Moppo above the content of each step.
+On Welcome, Moppo looks around.
+On Preferences, Moppo turns into the settings icon, and its knobs slide.
+Moppo stays in place between the steps, and only the content below it changes.
+With Reduce Motion on, onboarding shows the app icon and the slider symbol.
+
 ## Writing
 
 Use ADS-STE100 Simplified Technical English for documentation, interface text,

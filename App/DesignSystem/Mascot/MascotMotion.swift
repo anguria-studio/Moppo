@@ -67,6 +67,8 @@ final class MoppoMascotMotion {
 
     // Acts
     private(set) var act: (any MascotAct)?
+    /// A shape that the screen asks Moppo to hold. Moppo turns back when the request ends.
+    var requestedShape: MascotShape?
     private var controls = MascotControls()
     /// The operation time when the planned act can start. It is nil when this operation has no act left.
     private var plannedActStart: Double?
@@ -93,6 +95,7 @@ final class MoppoMascotMotion {
     private func update(_ dt: Double, now: Date) {
         time += dt
         if act == nil, mode == .hourglass { act = HourglassAct(rig: self) }
+        followRequestedShape()
         if act == nil { startPlannedAct(now: now) }
         if let act {
             controls = act.update(dt, rig: self)
@@ -191,14 +194,28 @@ final class MoppoMascotMotion {
         play(kind)
     }
 
+    private func followRequestedShape() {
+        let sliders = act as? SettingsSlidersAct
+        switch requestedShape {
+        case .settings:
+            if let sliders { sliders.hold(at: time) } else if act == nil { start(SettingsSlidersAct(rig: self)) }
+        case nil:
+            sliders?.release()
+        }
+    }
+
     /// Starts an act now, without the scheduler.
     func play(_ kind: MascotActKind) {
         guard act == nil else { return }
+        start(kind.makeAct(rig: self))
+    }
+
+    private func start(_ next: any MascotAct) {
         blinkElapsed = nil
         pendingBlinkAt = nil
         gaze = (0, 0)
         micro = (0, 0)
-        act = kind.makeAct(rig: self)
+        act = next
     }
 
     private func finishAct(now: Date) {
