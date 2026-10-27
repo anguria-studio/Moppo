@@ -191,17 +191,11 @@ final class AppModel {
         launchAccess = .welcome
     }
 
-    func finishWelcomeGuide(folder: URL? = nil) {
+    /// Opens Cleanup after onboarding, also with limited access. A pending iCloud setup opens Dashboard instead.
+    func finishWelcomeGuide() {
         onboardingProgress?.finish()
         launchAccess.finishOnboarding(hasFullDiskAccess: hasFullDiskAccess())
-        if let folder {
-            view = .storageExplorer
-            storageExplorer.selectLocation(folder)
-        } else if dashboard.hasPendingICloudSetup {
-            view = .dashboard
-        } else if launchAccess == .limited {
-            view = .storageExplorer
-        }
+        view = dashboard.hasPendingICloudSetup ? .dashboard : .scanner
     }
 
     /// Keeps automatic scans off when the user continues with limited access.

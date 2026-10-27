@@ -162,29 +162,14 @@ struct AccessModelTests {
         #expect(SettingsStore(defaults: defaults, managesLoginItem: false).showICloudOnDashboard)
     }
 
-    @Test("Skipping disk access opens Storage Explorer without a Cleanup scan")
+    @Test("Finishing without disk access opens Cleanup and allows only manual scans")
     func limitedStart() {
         let model = AppModel(launchAccess: .welcome, hasFullDiskAccess: { false })
         model.finishWelcomeGuide()
         #expect(model.launchAccess == .limited)
-        #expect(model.view == .storageExplorer)
-        model.startInitialCleanupScan()
-        #expect(!model.cleanup.isScanning)
-        #expect(!model.cleanup.hasStartedInitialScan)
+        #expect(model.view == .scanner)
+        #expect(model.checkDiskAccess())
         #expect(!model.checkDiskAccess(automatic: true))
-    }
-
-    @Test("Limited setup measures only the selected folder")
-    func selectedFolder() async throws {
-        let folder = try TemporaryFolder()
-        _ = try folder.write("selected.txt")
-        let model = AppModel(launchAccess: .welcome, hasFullDiskAccess: { false })
-        model.finishWelcomeGuide(folder: folder.url)
-        try await waitUntil { !model.storageExplorer.isLoading }
-        #expect(model.view == .storageExplorer)
-        #expect(model.storageExplorer.currentURL?.path == folder.url.path)
-        #expect(model.storageExplorer.snapshot?.items.map(\.name) == ["selected.txt"])
-        #expect(!model.cleanup.hasStartedInitialScan)
     }
 }
 

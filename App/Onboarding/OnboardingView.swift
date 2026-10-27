@@ -5,15 +5,14 @@ import MoppoCore
 struct OnboardingView: View {
     typealias Step = OnboardingProgress.Step
     @State private var step: Step
-    @State private var isChoosingFolder = false
     @Bindable var settings: SettingsStore
     let access: AccessModel
     let progress: OnboardingProgress?
-    let onFinish: (URL?) -> Void
+    let onFinish: () -> Void
 
     init(
         settings: SettingsStore, access: AccessModel, step: Step = .welcome,
-        progress: OnboardingProgress? = nil, onFinish: @escaping (URL?) -> Void
+        progress: OnboardingProgress? = nil, onFinish: @escaping () -> Void
     ) {
         self.settings = settings
         self.access = access
@@ -130,7 +129,7 @@ struct OnboardingView: View {
     }
 
     private var scanDetail: String {
-        if access.disk != .allowed { return "Requires Full Disk Access. Manual folder scans remain available." }
+        if access.disk != .allowed { return "Requires Full Disk Access. You can still scan in Cleanup." }
         return settings.idleOnly ? "When plugged in and idle." : "Uses your saved scan schedule."
     }
 
@@ -179,42 +178,17 @@ struct OnboardingView: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Setup steps")
-                HStack(spacing: 12) {
-                    if !isWelcome, access.disk != .allowed {
-                        Button("Skip for Now") { onFinish(nil) }
-                            .buttonStyle(PageActionButtonStyle())
-                    }
-                    Button(isWelcome ? "Continue" : (access.disk == .allowed ? "Get Started" : "Choose Folder")) {
-                        if isWelcome { changeStep(to: .preferences) }
-                        else if access.disk == .allowed { onFinish(nil) }
-                        else { chooseFolder() }
-                    }
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
-                    .keyboardShortcut(.defaultAction)
+                // Get Started opens Cleanup. Without Full Disk Access, Cleanup scans only the folders it can read.
+                Button(isWelcome ? "Continue" : "Get Started") {
+                    if isWelcome { changeStep(to: .preferences) } else { onFinish() }
                 }
+                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+                .keyboardShortcut(.defaultAction)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .disabled(isChoosingFolder)
             .padding(.vertical, 20)
         }
         .padding(.horizontal, 32)
-    }
-
-    private func chooseFolder() {
-        guard !access.isPreview else { return }
-        isChoosingFolder = true
-        let panel = NSOpenPanel()
-        panel.title = "Choose a Folder"
-        panel.message = "Moppo will measure only the folder you select."
-        panel.prompt = "Choose Folder"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        Task { @MainActor in
-            defer { isChoosingFolder = false }
-            guard await panel.presentAsSheet() == .OK, let url = panel.url else { return }
-            onFinish(url)
-        }
     }
 
     private func stepButton(_ number: Int, title: String, destination: Step) -> some View {
@@ -278,21 +252,21 @@ private struct OnboardingMascot: View {
 }
 
 #Preview("Welcome light") {
-    OnboardingView(settings: .preview(), access: .preview()) { _ in }
+    OnboardingView(settings: .preview(), access: .preview()) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.light)
 }
 
 #Preview("Welcome dark") {
-    OnboardingView(settings: .preview(), access: .preview(disk: true)) { _ in }
+    OnboardingView(settings: .preview(), access: .preview(disk: true)) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.dark)
 }
 
 #Preview("Preferences light") {
-    OnboardingView(settings: .preview(), access: .preview(disk: true, notifications: .allowed), step: .preferences) { _ in }
+    OnboardingView(settings: .preview(), access: .preview(disk: true, notifications: .allowed), step: .preferences) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.light)
 }
 
 #Preview("Preferences dark") {
-    OnboardingView(settings: .preview(), access: .preview(), step: .preferences) { _ in }
+    OnboardingView(settings: .preview(), access: .preview(), step: .preferences) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.dark)
 }
