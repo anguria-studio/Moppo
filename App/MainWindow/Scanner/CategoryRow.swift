@@ -18,7 +18,7 @@ struct CategoryRow: View {
         if isActionable {
             Button(action: onToggle) { rowContent }
                 .buttonStyle(.plain)
-                .hoverHighlight(fill: Token.Fill.cleanupRowHover, restingFill: Token.Fill.groupHeader)
+                .hoverHighlight(fill: Token.Fill.cleanupHeaderHover, restingFill: Token.Fill.groupHeader)
                 .accessibilityLabel(accessibilityDescription)
                 .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
         } else {

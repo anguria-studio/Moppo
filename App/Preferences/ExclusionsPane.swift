@@ -132,7 +132,7 @@ struct ExclusionsPane: View {
                 .font(.mcSubtitle.monospacedDigit())
                 .foregroundStyle(Token.Text.quaternary)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
         .controlSize(.small)
     }
 }
