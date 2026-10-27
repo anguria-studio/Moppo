@@ -432,12 +432,12 @@ struct CleanupModelTests {
         #expect(cleanup.allEntries.first { $0.id == worktree.id }?.gitWorktreeReview?.isSafeToRemove == false)
     }
 
-    @Test("Cleanup identifies kept worktrees after removing other items")
-    func changedWorktreeNotice() async throws {
+    @Test("Cleanup identifies kept worktrees after removing other items", arguments: [false, true])
+    func changedWorktreeNotice(trashDenied: Bool) async throws {
         let fixture = try CleanupFixture()
         let cache = try fixture.entry("notice-cache")
         let removal = HeldCleanupRemoval()
-        let app = AppModel(cleanupRemover: removal)
+        let app = AppModel(hasFullDiskAccess: { false }, cleanupRemover: removal)
         app.view = .scanner
         app.cleanup.refreshAfterRemoval = {}
         app.cleanup.scanResults = cleanupResults([cache])
@@ -446,15 +446,79 @@ struct CleanupModelTests {
         let task = Task { await app.cleanup.performCleanUp() }
         try await waitUntil { await removal.isPending }
         let kept = fixture.root.appendingPathComponent("changed-worktree")
-        await removal.finish(.init(removedCount: 1, trashedCount: 1, skippedWorktrees: [kept.path]))
+        let denied = fixture.root.appendingPathComponent("trash-denied")
+        let other = fixture.root.appendingPathComponent("other-failure")
+        await removal.finish(.init(removedCount: 1,
+            failed: trashDenied ? [denied.path, other.path] : [],
+            permissionDenied: trashDenied ? [denied.path] : [],
+            trashAccessDenied: trashDenied ? [denied.path] : [],
+            trashedCount: 1, skippedWorktrees: [kept.path]))
         await task.value
         try await waitUntil { !app.cleanup.isRemoving }
         let notice = try #require(app.notice)
-        #expect(notice.title == "Worktrees Were Kept")
-        #expect(notice.message.contains("changed-worktree"))
-        #expect(notice.message.contains("The folders remain on disk. Select All to review their current status."))
+        #expect(notice.title == (trashDenied ? "Full Disk Access Needed" : "Worktrees Were Kept"))
+        if trashDenied {
+            #expect(notice.message.contains("1 item could not be removed because Moppo does not have Full Disk Access."))
+            #expect(notice.message.contains("1 other item could not be removed."))
+            #expect(notice.message.contains("Moppo kept 1 worktree because the safety checks changed."))
+        } else {
+            #expect(notice.message.contains("changed-worktree"))
+            #expect(notice.message.contains("The folders remain on disk. Select All to review their current status."))
+        }
         #expect(notice.message.contains("Moppo removed 1 other item."))
-        #expect(notice.finderURLs == [kept])
+        #expect(notice.finderURLs == (trashDenied ? [denied, other, kept] : [kept]))
+    }
+
+    enum RemovalFailure: CaseIterable { case trashAccess, trashAccessWithDiskAccess, itemAccess, other }
+
+    @Test("Cleanup explains denied Trash access and keeps other failure results", arguments: RemovalFailure.allCases, [false, true])
+    func removalAccessNotice(failure: RemovalFailure, partial: Bool) async throws {
+        let fixture = try CleanupFixture()
+        let failed = try fixture.entry("failed-worktree")
+        let second = try fixture.entry("second-worktree")
+        let removal = HeldCleanupRemoval()
+        let hasDiskAccess = failure == .trashAccessWithDiskAccess
+        let isTrashDenial = failure == .trashAccess || hasDiskAccess
+        let app = AppModel(hasFullDiskAccess: { hasDiskAccess }, cleanupRemover: removal)
+        app.view = .scanner
+        app.cleanup.refreshAfterRemoval = {}
+        let entries = [failed, second]
+        let failedEntries = partial ? [failed] : entries
+        let failedIDs = failedEntries.map(\.id)
+        app.cleanup.scanResults = cleanupResults(entries)
+        app.cleanup.scannerSelection = Set(entries.map(\.id))
+        app.cleanup.requestCleanUp(in: .all)
+        let task = Task { await app.cleanup.performCleanUp() }
+        try await waitUntil { await removal.isPending }
+        if partial { try FileManager.default.removeItem(at: second.url) }
+        await removal.finish(.init(
+            removedCount: partial ? 1 : 0, failed: failedIDs,
+            permissionDenied: failure == .other ? [] : failedIDs,
+            trashAccessDenied: isTrashDenial ? failedIDs : [],
+            trashedCount: partial ? 1 : 0
+        ))
+        await task.value
+        try await waitUntil { !app.cleanup.isRemoving }
+        let notice = try #require(app.notice)
+        let title = isTrashDenial ? (hasDiskAccess ? "Trash Access Was Denied" : "Full Disk Access Needed")
+            : (partial ? "Some Items Could Not Be Removed" : "Nothing Was Removed")
+        #expect(notice.title == title)
+        #expect(notice.showsFullDiskAccessAction == (failure == .trashAccess))
+        if isTrashDenial {
+            let subject = partial ? "1 item" : "2 items"
+            let reason = hasDiskAccess ? "macOS denied Trash access" : "Moppo does not have Full Disk Access"
+            let action = hasDiskAccess ? "review permissions in System Settings." : "enable Full Disk Access."
+            let message = "\(subject) could not be removed because \(reason). "
+                + "Remove \(partial ? "it" : "them") manually or \(action)"
+                + (partial ? "\nMoppo removed 1 other item." : "")
+            #expect(notice.message == message)
+        }
+        #expect(notice.message.contains("macOS denied access to some items.") == (failure == .itemAccess))
+        #expect(notice.message.contains("Moppo removed 1 other item.") == partial)
+        #expect(notice.finderURLs == failedEntries.map(\.url))
+        #expect(failedIDs.allSatisfy { app.cleanup.scannerSelection.contains($0) })
+        #expect(failedEntries.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
+        #expect(app.cleanup.cleanupOutcome?.trashAccessDenied == (isTrashDenial ? failedIDs : []))
     }
 
     @Test("A build folder review selects the whole folder while automatic selection keeps only caches")

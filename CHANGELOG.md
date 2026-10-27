@@ -4,6 +4,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Explain denied Trash access during worktree removal and show Full Disk Access guidance.
+- Show the draggable Moppo icon when a Full Disk Access action opens System Settings.
+- Use white fills for Settings action buttons in Light appearance.
+- Reduce the hover color change on Cleanup rows and section headers in both appearances.
+- Shorten cleanup measurement guidance in Dashboard.
+
 ## [0.3.0] - 2026-10-27
 
 Build 50.

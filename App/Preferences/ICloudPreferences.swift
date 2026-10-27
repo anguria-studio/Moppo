@@ -36,13 +36,28 @@ struct ICloudPreferences: View {
                 title: "Storage plan",
                 description: "macOS does not report your plan size, so it is estimated."
             ) {
-                Picker("Storage plan", selection: $settings.iCloudPlan) {
-                    ForEach(ICloudPlan.allCases) { plan in
-                        Text(plan.displayName).tag(plan)
+                Menu {
+                    Picker("Storage plan", selection: $settings.iCloudPlan) {
+                        ForEach(ICloudPlan.allCases) { plan in
+                            Text(plan.displayName).tag(plan)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } label: {
+                    HStack(spacing: 7) {
+                        Text(settings.iCloudPlan.displayName)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .accessibilityHidden(true)
                     }
                 }
-                .labelsHidden()
+                .menuStyle(.button)
+                .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
+                .menuIndicator(.hidden)
                 .fixedSize()
+                .accessibilityLabel("Storage plan")
+                .accessibilityValue(settings.iCloudPlan.displayName)
             }
         }
         .onChange(of: settings.showICloudOnDashboard) { _, _ in

@@ -21,7 +21,7 @@ struct UpdatesPane: View {
                         : updates.statusMessage
                 ) {
                     Button("Check Now", action: updates.checkForUpdates)
-                        .buttonStyle(SecondaryButtonStyle())
+                        .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
                         .disabled(!updates.canCheckForUpdates)
                 }
             }

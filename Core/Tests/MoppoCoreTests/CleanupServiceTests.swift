@@ -89,6 +89,40 @@ struct CleanupServiceTests {
         #expect(records.filter { $0.disposition == .failed }.map(\.originalPath) == [locked.path])
     }
 
+    enum WorktreeTrashFailure: CaseIterable { case lookupDenied, readDenied, missing }
+
+    @Test("Denied Trash access identifies the failure and preserves the worktree", arguments: WorktreeTrashFailure.allCases)
+    func worktreeTrashAccess(failure: WorktreeTrashFailure) async throws {
+        let denied = failure != .missing
+        let sandbox = try Sandbox()
+        let tree = try sandbox.directory("worktree")
+        let marker = "gitdir: /fixture/.git/worktrees/worktree\n"
+        try Data(marker.utf8).write(to: tree.appendingPathComponent(".git"))
+        let payload = try sandbox.writeFile("worktree/notes.txt", bytes: 16)
+        let trash = sandbox.root.appendingPathComponent("trash")
+        if failure == .readDenied {
+            try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+            try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: trash.path)
+        }
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: trash.path) }
+        let log = RemovalLog(directory: sandbox.root.appendingPathComponent("logs"))
+        let service = CleanupService(
+            measureSize: { _ in SizeMeasurement(allocatedBytes: 16) }, log: log,
+            worktreeTrashDirectory: { _ in
+                if failure == .lookupDenied { throw CocoaError(.fileReadNoPermission) }
+                return trash
+            }
+        )
+        let outcome = try await service.remove(entries: [entry(tree, kind: .folder)], trashFirst: true)
+        #expect(outcome.removedCount == 0)
+        #expect(outcome.failed == [tree.path])
+        #expect(outcome.permissionDenied == (denied ? [tree.path] : []))
+        #expect(outcome.trashAccessDenied == (denied ? [tree.path] : []))
+        #expect(FileManager.default.fileExists(atPath: payload.path))
+        #expect(try String(contentsOf: tree.appendingPathComponent(".git"), encoding: .utf8) == marker)
+        #expect(log.recentEntries().map(\.disposition) == [.failed])
+    }
+
     @Test("an already-missing entry is not a failure")
     func alreadyMissingIsNotAFailure() async throws {
         // The scan table is a snapshot; the user can delete a file in Finder before

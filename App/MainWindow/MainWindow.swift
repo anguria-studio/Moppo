@@ -100,6 +100,9 @@ struct MainWindow: View {
             ),
             presenting: model.notice
         ) { notice in
+            if notice.showsFullDiskAccessAction {
+                Button("Open Full Disk Access") { FullDiskAccess.openSystemSettings() }
+            }
             if !notice.finderURLs.isEmpty {
                 Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(notice.finderURLs)

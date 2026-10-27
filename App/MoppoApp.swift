@@ -324,8 +324,7 @@ private struct MoppoCommands: Commands {
             }
             .disabled(model.isBusyWithDisk || model.uninstaller.isShowingAppUninstallDetail)
             Button("Grant Full Disk Access") {
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!
-                NSWorkspace.shared.open(url)
+                FullDiskAccess.openSystemSettings()
             }
         }
     }

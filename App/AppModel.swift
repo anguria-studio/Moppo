@@ -445,6 +445,7 @@ final class AppModel {
         var title: String
         var message: String
         var finderURLs: [URL] = []
+        var showsFullDiskAccessAction = false
     }
 
     var notice: Notice?
@@ -612,36 +613,63 @@ final class AppModel {
     /// actually give back — and the result is the rows leaving the list and the
     /// Dashboard being measured again. A partial failure is different in kind:
     /// silent partial failure is how a cleaner loses trust.
-    private static func cleanUpNotice(_ outcome: CleanupOutcome) -> Notice? {
+    private func cleanUpNotice(_ outcome: CleanupOutcome) -> Notice? {
+        guard !outcome.failed.isEmpty || !outcome.skippedWorktrees.isEmpty else { return nil }
+        let removedSummary = "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
+        if !outcome.trashAccessDenied.isEmpty {
+            let denied = Set(outcome.trashAccessDenied)
+            let one = denied.count == 1
+            let needsDiskAccess = !hasFullDiskAccess()
+            let reason = needsDiskAccess ? "Moppo does not have Full Disk Access" : "macOS denied Trash access"
+            var message = "\(denied.count) \(one ? "item" : "items") could not be removed because \(reason). "
+                + "Remove \(one ? "it" : "them") manually or "
+                + (needsDiskAccess ? "enable Full Disk Access." : "review permissions in System Settings.")
+            if outcome.removedCount > 0 { message += "\n" + removedSummary }
+            let otherFailures = Set(outcome.failed).subtracting(denied).count
+            if otherFailures > 0 {
+                message += "\n\(otherFailures) other \(otherFailures == 1 ? "item could" : "items could") not be removed."
+            }
+            if !outcome.skippedWorktrees.isEmpty {
+                let count = outcome.skippedWorktrees.count
+                message += "\nMoppo kept \(count) \(count == 1 ? "worktree" : "worktrees") because the safety checks changed."
+            }
+            return Notice(
+                title: needsDiskAccess ? "Full Disk Access Needed" : "Trash Access Was Denied",
+                message: message,
+                finderURLs: (outcome.failed + outcome.skippedWorktrees).map { URL(fileURLWithPath: $0) },
+                showsFullDiskAccessAction: needsDiskAccess
+            )
+        }
+        var notice: Notice
         if !outcome.skippedWorktrees.isEmpty {
             let names = outcome.skippedWorktrees.map { FileEntry.abbreviate($0) }.joined(separator: "\n")
             var message = "Moppo kept these worktrees because the final safety check did not pass:\n\(names)"
             message += "\nThe folders remain on disk. Select All to review their current status."
             if outcome.removedCount > 0 {
-                message += "\nMoppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
+                message += "\n" + removedSummary
             }
             if !outcome.failed.isEmpty {
                 message += "\n\(outcome.failed.count) other \(outcome.failed.count == 1 ? "item could" : "items could") not be removed."
             }
-            return Notice(title: "Worktrees Were Kept", message: message,
+            notice = Notice(title: "Worktrees Were Kept", message: message,
                 finderURLs: (outcome.skippedWorktrees + outcome.failed).map { URL(fileURLWithPath: $0) })
+        } else {
+            let count = outcome.failed.count
+            let one = count == 1
+            let message = outcome.removedCount == 0
+                ? (one ? "The selected item could not be removed. The item remains in place."
+                    : "None of the \(count) selected items could be removed. They remain in place.")
+                : "\(count) \(one ? "item" : "items") could not be removed. " + removedSummary
+            notice = Notice(
+                title: outcome.removedCount == 0 ? "Nothing Was Removed" : "Some Items Could Not Be Removed",
+                message: message,
+                finderURLs: outcome.failed.map { URL(fileURLWithPath: $0) }
+            )
         }
-        guard !outcome.failed.isEmpty else { return nil }
-        let count = outcome.failed.count
-        let one = count == 1
-        var message = outcome.removedCount == 0
-            ? (one ? "The selected item could not be removed. The item remains in place."
-                : "None of the \(count) selected items could be removed. They remain in place.")
-            : "\(count) \(one ? "item" : "items") could not be removed. "
-                + "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
         if !outcome.permissionDenied.isEmpty {
-            message += "\nmacOS denied access to some items. Review them in Finder."
+            notice.message += "\nmacOS denied access to some items. Review them in Finder."
         }
-        return Notice(
-            title: outcome.removedCount == 0 ? "Nothing Was Removed" : "Some Items Could Not Be Removed",
-            message: message,
-            finderURLs: outcome.failed.map { URL(fileURLWithPath: $0) }
-        )
+        return notice
     }
 
     /// macOS controls access to the data of other apps separately from Full Disk Access.
@@ -786,7 +814,7 @@ final class AppModel {
         case .removed(let outcome):
             let destination = cleanupDestination ?? view
             if !showAppDataAccessAlertIfNeeded(outcome),
-               destination == .scanner, let unfinished = Self.cleanUpNotice(outcome) {
+               destination == .scanner, let unfinished = cleanUpNotice(outcome) {
                 notice = unfinished
             }
             if destination == .scanner {

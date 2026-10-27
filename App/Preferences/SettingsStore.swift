@@ -513,14 +513,16 @@ enum FullDiskAccess {
         return true
     }
 
-    /// Opens System Settings on the Full Disk Access list. The pane cannot pre-select
-    /// the app, so the user still has to find it — there is no API that does more.
+    /// Opens the Full Disk Access list and shows the app icon when access is off.
     @MainActor
     static func openSystemSettings() {
         guard let url = URL(
             string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
         ) else { return }
         NSWorkspace.shared.open(url)
+        if !isGranted {
+            FullDiskAccessGuide.shared.show()
+        }
     }
 }
 
