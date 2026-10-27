@@ -4,6 +4,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-27
+
+Build 50.
+
 - Show progress during worktree safety checks before removal.
 - Keep completed worktree reviews until another scan or an explicit check.
 - Use the same process checks during scans, worktree reviews, and removal.
@@ -18,6 +22,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show the comparison menu only when its options start at different measurements.
 - Explain shared storage on the capacity card when categories exceed used space.
 - Automatic update checks are now on by default, with a setting to turn them off.
+- Show Moppo animations during onboarding, with static symbols when Reduce Motion is on.
+- Open Cleanup after onboarding, including with limited file access.
 
 ## [0.2.0] - 2026-10-21
 
@@ -49,5 +55,6 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.3.0
 [0.2.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.2.0
