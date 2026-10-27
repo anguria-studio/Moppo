@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -28,8 +30,10 @@ jobs:
         with:
           fetch-depth: 2
           persist-credentials: false
-      # The checkout is the merge commit. Its first parent is the base branch.
-      # Changes to Markdown files, docs, or Vale rules do not need the tests.
+      # Compare this commit with its first parent.
+      # A pull request checkout is the merge commit, so that parent is the base branch.
+      # A push checkout is the commit on main. A squash merge is one commit.
+      # Markdown files, docs, and Vale rules do not need the tests.
       - name: Find code changes
         id: files
         run: |
@@ -59,7 +63,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" vale
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Check writing
-        run: vale README.md AGENTS.md WRITING_STYLE.md
+        run: vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs
 
   core-tests:
     name: Core tests

@@ -40,7 +40,7 @@ Debug builds without update settings make no update requests.
 
 The generated Info.plist requires signed feeds and verification before archive extraction.
 Moppo disables Sparkle automatic installation and system profile reporting.
-Automatic checks are optional and initially disabled.
+Moppo checks for updates automatically by default. Users can turn off automatic checks in the Updates pane.
 The controller starts after onboarding finishes.
 The Updates pane stores the automatic check preference through Sparkle.
 

@@ -37,7 +37,7 @@ targets:
         NSAppBundlesUsageDescription: "Moppo needs permission to move applications that you select to the Trash."
         SUFeedURL: "$(MOPPO_UPDATE_FEED_URL)"
         SUPublicEDKey: "$(MOPPO_UPDATE_PUBLIC_KEY)"
-        SUEnableAutomaticChecks: false
+        SUEnableAutomaticChecks: true
         SUAutomaticallyUpdate: false
         SUAllowsAutomaticUpdates: false
         SUEnableSystemProfiling: false
