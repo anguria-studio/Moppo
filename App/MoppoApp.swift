@@ -339,8 +339,8 @@ private struct WelcomeRoot: View {
     var body: some View {
         Group {
             if model.isShowingWelcome {
-                OnboardingView(settings: settings, access: access, progress: model.onboardingProgress) { folder in
-                    model.finishWelcomeGuide(folder: folder)
+                OnboardingView(settings: settings, access: access, progress: model.onboardingProgress) {
+                    model.finishWelcomeGuide()
                 }
             } else {
                 MainWindow(model: model, settings: settings, access: access)

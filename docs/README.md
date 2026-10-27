@@ -38,7 +38,9 @@ This scheme passes `--show-onboarding`. It keeps saved settings and system permi
 The `Moppo` scheme shows the guide until you complete it.
 If access is missing on a later launch, Moppo shows the access step again.
 Select **Enable** to open System Settings, or select **Continue with Limited Access** to enter the app.
+At the end of the welcome guide, **Get Started** opens Cleanup, also without Full Disk Access.
 The cleanup scan starts when you enter Cleanup, including with limited access.
+With limited access, Cleanup scans only the folders that Moppo can read.
 Scheduled scans and automatic storage measurements wait for Full Disk Access.
 macOS can request folder access during a scan. Moppo requests Photos access when you open
 Duplicates > Photos. Returning from System Settings refreshes the permission state.
@@ -849,6 +851,12 @@ The beams are not acts. They fire on their normal schedule.
 Short operations show the hourglass mode.
 In this mode, Moppo turns into an hourglass until the operation ends.
 With Reduce Motion on, these operations show the static hourglass symbol.
+
+Onboarding shows Moppo above the content of each step.
+On Welcome, Moppo looks around.
+On Preferences, Moppo turns into the settings icon, and its knobs slide.
+Moppo stays in place between the steps, and only the content below it changes.
+With Reduce Motion on, onboarding shows the app icon and the slider symbol.
 
 ## Writing
 

@@ -5,16 +5,14 @@ import MoppoCore
 struct OnboardingView: View {
     typealias Step = OnboardingProgress.Step
     @State private var step: Step
-    @State private var visitedSteps: Set<Step> = []
-    @State private var isChoosingFolder = false
     @Bindable var settings: SettingsStore
     let access: AccessModel
     let progress: OnboardingProgress?
-    let onFinish: (URL?) -> Void
+    let onFinish: () -> Void
 
     init(
         settings: SettingsStore, access: AccessModel, step: Step = .welcome,
-        progress: OnboardingProgress? = nil, onFinish: @escaping (URL?) -> Void
+        progress: OnboardingProgress? = nil, onFinish: @escaping () -> Void
     ) {
         self.settings = settings
         self.access = access
@@ -39,33 +37,38 @@ struct OnboardingView: View {
     }
 
     private var isWelcome: Bool { step == .welcome }
-    private var animateEntrance: Bool { !visitedSteps.contains(step) }
 
     var body: some View {
         VStack(spacing: 0) {
             WindowDragHandle().frame(height: Token.Size.headerBand)
             ScrollView {
-                VStack(spacing: 24) {
-                    heading
-                    Group {
-                        if isWelcome {
-                            AccessList(access: access, animateEntrance: animateEntrance)
-                        } else {
-                            preferences
+                VStack(spacing: 12) {
+                    // Moppo stays in place between the steps. Only the content below it changes.
+                    OnboardingMascot(isWelcome: isWelcome)
+                    VStack(spacing: 24) {
+                        heading
+                        Group {
+                            if isWelcome {
+                                AccessList(access: access, animateEntrance: true)
+                            } else {
+                                preferences
+                            }
                         }
+                        .frame(maxWidth: 540)
                     }
-                    .frame(maxWidth: 540)
+                    .id(step)
+                    .transition(.identity)
                 }
                 .frame(maxWidth: 620)
                 .padding(.horizontal, 32)
                 .padding(.vertical, 24)
                 .frame(maxWidth: .infinity, minHeight: 470)
-                .id(step)
-                .transition(.identity)
             }
             .defaultScrollAnchor(.center, for: .alignment)
             footer
         }
+        // Focus outlines show only during keyboard input, as in the main window.
+        .modifier(KeyboardFocusVisibility())
         .background(Token.chrome.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .top)
         .background {
@@ -78,25 +81,11 @@ struct OnboardingView: View {
 
     private var heading: some View {
         VStack(spacing: 12) {
-            if isWelcome {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
-                    .resizable().interpolation(.high).scaledToFit()
-                    .frame(width: 96, height: 96)
-                    .accessibilityHidden(true)
-                    .modifier(OnboardingEntrance(index: 0, enabled: animateEntrance))
-            } else {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 52, weight: .light))
-                    .foregroundStyle(Token.Text.primary)
-                    .frame(width: 96, height: 96)
-                    .accessibilityHidden(true)
-                    .modifier(OnboardingEntrance(index: 0, enabled: animateEntrance))
-            }
             Text(isWelcome ? "Welcome to Moppo" : "Set Your Preferences")
                 .font(.mcSecondaryHero)
                 .foregroundStyle(Token.Text.primary)
                 .accessibilityAddTraits(.isHeader)
-                .modifier(OnboardingEntrance(index: 1, enabled: animateEntrance))
+                .modifier(OnboardingEntrance(index: 1))
             Text(isWelcome
                  ? "Make room for what matters.\nFiles go to Trash first, so you can always restore them."
                  : "You can change these settings at any time in Settings.")
@@ -105,7 +94,7 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(minHeight: 36)
-                .modifier(OnboardingEntrance(index: 2, enabled: animateEntrance))
+                .modifier(OnboardingEntrance(index: 2))
         }
     }
 
@@ -140,7 +129,7 @@ struct OnboardingView: View {
     }
 
     private var scanDetail: String {
-        if access.disk != .allowed { return "Requires Full Disk Access. Manual folder scans remain available." }
+        if access.disk != .allowed { return "Requires Full Disk Access. You can still scan in Cleanup." }
         return settings.idleOnly ? "When plugged in and idle." : "Uses your saved scan schedule."
     }
 
@@ -168,7 +157,7 @@ struct OnboardingView: View {
         .overlay(RoundedRectangle(cornerRadius: Token.Radius.card)
             .strokeBorder(Token.Fill.boxBorder, lineWidth: 1))
         .accessibilityElement(children: .contain)
-        .modifier(OnboardingEntrance(index: index, enabled: animateEntrance))
+        .modifier(OnboardingEntrance(index: index))
     }
 
     private var footer: some View {
@@ -189,42 +178,17 @@ struct OnboardingView: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Setup steps")
-                HStack(spacing: 12) {
-                    if !isWelcome, access.disk != .allowed {
-                        Button("Skip for Now") { onFinish(nil) }
-                            .buttonStyle(PageActionButtonStyle())
-                    }
-                    Button(isWelcome ? "Continue" : (access.disk == .allowed ? "Get Started" : "Choose Folder")) {
-                        if isWelcome { changeStep(to: .preferences) }
-                        else if access.disk == .allowed { onFinish(nil) }
-                        else { chooseFolder() }
-                    }
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
-                    .keyboardShortcut(.defaultAction)
+                // Get Started opens Cleanup. Without Full Disk Access, Cleanup scans only the folders it can read.
+                Button(isWelcome ? "Continue" : "Get Started") {
+                    if isWelcome { changeStep(to: .preferences) } else { onFinish() }
                 }
+                .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
+                .keyboardShortcut(.defaultAction)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .disabled(isChoosingFolder)
             .padding(.vertical, 20)
         }
         .padding(.horizontal, 32)
-    }
-
-    private func chooseFolder() {
-        guard !access.isPreview else { return }
-        isChoosingFolder = true
-        let panel = NSOpenPanel()
-        panel.title = "Choose a Folder"
-        panel.message = "Moppo will measure only the folder you select."
-        panel.prompt = "Choose Folder"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        Task { @MainActor in
-            defer { isChoosingFolder = false }
-            guard await panel.presentAsSheet() == .OK, let url = panel.url else { return }
-            onFinish(url)
-        }
     }
 
     private func stepButton(_ number: Int, title: String, destination: Step) -> some View {
@@ -255,27 +219,54 @@ struct OnboardingView: View {
     private func changeStep(to step: Step) {
         guard self.step != step else { return }
         progress?.save(step)
-        visitedSteps.insert(self.step)
         self.step = step
     }
 }
 
+/// Shows Moppo above the onboarding content. On Welcome, Moppo looks around.
+/// On Preferences, Moppo turns into the settings icon. With Reduce Motion on, the app icon and the slider symbol show.
+private struct OnboardingMascot: View {
+    let isWelcome: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if !reduceMotion, MoppoMascotGeometry.shared != nil {
+                MoppoMascotView(mode: .search, shape: isWelcome ? nil : .settings)
+                    .frame(width: 113, height: 113)
+                    .foregroundStyle(.tertiary)
+            } else if isWelcome {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath))
+                    .resizable().interpolation(.high).scaledToFit()
+                    .frame(width: 96, height: 96)
+            } else {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 52, weight: .light))
+                    .foregroundStyle(Token.Text.primary)
+                    .frame(width: 96, height: 96)
+            }
+        }
+        .accessibilityHidden(true)
+        .modifier(OnboardingEntrance(index: 0))
+    }
+}
+
 #Preview("Welcome light") {
-    OnboardingView(settings: .preview(), access: .preview()) { _ in }
+    OnboardingView(settings: .preview(), access: .preview()) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.light)
 }
 
 #Preview("Welcome dark") {
-    OnboardingView(settings: .preview(), access: .preview(disk: true)) { _ in }
+    OnboardingView(settings: .preview(), access: .preview(disk: true)) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.dark)
 }
 
 #Preview("Preferences light") {
-    OnboardingView(settings: .preview(), access: .preview(disk: true, notifications: .allowed), step: .preferences) { _ in }
+    OnboardingView(settings: .preview(), access: .preview(disk: true, notifications: .allowed), step: .preferences) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.light)
 }
 
 #Preview("Preferences dark") {
-    OnboardingView(settings: .preview(), access: .preview(), step: .preferences) { _ in }
+    OnboardingView(settings: .preview(), access: .preview(), step: .preferences) {}
         .frame(width: 1000, height: 640).preferredColorScheme(.dark)
 }
