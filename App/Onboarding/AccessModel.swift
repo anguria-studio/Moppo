@@ -46,14 +46,15 @@ final class AccessModel {
                     _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
                 },
                 openSettings: { permission in
-                    let address = switch permission {
-                    case .disk: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
-                    case .photos: PhotoAccessRecoveryView.settingsURL.absoluteString
-                    case .notifications: "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
-                    }
-                    if let url = URL(string: address) { NSWorkspace.shared.open(url) }
-                    if permission == .disk, !FullDiskAccess.isGranted {
-                        FullDiskAccessGuide.shared.show()
+                    switch permission {
+                    case .disk:
+                        FullDiskAccess.openSystemSettings()
+                    case .photos:
+                        NSWorkspace.shared.open(PhotoAccessRecoveryView.settingsURL)
+                    case .notifications:
+                        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+                            NSWorkspace.shared.open(url)
+                        }
                     }
                 }
             )

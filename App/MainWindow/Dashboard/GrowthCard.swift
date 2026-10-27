@@ -197,7 +197,7 @@ struct GrowthCard: View {
                         .accessibilityHint("Update current storage. This does not create a cleanup baseline.")
                 }
                 if let cleanupBaselineDate, cleanupMeasurementState != .none {
-                    Text("The available cleanup comparison starts at \(Self.stamp(cleanupBaselineDate)).")
+                    Text("Comparison starts \(Self.stamp(cleanupBaselineDate)).")
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
                 }
@@ -212,11 +212,11 @@ struct GrowthCard: View {
         case .measuring:
             "Measuring storage after cleanup."
         case .requiresAccess:
-            "The latest cleanup has no storage measurement. Enable Full Disk Access before the next cleanup to save its comparison baseline."
+            "Enable Full Disk Access to measure storage after cleanup."
         case .failed:
-            "The storage measurement after cleanup failed. Refresh updates current storage. The next cleanup will try to save a new comparison baseline."
+            "Storage measurement failed. Refresh current storage or try another cleanup."
         case .interrupted:
-            "The storage measurement after cleanup stopped. Refresh updates current storage. The next cleanup will try to save a new comparison baseline."
+            "Storage measurement stopped. Refresh current storage or try another cleanup."
         case .cleared:
             "Storage history was cleared. The next cleanup starts a new cleanup comparison."
         case .none:

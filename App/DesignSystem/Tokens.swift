@@ -291,7 +291,10 @@ enum Token {
             light: .white, dark: .clear
         )
         static let cleanupRowHover = Token.dynamic(
-            light: NSColor(white: 249 / 255, alpha: 1), dark: .white.withAlphaComponent(0.03)
+            light: NSColor(white: 252 / 255, alpha: 1), dark: .white.withAlphaComponent(0.012)
+        )
+        static let cleanupHeaderHover = Token.dynamic(
+            light: NSColor(white: 242 / 255, alpha: 1), dark: .white.withAlphaComponent(0.012)
         )
         /// The selected sidebar row uses neutral gray in light mode.
         static let sidebarSelection = Token.dynamic(

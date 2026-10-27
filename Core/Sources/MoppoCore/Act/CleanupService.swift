@@ -53,6 +53,8 @@ public struct CleanupOutcome: Sendable, Equatable {
     public var failed: [String]
     /// Paths that failed because macOS denied access.
     public var permissionDenied: [String]
+    /// Worktree paths kept because macOS blocked access to the Trash.
+    public var trashAccessDenied: [String]
     public var applicationRemovalCancelled: Bool
     /// Worktree paths excluded because their removal checks changed.
     public var skippedWorktrees: [String]
@@ -64,6 +66,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         removedCount: Int = 0,
         failed: [String] = [],
         permissionDenied: [String] = [],
+        trashAccessDenied: [String] = [],
         applicationRemovalCancelled: Bool = false,
         trashedCount: Int = 0,
         deletedCount: Int = 0,
@@ -75,6 +78,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         self.removedCount = removedCount
         self.failed = failed
         self.permissionDenied = permissionDenied
+        self.trashAccessDenied = trashAccessDenied
         self.applicationRemovalCancelled = applicationRemovalCancelled
         self.trashedCount = trashedCount
         self.deletedCount = deletedCount
@@ -94,6 +98,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         deletedCount += other.deletedCount
         failed.append(contentsOf: other.failed)
         permissionDenied.append(contentsOf: other.permissionDenied)
+        trashAccessDenied.append(contentsOf: other.trashAccessDenied)
         applicationRemovalCancelled = applicationRemovalCancelled || other.applicationRemovalCancelled
         skippedWorktrees.append(contentsOf: other.skippedWorktrees)
     }
@@ -123,6 +128,7 @@ public struct CleanupService: Sendable {
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
     private let reviewBuildCache: @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement?
+    private let worktreeTrashDirectory: @Sendable (URL) throws -> URL
 
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
@@ -147,6 +153,9 @@ public struct CleanupService: Sendable {
         reviewBuildCache: @escaping @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement? = {
             try await XcodeBuildCache.measureForRemoval($0, with: AllocatedSizeMeasurer())
         },
+        worktreeTrashDirectory: @escaping @Sendable (URL) throws -> URL = {
+            try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: $0, create: true)
+        },
         applicationRemovalFallback: ApplicationRemovalFallback? = nil
     ) {
         self.measureSize = measureSize
@@ -155,6 +164,7 @@ public struct CleanupService: Sendable {
         self.dockerImages = dockerImages
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
+        self.worktreeTrashDirectory = worktreeTrashDirectory
         self.applicationRemovalFallback = applicationRemovalFallback
     }
 
@@ -325,10 +335,14 @@ public struct CleanupService: Sendable {
                 let landed: URL?
                 do {
                     if GitWorktreeDetector.isWorktree(target.url) {
-                        let trash = try FileManager.default.url(for: .trashDirectory, in: .userDomainMask,
-                            appropriateFor: target.url, create: true)
+                        let trash: URL
+                        do { trash = try worktreeTrashDirectory(target.url) }
+                        catch where FileAccessFailure.isPermissionDenied(error) {
+                            outcome.trashAccessDenied.append(target.url.path)
+                            throw error
+                        }
                         var reserved: Set<String> = []
-                        let destination = Self.freeTrashPath(for: target.url, in: trash, reserved: &reserved)
+                        let destination = try Self.freeTrashPath(for: target.url, in: trash, reserved: &reserved)
                         if try await GitWorktreeDetector.move(target.url, to: destination) { landed = destination }
                         else { landed = try Self.discard(target.url, disposition: .trashed) }
                     } else {
@@ -341,9 +355,13 @@ public struct CleanupService: Sendable {
                     _ = error
                     continue
                 } catch {
-                    let permissionDenied = FileAccessFailure.isPermissionDenied(error)
+                    let trashAccessDenied: Bool
+                    if case TrashError.unreadable = error { trashAccessDenied = true }
+                    else { trashAccessDenied = false }
+                    let permissionDenied = trashAccessDenied || FileAccessFailure.isPermissionDenied(error)
                     outcome.failed.append(target.url.path)
                     if permissionDenied { outcome.permissionDenied.append(target.url.path) }
+                    if trashAccessDenied { outcome.trashAccessDenied.append(target.url.path) }
                     records.append(Self.failureRecord(for: target, bytes: measured))
                     continue
                 }
@@ -714,7 +732,13 @@ public struct CleanupService: Sendable {
     /// which is also what Finder does.
     static func freeTrashPath(
         for source: URL, in trash: URL, reserved: inout Set<String>
-    ) -> URL {
+    ) throws -> URL {
+        func accessError() -> Error {
+            let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            return FileAccessFailure.isPermissionDenied(error) ? TrashError.unreadable(trash.path) : error
+        }
+        guard let directory = opendir(trash.path) else { throw accessError() }
+        closedir(directory)
         let base = source.deletingPathExtension().lastPathComponent
         let ext = source.pathExtension
         func candidate(_ suffix: String) -> URL {
@@ -727,11 +751,13 @@ public struct CleanupService: Sendable {
         // `lstat`, not `fileExists`: the latter follows symlinks, so a dangling
         // link in the Trash looked like a free name and the move would have
         // replaced it.
-        func occupied(_ url: URL) -> Bool {
+        func occupied(_ url: URL) throws -> Bool {
             var info = stat()
-            return lstat(url.path, &info) == 0
+            if lstat(url.path, &info) == 0 { return true }
+            if errno == ENOENT { return false }
+            throw accessError()
         }
-        while reserved.contains(attempt.path) || occupied(attempt) {
+        while try reserved.contains(attempt.path) || occupied(attempt) {
             attempt = candidate(" \(counter)")
             counter += 1
         }

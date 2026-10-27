@@ -354,10 +354,10 @@ struct ReviewFindingsTests {
         try Data(count: 4).write(to: trash.appendingPathComponent("Helper.app"))
 
         var reserved: Set<String> = []
-        let first = CleanupService.freeTrashPath(
+        let first = try CleanupService.freeTrashPath(
             for: URL(fileURLWithPath: "/Library/A/Helper.app"), in: trash, reserved: &reserved
         )
-        let second = CleanupService.freeTrashPath(
+        let second = try CleanupService.freeTrashPath(
             for: URL(fileURLWithPath: "/Library/B/Helper.app"), in: trash, reserved: &reserved
         )
         #expect(first.lastPathComponent == "Helper 2.app", "the plain name is taken on disk")
@@ -440,7 +440,7 @@ struct ReviewFindingsTests {
         ), "sanity: this is exactly the check that used to be wrong")
 
         var reserved: Set<String> = []
-        let chosen = CleanupService.freeTrashPath(
+        let chosen = try CleanupService.freeTrashPath(
             for: URL(fileURLWithPath: "/Library/X/Report.pdf"), in: trash, reserved: &reserved
         )
         #expect(chosen.lastPathComponent == "Report 2.pdf")
