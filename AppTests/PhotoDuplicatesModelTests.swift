@@ -98,6 +98,8 @@ struct PhotoDuplicatesModelTests {
         await app.photoDuplicates.requestAccess()
         #expect(await service.accessRequests == 0)
         app.finishWelcomeGuide()
+        // Finishing onboarding opens Cleanup, so the test opens Duplicates again.
+        app.view = .duplicates
         app.duplicateKind = .files
         await app.photoDuplicates.requestAccess()
         #expect(await service.accessRequests == 0)
