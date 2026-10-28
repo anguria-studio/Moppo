@@ -555,6 +555,15 @@ final class AppModel {
 
     var isBusyWithDisk: Bool { operations.isBusy }
 
+    var canEmptyTrash: Bool {
+        !isBusyWithDisk && !recovery.isLoadingTrash && (recovery.trashSummary?.itemCount ?? 0) > 0
+    }
+
+    func requestEmptyTrash() {
+        guard canEmptyTrash, activeSheet == nil else { return }
+        activeSheet = .emptyTrash
+    }
+
     // MARK: - Derived
 
     /// Names the action for the current page.

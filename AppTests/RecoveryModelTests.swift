@@ -130,6 +130,48 @@ struct RecoveryModelTests {
         #expect(!model.isBusyWithDisk)
     }
 
+    @Test("Empty Trash requests confirmation only for readable items when no operation or sheet is active")
+    func emptyTrashConfirmation() async throws {
+        let trash = HeldRecoveryTrash(holdReads: true)
+        let app = AppModel(hasFullDiskAccess: { true }, trashService: trash)
+        app.view = .dashboard
+
+        #expect(!app.canEmptyTrash)
+        app.requestEmptyTrash()
+        #expect(app.activeSheet == nil)
+
+        app.recovery.trashSummary = TrashSummary()
+        #expect(!app.canEmptyTrash)
+        app.requestEmptyTrash()
+        #expect(app.activeSheet == nil)
+
+        app.recovery.trashSummary = TrashSummary(totalBytes: 64, itemCount: 1)
+        let read = Task { await app.recovery.loadTrash() }
+        try await waitUntil { await trash.readLimits.count == 1 }
+        #expect(!app.canEmptyTrash)
+        app.requestEmptyTrash()
+        #expect(app.activeSheet == nil)
+        await trash.finishRead(0, TrashSummary(totalBytes: 64, itemCount: 1))
+        await read.value
+
+        let operation = try #require(app.operations.begin(.appUninstall))
+        #expect(!app.canEmptyTrash)
+        app.requestEmptyTrash()
+        #expect(app.activeSheet == nil)
+        app.operations.finish(operation)
+
+        app.activeSheet = .cleanUp
+        app.requestEmptyTrash()
+        #expect(app.activeSheet == .cleanUp)
+        app.activeSheet = nil
+
+        #expect(app.canEmptyTrash)
+        app.requestEmptyTrash()
+        #expect(app.activeSheet == .emptyTrash)
+        #expect(app.view == .dashboard)
+        #expect(await trash.emptyRequests == 0)
+    }
+
     @Test("Empty Trash keeps its guard through refreshed reads and reports survivors")
     func emptyLifetime() async throws {
         let trash = HeldRecoveryTrash(holdReads: true)
