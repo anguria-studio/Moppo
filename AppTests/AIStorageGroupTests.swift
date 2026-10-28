@@ -6,6 +6,15 @@ import MoppoCore
 @Suite("AI storage groups", .serialized)
 @MainActor
 struct AIStorageGroupTests {
+    @Test("Repeated tool icon lookups keep the same image")
+    func stableToolIcons() throws {
+        for tool in [FileEntry.AITool.codex, .claude, .chatGPT, .huggingFace, .cursor, .ollama, .lmStudio] {
+            let first = try #require(ApplicationIcons.icon(for: tool))
+            let next = try #require(ApplicationIcons.icon(for: tool))
+            #expect(first.image === next.image, "\(tool.rawValue) creates a new image")
+        }
+    }
+
     @Test("Groups retain row identities and count sessions and child storage once")
     func groupsAndTotals() throws {
         let rows = fixture()

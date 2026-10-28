@@ -397,7 +397,7 @@ struct AIStorageGroupHeader: View {
 
     var body: some View {
         Button(action: onToggle) { rowContent }
-            .buttonStyle(.plain)
+            .buttonStyle(LabelOnlyButtonStyle())
             .hoverHighlight(fill: Token.Fill.cleanupRowHover)
             .accessibilityLabel("\(owner.rawValue), storage shown, \(ByteFormatting.string(totalBytes))")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")

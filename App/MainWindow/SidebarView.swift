@@ -129,7 +129,7 @@ struct SidebarView: View {
             .frame(maxWidth: .infinity, minHeight: Token.Size.sidebarRow, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(SidebarRowButtonStyle())
+        .buttonStyle(LabelOnlyButtonStyle())
         // Mouse selection starts on press. The button also supports keyboard activation.
         // A right-click opens the menu without changing the page.
         .onLongPressGesture(minimumDuration: 0, maximumDistance: 4) { isPressing in
