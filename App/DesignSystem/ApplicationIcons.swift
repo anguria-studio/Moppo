@@ -33,10 +33,16 @@ enum ApplicationIcons {
            FileManager.default.fileExists(atPath: url.path) {
             return Icon(image: icon(for: url), includesPadding: true)
         }
+        let key = "tool:\(tool.rawValue)" as NSString
+        if let image = cache.object(forKey: key) {
+            return Icon(image: image, includesPadding: tool == .codex)
+        }
         let fallback = tool == .chatGPT
             ? NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
             : Bundle(for: BundleToken.self).image(forResource: tool.rawValue + "ToolIcon")
         guard let image = fallback else { return nil }
+        // Keep the same image during animated row updates.
+        cache.setObject(image, forKey: key)
         return Icon(image: image, includesPadding: tool == .codex)
     }
 
