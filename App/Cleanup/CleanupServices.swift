@@ -83,7 +83,8 @@ protocol CleanupRemoving: Sendable {
         keepReceipt: Bool,
         userDataRemovalOverrides: Set<FileEntry.ID>,
         appDataRemovalOverrides: Set<FileEntry.ID>,
-        expectedIdentities: [FileEntry.ID: String]
+        expectedIdentities: [FileEntry.ID: String],
+        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval]
     ) async throws -> CleanupOutcome
 
     func removeOrphanedAppLeftovers(

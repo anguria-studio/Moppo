@@ -4,6 +4,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Remove the Go module cache through Go after mandatory confirmation, with command results in Cleanup History.
 - Avoid Trash names that Git still reserves for missing worktrees.
 - Explain denied Trash access during worktree removal and show Full Disk Access guidance.
 - Show the draggable Moppo icon when a Full Disk Access action opens System Settings.

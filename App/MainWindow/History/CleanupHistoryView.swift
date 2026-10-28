@@ -106,7 +106,7 @@ struct CleanupHistoryView: View {
                     )
                 },
                 CompactTableColumn("Result", width: 160, min: 120, max: 200, sort: KeyPathComparator(\CleanupHistoryItem.resultSortRank)) { item, selected in
-                    ResultLabel(state: item.state, isSelected: selected)
+                    ResultLabel(state: item.state, isSelected: selected, toolCommandResult: item.toolCommandResult)
                 },
                 CompactTableColumn("Date", width: 105, min: 95, max: 145, sort: KeyPathComparator(\CleanupHistoryItem.timestamp)) { item, selected in
                     CompactTableDate(date: item.timestamp, isSelected: selected)
@@ -142,7 +142,7 @@ struct CleanupHistoryView: View {
     private var emptyState: some View {
         PageState(
             title: "No cleanup history", symbol: "clock",
-            detail: "Enable Put Back receipts in Settings to record removed items and failures."
+            detail: "Enable Put Back receipts in Settings to record Trash removals. Tool command results are always recorded."
         )
     }
 
@@ -267,6 +267,7 @@ private extension CleanupHistoryItem {
 private struct ResultLabel: View {
     let state: CleanupHistoryState
     let isSelected: Bool
+    var toolCommandResult: ToolCommandRemovalResult? = nil
 
     var body: some View {
         Label(title, systemImage: symbol)
@@ -307,7 +308,8 @@ private struct ResultLabel: View {
     }
 
     private var helpText: String {
-        switch state {
+        if let toolCommandResult { return toolCommandResult.command + "\n" + toolCommandResult.summary }
+        return switch state {
         case .availableInTrash:
             "The receipt matches this item in the Trash. Use the Trash view to put it back."
         case .inTrash:

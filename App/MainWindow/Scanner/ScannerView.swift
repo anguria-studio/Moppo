@@ -21,7 +21,9 @@ struct ScannerView: View {
                 ActivityOverlay(activity: activity)
                     .transition(.opacity)
             } else if case .cleaningUp(let itemCount, let totalBytes) = activity {
-                CleanupOperationView(itemCount: itemCount, totalBytes: totalBytes)
+                CleanupOperationView(itemCount: itemCount, totalBytes: totalBytes,
+                    onCancel: model.canCancelRemoval ? { model.cancelRemoval() } : nil,
+                    isCancelling: model.isInterruptingRemoval)
                     .transition(.opacity)
             } else if let completion = cleanupCompletion {
                 CleanupOperationView(

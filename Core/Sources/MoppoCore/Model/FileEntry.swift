@@ -117,6 +117,12 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     }
 
     public var manualRemoval: ManualRemoval?
+    public var removalMethod: RemovalMethod
+
+    public var toolCommand: ToolCommandRemoval? {
+        if case .toolCommand(let command) = removalMethod { return command }
+        return nil
+    }
     /// Docker handles permanent removal of this image.
     public var dockerImage: DockerImage?
 
@@ -224,7 +230,8 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// User data requires separate authorization. Running apps and inventory rows stay locked.
     public var isRemovalLocked: Bool {
         protectionReason != nil
-            || manualRemoval != nil || dockerImage?.isRemovalLocked == true || !unlockableChildren.isEmpty
+            || manualRemoval != nil || toolCommand?.lockReason != nil
+            || dockerImage?.isRemovalLocked == true || !unlockableChildren.isEmpty
     }
     /// Item count for folders, shown as `· 1,204 items`.
     public var childCount: Int?
@@ -243,6 +250,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         protectionReason: ProtectionReason? = nil,
         protectionExplanation: String? = nil,
         manualRemoval: ManualRemoval? = nil,
+        removalMethod: RemovalMethod = .trash,
         dockerImage: DockerImage? = nil,
         inUseBy: RunningOwner? = nil,
         xcodeBuildCacheReview: XcodeBuildCache.Review? = nil,
@@ -267,6 +275,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.protectionReason = protectionReason
         self.protectionExplanation = protectionExplanation
         self.manualRemoval = manualRemoval
+        self.removalMethod = removalMethod
         self.dockerImage = dockerImage
         self.inUseBy = inUseBy
         self.xcodeBuildCacheReview = xcodeBuildCacheReview

@@ -19,8 +19,10 @@ public struct CleanupHistoryItem: Sendable, Identifiable, Equatable {
     public let trashedIdentity: String?
     public let bytes: Int64
     public let state: CleanupHistoryState
+    public let toolCommandResult: ToolCommandRemovalResult?
 
     public var name: String {
+        if let toolCommandResult { return toolCommandResult.name }
         if originalURL.scheme == "docker",
            let name = URLComponents(url: originalURL, resolvingAgainstBaseURL: false)?
             .queryItems?.first(where: { $0.name == "name" })?.value { return name }
@@ -38,6 +40,7 @@ public struct CleanupHistoryItem: Sendable, Identifiable, Equatable {
         trashedIdentity = record.trashedIdentity
         bytes = record.bytes
         self.state = state
+        toolCommandResult = record.toolCommandResult
         id = ([
             record.timestamp.ISO8601Format(),
             record.disposition.rawValue,
@@ -129,6 +132,10 @@ public struct CleanupHistoryService: Sendable {
                 items.append(item(record, state: .removedPermanently, occurrences: &occurrences))
 
             case .failed:
+                if let result = record.toolCommandResult {
+                    removedBytes += result.removedBytes ?? 0
+                    freedBytes += result.freedBytes ?? 0
+                }
                 failedCount += 1
                 items.append(item(record, state: .failed, occurrences: &occurrences))
             }

@@ -291,6 +291,14 @@ Presentation state does not determine whether an operation is active.
 This includes Cleanup, application data, sound libraries, Storage Explorer, duplicate files, and duplicate photos.
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
+Each tool command also requires separate confirmation, including when routine confirmations are off.
+Cleanup currently uses this path for the Go module cache at `~/go/pkg/mod`.
+Moppo checks the tool and cache identities before it runs the fixed command arguments.
+Stop cancels the command and retains completed results from the selection.
+The current ordinary file operation can finish before cancellation takes effect.
+Command results always enter Cleanup History, including when Put Back receipts are off.
+The results distinguish measured cache size reduction from verified disk space recovery.
+Simulator runtimes and old Homebrew versions still need their separate tool integrations.
 Docker images appear once per image identifier, with their tags grouped together.
 When this Mac has Docker Desktop but it is unavailable, Cleanup shows its setup card in All results.
 When Docker Desktop is absent, Cleanup hides the empty Docker card.

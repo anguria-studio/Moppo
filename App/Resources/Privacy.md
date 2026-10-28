@@ -11,6 +11,8 @@ Moppo does not upload scanned files, file paths, photos, or photo library conten
 Moppo stores settings, storage measurements, and removal receipts on your Mac.
 Removal receipts can contain original file paths and Trash locations.
 Moppo uses these records for History and Put Back.
+Tool command results include the command, target path, exit status, and limited error output.
+Moppo keeps these local results even when Put Back receipts are off.
 
 ## Application updates
 

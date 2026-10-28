@@ -42,6 +42,7 @@ public struct RemovalRecord: Sendable, Equatable {
     /// `nil` on records written before this field existed, and on items whose
     /// filesystem would not report it.
     public var freedBytes: Int64?
+    public var toolCommandResult: ToolCommandRemovalResult?
 
     public init(
         timestamp: Date,
@@ -50,7 +51,8 @@ public struct RemovalRecord: Sendable, Equatable {
         disposition: RemovalDisposition,
         trashedPath: String? = nil,
         trashedIdentity: String? = nil,
-        freedBytes: Int64? = nil
+        freedBytes: Int64? = nil,
+        toolCommandResult: ToolCommandRemovalResult? = nil
     ) {
         self.timestamp = timestamp
         self.originalPath = originalPath
@@ -59,6 +61,7 @@ public struct RemovalRecord: Sendable, Equatable {
         self.trashedPath = trashedPath
         self.trashedIdentity = trashedIdentity
         self.freedBytes = freedBytes
+        self.toolCommandResult = toolCommandResult
     }
 }
 
@@ -161,6 +164,27 @@ public struct RemovalLog: Sendable {
 
     public func append(_ records: [RemovalRecord]) throws {
         guard !records.isEmpty else { return }
+        let descriptor = try openForWriting()
+        defer { close(descriptor) }
+
+        let text = records.map(Self.line(for:)).joined(separator: "\n") + "\n"
+        try Data(text.utf8).withUnsafeBytes { buffer in
+            guard let base = buffer.baseAddress else { return }
+            var written = 0
+            while written < buffer.count {
+                let count = write(descriptor, base.advanced(by: written), buffer.count - written)
+                guard count > 0 else { throw RemovalLogError.unwritable(logFileURL.path) }
+                written += count
+            }
+        }
+    }
+
+    func checkWritable() throws {
+        let descriptor = try openForWriting()
+        close(descriptor)
+    }
+
+    private func openForWriting() throws -> Int32 {
         let url = logFileURL
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
@@ -171,18 +195,7 @@ public struct RemovalLog: Sendable {
         // logging from two removals — cannot land a line on top of another's.
         let descriptor = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
         guard descriptor >= 0 else { throw RemovalLogError.unwritable(url.path) }
-        defer { close(descriptor) }
-
-        let text = records.map(Self.line(for:)).joined(separator: "\n") + "\n"
-        try Data(text.utf8).withUnsafeBytes { buffer in
-            guard let base = buffer.baseAddress else { return }
-            var written = 0
-            while written < buffer.count {
-                let count = write(descriptor, base.advanced(by: written), buffer.count - written)
-                guard count > 0 else { throw RemovalLogError.unwritable(url.path) }
-                written += count
-            }
-        }
+        return descriptor
     }
 
     // MARK: - Reading
@@ -221,10 +234,13 @@ public struct RemovalLog: Sendable {
         let timestamp = record.timestamp.formatted(timestampStyle)
         let path = quote(record.originalPath)
         var line = "\(timestamp) \(path) \(record.bytes) \(record.disposition.rawValue)"
-        guard record.trashedPath != nil || record.freedBytes != nil else { return line }
+        guard record.trashedPath != nil || record.freedBytes != nil || record.toolCommandResult != nil else { return line }
         line += " " + quote(record.trashedPath ?? "")
         if let identity = record.trashedIdentity { line += " " + identity }
         if let freed = record.freedBytes { line += " freed=\(freed)" }
+        if let result = record.toolCommandResult, let data = try? JSONEncoder().encode(result) {
+            line += " command=" + data.base64EncodedString()
+        }
         return line
     }
 
@@ -243,6 +259,7 @@ public struct RemovalLog: Sendable {
         var trashedPath: String?
         var trashedIdentity: String?
         var freedBytes: Int64?
+        var toolCommandResult: ToolCommandRemovalResult?
         if fields.count == 3, let (trashed, rest) = unquote(fields[2]) {
             // An empty quoted field is a placeholder written by a permanent
             // deletion that still had a freed figure to record; it names no path.
@@ -250,6 +267,10 @@ public struct RemovalLog: Sendable {
             for token in rest.split(separator: " ", omittingEmptySubsequences: true) {
                 if token.hasPrefix("freed=") {
                     freedBytes = Int64(token.dropFirst("freed=".count))
+                } else if token.hasPrefix("command=") {
+                    if let data = Data(base64Encoded: String(token.dropFirst("command=".count))) {
+                        toolCommandResult = try? JSONDecoder().decode(ToolCommandRemovalResult.self, from: data)
+                    }
                 } else if trashedIdentity == nil {
                     trashedIdentity = String(token)
                 }
@@ -263,7 +284,8 @@ public struct RemovalLog: Sendable {
             disposition: disposition,
             trashedPath: trashedPath,
             trashedIdentity: trashedIdentity,
-            freedBytes: freedBytes
+            freedBytes: freedBytes,
+            toolCommandResult: toolCommandResult
         )
     }
 

@@ -140,8 +140,32 @@ Moppo does not delete APFS snapshots.
 | Empty Trash | Moppo always requires confirmation because this operation permanently erases items. |
 | Permanent application deletion | Moppo always requires confirmation, including when routine cleanup confirmations are off. |
 | Docker image removal | **Confirm before every clean-up** controls the review. |
+| Tool command removal | Moppo requires confirmation for each command, including when routine confirmations are off. |
 
 With **Confirm before every clean-up** off, removals that support recovery start without a Moppo confirmation.
+
+### Tool commands and the Go module cache
+
+Put Back cannot restore items removed by a tool command.
+Cleanup lists the Go module cache at `~/go/pkg/mod` under **Package Manager Caches**.
+The row stays locked when Moppo cannot find Go at a supported installation path.
+Go installations from Homebrew and the standard Go installer use supported paths.
+Custom module cache locations are outside this removal rule.
+
+Before removal, Moppo shows the command, cache path, size, and permanent removal warning.
+Select **Confirm Command** for each command.
+After the last confirmation, removal starts for the reviewed selection.
+Select **Cancel** to stop the review before removal starts.
+During removal, select **Stop** to request cancellation.
+The current file operation can finish before the command sequence stops.
+
+Moppo checks the cache and tool identities again before it runs `go clean -modcache`.
+The command receives the reviewed cache path through `GOMODCACHE`.
+Projects can need another dependency download after removal.
+Command results always enter Cleanup History, including when Put Back receipts are off.
+The result includes the exit status, error output, and measured cache size reduction when available.
+Cache size reduction and verified disk space recovery are separate figures.
+Failed rows stay visible with their removal reason.
 
 ### Homebrew applications
 
