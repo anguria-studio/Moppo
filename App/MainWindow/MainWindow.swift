@@ -59,6 +59,10 @@ struct MainWindow: View {
             if scenePhase == .active { model.startInitialCleanupScan() }
             await model.loadDashboard()
         }
+        .task(id: scenePhase) {
+            guard scenePhase == .active, model.view != .trash else { return }
+            await model.recovery.loadTrash()
+        }
         .onChange(of: model.view) { _, view in
             model.photoDuplicates.preview = nil
             if view == .scanner, scenePhase == .active { model.startInitialCleanupScan() }
@@ -346,7 +350,7 @@ struct MainWindow: View {
         case .storageExplorer: return model.storageExplorer.canRemoveSelection
             && !model.storageExplorer.isMapSelectionPending
             && !model.storageExplorer.isMeasurementBlocked
-        case .trash:           return (model.recovery.trashSummary?.itemCount ?? 0) > 0
+        case .trash:           return model.canEmptyTrash
         case .dashboard, .history: return false
         }
     }
@@ -367,7 +371,7 @@ struct MainWindow: View {
                 Task { await model.uninstaller.requestLeftoverRemoval() }
             }
         case .storageExplorer: Task { await model.storageExplorer.requestRemoval() }
-        case .trash:      model.activeSheet = .emptyTrash
+        case .trash:      model.requestEmptyTrash()
         case .dashboard, .history: break
         }
     }
