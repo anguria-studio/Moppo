@@ -152,7 +152,7 @@ The row stays locked when Moppo cannot find Go at a supported installation path.
 Go installations from Homebrew and the standard Go installer use supported paths.
 Custom module cache locations are outside this removal rule.
 
-Before removal, Moppo shows the command, cache path, size, and permanent removal warning.
+Before removal, Moppo shows the command, item path, size, and permanent removal warning.
 Select **Confirm Command** for each command.
 After the last confirmation, removal starts for the reviewed selection.
 Select **Cancel** to stop the review before removal starts.
@@ -166,6 +166,21 @@ Command results always enter Cleanup History, including when Put Back receipts a
 The result includes the exit status, error output, and measured cache size reduction when available.
 Cache size reduction and verified disk space recovery are separate figures.
 Failed rows stay visible with their removal reason.
+
+### Old Homebrew formula versions
+
+Put Back cannot restore formula versions that Homebrew removes.
+Cleanup lists each eligible old version under **Package Manager Caches**, with its name, version, path, and size.
+These versions require review and stay outside **Safe to Remove**.
+Pinned formulae, linked versions, active versions, and versions that Homebrew retains stay protected.
+
+Select an old version for removal.
+Review the Homebrew command and permanent removal warning.
+Select **Confirm Command** for each version.
+Moppo requires this confirmation even when routine confirmations are off.
+Homebrew removes only the selected version after another eligibility check.
+The download cache remains separate.
+Failures stay visible with the command result in Cleanup History.
 
 ### Homebrew applications
 

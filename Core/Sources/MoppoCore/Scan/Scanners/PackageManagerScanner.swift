@@ -1,13 +1,10 @@
 import Foundation
 
-/// Scanner category 5 — **Package Manager Caches**, the green `safe` badge.
+/// Lists package caches and obsolete Homebrew formula versions.
 ///
-/// Everything this category emits is a download or build cache that the tool which
-/// created it will rebuild on demand, so all entries are `.cache` / `isRegenerable`
-/// and the whole total feeds the Dashboard's "Safe to remove" figure. Nothing here
-/// requires human judgement, which is exactly why the roots below are a fixed,
-/// audited list rather than a heuristic sweep: one wrong path and an unattended
-/// clean deletes a project.
+/// Cache rows can regenerate and enter Safe to Remove.
+/// Old formula versions require review and Homebrew removal.
+/// Cache roots use a fixed list to protect project files.
 ///
 /// Ports `electron/cleaners/packageManagers.ts`, dropping two of its behaviours:
 ///
@@ -44,11 +41,16 @@ public struct PackageManagerScanner: CategoryScanner {
     /// exercised against a fixture tree; production reads the real home.
     private let home: URL
     private let goExecutable: @Sendable () -> String?
+    private let homebrewVersions: HomebrewFormulaVersions
 
     public init(home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
-                goExecutable: @escaping @Sendable () -> String? = ToolCommandRemoval.resolveGo) {
+                goExecutable: @escaping @Sendable () -> String? = ToolCommandRemoval.resolveGo,
+                homebrewVersions: HomebrewFormulaVersions? = nil) {
         self.home = home
         self.goExecutable = goExecutable
+        // A custom home does not inspect this Mac's system package installations without an explicit service.
+        self.homebrewVersions = homebrewVersions ?? (home.standardizedFileURL.path == NSHomeDirectory()
+            ? HomebrewFormulaVersions() : HomebrewFormulaVersions(executables: { [] }, run: { _, _ in Data() }))
     }
 
     // MARK: - Cache roots
@@ -213,6 +215,11 @@ public struct PackageManagerScanner: CategoryScanner {
         var entries: [FileEntry] = []
         var totalBytes: Int64 = 0
         var unreadableCount = 0
+
+        let homebrew = try await homebrewVersions.entries(context: context)
+        entries += homebrew.entries
+        totalBytes += homebrew.entries.reduce(0) { $0 + $1.allocatedBytes }
+        unreadableCount += homebrew.unreadableCount
 
         let moduleCache = home.appendingPathComponent("go/pkg/mod", isDirectory: true)
         if FileManager.default.fileExists(atPath: moduleCache.path), !context.isExcluded(moduleCache) {

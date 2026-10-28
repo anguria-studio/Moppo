@@ -8,11 +8,13 @@ public struct FileEntryPresentation: Sendable, Equatable {
     }
 
     public let summary: String
+    public let badge: String?
     public let icon: Icon
     public let runningGuidance: String?
     public let runningOwner: FileEntry.RunningOwner?
 
     public init(entry: FileEntry, project: Project? = nil, showsSafetyCaveat: Bool = true) {
+        badge = entry.toolCommand?.isHomebrewVersion == true ? "Old Homebrew version" : nil
         let isBuildCacheGroup = entry.xcodeBuildCacheReview?.isWholeFolder == true || entry.children.contains { $0.xcodeBuildCacheReview?.root == entry.url }
         runningOwner = entry.inUseBy ?? (isBuildCacheGroup ? entry.children.compactMap(\.inUseBy).first : nil)
         if entry.protectionReason == .running, let explanation = entry.protectionExplanation {
@@ -32,7 +34,11 @@ public struct FileEntryPresentation: Sendable, Equatable {
         let type: String
         let symbol: Icon
 
-        if let image = entry.dockerImage {
+        if badge != nil {
+            summary = entry.safetyCaveat ?? ""
+            icon = .cache
+            return
+        } else if let image = entry.dockerImage {
             let usage: String
             if let count = image.containerCount {
                 usage = count == 0 ? "Unused"
