@@ -59,14 +59,17 @@ struct CodexSessionsTests {
         }
 
         @discardableResult
-        func session(_ id: String, archived: Bool = false, name: String = "Fixture session") async throws -> URL {
+        func session(_ id: String, archived: Bool = false, name: String = "Fixture session", compressed: Bool = false) async throws -> URL {
             let folder = archived ? "archived_sessions" : "sessions"
-            let url = home.appendingPathComponent("\(folder)/rollout-2026-01-01T00-00-00-\(id).jsonl")
+            let suffix = compressed ? ".jsonl.zst" : ".jsonl"
+            let url = home.appendingPathComponent("\(folder)/rollout-2026-01-01T00-00-00-\(id)\(suffix)")
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let header: [String: Any] = ["type": "session_meta", "payload": ["id": id]]
             var data = try JSONSerialization.data(withJSONObject: header)
             data.append(Data("\n".utf8))
             data.append(Data(repeating: 0x20, count: 8192))
+            // The command fixture owns these contents. Moppo must not parse compressed history.
+            if compressed { data = Data("Opaque compressed history fixture".utf8) }
             try data.write(to: url)
             try await sql("INSERT INTO threads VALUES ('\(id)', '\(url.path)', '\(name)', '\(name)');")
             return url
@@ -103,7 +106,7 @@ struct CodexSessionsTests {
     func reviewedInventory() async throws {
         let fixture = try await Fixture()
         try await fixture.session(fixture.parent, name: "Parent session")
-        try await fixture.session(fixture.child, archived: true)
+        try await fixture.session(fixture.child, archived: true, compressed: true)
         try await fixture.session(fixture.archived, archived: true, name: "Archived session")
         try await fixture.sql("INSERT INTO thread_spawn_edges VALUES ('\(fixture.parent)', '\(fixture.child)', 'completed');")
         let result = try await fixture.scan()
@@ -126,20 +129,20 @@ struct CodexSessionsTests {
         #expect(!CleanupService.removalAllowed(active, userDataRemovalOverrides: [active.id]))
     }
 
-    @Test("A history path without the private folder prefix matches its scanned file")
-    func privateFolderPath() async throws {
+    @Test("A history path without the private folder prefix matches its scanned file", arguments: [false, true])
+    func privateFolderPath(compressed: Bool) async throws {
         let fixture = try await Fixture()
-        let url = try await fixture.session(fixture.parent)
+        let url = try await fixture.session(fixture.parent, compressed: compressed)
         try #require(url.path.hasPrefix("/private/"))
         try await fixture.sql("UPDATE threads SET rollout_path='\(url.path.dropFirst("/private".count))';")
         #expect(try await fixture.row(fixture.parent).codexSession?.members.map(\.url) == [url])
     }
 
-    @Test("Reviewed deletion uses Codex, includes children, and records permanent removal")
-    func nativeDeletion() async throws {
+    @Test("Reviewed deletion uses Codex, includes children, and records permanent removal", arguments: [false, true])
+    func nativeDeletion(compressed: Bool) async throws {
         let fixture = try await Fixture()
-        let parent = try await fixture.session(fixture.parent)
-        let child = try await fixture.session(fixture.child, archived: true)
+        let parent = try await fixture.session(fixture.parent, compressed: compressed)
+        let child = try await fixture.session(fixture.child, archived: true, compressed: compressed)
         try await fixture.sql("INSERT INTO thread_spawn_edges VALUES ('\(fixture.parent)', '\(fixture.child)', 'completed');")
         let retainedPaths = ["auth.json", "config.toml", "memories/memory_summary.md",
                              "attachments/original.png", "generated_images/output.png"]
@@ -181,7 +184,7 @@ struct CodexSessionsTests {
     func compatibleInventory(_ installation: Installation) async throws {
         let fixture = try await Fixture()
         let parent = try await fixture.session(fixture.parent, name: "CLI conversation")
-        let archived = try await fixture.session(fixture.archived, archived: true, name: "Archived CLI conversation")
+        let archived = try await fixture.session(fixture.archived, archived: true, name: "Archived CLI conversation", compressed: true)
         let database = fixture.home.appendingPathComponent("state_5.sqlite")
         var connection: OpaquePointer?
         var unreadablePath: String?
@@ -279,12 +282,12 @@ struct CodexSessionsTests {
         #expect(records.contains { $0.disposition == .failed })
     }
 
-    enum Change: CaseIterable { case appendHistory, replaceFile, addChild, writer, openHistory, symlink, nativeFailure }
+    enum Change: CaseIterable { case appendHistory, replaceFile, addChild, writer, openHistory, symlink, nativeFailure, changeFormat }
 
-    @Test("Changes after review stop native deletion", arguments: Change.allCases)
-    func revalidate(_ change: Change) async throws {
+    @Test("Changes after review stop native deletion", arguments: Change.allCases, [false, true])
+    func revalidate(_ change: Change, compressed: Bool) async throws {
         let fixture = try await Fixture()
-        let url = try await fixture.session(fixture.parent)
+        var url = try await fixture.session(fixture.parent, compressed: compressed)
         let row = try await fixture.row(fixture.parent)
         var descriptor: Int32?
         var handle: FileHandle?
@@ -315,6 +318,11 @@ struct CodexSessionsTests {
             try FileManager.default.createSymbolicLink(at: url, withDestinationURL: moved)
         case .nativeFailure:
             try Data().write(to: fixture.home.appendingPathComponent("force-failure"))
+        case .changeFormat:
+            let moved = compressed ? url.deletingPathExtension() : url.appendingPathExtension("zst")
+            try FileManager.default.moveItem(at: url, to: moved)
+            try await fixture.sql("UPDATE threads SET rollout_path='\(moved.path)';")
+            url = moved
         }
         let outcome = try await fixture.service().remove(entries: [row], trashFirst: false,
                                                         userDataRemovalOverrides: [row.id])
@@ -322,6 +330,35 @@ struct CodexSessionsTests {
         #expect(outcome.failed == [row.url.path])
         #expect(FileManager.default.fileExists(atPath: url.path))
         #expect(!FileManager.default.fileExists(atPath: fixture.home.appendingPathComponent("native-called").path))
+    }
+
+    enum CompressedPath: CaseIterable { case beforeCompression, unrelated, existingPlaintext }
+
+    @Test("Compressed history accepts only its own missing plaintext path", arguments: CompressedPath.allCases)
+    func compressedPath(_ path: CompressedPath) async throws {
+        let fixture = try await Fixture()
+        let url = try await fixture.session(fixture.parent, archived: true, compressed: true)
+        let saved: URL
+        switch path {
+        case .beforeCompression:
+            saved = url.deletingPathExtension()
+        case .unrelated:
+            saved = url.deletingLastPathComponent().appendingPathComponent("other.jsonl")
+        case .existingPlaintext:
+            saved = url.deletingPathExtension()
+            try Data("Unknown metadata\n".utf8).write(to: saved)
+        }
+        try await fixture.sql("UPDATE threads SET rollout_path='\(saved.path)';")
+        let rows = try await fixture.scan().entries.flatMap(\.children)
+        if path == .beforeCompression {
+            let row = try #require(rows.first { $0.codexSession != nil })
+            #expect(row.protectionReason == .userData)
+            #expect(row.codexSession?.members.map(\.url) == [url])
+            let excluded = try await fixture.scan(ScanContext(excludedPaths: [url.standardizedFileURL.path]))
+            #expect(excluded.entries.flatMap(\.children).allSatisfy { $0.codexSession == nil })
+        } else {
+            #expect(rows.allSatisfy { $0.codexSession == nil && $0.protectionReason == .inventory })
+        }
     }
 
     @Test("Exclusions and unknown session metadata prevent reviewed deletion")
@@ -337,7 +374,7 @@ struct CodexSessionsTests {
         #expect(unknown.safeToRemoveBytes == 0)
     }
 
-    @Test("Unreviewed copies and compressed history keep the whole deletion group locked")
+    @Test("Additional history copies keep the whole deletion group locked")
     func additionalHistoryFiles() async throws {
         let fixture = try await Fixture()
         let url = try await fixture.session(fixture.parent)
@@ -353,5 +390,10 @@ struct CodexSessionsTests {
         #expect(Set(rows.map(\.url)) == [url, url.appendingPathExtension("zst")])
         #expect(rows.allSatisfy { $0.protectionReason == .inventory })
         #expect(scan.totalBytes == (try await AllocatedSizeMeasurer().measure(fixture.home)).allocatedBytes)
+
+        let unknownName = url.deletingLastPathComponent().appendingPathComponent("extra-\(fixture.parent).jsonl.zst")
+        try FileManager.default.moveItem(at: url.appendingPathExtension("zst"), to: unknownName)
+        let ambiguous = try await fixture.scan()
+        #expect(ambiguous.entries.flatMap(\.children).allSatisfy { $0.codexSession == nil })
     }
 }

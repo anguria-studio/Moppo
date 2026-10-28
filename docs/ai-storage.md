@@ -8,7 +8,8 @@ AI Tools measures default paths, including command-line data without a desktop a
 Application Leftovers owns verified desktop data when its application is absent.
 Settings and history require the existing leftover review before removal.
 The scanner does not follow symlinks or parse conversation messages.
-Codex session review reads stored titles, child relationships, and the first session metadata record.
+Codex session review reads stored titles, child relationships, and file metadata.
+For plaintext history, it also reads the first session metadata record.
 Exclusions and protected file patterns take priority over storage rules.
 Other categories do not offer paths owned by an enabled AI Tools scan.
 If you disable AI Tools, its home data and model stores remain outside generic cleanup scans.
@@ -122,13 +123,15 @@ Session sections remain visible when the installed Codex CLI does not support ve
 Moppo lists recognized conversation files even when the expected database schema is unavailable.
 These conversations stay locked. Use Codex to manage them.
 Available database titles identify conversations. Otherwise, each row shows its session identifier.
-Moppo reads the first metadata record without reading conversation messages.
-Compressed history files remain visible and locked.
+For plaintext history, Moppo reads the first metadata record without reading conversation messages.
+Compressed history uses the session identifier in its filename and the matching database record.
+Codex owns compressed history parsing and deletion. Moppo does not decompress conversation history.
 
 Moppo reads `state_5.sqlite` without writing to it.
 The reader checks stored titles, rollout paths, and `thread_spawn_edges`.
-It supports plaintext rollout files with a verified first metadata record.
-Missing records, unknown formats, symlinks, and exclusions keep affected storage protected.
+It supports plaintext and compressed rollout files in the same deletion review.
+For compressed history, the saved path can still name the missing plaintext file at the same location.
+Missing records, unknown formats, duplicate history files, symlinks, and exclusions keep affected storage protected.
 A held Codex writer lock protects the session and its deletion group.
 Open history files also protect sessions from removal, including sessions from older clients.
 Before deletion, Moppo checks the child relationships, file identities, modification dates, sizes, and writer locks again.
