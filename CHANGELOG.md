@@ -4,6 +4,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Add Never Offer This Again to Cleanup row menus, with saved exclusions for files, folders, local models, and Docker images.
+
 - Offer obsolete Homebrew formula versions for reviewed permanent removal through Homebrew, with separate sizes and Cleanup History results.
 - Add Open and Empty Trash to a native sidebar popover with an arrow that points to Trash.
 - Allow Command-Q to quit from the worktree review dialog.

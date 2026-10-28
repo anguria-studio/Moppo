@@ -79,6 +79,7 @@ final class AppModel {
                     keepReceipt: removal.keepReceipt
                 )
             },
+            saveExclusion: { [weak settings] in settings?.exclude($0) ?? false },
             applications: cleanupApplications
         )
         self.photoDuplicates = PhotoDuplicatesModel(

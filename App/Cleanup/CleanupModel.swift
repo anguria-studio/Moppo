@@ -32,6 +32,7 @@ final class CleanupModel {
     @ObservationIgnored private let operations: OperationCoordinator
     @ObservationIgnored private let scanner: any CleanupScanning
     @ObservationIgnored private let remover: any CleanupRemoving
+    @ObservationIgnored private let saveExclusion: (FileEntry) -> Bool
     @ObservationIgnored private let preferences: () -> Preferences
     @ObservationIgnored private let applications: CleanupApplications
     @ObservationIgnored private let measureSaving: ([URL]) async throws -> PrivateSizeMeasurement?
@@ -56,6 +57,7 @@ final class CleanupModel {
         scanner: any CleanupScanning = CleanupScanService(),
         remover: any CleanupRemoving = CleanupService(),
         preferences: @escaping () -> Preferences = { Preferences() },
+        saveExclusion: @escaping (FileEntry) -> Bool = { _ in false },
         applications: CleanupApplications = CleanupApplications(),
         defaults: UserDefaults = .standard,
         scanDocker: @escaping (Preferences) async throws -> ScanCategoryResult = { preferences in
@@ -74,6 +76,7 @@ final class CleanupModel {
         self.scanner = scanner
         self.remover = remover
         self.preferences = preferences
+        self.saveExclusion = saveExclusion
         self.applications = applications
         self.defaults = defaults
         self.measureSaving = measureSaving
@@ -141,6 +144,27 @@ final class CleanupModel {
                 && $0.protectionReason != .inventory
                 && $0.unlockableChildren.isEmpty
         }
+    }
+
+    func neverOfferAgain(_ entry: FileEntry) {
+        guard !isBusyWithDisk, pendingCleanUp == nil,
+              let current = allEntries.first(where: { $0.id == entry.id }),
+              current.canExcludeFromCleanup, saveExclusion(current) else { return }
+        applyExclusions()
+    }
+
+    private func applyExclusions() {
+        guard var results = scanResults else { return }
+        let current = preferences()
+        let context = ScanContext(excludedPaths: current.excludedPaths, excludedPatterns: current.excludedPatterns)
+        results.categories = results.categories.map { $0.excluding(context) }
+        scanResults = results
+        let selectable = Set(allEntries.filter {
+            !$0.isRemovalLocked || ($0.protectionReason == .userData && userDataRemovalOverrides.contains($0.id))
+        }.map(\.id))
+        scannerSelection.formIntersection(selectable)
+        userDataRemovalOverrides.formIntersection(selectable)
+        refreshCleanupRunningOwners()
     }
 
     func updateWorktreeReview(_ review: GitWorktreeReview, for id: FileEntry.ID) {
@@ -684,6 +708,7 @@ final class CleanupModel {
                 try Task.checkCancellation()
                 guard self.scanID == scanID else { return false }
                 scanResults = results
+                applyExclusions()
                 lastScanFinishedAt = results.finishedAt
                 defaults.set(results.finishedAt, forKey: "lastScanFinishedAt")
                 openCategories = []

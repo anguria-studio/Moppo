@@ -103,6 +103,7 @@ public struct DockerScanner: CategoryScanner {
             }
         }
 
+        entries.removeAll { context.isExcluded($0.url) }
         entries.sort { $0.allocatedBytes > $1.allocatedBytes }
         let total = entries.reduce(Int64(0)) { $0 + $1.allocatedBytes }
 

@@ -224,7 +224,7 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
     /// Checks whether the row itself is safe to remove.
     /// Running applications keep their rows outside Safe to Remove and automatic selection.
     private func countsAsSafe(_ entry: FileEntry) -> Bool {
-        guard entry.inUseBy == nil else { return false }
+        guard entry.inUseBy == nil, !entry.isRemovalLocked else { return false }
         guard entry.children.filter(\.isGitWorktree).allSatisfy(\.regeneratesSafely) else { return false }
         if entry.isGitWorktree { return entry.regeneratesSafely }
         return categoryID.isSafe && entry.isRegenerable
@@ -273,13 +273,44 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
               !entries.isEmpty
         else { return self }
         var copy = self
-        copy.entries = entries.filter { $0.totalBytesIncludingChildren >= floor || $0.worktreeCount > 0 }
+        copy.entries = entries.filter { $0.totalBytesIncludingChildren >= floor || $0.worktreeCount > 0 || !$0.localModelPaths.isEmpty }
         copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
         // Everything it found was noise — that is "nothing worth cleaning", not a
         // category with an empty table.
         if copy.entries.isEmpty, availability == .available {
             copy.availability = .empty
         }
+        return copy
+    }
+
+    /// Remove excluded rows and protect folders that contain excluded items.
+    public func excluding(_ context: ScanContext) -> Self {
+        func filtered(_ original: FileEntry) -> FileEntry? {
+            var entry = original
+            if entry.removalAction != nil {
+                entry.children = entry.children.filter { !context.isExcluded($0.url) }.compactMap(filtered)
+                guard let first = entry.children.first else { return nil }
+                entry.url = first.url
+                entry.childCount = entry.children.count
+                return entry
+            }
+            guard !context.isWithinExclusion(entry.url) else { return nil }
+            if entry.removesAsUnit {
+                guard !context.isExcluded(entry.url),
+                      !entry.children.contains(where: { context.isExcluded($0.url) }) else { return nil }
+            }
+            entry.children = entry.children.compactMap(filtered)
+            if context.isExcluded(entry.url) {
+                entry.protectionReason = .inventory
+                entry.protectionExplanation = "This folder contains an excluded item. Review its other child items separately."
+            }
+            return entry
+        }
+        var copy = self
+        copy.entries = entries.compactMap(filtered)
+        guard copy.entries != entries else { return self }
+        copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
+        if copy.entries.isEmpty, availability == .available { copy.availability = .empty }
         return copy
     }
 

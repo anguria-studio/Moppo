@@ -15,6 +15,8 @@ public struct LocalModel: Sendable, Equatable {
     /// What stands for the model in its store — Ollama's manifest, a hub repository
     /// folder. Removing it is what makes the runtime stop listing the model.
     public let primary: URL
+    /// Every manifest or repository folder represented by this row.
+    public let memberPaths: [URL]
     /// Files only this model refers to. They go with it.
     public let exclusive: [URL]
     /// Bytes in files this model shares with another. They stay, and the row says so.
@@ -49,8 +51,9 @@ public struct LocalModel: Sendable, Equatable {
 /// See THIRD_PARTY_NOTICES.md for Jithin Sabu's credit and the MIT license.
 public enum LocalModelStores {
 
-    public static func all(home: URL) -> [LocalModel] {
-        ollama(home: home) + huggingFace(home: home) + lmStudio(home: home)
+    public static func all(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
+        ollama(home: home, context: context) + huggingFace(home: home, context: context)
+            + lmStudio(home: home).filter { !context.isExcluded($0.primary) }
     }
 
     /// Home-relative folders these readers speak for. Whoever lists dot-folders or
@@ -66,7 +69,7 @@ public enum LocalModelStores {
     /// `~/.ollama/models/blobs/sha256-<hex>`. `OLLAMA_MODELS` can move the store, and
     /// an app launched from the Dock does not see the shell's environment, so only
     /// the default is read.
-    static func ollama(home: URL) -> [LocalModel] {
+    static func ollama(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
         let root = home.appendingPathComponent(".ollama/models", isDirectory: true)
         let manifests = root.appendingPathComponent("manifests", isDirectory: true)
         let blobs = root.appendingPathComponent("blobs", isDirectory: true)
@@ -104,7 +107,7 @@ public enum LocalModelStores {
             return Blob(files: [file], bytes: allocatedSize(file), users: blobUsers[digest] ?? [],
                         usersAreComplete: true)
         }
-        return grouped(members, sharedBlobs, runtime: "Ollama")
+        return grouped(members, sharedBlobs, runtime: "Ollama", context: context)
     }
 
     /// `registry.ollama.ai/library/gemma3/4b` reads back as `gemma3:4b`, the name
@@ -135,7 +138,7 @@ public enum LocalModelStores {
     ///
     /// The hub carries `CACHEDIR.TAG`: the tool itself declares all of this a cache.
     /// The worst a wrong reading can cost is a download.
-    static func huggingFace(home: URL) -> [LocalModel] {
+    static func huggingFace(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
         let hub = home.appendingPathComponent(".cache/huggingface/hub", isDirectory: true)
         let sharedStore = hub.appendingPathComponent("blobs", isDirectory: true)
             .standardizedFileURL.path
@@ -189,7 +192,7 @@ public enum LocalModelStores {
                 usersAreComplete: !lines.isEmpty && recorded.count == Set(folders).count
             )
         }
-        return grouped(members, sharedBlobs, runtime: "Hugging Face")
+        return grouped(members, sharedBlobs, runtime: "Hugging Face", context: context)
     }
 
     // MARK: - LM Studio
@@ -207,7 +210,7 @@ public enum LocalModelStores {
                     guard isDirectory(url) else { return nil }
                     return LocalModel(
                         memberNames: ["\(publisher)/\(repository)"], runtime: "LM Studio",
-                        primary: url, exclusive: [], sharedBytes: 0
+                        primary: url, memberPaths: [url], exclusive: [], sharedBytes: 0
                     )
                 }
             }
@@ -244,14 +247,18 @@ public enum LocalModelStores {
     /// As a row each, two tags of one model read a few kilobytes apiece and the
     /// gigabytes of weights they share could be removed through neither. So models
     /// that share a large blob are **one row**, removed together: the other members'
-    /// manifests and every blob used only inside the set go with it. What one tag
-    /// frees on its own is a template, and `ollama rm` is the tool for that.
+    /// manifests and every blob used only inside the set go with it.
+    /// Excluded models remain blob owners but do not join removal groups.
+    /// Other tags can then appear separately, with shared blobs kept on disk.
     ///
     /// A blob also used outside the set stays and is counted in `sharedBytes`.
     /// Ollama prunes what nothing refers to when it next starts (unless
     /// `OLLAMA_NOPRUNE` is set), so a kilobyte of licence left behind does not stay
     /// for ever.
-    static func grouped(_ members: [Member], _ blobs: [Blob], runtime: String) -> [LocalModel] {
+    static func grouped(
+        _ members: [Member], _ blobs: [Blob], runtime: String, context: ScanContext = ScanContext()
+    ) -> [LocalModel] {
+        let excluded = Set(members.indices.filter { context.isExcluded(members[$0].primary) })
         var parent = Array(members.indices)
         func root(_ index: Int) -> Int {
             var index = index
@@ -259,12 +266,13 @@ public enum LocalModelStores {
             return index
         }
         for blob in blobs where blob.usersAreComplete && blob.bytes >= setThreshold {
-            guard let first = blob.users.min() else { continue }
-            for user in blob.users { parent[root(user)] = root(first) }
+            let eligible = blob.users.subtracting(excluded)
+            guard let first = eligible.min() else { continue }
+            for user in eligible { parent[root(user)] = root(first) }
         }
 
         var sets: [Int: [Int]] = [:]
-        for index in members.indices { sets[root(index), default: []].append(index) }
+        for index in members.indices where !excluded.contains(index) { sets[root(index), default: []].append(index) }
 
         return sets.values.map { $0.sorted { members[$0].name < members[$1].name } }
             .sorted { members[$0[0]].name < members[$1[0]].name }
@@ -281,7 +289,8 @@ public enum LocalModelStores {
                 }
                 return LocalModel(
                     memberNames: set.map { members[$0].name }, runtime: runtime,
-                    primary: members[set[0]].primary, exclusive: exclusive, sharedBytes: shared
+                    primary: members[set[0]].primary, memberPaths: set.map { members[$0].primary },
+                    exclusive: exclusive, sharedBytes: shared
                 )
             }
     }

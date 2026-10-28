@@ -24,7 +24,7 @@ struct ExclusionsPane: View {
 
     var body: some View {
         PrefPane(spacing: Metrics.gap) {
-            Text("Anything below is skipped by every scan. Drag folders in from Finder, or use the buttons.")
+            Text("Moppo skips these items during scans. Remove a rule to offer the item after another scan.")
                 .font(.mcBody)
                 .foregroundStyle(Token.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -73,19 +73,17 @@ struct ExclusionsPane: View {
     }
 
     private func ruleRow(_ rule: ExclusionRule) -> some View {
-        HStack(spacing: Metrics.rowGap) {
+        let isSelected = selection.contains(rule.id)
+        return HStack(spacing: Metrics.rowGap) {
             Image(systemName: rule.symbol)
                 .font(.system(size: 13))
-                // Folders are blue as they are in Finder; patterns are not files, so
-                // they stay neutral.
-                .foregroundStyle(
-                    rule.kind == .folder ? Token.color(.accent) : Token.Text.quaternary
-                )
+                .foregroundStyle(isSelected ? Color.white
+                    : rule.kind == .folder ? Token.color(.accent) : Token.Text.quaternary)
                 .frame(width: Metrics.iconWidth)
 
             Text(rule.displayValue)
                 .font(.mcMonoPath)
-                .foregroundStyle(Token.Text.primary)
+                .foregroundStyle(isSelected ? Color.white : Token.Text.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(rule.displayValue)
@@ -95,7 +93,7 @@ struct ExclusionsPane: View {
             if let qualifier = rule.qualifier {
                 Text(qualifier)
                     .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.disabled)
+                    .foregroundStyle(isSelected ? Color.white : Token.Text.disabled)
                     .layoutPriority(-1)
             }
         }
