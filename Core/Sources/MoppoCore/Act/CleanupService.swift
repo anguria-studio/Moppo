@@ -342,7 +342,12 @@ public struct CleanupService: Sendable {
                             throw error
                         }
                         var reserved: Set<String> = []
-                        let destination = try Self.freeTrashPath(for: target.url, in: trash, reserved: &reserved)
+                        var destination = try Self.freeTrashPath(for: target.url, in: trash, reserved: &reserved)
+                        let registered = try await GitWorktreeDetector.registeredPaths(for: target.url)
+                        if registered.contains(destination.path) {
+                            reserved.formUnion(registered)
+                            destination = try Self.freeTrashPath(for: target.url, in: trash, reserved: &reserved)
+                        }
                         if try await GitWorktreeDetector.move(target.url, to: destination) { landed = destination }
                         else { landed = try Self.discard(target.url, disposition: .trashed) }
                     } else {
@@ -739,6 +744,7 @@ public struct CleanupService: Sendable {
         }
         guard let directory = opendir(trash.path) else { throw accessError() }
         closedir(directory)
+        let trash = trash.resolvingSymlinksInPath()
         let base = source.deletingPathExtension().lastPathComponent
         let ext = source.pathExtension
         func candidate(_ suffix: String) -> URL {
