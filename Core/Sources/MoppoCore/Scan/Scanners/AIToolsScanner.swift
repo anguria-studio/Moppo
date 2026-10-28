@@ -21,7 +21,7 @@ public struct AIToolsScanner: CategoryScanner {
         for root in AIToolStorage.roots {
             try Task.checkCancellation()
             let url = home.appendingPathComponent(root.path)
-            guard !context.isExcluded(url), isOwnedPath(url),
+            guard !context.isWithinExclusion(url), isOwnedPath(url),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
             let parts = root.parts.map { (part: $0, paths: ApplicationsScanner.expand($0.path, under: url)) }
             let roots: [URL]
@@ -143,7 +143,7 @@ public struct AIToolsScanner: CategoryScanner {
     ) async throws {
         let huggingFace = home.appendingPathComponent(".cache/huggingface")
 
-        for model in LocalModelStores.all(home: home) {
+        for model in LocalModelStores.all(home: home, context: context) {
             try Task.checkCancellation()
             guard ([model.primary] + model.exclusive).allSatisfy({ !context.isExcluded($0) && isOwnedPath($0) }) else { continue }
             let own = try await context.measurer.measure(model.primary)
@@ -188,6 +188,7 @@ public struct AIToolsScanner: CategoryScanner {
                 children: children
             )
             row.removesAsUnit = true
+            row.localModelPaths = model.memberPaths
             let owner: AIStorageSection.Owner? = switch model.runtime {
             case "Ollama": .ollama
             case "Hugging Face": .huggingFace

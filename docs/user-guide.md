@@ -72,6 +72,27 @@ Select the parent folder to move all its reviewed contents to the Trash.
 Moppo checks the whole folder again before removal.
 Active, excluded, or unverified contents block whole-folder removal.
 
+### Keep an item out of cleanup
+
+In Cleanup or AI Tools, open a row's **More actions** menu.
+Select **Never Offer This Again**.
+You can also right-click the row to select this action.
+Moppo removes the row from the current results and selections without removing its files.
+The exclusion remains after later scans and app restarts.
+To offer the item again, remove its rule in **Settings > Exclusions**.
+Then scan again.
+
+A folder rule protects its contents.
+A child rule does not add exclusions for its parent or siblings.
+Moppo blocks whole-folder removal when the folder contains an excluded item.
+Other eligible child items remain available.
+
+A model rule identifies its manifest or repository folder.
+For a grouped model row, the action excludes every model named in that row.
+Shared blobs stay protected while an excluded model uses them.
+Other models remain available, with shared bytes excluded from their removal size.
+A Docker image rule applies to that image in its recorded Docker context.
+
 ### Open items elsewhere
 
 Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer** or **Reveal in Finder**.

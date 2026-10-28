@@ -71,14 +71,14 @@ enum ICloudPlan: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// One thing every scan skips: a folder and its whole subtree, or a filename glob.
+/// A saved exclusion for a folder, file, tool item, or filename pattern.
 struct ExclusionRule: Identifiable, Hashable, Codable, Sendable {
 
-    enum Kind: String, Codable, Sendable { case folder, pattern }
+    enum Kind: String, Codable, Sendable { case folder, pattern, item }
 
     var id: UUID = UUID()
     var kind: Kind
-    /// An absolute path for folder rules; a glob such as `*.sparsebundle` for patterns.
+    /// A file path, a complete tool item URL, or a filename pattern.
     var value: String
     /// Built-in rules the user cannot delete. Only used for the ones that protect
     /// credentials — a cleaner that can be talked into deleting keychains is a
@@ -98,7 +98,7 @@ struct ExclusionRule: Identifiable, Hashable, Codable, Sendable {
     /// Paths render tilde-abbreviated: the design's list reads `~/Developer`, not
     /// `/Users/me/Developer`, and the home prefix is noise in a narrow column.
     var displayValue: String {
-        kind == .folder ? (value as NSString).abbreviatingWithTildeInPath : value
+        kind != .pattern ? (value as NSString).abbreviatingWithTildeInPath : value
     }
 
     var symbol: String { kind == .folder ? "folder" : "doc" }
@@ -112,6 +112,7 @@ struct ExclusionRule: Identifiable, Hashable, Codable, Sendable {
         switch kind {
         case .folder:  "and everything inside"
         case .pattern: isLocked ? "pattern · locked" : "pattern"
+        case .item: "item"
         }
     }
 }
@@ -299,11 +300,25 @@ final class SettingsStore {
     }
 
     /// The rules split the way `ScanContext` consumes them.
-    var excludedFolderPaths: [String] {
-        exclusions.filter { $0.kind == .folder }.map(\.value)
+    var excludedPaths: [String] {
+        exclusions.filter { $0.kind != .pattern }.map(\.value)
     }
     var excludedPatterns: [String] {
         exclusions.filter { $0.kind == .pattern }.map(\.value)
+    }
+
+    /// Save only the identities represented by the selected row.
+    @discardableResult
+    func exclude(_ entry: FileEntry) -> Bool {
+        guard entry.canExcludeFromCleanup else { return false }
+        for url in entry.exclusionURLs {
+            let value = url.isFileURL ? url.standardizedFileURL.path : url.absoluteString
+            guard !exclusions.contains(where: { $0.kind != .pattern && $0.value == value }) else { continue }
+            let isDirectory = url.isFileURL
+                && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            exclusions.append(ExclusionRule(kind: isDirectory ? .folder : .item, value: value))
+        }
+        return !entry.exclusionURLs.isEmpty
     }
 
     /// Adds folder rules, ignoring anything that is not a directory or is already

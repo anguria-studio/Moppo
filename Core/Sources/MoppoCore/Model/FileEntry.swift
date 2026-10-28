@@ -192,6 +192,20 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// checkbox of their own — see `LocalModelStores`.
     public var removesAsUnit: Bool = false
 
+    /// Model manifests or repository folders represented by this row.
+    public var localModelPaths: [URL] = []
+
+    /// Exclude model identities without excluding shared blobs.
+    public var exclusionURLs: [URL] {
+        if !localModelPaths.isEmpty { return localModelPaths }
+        if removalAction != nil { return children.map(\.url) }
+        return [url]
+    }
+
+    public var canExcludeFromCleanup: Bool {
+        !isRemovalLocked || protectionReason == .userData
+    }
+
     /// A specialized cleanup action for this row.
     public var removalAction: RemovalAction?
     /// The identities and owners checked before downloaded sound content moves.

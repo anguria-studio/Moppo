@@ -129,7 +129,10 @@ struct AIToolsScannerTests {
         #expect(!spans.contains { $0["operation"] == "worktree_discovery" && $0["path"] == row.url.path })
         let excluded = try await AIToolsScanner(home: sandbox.home).scan(
             context: ScanContext(excludedPaths: [source.path]))
-        #expect(!excluded.entries.contains { $0.aiTool == .t3Code })
+        let retained = try #require(excluded.entries.first { $0.aiTool == .t3Code })
+        #expect(retained.isRemovalLocked)
+        #expect(!retained.children.contains { $0.displayName == "T3 Code scratch projects" })
+        #expect(retained.children.contains { $0.displayName == "T3 Code downloaded tools" })
         #expect(excluded.claimedStoragePaths.contains(row.url.path))
     }
 
@@ -274,7 +277,10 @@ struct AIToolsScannerTests {
         #expect(results.first { $0.categoryID == .hiddenSystemData }?.availability == .empty)
 
         let excluded = try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext(excludedPaths: [cache.url.path]))
-        #expect(excluded.entries.isEmpty)
+        let retained = try #require(excluded.entries.first)
+        #expect(retained.id == root.id)
+        #expect(retained.isRemovalLocked)
+        #expect(!retained.children.contains { $0.id == cache.id })
         #expect(!excluded.claimedStoragePaths.isEmpty)
         let guarded = ScanCoordinator.removingAIToolOverlaps(from: [excluded,
             ScanCategoryResult(categoryID: .systemCaches, entries: [cache])])

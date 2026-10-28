@@ -157,6 +157,53 @@ struct LocalModelStoresTests {
         #expect(models.map(\.name) == ["TheBloke/Old-GGUF", "lmstudio-community/Qwen-GGUF"])
     }
 
+    @Test("An excluded Ollama model keeps shared blobs without hiding another tag")
+    func excludedOllamaModelKeepsSharedBlobs() async throws {
+        let sandbox = try Sandbox()
+        let shared = try sandbox.file(".ollama/models/blobs/sha256-weights", bytes: 4 * mb)
+        try sandbox.file(".ollama/models/blobs/sha256-keep", bytes: 4096)
+        let otherConfig = try sandbox.file(".ollama/models/blobs/sha256-other", bytes: 4096)
+        let base = "registry.ollama.ai/library/model/"
+        try sandbox.ollamaManifest(base + "keep", config: "keep", layers: ["weights"])
+        try sandbox.ollamaManifest(base + "other", config: "other", layers: ["weights"])
+        let kept = sandbox.home.appendingPathComponent(".ollama/models/manifests/" + base + "keep")
+        let other = sandbox.home.appendingPathComponent(".ollama/models/manifests/" + base + "other")
+        let scanner = AIToolsScanner(home: sandbox.home)
+        let initial = try await scanner.scan(context: ScanContext())
+        let group = try #require(initial.entries.first { $0.removesAsUnit })
+        #expect(Set(group.exclusionURLs.map(\.standardizedFileURL)) == Set([kept, other].map(\.standardizedFileURL)))
+        #expect(!group.exclusionURLs.map(\.standardizedFileURL).contains(shared.standardizedFileURL))
+
+        let context = ScanContext(excludedPaths: [kept.path])
+        let results = try await ScanCoordinator(scanners: [scanner]).scan(context: context)
+        let entries = try #require(results.categories.first).entries
+        let row = try #require(entries.first { $0.displayName == "model:other" })
+        #expect(entries.filter { $0.removesAsUnit }.count == 1)
+        #expect(row.exclusionURLs.map(\.standardizedFileURL) == [other.standardizedFileURL])
+        let targets = CleanupService.removalTargets(for: row, removeProtectedAppData: false)
+        #expect(Set(targets.map { $0.url.standardizedFileURL }) == Set([other, otherConfig].map(\.standardizedFileURL)))
+        #expect(!targets.contains { $0.url.standardizedFileURL == kept.standardizedFileURL || $0.url.standardizedFileURL == shared.standardizedFileURL })
+        #expect(row.parentDisplay.contains("shared with another model stays"))
+        #expect(row.displayBytes < Int64(mb))
+
+        let restored = try await scanner.scan(context: ScanContext())
+        #expect(restored.entries.first { $0.removesAsUnit }?.localModelPaths.count == 2)
+    }
+
+    @Test("An excluded Hugging Face repository keeps shared files and its sibling available")
+    func excludedHubRepositoryKeepsSharedBlobs() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.hubSharedBlob("a5both", bytes: 4 * mb,
+            usedBy: ["models--org--keep", "models--org--other"])
+        let kept = sandbox.home.appendingPathComponent(".cache/huggingface/hub/models--org--keep")
+        let models = LocalModelStores.all(home: sandbox.home, context: ScanContext(excludedPaths: [kept.path]))
+        let remaining = try #require(models.first)
+        #expect(models.count == 1)
+        #expect(remaining.name == "org/other")
+        #expect(remaining.exclusive.isEmpty)
+        #expect(remaining.sharedBytes >= Int64(4 * mb))
+    }
+
     // MARK: - In the scan
 
     @Test("each model is one review row carrying what only it uses; its store is listed nowhere else")
