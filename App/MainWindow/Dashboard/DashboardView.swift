@@ -68,12 +68,7 @@ struct DashboardView: View {
                         hasMeasurement: model.latestStorageMeasurement != nil,
                         lastScanAt: scanResults?.finishedAt ?? lastScanAt,
                         baselineOptions: model.growthBaselineOptions,
-                        cleanupMeasurementState: model.cleanupMeasurementState,
-                        cleanupBaselineDate: model.cleanupBaselineDate,
                         sevenDayStart: model.sevenDayStart,
-                        isRefreshing: model.isLoadingBreakdown,
-                        onRefresh: { Task { await model.measureStorage() } },
-                        onOpenDiskAccess: { Task { await access?.performAction(for: .disk) } },
                         onSelectBaseline: { model.growthBaseline = $0 },
                         onReveal: { onRevealGrowth($0) }
                     )

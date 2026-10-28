@@ -17,36 +17,26 @@ struct GrowthCardPresentationTests {
         #expect(card.label(for: .lastCleanup) == "Since last cleanup")
     }
 
-    @Test("Comparison states and recovery actions fit both appearances", arguments: [false, true])
+    @Test("Comparison states fit both appearances", arguments: [false, true])
     func layouts(dark: Bool) async throws {
         let date = Date.now
         let report = GrowthCard.Report(
             baselineDate: date, usedDeltaBytes: 0, classDeltas: [:], attributions: []
         )
-        var cards: [(String, GrowthCard)] = [
+        let cards: [(String, GrowthCard)] = [
             ("first-run", GrowthCard(presentation: .insufficientHistory, baseline: .sevenDays)),
             ("first-saved", GrowthCard(
                 presentation: .insufficientHistory, baseline: .sevenDays, hasMeasurement: true, lastScanAt: date
             )),
             ("report-menu", GrowthCard(
                 presentation: .report(report), baseline: .lastCleanup, baselineOptions: [.lastCleanup, .sevenDays],
-                cleanupBaselineDate: date, sevenDayStart: date.addingTimeInterval(-3 * 24 * 60 * 60)
+                sevenDayStart: date.addingTimeInterval(-3 * 24 * 60 * 60)
             )),
             ("report-single-option", GrowthCard(
-                presentation: .report(report), baseline: .lastCleanup, baselineOptions: [.lastCleanup],
-                cleanupBaselineDate: date
+                presentation: .report(report), baseline: .lastCleanup, baselineOptions: [.lastCleanup]
             )),
             ("not-comparable", GrowthCard(presentation: .notComparable, baseline: .sevenDays))
         ]
-        cards += DashboardModel.CleanupMeasurementState.allCases.map { state in
-            (state.rawValue, GrowthCard(
-                presentation: .insufficientHistory, baseline: .sevenDays, cleanupMeasurementState: state
-            ))
-        }
-        cards.append(("failed-with-baseline", GrowthCard(
-            presentation: .insufficientHistory, baseline: .lastCleanup,
-            cleanupMeasurementState: .failed, cleanupBaselineDate: date
-        )))
         for width in [500.0, 788.0, 908.0] {
             for (name, card) in cards {
                 let size = try await renderTestView(
