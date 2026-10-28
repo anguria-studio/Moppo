@@ -25,7 +25,6 @@ struct CodexSessions: Sendable {
         let records: [String: Record]
         let children: [String: [String]]
         let files: [String: [CodexSessionReview.Member]]
-        let unsupportedIDs: Set<String>
         let openPaths: Set<String>
 
         func subtree(_ id: String) -> [String]? {
@@ -44,12 +43,19 @@ struct CodexSessions: Sendable {
             guard let ids = subtree(id) else { return nil }
             var members: [CodexSessionReview.Member] = []
             for id in ids {
-                guard !unsupportedIDs.contains(id), let record = records[id], let path = record.path,
-                      let candidates = files[id], candidates.count == 1,
-                      FileIdentity.physicalPath(candidates[0].url.path) == FileIdentity.physicalPath(path),
-                      candidates[0].url.lastPathComponent.hasPrefix("rollout-"),
-                      candidates[0].url.lastPathComponent.hasSuffix(id + ".jsonl") else { return nil }
-                members.append(candidates[0])
+                guard let record = records[id], let path = record.path,
+                      let candidates = files[id], candidates.count == 1 else { return nil }
+                let member = candidates[0]
+                let compressed = member.url.pathExtension == "zst"
+                let historyURL = compressed ? member.url.deletingPathExtension() : member.url
+                let savedPath = FileIdentity.physicalPath(path)
+                let matchesPath = FileIdentity.physicalPath(member.url.path) == savedPath
+                let matchesBeforeCompression = compressed && !FileManager.default.fileExists(atPath: path)
+                    && FileIdentity.physicalPath(historyURL.path) == savedPath
+                guard matchesPath || matchesBeforeCompression,
+                      historyURL.lastPathComponent.hasPrefix("rollout-"),
+                      historyURL.lastPathComponent.hasSuffix(id + ".jsonl") else { return nil }
+                members.append(member)
             }
             return CodexSessionReview(codexHome: home, threadID: id, members: members)
         }
@@ -105,14 +111,13 @@ struct CodexSessions: Sendable {
                 children[parent, default: []].append(row.id)
             } else { throw Failure.unavailable }
         }
-        let (files, unsupportedIDs) = try historyFiles()
+        let files = try historyFiles()
         let openPaths = try await openHistoryPaths()
-        return Snapshot(records: records, children: children, files: files, unsupportedIDs: unsupportedIDs, openPaths: openPaths)
+        return Snapshot(records: records, children: children, files: files, openPaths: openPaths)
     }
 
-    private func historyFiles() throws -> (files: [String: [CodexSessionReview.Member]], unsupportedIDs: Set<String>) {
+    private func historyFiles() throws -> [String: [CodexSessionReview.Member]] {
         var files: [String: [CodexSessionReview.Member]] = [:]
-        var unsupportedIDs: Set<String> = []
         for directory in ["sessions", "archived_sessions"] {
             let root = home.appendingPathComponent(directory)
             guard owned(root) else { continue }
@@ -123,23 +128,13 @@ struct CodexSessions: Sendable {
             while let url = walk.nextObject() as? URL {
                 try Task.checkCancellation()
                 guard owned(url) else { throw Failure.unavailable }
-                if url.lastPathComponent.hasSuffix(".jsonl.zst") {
-                    let stem = String(url.lastPathComponent.dropLast(".jsonl.zst".count))
-                    let id = String(stem.suffix(36))
-                    if UUID(uuidString: id) != nil {
-                        unsupportedIDs.insert(id)
-                        if stem.hasPrefix("rollout-"), let member = readMember(url, threadID: id) {
-                            files[id, default: []].append(member)
-                        }
-                    }
-                    continue
-                }
-                guard url.pathExtension == "jsonl", let member = readMember(url) else { continue }
+                guard url.pathExtension == "jsonl" || url.lastPathComponent.hasSuffix(".jsonl.zst"),
+                      let member = readMember(url) else { continue }
                 files[member.threadID, default: []].append(member)
             }
             guard !failedRead else { throw Failure.unavailable }
         }
-        return (files, unsupportedIDs)
+        return files
     }
 
     /// Titles are display data. They do not authorize session removal.
@@ -257,12 +252,17 @@ struct CodexSessions: Sendable {
         return true
     }
 
-    /// Reads file metadata. Plaintext history also requires a verified first metadata record.
-    private func readMember(_ url: URL, threadID: String? = nil) -> CodexSessionReview.Member? {
+    /// Codex owns compressed history parsing. Moppo records file metadata for review.
+    private func readMember(_ url: URL) -> CodexSessionReview.Member? {
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]),
               values.isRegularFile == true, let date = values.contentModificationDate,
               let size = values.fileSize, let identity = FileIdentity.of(url) else { return nil }
-        if let threadID { return .init(threadID: threadID, url: url, identity: identity, modifiedAt: date, fileSize: size) }
+        if url.lastPathComponent.hasSuffix(".jsonl.zst") {
+            let stem = String(url.lastPathComponent.dropLast(".jsonl.zst".count))
+            let id = String(stem.suffix(36))
+            guard UUID(uuidString: id) != nil else { return nil }
+            return .init(threadID: id, url: url, identity: identity, modifiedAt: date, fileSize: size)
+        }
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         var header = Data()
@@ -320,7 +320,7 @@ struct CodexSessions: Sendable {
             files = snapshot.files
             titles = snapshot.records.compactMapValues(\.name)
         } else {
-            files = try historyFiles().files
+            files = try historyFiles()
             titles = await storedTitles()
         }
         var groups: [String: FileEntry] = [:]
@@ -376,7 +376,7 @@ struct CodexSessions: Sendable {
                 ? "archived_sessions" : "sessions"
             guard groups[folder] != nil else { continue }
             let size = try await context.measurer.measure(member.url)
-            let current = readMember(member.url, threadID: member.url.pathExtension == "zst" ? member.threadID : nil)
+            let current = readMember(member.url)
             guard size.unreadableCount == 0, !size.containsProtectedPattern,
                   size.allocatedBytes <= groups[folder]!.allocatedBytes, current == member else { continue }
             let row = FileEntry(url: member.url, displayName: titles[member.threadID] ?? "Codex session \(member.threadID)",
