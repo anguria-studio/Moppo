@@ -30,60 +30,6 @@ final class FinderUninstallServiceProvider: NSObject {
             return
         }
 
-        FinderUninstallRequestCenter.shared.submit(applicationURL)
-    }
-}
-
-/// Keeps one Finder request until the main window can receive it.
-@MainActor
-final class FinderUninstallRequestCenter {
-    static let shared = FinderUninstallRequestCenter()
-
-    private var handler: ((URL) -> Void)?
-    private var presenter: (() -> Void)?
-    private var pendingURL: URL?
-
-    private init() {}
-
-    func install(_ handler: @escaping (URL) -> Void) {
-        self.handler = handler
-        guard let pendingURL else { return }
-        self.pendingURL = nil
-        handler(pendingURL)
-    }
-
-    func installPresenter(_ presenter: @escaping () -> Void) {
-        self.presenter = presenter
-    }
-
-    func submit(_ applicationURL: URL) {
-        let applicationURL = applicationURL.standardizedFileURL
-        presenter?()
-        guard let handler else {
-            pendingURL = applicationURL
-            return
-        }
-        handler(applicationURL)
-    }
-}
-
-/// Connects Finder requests to the existing uninstall review.
-struct FinderUninstallRequestReceiver: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        MainWindowIdentityView()
-            .frame(width: 0, height: 0)
-            .onAppear {
-                FinderUninstallRequestCenter.shared.installPresenter {
-                    presentMainWindow()
-                }
-            }
-    }
-
-    private func presentMainWindow() {
-        MainWindowPresenter.present {
-            openWindow(id: "main")
-        }
+        MainWindowRequestCenter.uninstall.submit(applicationURL.standardizedFileURL)
     }
 }

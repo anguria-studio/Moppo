@@ -863,7 +863,7 @@ public struct CleanupService: Sendable {
             // Never a removal instruction — `restored` exists only as a log
             // tombstone written by Put Back.
             return nil
-        case .failed:
+        case .failed, .skipped:
             // Never a removal instruction. This value records an attempt only.
             return nil
         }

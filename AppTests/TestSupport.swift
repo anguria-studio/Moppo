@@ -80,10 +80,11 @@ enum RemovalConfirmationChoice: CaseIterable {
 @MainActor
 final class RemovalSettingsFixture {
     let settings: SettingsStore
+    let defaults: UserDefaults
     private let suite = "RemovalSettingsTests.\(UUID().uuidString)"
 
     init(confirm: Bool) throws {
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        defaults = try #require(UserDefaults(suiteName: suite))
         settings = SettingsStore(defaults: defaults, managesLoginItem: false)
         settings.confirmBeforeCleanup = confirm
     }

@@ -112,6 +112,19 @@ struct CleanupModelTests {
         #expect(!context.isExcluded(URL(string: "docker://images/first/\(imageID)-other")!))
     }
 
+    @Test("Rules that the CLI adds survive later changes in the app")
+    func cliExclusionsSurviveAppChanges() throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        let added = try ScanConfiguration.addExclusions([ExclusionRule(kind: .item, value: "/tmp/cli-model")],
+                                                        to: fixture.defaults)
+        #expect(added.count == 1)
+        #expect(fixture.settings.addPattern("*.partial"))
+        let stored = try ScanConfiguration.readExclusions(from: fixture.defaults)
+        #expect(stored.contains { $0.kind == .item && $0.value == "/tmp/cli-model" })
+        #expect(stored.contains { $0.kind == .pattern && $0.value == "*.partial" })
+        #expect(fixture.settings.excludedPaths.contains("/tmp/cli-model"))
+    }
+
     @Test("Exclusion cannot change a captured cleanup plan or an active operation")
     func exclusionDuringOperation() throws {
         let fixture = try RemovalSettingsFixture(confirm: true)
@@ -534,6 +547,22 @@ struct CleanupModelTests {
         reopened.resetToDefaults()
         #expect(reopened.isEnabled(.docker))
         #expect(SettingsStore(defaults: defaults, managesLoginItem: false).isEnabled(.docker))
+    }
+
+    @Test("CLI configuration reads the app's saved exclusions and category choices")
+    func sharedScanConfiguration() throws {
+        let suite = "moppo-tests.shared-scan.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        settings.setEnabled(false, for: .xcode)
+        _ = settings.addPattern("*.keep")
+        let configuration = try ScanConfiguration(defaults: defaults)
+        #expect(configuration.enabledCategories == Set(CategoryID.allCases.filter { settings.isEnabled($0) }))
+        #expect(configuration.excludedPatterns == settings.excludedPatterns)
+        #expect(configuration.excludedPaths == settings.excludedPaths)
+        let reopened = SettingsStore(defaults: defaults, managesLoginItem: false)
+        #expect(reopened.exclusions == settings.exclusions)
     }
 
     enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable, mergeLost }

@@ -71,30 +71,8 @@ enum ICloudPlan: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// A saved exclusion for a folder, file, tool item, or filename pattern.
-struct ExclusionRule: Identifiable, Hashable, Codable, Sendable {
-
-    enum Kind: String, Codable, Sendable { case folder, pattern, item }
-
-    var id: UUID = UUID()
-    var kind: Kind
-    /// A file path, a complete tool item URL, or a filename pattern.
-    var value: String
-    /// Built-in rules the user cannot delete. Only used for the ones that protect
-    /// credentials — a cleaner that can be talked into deleting keychains is a
-    /// liability, and the design flags that rule `locked` for the same reason.
-    var isLocked: Bool = false
-
-    static func folder(_ url: URL) -> Self {
-        // Standardised so `/Users/me/./Developer/` and `~/Developer` compare equal and
-        // cannot be added twice.
-        ExclusionRule(kind: .folder, value: url.standardizedFileURL.path(percentEncoded: false))
-    }
-
-    static func pattern(_ glob: String, isLocked: Bool = false) -> Self {
-        ExclusionRule(kind: .pattern, value: glob, isLocked: isLocked)
-    }
-
+/// Display text for a saved exclusion. The rule type lives in MoppoCore so the CLI can read it.
+extension ExclusionRule {
     /// Paths render tilde-abbreviated: the design's list reads `~/Developer`, not
     /// `/Users/me/Developer`, and the home prefix is noise in a narrow column.
     var displayValue: String {
@@ -145,25 +123,8 @@ final class SettingsStore {
         static let allowPhotoDownloads = true
 
         /// Enable every scan category by default. Saved category choices remain in use.
-        static func categoryEnabled(_ category: CategoryID) -> Bool {
-            switch category {
-            case .documentsAndFiles, .applications, .applicationLeftovers,
-                    .aiTools, .hiddenSystemData, .systemCaches, .packageManagers, .xcode, .docker:
-                true
-            }
-        }
-
-        /// Two protective patterns ship enabled and locked.
-        ///
-        /// The design's other sample rules (`~/Developer`, a Docker container) are one
-        /// user's choices and are not shipped. These two are not preferences so much as
-        /// facts about what must never be touched: a sparse bundle is a mounted disk
-        /// image or a Time Machine store whose apparent size is nothing like its
-        /// contents, and a keychain holds every credential the user owns.
-        static let exclusions: [ExclusionRule] = [
-            .pattern("*.sparsebundle", isLocked: true),
-            .pattern("*.keychain-db", isLocked: true)
-        ]
+        static let categoryEnabled = ScanConfiguration.categoriesEnabledByDefault
+        static let exclusions = ScanConfiguration.defaultExclusions
     }
 
     /// The slider's range. 20 GB sits at the design's 34% of it.
@@ -186,11 +147,11 @@ final class SettingsStore {
         static let iCloudPlan = "settings.iCloudPlan"
         static let showICloudOnDashboard = "settings.showICloudOnDashboard"
         static let hasPendingICloudSetup = "settings.hasPendingICloudSetup"
-        static let categoryEnabled = "settings.categoryEnabled"
+        static let categoryEnabled = ScanConfiguration.categoriesKey
         static let confirmBeforeCleanup = "settings.confirmBeforeCleanup"
         static let keepReceipt = "settings.keepReceipt"
         static let allowPhotoDownloads = "settings.allowPhotoDownloads"
-        static let exclusions = "settings.exclusions"
+        static let exclusions = ScanConfiguration.exclusionsKey
     }
 
     // MARK: Appearance
@@ -261,7 +222,7 @@ final class SettingsStore {
     }
 
     func isEnabled(_ category: CategoryID) -> Bool {
-        categoryEnabled[category] ?? Defaults.categoryEnabled(category)
+        categoryEnabled[category] ?? Defaults.categoryEnabled
     }
 
     func setEnabled(_ isEnabled: Bool, for category: CategoryID) {
@@ -310,15 +271,18 @@ final class SettingsStore {
     /// Save only the identities represented by the selected row.
     @discardableResult
     func exclude(_ entry: FileEntry) -> Bool {
-        guard entry.canExcludeFromCleanup else { return false }
-        for url in entry.exclusionURLs {
-            let value = url.isFileURL ? url.standardizedFileURL.path : url.absoluteString
-            guard !exclusions.contains(where: { $0.kind != .pattern && $0.value == value }) else { continue }
-            let isDirectory = url.isFileURL
-                && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-            exclusions.append(ExclusionRule(kind: isDirectory ? .folder : .item, value: value))
-        }
-        return !entry.exclusionURLs.isEmpty
+        let rules = ExclusionRule.rules(for: entry)
+        guard !rules.isEmpty else { return false }
+        reloadExclusions()
+        var updated = exclusions
+        if !ExclusionRule.merge(rules, into: &updated).isEmpty { exclusions = updated }
+        return true
+    }
+
+    /// The CLI can add rules while the app runs. Read them before a change so a save keeps them.
+    func reloadExclusions() {
+        guard let stored = try? ScanConfiguration.readExclusions(from: defaults), stored != exclusions else { return }
+        exclusions = stored
     }
 
     /// Adds folder rules, ignoring anything that is not a directory or is already
@@ -326,6 +290,7 @@ final class SettingsStore {
     /// Finder — a drop that changed nothing should not animate as accepted.
     @discardableResult
     func addFolders(_ urls: [URL]) -> Bool {
+        reloadExclusions()
         let existing = Set(exclusions.map(\.value))
         let added = urls
             .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
@@ -339,6 +304,7 @@ final class SettingsStore {
 
     @discardableResult
     func addPattern(_ glob: String) -> Bool {
+        reloadExclusions()
         let trimmed = glob.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !exclusions.contains(where: { $0.value == trimmed }) else {
             return false
@@ -349,6 +315,7 @@ final class SettingsStore {
 
     /// Locked rules survive: they are what stops a scan from proposing a keychain.
     func remove(ids: Set<ExclusionRule.ID>) {
+        reloadExclusions()
         exclusions.removeAll { ids.contains($0.id) && !$0.isLocked }
     }
 
@@ -396,24 +363,20 @@ final class SettingsStore {
         self.warnBelowGB = (defaults.object(forKey: Key.warnBelowGB) as? Int)
             .map { $0.clamped(to: Self.warnBelowRange) } ?? Defaults.warnBelowGB
 
-        // Read one key at a time rather than casting the whole dictionary: a category
-        // added in a later version has no stored value and must fall back to its
-        // default, not to `false`.
-        let storedCategories = defaults.dictionary(forKey: Key.categoryEnabled) ?? [:]
-        self.categoryEnabled = Dictionary(
-            uniqueKeysWithValues: CategoryID.allCases.map { category in
-                let stored = storedCategories[category.rawValue] as? Bool
-                return (category, stored ?? Defaults.categoryEnabled(category))
-            }
-        )
+        self.categoryEnabled = (try? ScanConfiguration.readCategories(from: defaults, strict: false))
+            ?? Dictionary(uniqueKeysWithValues: CategoryID.allCases.map { ($0, Defaults.categoryEnabled) })
 
         self.confirmBeforeCleanup = bool(Key.confirmBeforeCleanup, or: Defaults.confirmBeforeCleanup)
         self.keepReceipt = bool(Key.keepReceipt, or: Defaults.keepReceipt)
         self.allowPhotoDownloads = bool(Key.allowPhotoDownloads, or: Defaults.allowPhotoDownloads)
 
-        let storedExclusions = defaults.data(forKey: Key.exclusions)
-            .flatMap { try? JSONDecoder().decode([ExclusionRule].self, from: $0) }
-        self.exclusions = Self.restoringLockedRules(in: storedExclusions ?? Defaults.exclusions)
+        self.exclusions = (try? ScanConfiguration.readExclusions(from: defaults)) ?? Defaults.exclusions
+        // The CLI posts this notification after it adds exclusions.
+        DistributedNotificationCenter.default().addObserver(
+            forName: ScanConfiguration.exclusionsChangedNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadExclusions() }
+        }
 
         if isFirstLaunch {
             syncLoginItem()
@@ -444,7 +407,7 @@ final class SettingsStore {
         showICloudOnDashboard = true
         hasPendingICloudSetup = false
         categoryEnabled = Dictionary(
-            uniqueKeysWithValues: CategoryID.allCases.map { ($0, Defaults.categoryEnabled($0)) }
+            uniqueKeysWithValues: CategoryID.allCases.map { ($0, Defaults.categoryEnabled) }
         )
         confirmBeforeCleanup = Defaults.confirmBeforeCleanup
         keepReceipt = Defaults.keepReceipt
@@ -465,20 +428,6 @@ final class SettingsStore {
         launchAtLogin = achieved
         defaults.set(achieved, forKey: Key.launchAtLogin)
         isSyncingLoginItem = false
-    }
-
-    /// A locked rule that was decoded from a file the user edited comes back locked,
-    /// and a locked rule that has been deleted out of band comes back at all.
-    private static func restoringLockedRules(in rules: [ExclusionRule]) -> [ExclusionRule] {
-        var result = rules
-        for builtIn in Defaults.exclusions where builtIn.isLocked {
-            if let index = result.firstIndex(where: { $0.value == builtIn.value }) {
-                result[index].isLocked = true
-            } else {
-                result.insert(builtIn, at: 0)
-            }
-        }
-        return result
     }
 }
 

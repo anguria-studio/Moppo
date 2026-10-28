@@ -87,6 +87,10 @@ Scans run locally. Moppo stores scan caches, preferences, and cleanup history on
 Photo previews and originals can download from iCloud. Controls are in **Settings > Advanced**.
 macOS manages file and Photos access.
 
+The next release includes a command line for scans, saved plans, terminal removal, and optional app review.
+Read the [CLI guide](docs/cli.md) for installation, JSON output, and access requirements.
+Read the [agent workflow](docs/agent-workflow.md) to install the skill and remove plans that the user approves.
+
 Read the [privacy policy](https://anguria.studio/moppo/privacy/) and [terms of use](https://anguria.studio/moppo/terms/).
 
 ## Build the app

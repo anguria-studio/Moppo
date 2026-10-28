@@ -1,5 +1,6 @@
 import SwiftUI
 import MoppoCore
+import MoppoPlans
 import UserNotifications
 
 #if !MOPPO_APP_TESTS
@@ -33,15 +34,22 @@ struct MoppoApp: App {
         settings.appearance.apply()
         let model = AppModel(
             settings: settings, launchAccess: OnboardingView.launchAccess,
-            onboardingProgress: OnboardingProgress(defaults: .standard)
+            onboardingProgress: OnboardingProgress(defaults: .standard),
+            acquireRemovalLease: { try PlanExecutionLease() }
         )
+        if let request = try? PlanHandoff(launchArguments: Array(CommandLine.arguments.dropFirst())) {
+            model.openSavedPlan(request.url)
+        }
         _settings = State(initialValue: settings)
         _model = State(initialValue: model)
         _access = State(initialValue: AccessModel())
         _updates = State(initialValue: UpdateController(operations: model.operations))
         appDelegate.operations = model.operations
-        FinderUninstallRequestCenter.shared.install { [weak model] applicationURL in
+        MainWindowRequestCenter.uninstall.install { [weak model] applicationURL in
             model?.uninstaller.planAppUninstall(applicationURL)
+        }
+        MainWindowRequestCenter.savedPlan.install { [weak model] url in
+            model?.openSavedPlan(url)
         }
     }
 
@@ -56,7 +64,8 @@ struct MoppoApp: App {
                     minWidth: 1000, idealWidth: Token.Size.windowWidth,
                     minHeight: 640, idealHeight: Token.Size.windowHeight
                 )
-                .background(FinderUninstallRequestReceiver())
+                .background(MainWindowRequestReceiver())
+                .modifier(SavedPlanPresentation(model: model.savedPlans))
         }
         .defaultSize(width: Token.Size.windowWidth, height: Token.Size.windowHeight)
         // The sidebar extends behind the window controls.
@@ -131,6 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// has no handle on; `SettingsStore` writes this key and defaults it to true.
     private static var menuBarItemIsVisible: Bool {
         UserDefaults.standard.object(forKey: "settings.showInMenuBar") as? Bool ?? true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme == "moppo" { MainWindowRequestCenter.savedPlan.submit(url) }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

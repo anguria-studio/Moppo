@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Observation
 import MoppoCore
+import MoppoPlans
 
 /// Creates feature models and owns navigation, onboarding, access checks, and shared presentation.
 @MainActor
@@ -19,6 +20,8 @@ final class AppModel {
     let photoDuplicates: PhotoDuplicatesModel
     let uninstaller: AppUninstallerModel
     let cleanup: CleanupModel
+    let savedPlans: SavedPlanModel
+    @ObservationIgnored private var pendingSavedPlan: PlanHandoff?
     @ObservationIgnored private let cleanupScheduler = CleanupScheduler()
     @ObservationIgnored private var cleanupDestination: View?
     let fileDuplicates: FileDuplicatesModel
@@ -44,6 +47,8 @@ final class AppModel {
         uninstallerRemover: (any AppUninstallRemoving)? = nil,
         storageExplorerService: any StorageExplorerScanning = StorageExplorerService(),
         storageExplorerRemover: any StorageExplorerRemoving = StorageExplorerRemovalService(),
+        savedPlanServices: SavedPlanServices = SavedPlanServices(),
+        acquireRemovalLease: @escaping () throws -> PlanExecutionLease? = { nil },
         cleanupScanner: any CleanupScanning = CleanupScanService(),
         cleanupApplications: CleanupApplications = CleanupApplications(),
         cleanupRemover: (any CleanupRemoving)? = nil,
@@ -61,8 +66,9 @@ final class AppModel {
         self.onboardingProgress = onboardingProgress
         if launchAccess.requiresOnboarding { onboardingProgress?.begin() }
         self.hasFullDiskAccess = hasFullDiskAccess
-        let operations = OperationCoordinator()
+        let operations = OperationCoordinator(acquireRemovalLease: acquireRemovalLease)
         self.operations = operations
+        self.savedPlans = SavedPlanModel(operations: operations, services: savedPlanServices)
         self.cleanup = CleanupModel(
             operations: operations,
             scanner: cleanupScanner,
@@ -158,6 +164,7 @@ final class AppModel {
         cleanup.onEvent = { [weak self] event in self?.handleCleanupEvent(event) }
         cleanup.beforeScan = { [weak dashboard] in await dashboard?.pauseMeasurementForScan() }
         uninstaller.beforeSizeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
+        savedPlans.didRemove = { [weak self] in await self?.refreshAfterRemoval() }
         cleanup.refreshAfterRemoval = { [weak self] in
             await self?.refreshAfterRemoval(invalidateCleanup: false)
         }
@@ -197,6 +204,19 @@ final class AppModel {
         onboardingProgress?.finish()
         launchAccess.finishOnboarding(hasFullDiskAccess: hasFullDiskAccess())
         view = dashboard.hasPendingICloudSetup ? .dashboard : .scanner
+        if let request = pendingSavedPlan {
+            pendingSavedPlan = nil
+            savedPlans.open(request)
+        }
+    }
+
+    func openSavedPlan(_ url: URL) {
+        guard let request = try? PlanHandoff(url: url) else { return }
+        if isShowingWelcome {
+            if pendingSavedPlan == nil { pendingSavedPlan = request }
+        } else {
+            savedPlans.open(request)
+        }
     }
 
     /// Keeps automatic scans off when the user continues with limited access.
@@ -420,7 +440,7 @@ final class AppModel {
 
     /// Starts the first foreground scan when Cleanup opens.
     func startInitialCleanupScan() {
-        guard view == .scanner, cleanup.scanResults == nil, !cleanup.hasStartedInitialScan,
+        guard !savedPlans.isPresented, pendingSavedPlan == nil, view == .scanner, cleanup.scanResults == nil, !cleanup.hasStartedInitialScan,
               cleanupCompletion == nil, !isBusyWithDisk else { return }
         guard checkDiskAccess() else { return }
         cleanup.startScan(refreshOverview: false)

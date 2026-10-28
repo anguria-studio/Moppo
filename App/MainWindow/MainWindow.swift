@@ -22,11 +22,11 @@ struct MainWindow: View {
         // Native title bar layout keeps the window controls aligned during resizing.
         .background(WindowChrome())
         .modifier(KeyboardFocusVisibility())
-        .disabled(!showsAppUninstallDetail && (model.activity != nil
-                  || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil))
+        .disabled(model.savedPlans.isPresented || (!showsAppUninstallDetail && (model.activity != nil
+                  || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil)))
         // Keep the scroll view enabled so its scrollbar keeps the same width.
-        .allowsHitTesting(!showsAppUninstallDetail)
-        .accessibilityHidden(model.photoDuplicates.preview != nil || showsAppUninstallDetail)
+        .allowsHitTesting(!showsAppUninstallDetail && !model.savedPlans.isPresented)
+        .accessibilityHidden(model.photoDuplicates.preview != nil || showsAppUninstallDetail || model.savedPlans.isPresented)
         .overlay {
             if model.photoDuplicates.preview != nil || showsAppUninstallDetail {
                 Token.Fill.previewBackdrop

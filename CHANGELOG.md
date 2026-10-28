@@ -5,6 +5,18 @@ Changes that affect Moppo users appear here, with the newest release first.
 ## [Unreleased]
 
 - Add Never Offer This Again to Cleanup row menus, with saved exclusions for files, folders, local models, and Docker images.
+- Add `moppo exclude` to save the same exclusions as Never Offer This Again from the CLI.
+- Install the `moppo` command and the agent skill for Claude Code, Codex, or Cursor from Settings > Advanced.
+- Add plan removal from Terminal at an exact plan revision, with shared operation locking and saved outcomes.
+- Require Touch ID or the login password before the CLI removes items permanently.
+- Keep plans valid when cache sizes or directory contents change after the scan. Plans show the current sizes.
+- Keep the scans that saved plans use when the CLI removes old scans.
+- Show validation skips in Cleanup History.
+
+- Add a portable Moppo agent skill and guidance for disclosure, user confirmation, and client validation.
+- Add optional app review for saved CLI plans, mandatory confirmation, and saved removal outcomes.
+- Add saved CLI cleanup proposals with revision, exclusion, and file identity checks.
+- Add a read-only CLI with private scan reports, JSON output, filters, and shared app exclusions.
 
 - Offer obsolete Homebrew formula versions for reviewed permanent removal through Homebrew, with separate sizes and Cleanup History results.
 - Add Open and Empty Trash to a native sidebar popover with an arrow that points to Trash.

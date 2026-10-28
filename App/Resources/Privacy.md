@@ -14,6 +14,29 @@ Moppo uses these records for History and Put Back.
 Tool command results include the command, target path, exit status, and limited error output.
 Moppo keeps these local results even when Put Back receipts are off.
 
+## Command line
+
+The CLI saves scan reports locally for seven days.
+The report store retains at most ten valid reports after a successful save.
+Reports can contain file names, paths, sizes, scan explanations, and file identity checks.
+Saved cleanup plans contain identifiers and expire after one day.
+Plans can expire earlier with their source report. The plan store retains at most twenty valid plans.
+Saved plan outcomes contain identifiers, status codes, and counts without file names or paths.
+Outcome records expire after seven days.
+The outcome store retains at most 100 records, including separate start and final records.
+These stores use private folders under ~/Library/Application Support/Moppo.
+Folders use mode 0700, and record files use mode 0600.
+Expiry prevents use of records. Files can remain until a later store cleanup.
+Invalid files and backups can remain beyond these limits.
+Normal command output omits names, paths, and detailed explanations.
+The --include-paths option discloses them to the caller.
+Plan removal results omit names and paths.
+Reduced output still contains categories, sizes, and storage classifications.
+The supported CLI does not return file contents.
+An AI agent can send command output to its provider.
+Moppo does not control that provider or guarantee local model processing.
+The provider's settings and policies control its retention and further disclosure.
+
 ## Application updates
 
 Moppo checks for updates automatically.

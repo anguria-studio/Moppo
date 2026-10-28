@@ -1,10 +1,6 @@
-// AppKit here, and only here: the Core library stays free of it, but this harness
-// must mirror the app's ownership oracle exactly, and "which applications are
-// running right now" has no answer outside NSWorkspace.
-import AppKit
-import CoreServices
 import Foundation
 import MoppoCore
+import MoppoScan
 
 // Headless harness for the scanning engine. Every measurement the app makes can be
 // exercised here without launching the UI, which is how each engine phase is
@@ -188,52 +184,9 @@ struct CLI {
         print("  \(applications.count) applications")
     }
 
-    static func scanContext() async -> ScanContext {
-        // The same ownership context the app builds, or the Application Leftovers
-        // figures here describe a different product: without Launch Services this
-        // harness once reported 26 orphaned groups and 9.8 GB where the app
-        // offered 3 and 868 KB.
-        let planner = OrphanedAppLeftoverPlanner()
-        let candidates = planner.scanCandidates()
-        // A running application owns its identifiers whether or not Launch
-        // Services has registered it — a development build launched from Xcode,
-        // for instance. The app counts these; leaving them out let such an app's
-        // data show up as orphaned in this harness alone.
-        let running = await MainActor.run {
-            Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        }
-        let registered = OrphanedAppLeftoverPlanner.registeredApplicationBundleIdentifiers(
-            for: candidates.identifiers,
-            running: running,
-            isInstalled: { identifier in
-                guard let urls = LSCopyApplicationURLsForBundleIdentifier(
-                    identifier as CFString, nil
-                )?.takeRetainedValue() as? [URL] else { return false }
-                return urls.contains { FileManager.default.fileExists(atPath: $0.path) }
-            }
-        )
-        // What is open, with names — a cache under a live owner is not counted
-        // safe, and the harness has to agree with the app about that figure.
-        let owners = await MainActor.run {
-            // Dock applications only, as in the app: an owner is something the
-            // user opened and can quit, not an agent like Siri, and never Finder.
-            NSWorkspace.shared.runningApplications.filter {
-                $0.activationPolicy == .regular && $0.bundleIdentifier != "com.apple.finder"
-            }.compactMap { application in
-                application.bundleURL.map {
-                    FileEntry.RunningOwner(
-                        name: application.localizedName ?? $0.lastPathComponent,
-                        bundleIdentifier: application.bundleIdentifier,
-                        bundlePath: $0.path
-                    )
-                }
-            }
-        }
-        return ScanContext(
-            runningApplications: owners,
-            registeredApplicationBundleIdentifiers: registered,
-            applicationLeftoverCandidates: candidates
-        )
+    static func scanContext() async throws -> ScanContext {
+        // Diagnostic commands use default settings instead of saved app preferences.
+        try await ScanEnvironment.context(configuration: ScanConfiguration())
     }
 
     static func scan() async throws {

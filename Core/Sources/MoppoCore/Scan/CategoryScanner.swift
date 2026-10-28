@@ -160,7 +160,7 @@ public struct ScanContext: Sendable {
     public func isWithinExclusion(_ url: URL) -> Bool {
         guard url.isFileURL else { return excludedPaths.contains(url.absoluteString) }
         let path = url.standardizedFileURL.path
-        return excludedPaths.contains { path == $0 || path.hasPrefix($0 + "/") }
+        return excludedPaths.contains { $0 == "/" || path == $0 || path.hasPrefix($0 + "/") }
     }
 }
 

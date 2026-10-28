@@ -88,5 +88,18 @@ class ScanLoggingTests(unittest.TestCase):
                 self.assertFalse(output.joinpath("assets").exists())
 
 
+class CLIPackagingTests(unittest.TestCase):
+    def test_packaged_cli_contract(self):
+        valid = {"schema_version": 1, "command": "version", "text": "0.3.0"}
+        with patch.object(PACKAGE, "run", return_value=json.dumps(valid)) as run:
+            PACKAGE.validate_cli(Path("Moppo.app"), "0.3.0")
+            run.assert_called_once_with(Path("Moppo.app/Contents/Helpers/moppo"),
+                                        "--version", "--json", capture=True)
+        for field, value in [("schema_version", 2), ("command", "scan"), ("text", "development")]:
+            with self.subTest(field=field), patch.object(PACKAGE, "run", return_value=json.dumps({**valid, field: value})):
+                with self.assertRaisesRegex(RuntimeError, "packaged CLI"):
+                    PACKAGE.validate_cli(Path("Moppo.app"), "0.3.0")
+
+
 if __name__ == "__main__":
     unittest.main()
