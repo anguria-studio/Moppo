@@ -1,7 +1,7 @@
 import SwiftUI
 import MoppoCore
 
-/// Shows dated storage comparisons and cleanup measurement guidance.
+/// Shows dated storage comparisons.
 struct GrowthCard: View {
 
     /// Everything the card draws.
@@ -32,13 +32,8 @@ struct GrowthCard: View {
     var lastScanAt: Date? = nil
     /// Options that compare different measurements. The card shows a menu only for two or more.
     var baselineOptions: [GrowthBaseline] = []
-    var cleanupMeasurementState: DashboardModel.CleanupMeasurementState = .none
-    var cleanupBaselineDate: Date? = nil
     /// The start of "Last 7 days" while less than seven days of measurements exist.
     var sevenDayStart: Date? = nil
-    var isRefreshing = false
-    var onRefresh: () -> Void = {}
-    var onOpenDiskAccess: () -> Void = {}
     var onSelectBaseline: (GrowthBaseline) -> Void = { _ in }
     var onReveal: (GrowthAttribution) -> Void = { _ in }
 
@@ -54,7 +49,6 @@ struct GrowthCard: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 content
-                cleanupGuidance
             }
             .padding(.vertical, 22)
             .padding(.horizontal, 20)
@@ -174,53 +168,6 @@ struct GrowthCard: View {
             firstComparison
         case .notComparable:
             message("These measurements cannot be compared.", hint: "Storage changes need measurements with the same access and settings.")
-        }
-    }
-
-    @ViewBuilder
-    private var cleanupGuidance: some View {
-        if let guidance = cleanupGuidanceText {
-            VStack(alignment: .leading, spacing: 8) {
-                divider
-                    .padding(.bottom, 4)
-                Text(guidance)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if cleanupMeasurementState == .requiresAccess {
-                    Button("Open Full Disk Access", action: onOpenDiskAccess)
-                        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
-                } else if cleanupMeasurementState == .failed || cleanupMeasurementState == .interrupted {
-                    Button("Refresh Storage", action: onRefresh)
-                        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
-                        .disabled(isRefreshing)
-                        .accessibilityHint("Update current storage. This does not create a cleanup baseline.")
-                }
-                if let cleanupBaselineDate, cleanupMeasurementState != .none {
-                    Text("Comparison starts \(Self.stamp(cleanupBaselineDate)).")
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.secondary)
-                }
-            }
-            .padding(.top, 12)
-            .accessibilityElement(children: .contain)
-        }
-    }
-
-    private var cleanupGuidanceText: String? {
-        switch cleanupMeasurementState {
-        case .measuring:
-            "Measuring storage after cleanup."
-        case .requiresAccess:
-            "Enable Full Disk Access to measure storage after cleanup."
-        case .failed:
-            "Storage measurement failed. Refresh current storage or try another cleanup."
-        case .interrupted:
-            "Storage measurement stopped. Refresh current storage or try another cleanup."
-        case .cleared:
-            "Storage history was cleared. The next cleanup starts a new cleanup comparison."
-        case .none:
-            nil
         }
     }
 
