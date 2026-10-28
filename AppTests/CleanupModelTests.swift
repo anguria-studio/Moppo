@@ -357,7 +357,7 @@ struct CleanupModelTests {
         #expect(worktrees.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
     }
 
-    @Test("Opening worktree dialogs reuses completed checks", arguments: [false, true])
+    @Test("Opening worktree dialogs reuses completed checks until Check Again", arguments: [false, true])
     func cachedWorktreeDialog(safe: Bool) async throws {
         var entry = cleanupEntry("reviewed-worktree")
         var review = safeWorktreeReview()
@@ -366,31 +366,40 @@ struct CleanupModelTests {
         let gate = TestGate()
         let output = URL(fileURLWithPath: "/tmp/moppo-228-worktree-previews", isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        var updates = 0
+        var updates: [GitWorktreeReview] = []
         var probeRan = false
+        var refreshed = review
+        refreshed.activity = .found("Editor")
+        let result = refreshed
         for dark in [false, true] {
-            let sheet = WorktreeReviewSheet(entry: entry, onReview: { _ in updates += 1 }, onSelect: {}, onClose: {},
-                reviewWorktree: { _ in await gate.wait(); return review })
+            let sheet = WorktreeReviewSheet(entry: entry, onReview: { updates.append($0) }, onSelect: {}, onClose: {},
+                reviewWorktree: { _ in await gate.wait(); return result })
             _ = try await renderTestView(sheet.background(Token.chrome), width: 500, dark: dark,
                 output: output.appendingPathComponent("\(safe ? "safe" : "unknown")-\(dark ? "dark" : "light").png"))
         }
         // The probe shows that this window runs view tasks, so the sheet had a chance to start a check.
         let host = NSHostingView(rootView: ZStack {
-            WorktreeReviewSheet(entry: entry, onReview: { _ in updates += 1 }, onSelect: {}, onClose: {},
-                reviewWorktree: { _ in await gate.wait(); return review })
+            WorktreeReviewSheet(entry: entry, onReview: { updates.append($0) },
+                onSelect: {}, onClose: {}, reviewWorktree: { _ in await gate.wait(); return result })
             Color.clear.task { probeRan = true }
         }.frame(width: 500))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 620),
             styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = host
-        defer { window.contentView = nil }
+        window.orderFront(nil)
+        defer { window.orderOut(nil); window.contentView = nil }
         host.layoutSubtreeIfNeeded()
         try await waitUntil { probeRan }
         try await Task.sleep(for: .milliseconds(100))
-        let requests = await gate.count
-        if await gate.isPending { await gate.finish() }
-        #expect(requests == 0)
-        #expect(updates == 0)
+        #expect(await gate.count == 0)
+        #expect(updates.isEmpty)
+        let buttonY = host.isFlipped ? host.bounds.maxY - 32 : host.bounds.minY + 32
+        try click(NSPoint(x: 194, y: buttonY), in: host, window: window)
+        try await waitUntil { await gate.isPending }
+        #expect(await gate.count == 1)
+        await gate.finish()
+        try await waitUntil { !updates.isEmpty }
+        #expect(updates == [result])
     }
 
     @Test("A changed worktree also protects a selected parent", arguments: [false, true])
