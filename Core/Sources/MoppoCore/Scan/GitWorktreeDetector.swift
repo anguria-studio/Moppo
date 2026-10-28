@@ -24,6 +24,19 @@ enum GitWorktreeDetector {
             timeout: .seconds(15), environment: ["GIT_TERMINAL_PROMPT": "0"], allowsInput: false)
         return true
     }
+
+    /// Includes missing and locked worktrees that still reserve their paths in Git.
+    static func registeredPaths(for directory: URL) async throws -> Set<String> {
+        guard let executable = try await executable() else { throw ProcessError.executableMissing("Git") }
+        let output = try await ProcessRunner().run(executable,
+            ["--no-optional-locks", "-C", directory.path, "worktree", "list", "--porcelain", "-z"],
+            timeout: .seconds(5), environment: ["GIT_TERMINAL_PROMPT": "0"], allowsInput: false)
+        return Set(String(decoding: output, as: UTF8.self).split(separator: "\0").compactMap { field in
+            guard field.hasPrefix("worktree ") else { return nil }
+            let url = URL(fileURLWithPath: String(field.dropFirst(9)))
+            return url.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(url.lastPathComponent).path
+        })
+    }
     private static let opaqueNames: Set<String> = [
         ".git", ".svn", ".hg", "node_modules", "vendor", ".build", "build",
         "target", ".venv", "venv", "Pods", "Library", ".Trash"

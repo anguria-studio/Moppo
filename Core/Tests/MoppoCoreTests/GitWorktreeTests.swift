@@ -1150,6 +1150,53 @@ struct GitWorktreeTests {
         #expect(!files.complete)
     }
 
+    @Test("Trash avoids missing registered paths and preserves Git metadata", arguments: [false, true])
+    func trashAvoidsMissingRegistrations(locked: Bool) async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        let name = "recovery\nnotes"
+        let tree = try sandbox.worktree("Worktrees/" + name, repository: repo)
+        try sandbox.file("Worktrees/" + name + "/notes.txt", text: "Keep these notes")
+        let trash = sandbox.home.appendingPathComponent(".Trash", isDirectory: true)
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let missing = try sandbox.worktree(".Trash/" + name, repository: repo)
+        let secondMissing = try sandbox.worktree(".Trash/" + name + " 2", repository: repo)
+        let marker = try String(contentsOf: missing.appendingPathComponent(".git"), encoding: .utf8)
+        let registration = URL(fileURLWithPath: String(marker.dropFirst(8)).trimmingCharacters(in: .whitespacesAndNewlines))
+        let metadataURL = registration.appendingPathComponent("gitdir")
+        if locked {
+            for url in [missing, secondMissing] {
+                try sandbox.git(["-C", repo.path, "worktree", "lock", url.path])
+            }
+        }
+        for url in [missing, secondMissing] { try FileManager.default.removeItem(at: url) }
+        let registeredBefore = try await GitWorktreeDetector.registeredPaths(for: tree)
+        #expect(registeredBefore.contains(missing.path))
+        #expect(registeredBefore.contains(secondMissing.path))
+        let metadata = try Data(contentsOf: metadataURL)
+        let log = RemovalLog(directory: sandbox.home.appendingPathComponent("receipts"))
+        let outcome = try await CleanupService(
+            measureSize: { _ in SizeMeasurement(allocatedBytes: 4096) }, log: log,
+            worktreeTrashDirectory: { _ in trash }
+        ).remove(entries: [FileEntry(url: tree, kind: .folder, allocatedBytes: 4096)], trashFirst: true)
+        #expect(outcome.removedCount == 1)
+        #expect(outcome.failed.isEmpty)
+        let landed = trash.appendingPathComponent(name + " 3")
+        let record = try #require(log.recentEntries().first)
+        #expect(record.trashedPath == landed.path)
+        #expect(record.disposition == .trashed)
+        let registeredAfter = try await GitWorktreeDetector.registeredPaths(for: landed)
+        #expect(registeredAfter == registeredBefore.subtracting([tree.path]).union([landed.path]))
+        #expect(try Data(contentsOf: metadataURL) == metadata)
+        #expect(FileManager.default.fileExists(atPath: registration.appendingPathComponent("locked").path) == locked)
+        let service = TrashService(home: sandbox.home, log: log)
+        let item = try #require(try await service.summary().items.first)
+        #expect(item.canPutBack)
+        try await service.putBack(item)
+        #expect(try String(contentsOf: tree.appendingPathComponent("notes.txt"), encoding: .utf8) == "Keep these notes")
+        #expect(try await GitWorktreeDetector.registeredPaths(for: tree) == registeredBefore)
+    }
+
     @Test("Git-managed Trash and Put Back preserve local work and registration")
     func managedTrashAndPutBack() async throws {
         let sandbox = try Sandbox()
