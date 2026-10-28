@@ -44,6 +44,10 @@ targets:
         SUSendProfileInfo: false
         SUVerifyUpdateBeforeExtraction: true
         SURequireSignedFeed: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.tommasolaterza.Moppo.plan-review
+            CFBundleURLSchemes: [moppo]
+            CFBundleTypeRole: Viewer
         NSServices:
           - NSMenuItem:
               default: "Review Uninstall with Moppo"
@@ -70,11 +74,25 @@ targets:
         buildPhase: resources
       - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
+      # Settings > Advanced copies this folder into agent skill folders.
+      - path: skills
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: Sparkle
         product: Sparkle
       - package: MoppoCore
         product: MoppoCore
+      - package: MoppoCore
+        product: MoppoScan
+      - package: MoppoCore
+        product: MoppoPlans
+      - target: MoppoCommandLine
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
       - target: MoppoHomebrewAskpass
         embed: true
         codeSign: true
@@ -139,6 +157,35 @@ targets:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
           OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
 
+  MoppoCommandLine:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Core/Sources/moppo
+    dependencies:
+      - package: MoppoCore
+        product: MoppoCLI
+    settings:
+      base:
+        PRODUCT_NAME: moppo
+        PRODUCT_BUNDLE_IDENTIFIER: com.tommasolaterza.Moppo.CLI
+        GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        MARKETING_VERSION: "0.3.0"
+        CURRENT_PROJECT_VERSION: "50"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: L2P2KC4C69
+        CODE_SIGN_STYLE: Manual
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Release:
+          CODE_SIGN_IDENTITY: "Developer ID Application"
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          OTHER_CODE_SIGN_FLAGS: "$(inherited) --timestamp"
+
   MoppoHomebrewAskpass:
     type: tool
     platform: macOS
@@ -181,6 +228,10 @@ targets:
         product: Sparkle
       - package: MoppoCore
         product: MoppoCore
+      - package: MoppoCore
+        product: MoppoScan
+      - package: MoppoCore
+        product: MoppoPlans
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

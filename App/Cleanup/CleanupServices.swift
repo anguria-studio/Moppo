@@ -1,5 +1,6 @@
 import AppKit
 import MoppoCore
+import MoppoScan
 
 protocol CleanupScanning: Sendable {
     func scan(
@@ -32,40 +33,10 @@ struct CleanupScanService: CleanupScanning {
                 diagnostics?.finish(outcome: Task.isCancelled ? "cancelled" : succeeded ? "completed" : "failed")
                 diagnostics?.flush()
             }
-            let runtimeSpan = diagnostics?.context.begin("running_application_inventory")
-            let (running, owners) = await MainActor.run {
-                (
-                    Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleURL?.path }),
-                    ApplicationRuntime.currentRunningOwners()
-                )
-            }
-            diagnostics?.context.end(runtimeSpan, details: ["running_applications": "\(running.count)"])
-            var registered: Set<String> = []
-            var candidates: OrphanedAppLeftoverPlanner.CandidateScan?
-            if preferences.enabledCategories?.contains(.applicationLeftovers) ?? true {
-                let planner = leftoverPlanner
-                let discoverySpan = diagnostics?.context.begin("application_leftover_discovery")
-                let scanned = await Task.detached {
-                    ScanDiagnostics.$current.withValue(diagnostics?.context) { planner.scanCandidates() }
-                }.value
-                diagnostics?.context.end(discoverySpan, details: ["identifiers": "\(scanned.identifiers.count)"])
-                try Task.checkCancellation()
-                candidates = scanned
-                let registrationSpan = diagnostics?.context.begin("registered_application_inventory")
-                registered = await MainActor.run {
-                    ApplicationRuntime.registeredApplicationBundleIdentifiers(for: scanned.identifiers)
-                }
-                diagnostics?.context.end(registrationSpan, details: ["registered_identifiers": "\(registered.count)"])
-            }
-            try Task.checkCancellation()
-            let context = ScanContext(
-                measurer: AllocatedSizeMeasurer(followSymlinks: false),
-                excludedPaths: preferences.excludedPaths,
-                excludedPatterns: preferences.excludedPatterns,
-                runningApplicationPaths: running,
-                runningApplications: owners,
-                registeredApplicationBundleIdentifiers: registered,
-                applicationLeftoverCandidates: candidates
+            let context = try await ScanEnvironment.context(
+                configuration: ScanConfiguration(enabledCategories: preferences.enabledCategories ?? Set(CategoryID.allCases),
+                    excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns),
+                leftoverPlanner: leftoverPlanner
             )
             let result = try await coordinator.scan(
                 enabled: preferences.enabledCategories, context: context, onProgress: onProgress

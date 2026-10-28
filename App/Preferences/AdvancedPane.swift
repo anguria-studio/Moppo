@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import MoppoCore
 
-/// Preferences → Advanced: how removal behaves, the diagnostics, and the reset.
+/// Preferences → Advanced: how removal behaves, the diagnostics, agent setup, and the reset.
 struct AdvancedPane: View {
 
     @Bindable var settings: SettingsStore
@@ -37,6 +37,7 @@ struct AdvancedPane: View {
                 PhotoAccessGuide().padding()
             }
             diagnostics
+            AgentSetupSection()
             resetRow
         }
         .alert("Reset all settings?", isPresented: $isConfirmingReset) {

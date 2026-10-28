@@ -70,7 +70,7 @@ def validate_app(app, version, build, team):
     run("codesign", "--verify", "--deep", "--strict", app)
     framework = app / "Contents/Frameworks/Sparkle.framework/Versions/Current"
     executables = [app, app / "Contents/Helpers/MoppoHomebrewAskpass",
-                   framework / "Autoupdate", framework / "Updater.app",
+                   app / "Contents/Helpers/moppo", framework / "Autoupdate", framework / "Updater.app",
                    framework / "XPCServices/Installer.xpc",
                    framework / "XPCServices/Downloader.xpc"]
     for executable in executables:
@@ -87,10 +87,18 @@ def validate_app(app, version, build, team):
         if executable == app and entitlements.get("com.apple.security.personal-information.photos-library") is not True:
             raise RuntimeError("The Photos Library entitlement is missing")
     for architecture in ("arm64", "x86_64"):
-        for executable in (app / "Contents/MacOS/Moppo", app / "Contents/Helpers/MoppoHomebrewAskpass"):
+        for executable in (app / "Contents/MacOS/Moppo", app / "Contents/Helpers/MoppoHomebrewAskpass",
+                           app / "Contents/Helpers/moppo"):
             run("lipo", executable, "-verify_arch", architecture)
+    validate_cli(app, version)
     if (app / "Contents/MacOS/Moppo.debug.dylib").exists():
         raise RuntimeError("The release contains a Debug library")
+
+
+def validate_cli(app, version):
+    report = json.loads(run(app / "Contents/Helpers/moppo", "--version", "--json", capture=True))
+    if report.get("schema_version") != 1 or report.get("command") != "version" or report.get("text") != version:
+        raise RuntimeError("The packaged CLI has an unexpected version or output format.")
 
 
 def create_dmg(app, dmg, identity):
@@ -216,7 +224,7 @@ def main():
                        "-scheme", "Moppo", "-configuration", "Release",
                        "-destination", "generic/platform=macOS", "-archivePath", archive,
                        "-derivedDataPath", output / "DerivedData",
-                       "ARCHS=arm64 x86_64", "ONLY_ACTIVE_ARCH=NO",
+                       "ARCHS=arm64 x86_64", "ONLY_ACTIVE_ARCH=NO", "CODE_SIGN_STYLE=Manual",
                        f"CODE_SIGN_IDENTITY={identity}", f"DEVELOPMENT_TEAM={team}",
                        f"MARKETING_VERSION={args.version}", f"CURRENT_PROJECT_VERSION={args.build}",
                        f"MOPPO_DETAILED_SCAN_LOGGING={'YES' if args.scan_logging else 'NO'}"]

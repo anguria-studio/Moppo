@@ -59,7 +59,7 @@ extension CLI {
                         if selectedMode != "dashboard" {
                             group.addTask {
                                 do {
-                                    var context = await scanContext()
+                                    var context = try await scanContext()
                                     try Task.checkCancellation()
                                     context.measurer.onMeasurement = { cleanup.record($0, $1, $2) }
                                     let result = try await ScanCoordinator.standard().scan(

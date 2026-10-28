@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Testing
+import MoppoPlans
 
 @Suite("Operation coordinator")
 @MainActor
@@ -59,6 +60,30 @@ struct OperationCoordinatorTests {
         #expect(operations.blockedAction == nil)
         operations.finish(removal)
         #expect(!operations.explainBlockedAction())
+    }
+
+    @Test("Terminal and app mutations share a lock, and scans do not hold it")
+    func externalRemovalLock() throws {
+        let root = try TemporaryFolder()
+        let directory = root.url.appendingPathComponent("execution")
+        let operations = OperationCoordinator(acquireRemovalLease: { try PlanExecutionLease(directory: directory) })
+        let scan = try #require(operations.begin(.cleanupScan))
+        var external: PlanExecutionLease? = try PlanExecutionLease(directory: directory)
+        operations.finish(scan)
+        for kind in OperationCoordinator.Kind.allCases where kind.changesFiles {
+            #expect(operations.begin(kind) == nil)
+            #expect(operations.blockedAction?.message == "Another Moppo client is changing files. Wait for it to finish.")
+        }
+        withExtendedLifetime(external) {}
+        external = nil
+        for kind in OperationCoordinator.Kind.allCases where kind.changesFiles {
+            let operation = try #require(operations.begin(kind))
+            #expect(throws: PlanExecutionError.busy) { try PlanExecutionLease(directory: directory) }
+            operations.finish(scan)
+            #expect(throws: PlanExecutionError.busy) { try PlanExecutionLease(directory: directory) }
+            operations.finish(operation)
+            _ = try PlanExecutionLease(directory: directory)
+        }
     }
 
     @Test("An earlier operation cannot release the current operation")

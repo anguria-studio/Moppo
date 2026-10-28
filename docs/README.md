@@ -211,6 +211,10 @@ The command-line profiler can create the same detailed logs:
 Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory /tmp/moppo-scan-logs
 ```
 
+The [CLI guide](cli.md) describes the supported command interface.
+The [agent workflow](agent-workflow.md) covers skill installation, confirmation, disclosure, and client validation.
+The app and CLI share exclusion decoding and macOS scan context construction.
+
 ## Layout
 
 ```
@@ -223,7 +227,13 @@ Core/                         Swift package
     Resources/               Homebrew formula version adapter
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
-  Sources/moppo-cli/         Command-line tools
+  Sources/MoppoScan/         Shared macOS scan context and application ownership
+  Sources/MoppoPlans/        Private scan reports, saved plans, validation, and removal outcomes
+  Sources/MoppoCLI/          Supported command interface
+  Sources/moppo/             Supported command executable
+  Sources/moppo-cli/         Developer diagnostics
+  Tests/MoppoPlansTests/     Proposal validation, file identity, and retention tests
+  Tests/MoppoCLITests/       CLI contract, settings, cancellation, and storage tests
   Tests/MoppoCoreTests/      Engine tests
 App/                          SwiftUI app
   Cleanup/                   Cleanup model, services, and scheduler
@@ -233,7 +243,8 @@ App/                          SwiftUI app
       Beams/                 Scan beams, deletion rays, and floor light
       Acts/                  One file for each act, and the act protocol
   Duplicates/                File duplicate model
-  MainWindow/                Main views, sidebar, and sheets
+  MainWindow/                Main views, sidebar, sheets, and external requests
+  SavedPlans/                Saved plan review, mandatory confirmation, and outcomes
   Photos/                    Photo model, PhotoKit access, and thumbnails
   Preferences/               Four panes and the settings store
   Recovery/                  History, Trash, and Put Back model
@@ -241,6 +252,7 @@ App/                          SwiftUI app
   Uninstaller/               App Uninstaller model, scan services, and permanent removal
   Updates/                   Sparkle controller, preferences, and installation guard
   Support/                   Privacy information, support reports, and scan log access
+skills/moppo-cleanup/          Portable agent instructions for CLI inspection and saved plans
 design/                       Archived design handoff, kept locally
 ```
 

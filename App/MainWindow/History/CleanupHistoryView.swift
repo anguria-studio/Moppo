@@ -238,7 +238,7 @@ private extension CleanupHistoryState {
         switch self {
         case .availableInTrash:   0
         case .inTrash:            1
-        case .failed:             2
+        case .failed, .skipped:   2
         case .restored:           3
         case .removedPermanently: 4
         case .noLongerInTrash:    5
@@ -256,7 +256,7 @@ private extension CleanupHistoryItem {
             guard let trashedURL else { return nil }
             if let trashedIdentity, FileIdentity.of(trashedURL) != trashedIdentity { return nil }
             return trashedURL
-        case .restored, .failed:
+        case .restored, .failed, .skipped:
             return originalURL
         case .removedPermanently, .noLongerInTrash:
             return nil
@@ -284,6 +284,7 @@ private struct ResultLabel: View {
         case .removedPermanently: "Removed permanently"
         case .noLongerInTrash: "No longer in Trash"
         case .failed: "Could not remove"
+        case .skipped: "Skipped"
         }
     }
 
@@ -295,13 +296,14 @@ private struct ResultLabel: View {
         case .removedPermanently: "trash.slash"
         case .noLongerInTrash: "xmark.circle"
         case .failed: "exclamationmark.triangle"
+        case .skipped: "minus.circle"
         }
     }
 
     private var color: Color {
         switch state {
         case .availableInTrash: Token.Text.tableDetail
-        case .failed: Token.textColor(.orange)
+        case .failed, .skipped: Token.textColor(.orange)
         case .restored: Token.Text.tableDetail
         case .inTrash, .removedPermanently, .noLongerInTrash: Token.Text.tablePath
         }
@@ -322,6 +324,8 @@ private struct ResultLabel: View {
             "This receipt no longer matches an item in the Trash."
         case .failed:
             "Moppo did not remove this item."
+        case .skipped:
+            "Moppo kept this item because removal checks did not pass. Inspect the saved plan outcome for the reason."
         }
     }
 }
