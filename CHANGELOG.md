@@ -4,6 +4,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Allow Command-Q to quit from the worktree review dialog.
 - Allow reviewed deletion of compressed Codex history through Codex, including compressed child sessions.
 - Remove the Go module cache through Go after mandatory confirmation, with command results in Cleanup History.
 - Avoid Trash names that Git still reserves for missing worktrees.
