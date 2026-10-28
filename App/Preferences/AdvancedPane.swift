@@ -56,18 +56,17 @@ struct AdvancedPane: View {
 
     private var removalBehaviour: some View {
         PrefSection("Removal behaviour") {
-            // "Always move to Trash, never delete" used to live here, and turning it
-            // off made a Scanner clean-up unlink files for good. It was removed
-            // rather than kept: everything this app removes goes to the Trash.
+            // Tool commands always require separate confirmation.
             PrefToggleRow(
                 title: "Confirm before every clean-up",
+                description: "Tool commands always require confirmation.",
                 isOn: $settings.confirmBeforeCleanup
             )
             PrefDivider()
             PrefToggleRow(
                 title: "Keep Put Back receipts",
                 description: "Save original locations to restore items from the Trash within Moppo. "
-                    + "Without receipts, Moppo cannot put back newly removed items.",
+                    + "Without receipts, Moppo cannot put back newly removed items. Tool command results always enter Cleanup History.",
                 isOn: $settings.keepReceipt
             )
             // "Follow symlinks while measuring" used to live here. It was removed

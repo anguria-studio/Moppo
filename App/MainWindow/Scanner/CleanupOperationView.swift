@@ -9,6 +9,8 @@ struct CleanupOperationView: View {
     var canScan = true
     var onScanAgain: () -> Void = {}
     var onViewDashboard: () -> Void = {}
+    var onCancel: (() -> Void)? = nil
+    var isCancelling = false
 
     var body: some View {
         if isComplete {
@@ -28,7 +30,9 @@ struct CleanupOperationView: View {
             PageProgressView(
                 title: "Removing selected items",
                 detail: summary,
-                icon: .deletion(bytes: totalBytes)
+                icon: .deletion(bytes: totalBytes),
+                onCancel: onCancel,
+                isCancelling: isCancelling
             )
         }
     }

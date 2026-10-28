@@ -7,6 +7,30 @@ public enum ProcessError: Error, Equatable {
     case failed(command: String, status: Int32, stderr: String)
 }
 
+/// Captures command output after normal exit, timeout, or cancellation.
+public struct ProcessResult: Sendable, Equatable {
+    public enum Completion: String, Sendable, Codable {
+        case exited, timedOut, cancelled
+    }
+
+    public let output: Data
+    public let standardError: String
+    public let exitStatus: Int32
+    public let completion: Completion
+    public let terminatedBySignal: Bool
+    public let outputReadError: Int32?
+
+    public var succeeded: Bool {
+        isSuccessful(additionalSuccessExitStatuses: [], requiresEmptyStandardError: false)
+    }
+
+    func isSuccessful(additionalSuccessExitStatuses: Set<Int32>, requiresEmptyStandardError: Bool) -> Bool {
+        let acceptedStatus = additionalSuccessExitStatuses.contains(exitStatus) && standardError.isEmpty
+        return completion == .exited && !terminatedBySignal && outputReadError == nil
+            && (exitStatus == 0 || acceptedStatus) && (!requiresEmptyStandardError || standardError.isEmpty)
+    }
+}
+
 /// Runs external tools with explicit executable paths.
 ///
 /// Executable paths are absolute and explicit. A GUI app does not inherit the
@@ -27,6 +51,33 @@ public struct ProcessRunner: Sendable {
         additionalSuccessExitStatuses: Set<Int32> = [],
         requiresEmptyStandardError: Bool = false
     ) async throws -> Data {
+        let result = try await runResult(executable, arguments, timeout: timeout,
+            environment: environment, allowsInput: allowsInput,
+            additionalSuccessExitStatuses: additionalSuccessExitStatuses, requiresEmptyStandardError: requiresEmptyStandardError)
+        let command = ([executable] + arguments).joined(separator: " ")
+        if result.completion == .cancelled { throw CancellationError() }
+        if result.completion == .timedOut { throw ProcessError.timedOut(command) }
+        if let error = result.outputReadError {
+            throw ProcessError.failed(command: executable, status: result.exitStatus,
+                                      stderr: "Command output could not be read (error \(error)).")
+        }
+        guard result.isSuccessful(additionalSuccessExitStatuses: additionalSuccessExitStatuses,
+                                  requiresEmptyStandardError: requiresEmptyStandardError) else {
+            throw ProcessError.failed(command: command, status: result.exitStatus,
+                stderr: result.terminatedBySignal ? "terminated by signal \(result.exitStatus)" : result.standardError)
+        }
+        return result.output
+    }
+
+    public func runResult(
+        _ executable: String,
+        _ arguments: [String],
+        timeout: Duration = .seconds(60),
+        environment: [String: String] = [:],
+        allowsInput: Bool = false,
+        additionalSuccessExitStatuses: Set<Int32> = [],
+        requiresEmptyStandardError: Bool = false
+    ) async throws -> ProcessResult {
         let diagnostics = ScanDiagnostics.current
         let span = diagnostics?.begin("process", path: executable, details: [
             "arguments": arguments.joined(separator: "\n"), "timeout_seconds": "\(ScanDiagnostics.Resources.seconds(timeout))"
@@ -116,33 +167,19 @@ public struct ProcessRunner: Sendable {
             "stderr_bytes": "\(errorOutput.count)", "stderr": String(decoding: errorOutput.prefix(4096), as: UTF8.self),
             "stdout_read_error": "\(outputResult.error ?? 0)", "stderr_read_error": "\(errorResult.error ?? 0)"])
 
-        try Task.checkCancellation()
-        if let error = outputResult.error ?? errorResult.error {
-            throw ProcessError.failed(command: executable, status: process.terminationStatus,
-                                      stderr: "Command output could not be read (error \(error)).")
+        let completion: ProcessResult.Completion = Task.isCancelled ? .cancelled : timedOut.isRaised ? .timedOut : .exited
+        let result = ProcessResult(output: output, standardError: String(decoding: errorOutput, as: UTF8.self),
+            exitStatus: process.terminationStatus, completion: completion,
+            terminatedBySignal: process.terminationReason == .uncaughtSignal,
+            outputReadError: outputResult.error ?? errorResult.error)
+        switch completion {
+        case .cancelled: diagnosticOutcome = "cancelled"
+        case .timedOut: diagnosticOutcome = "timed_out"
+        case .exited:
+            diagnosticOutcome = result.isSuccessful(additionalSuccessExitStatuses: additionalSuccessExitStatuses,
+                requiresEmptyStandardError: requiresEmptyStandardError) ? "completed" : "failed"
         }
-
-        // Additional exit codes require normal termination and no error output.
-        let acceptedStatus = process.terminationReason == .exit
-            && additionalSuccessExitStatuses.contains(process.terminationStatus) && errorOutput.isEmpty
-        guard (process.terminationStatus == 0 || acceptedStatus)
-                && (!requiresEmptyStandardError || errorOutput.isEmpty) else {
-            let command = "\(executable) \(arguments.joined(separator: " "))"
-            if timedOut.isRaised {
-                diagnosticOutcome = "timed_out"
-                throw ProcessError.timedOut(command)
-            }
-            let stderr = process.terminationReason == .uncaughtSignal
-                ? "terminated by signal \(process.terminationStatus)"
-                : String(decoding: errorOutput, as: UTF8.self)
-            throw ProcessError.failed(
-                command: command,
-                status: process.terminationStatus,
-                stderr: stderr
-            )
-        }
-        diagnosticOutcome = "completed"
-        return output
+        return result
     }
 
 }

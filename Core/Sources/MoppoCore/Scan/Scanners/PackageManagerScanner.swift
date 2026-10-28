@@ -43,9 +43,12 @@ public struct PackageManagerScanner: CategoryScanner {
     /// The home whose cache roots are scanned. Injectable so the rules above can be
     /// exercised against a fixture tree; production reads the real home.
     private let home: URL
+    private let goExecutable: @Sendable () -> String?
 
-    public init(home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)) {
+    public init(home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
+                goExecutable: @escaping @Sendable () -> String? = ToolCommandRemoval.resolveGo) {
         self.home = home
+        self.goExecutable = goExecutable
     }
 
     // MARK: - Cache roots
@@ -193,8 +196,6 @@ public struct PackageManagerScanner: CategoryScanner {
         // Looked at and left out, each for a reason a name does not show:
         // * `~/.m2/repository` — also holds what the user built with `mvn install`,
         //   which no server can give back.
-        // * `~/go/pkg/mod` — read-only by design, so a plain removal fails half way;
-        //   `go clean -modcache` is the tool for it.
         // * `~/.gem` — installed gems, not a cache. `~/.sbt`, `~/.stack`, `~/.rustup`,
         //   `~/.nvm`, `~/.deno` — toolchains, with or without a cache beside them.
         // * `~/.vagrant.d/boxes` — a box may have been packaged on this Mac, and the
@@ -212,6 +213,24 @@ public struct PackageManagerScanner: CategoryScanner {
         var entries: [FileEntry] = []
         var totalBytes: Int64 = 0
         var unreadableCount = 0
+
+        let moduleCache = home.appendingPathComponent("go/pkg/mod", isDirectory: true)
+        if FileManager.default.fileExists(atPath: moduleCache.path), !context.isExcluded(moduleCache) {
+            let review = ToolCommandRemoval.goModuleCache(at: moduleCache, executable: goExecutable(),
+                protectedPatterns: context.measurer.protectedPatterns)
+            let measured = try await context.measurer.measure(moduleCache)
+            unreadableCount += measured.unreadableCount
+            if measured.allocatedBytes > 0, !measured.containsProtectedPattern {
+                entries.append(FileEntry(url: moduleCache, displayName: "Go module cache", kind: .cache,
+                    allocatedBytes: measured.allocatedBytes, isRegenerable: true,
+                    protectionReason: measured.unreadableCount > 0 ? .inventory : nil,
+                    protectionExplanation: measured.unreadableCount > 0
+                        ? "Some cache files could not be checked. Scan again before removal." : review.lockReason,
+                    removalMethod: .toolCommand(review),
+                    safetyCaveat: "Go removes this cache permanently. Projects may need another download."))
+                totalBytes += measured.allocatedBytes
+            }
+        }
 
         for root in Self.roots {
             try Task.checkCancellation()

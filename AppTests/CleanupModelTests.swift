@@ -6,6 +6,141 @@ import Testing
 @Suite("Cleanup feature ownership")
 @MainActor
 struct CleanupModelTests {
+    @Test("Each tool command needs confirmation with either routine confirmation setting", arguments: [true, false])
+    func toolCommandConfirmations(routine: Bool) async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-review")
+        let directories = [folder.url.appendingPathComponent("first"), folder.url.appendingPathComponent("second")]
+        for directory in directories {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        let entries = directories.map { url in
+            FileEntry(url: url, kind: .cache, allocatedBytes: 100, isRegenerable: true,
+                removalMethod: .toolCommand(.goModuleCache(at: url, executable: "/usr/bin/true")))
+        }
+        let remover = HeldCleanupRemoval()
+        let cleanup = CleanupModel(operations: OperationCoordinator(), remover: remover,
+            preferences: { .init(confirmBeforeCleanup: routine, keepReceipt: false) },
+            measureSaving: { _ in
+                Issue.record("Tool commands must not use a Trash savings estimate.")
+                return nil
+            })
+        cleanup.scanResults = cleanupResults(entries)
+        cleanup.scannerSelection = Set(entries.map(\.id))
+        cleanup.requestCleanUp(in: .all)
+        #expect(!cleanup.isRemoving)
+        #expect(cleanup.pendingCleanUp?.nextToolCommand?.id == entries[0].id)
+        await cleanup.performCleanUp()
+        await cleanup.performCleanUp(confirmingToolCommand: .goModuleCache(at: directories[0], executable: "/usr/bin/false"))
+        #expect(cleanup.pendingCleanUp?.confirmedToolCommands.isEmpty == true)
+        await cleanup.performCleanUp(confirmingToolCommand: entries[0].toolCommand)
+        await cleanup.performCleanUp(confirmingToolCommand: entries[0].toolCommand)
+        #expect(cleanup.pendingCleanUp?.nextToolCommand?.id == entries[1].id)
+        #expect(await remover.requestCount == 0)
+        cleanup.cancelCleanUp()
+        #expect(cleanup.pendingCleanUp == nil)
+        #expect(await remover.requestCount == 0)
+
+        cleanup.requestCleanUp(in: .all)
+        #expect(cleanup.pendingCleanUp?.confirmedToolCommands.isEmpty == true)
+        await cleanup.performCleanUp(confirmingToolCommand: entries[0].toolCommand)
+        let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entries[1].toolCommand) }
+        try await waitUntil { await remover.isPending }
+        #expect(await remover.confirmedToolCommands == Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0.toolCommand!) }))
+        #expect(cleanup.canCancelRemoval)
+        await remover.finish(CleanupOutcome(failed: entries.map(\.id)))
+        await task.value
+        #expect(!cleanup.canCancelRemoval)
+        #expect(cleanup.scannerSelection == Set(entries.map(\.id)))
+    }
+
+    @Test("Stop cancels the owned command task and retains a failed row after partial removal")
+    func stopToolCommand() async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-stop")
+        let target = folder.url.appendingPathComponent("cache")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let command = ToolCommandRemoval.goModuleCache(at: target, executable: "/usr/bin/true")
+        let entry = FileEntry(url: target, kind: .cache, allocatedBytes: 100, isRegenerable: true,
+            removalMethod: .toolCommand(command))
+        let operations = OperationCoordinator()
+        let remover = HeldCleanupRemoval()
+        let cleanup = CleanupModel(operations: operations, remover: remover)
+        cleanup.scanResults = cleanupResults([entry])
+        cleanup.scannerSelection = [entry.id]
+        cleanup.requestCleanUp(in: .all)
+        let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
+        try await waitUntil { await remover.isPending }
+        cleanup.cancelRemoval()
+        #expect(cleanup.isInterruptingRemoval)
+        #expect(operations.isBusy)
+        try FileManager.default.removeItem(at: target)
+        var result = ToolCommandRemovalResult(targetID: entry.id, name: "Go module cache", command: command.command)
+        result.status = .cancelled
+        result.beforeBytes = 100
+        result.afterBytes = 0
+        result.failureReason = "The command was stopped."
+        await remover.finish(CleanupOutcome(failed: [entry.id], toolCommandResults: [result]))
+        await task.value
+        #expect(await remover.wasCancelled)
+        #expect(!operations.isBusy)
+        #expect(!cleanup.canCancelRemoval)
+        #expect(cleanup.scannerSelection == [entry.id])
+        #expect(cleanup.scanResults?.categories.first?.entries.first?.id == entry.id)
+        #expect(cleanup.scanResults?.categories.first?.entries.first?.allocatedBytes == 0)
+    }
+
+    @Test("Tool command review renders in both appearances")
+    func toolCommandReviewRendering() async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-render")
+        let entry = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache,
+            allocatedBytes: 1_234_567_890, isRegenerable: true,
+            removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
+        for dark in [false, true] {
+            let sheet = ConfirmationSheet(variant: .cleanUp(itemCount: 1, totalBytes: entry.allocatedBytes,
+                protectedDataCount: 0, saving: nil), toolCommandEntry: entry, toolCommandCount: 1,
+                onConfirm: {}, onCancel: {})
+            let size = try await renderTestView(sheet.background(Token.chrome), width: 404, dark: dark,
+                output: URL(fileURLWithPath: "/tmp/moppo-258-command-review-\(dark ? "dark" : "light").png"))
+            #expect(size.height > 300)
+        }
+    }
+
+    @Test("Mixed tool results retain the Full Disk Access action and command failure details")
+    func mixedToolFailureNotice() async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-mixed-command")
+        let commandURL = folder.url.appendingPathComponent("module-cache")
+        let worktreeURL = folder.url.appendingPathComponent("worktree")
+        for url in [commandURL, worktreeURL] {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        let command = ToolCommandRemoval.goModuleCache(at: commandURL, executable: "/usr/bin/true")
+        let entry = FileEntry(url: commandURL, kind: .cache, allocatedBytes: 100,
+            removalMethod: .toolCommand(command))
+        let worktree = FileEntry(url: worktreeURL, kind: .folder, allocatedBytes: 100)
+        let remover = HeldCleanupRemoval()
+        let app = AppModel(hasFullDiskAccess: { false }, cleanupRemover: remover)
+        app.view = .scanner
+        app.cleanup.refreshAfterRemoval = {}
+        app.cleanup.scanResults = cleanupResults([entry, worktree])
+        app.cleanup.scannerSelection = [entry.id, worktree.id]
+        app.cleanup.requestCleanUp(in: .all)
+        let task = Task { await app.cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
+        try await waitUntil { await remover.isPending }
+        var result = ToolCommandRemovalResult(targetID: entry.id, name: "Go module cache", command: command.command)
+        result.status = .failed
+        result.exitStatus = 23
+        result.standardError = "cache is busy"
+        result.failureReason = "The command failed."
+        await remover.finish(CleanupOutcome(failed: [entry.id, worktree.id],
+            permissionDenied: [worktree.id], trashAccessDenied: [worktree.id], toolCommandResults: [result]))
+        await task.value
+        let notice = try #require(app.notice)
+        #expect(notice.showsFullDiskAccessAction)
+        #expect(notice.message.contains("cache is busy"))
+        #expect(notice.message.contains("Exit status: 23"))
+        #expect(notice.message.contains("Full Disk Access"))
+        #expect(notice.finderURLs.map(\.path) == [commandURL.path, worktreeURL.path])
+    }
+
     @Test("Type options count nested matches and follow safety and scan results")
     func dataTypeOptions() throws {
         var safeNode = cleanupEntry("project/node_modules")
@@ -1156,13 +1291,20 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection == [item.id])
     }
 
-    @Test("Cancelling the app quit wait rejects delayed success and preserves the review", arguments: [false, true])
-    func cancelApplicationQuit(beforeRemoval: Bool) async throws {
+    enum QuitCancellationPath: CaseIterable { case quitOnly, beforeRemoval, toolCommand }
+
+    @Test("Cancelling the app quit wait rejects delayed success and preserves the review", arguments: QuitCancellationPath.allCases)
+    func cancelApplicationQuit(path: QuitCancellationPath) async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-quit")
         let removal = HeldCleanupRemoval()
         let gate = TestGate()
         let open = FileEntry.RunningOwner(name: "Open", bundleIdentifier: "test.open", bundlePath: "/open.app")
         let closed = FileEntry.RunningOwner(name: "Closed", bundleIdentifier: "test.closed", bundlePath: "/closed.app")
         var first = cleanupEntry("open-cache")
+        if path == .toolCommand {
+            first.url = folder.url
+            first.removalMethod = .toolCommand(.goModuleCache(at: folder.url, executable: "/usr/bin/true"))
+        }
         first.inUseBy = open
         var second = cleanupEntry("closed-cache")
         second.inUseBy = closed
@@ -1192,9 +1334,11 @@ struct CleanupModelTests {
         cleanup.scanResults = cleanupResults([first, second])
         cleanup.scannerSelection = [first.id, second.id]
         let scannedAt = cleanup.scanResults?.finishedAt
-        if beforeRemoval { cleanup.requestCleanUp(in: .all) }
+        if path != .quitOnly { cleanup.requestCleanUp(in: .all) }
         let caller = Task {
-            if beforeRemoval { await cleanup.performCleanUp(quittingOwners: true) }
+            if path != .quitOnly {
+                await cleanup.performCleanUp(quittingOwners: true, confirmingToolCommand: path == .toolCommand ? first.toolCommand : nil)
+            }
             else { await cleanup.quitAppsForCleanup() }
         }
         try await waitUntil { await gate.isPending }
@@ -1202,8 +1346,13 @@ struct CleanupModelTests {
         #expect(!cleanup.isInterruptingApplicationQuit)
         caller.cancel()
         running = [open]
-        cleanup.cancelApplicationQuit()
-        cleanup.cancelApplicationQuit()
+        if path == .toolCommand {
+            cleanup.cancelRemoval()
+            cleanup.cancelRemoval()
+        } else {
+            cleanup.cancelApplicationQuit()
+            cleanup.cancelApplicationQuit()
+        }
         #expect(cleanup.isInterruptingApplicationQuit)
         #expect(operations.isBusy)
         cleanup.startScan()
@@ -1558,19 +1707,25 @@ private actor HeldCleanupRemoval: CleanupRemoving {
     private(set) var overrides: Set<FileEntry.ID> = []
     private(set) var keepReceipt = true
     private(set) var trashFirst = false
+    private(set) var confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
+    private(set) var wasCancelled = false
     private var continuation: CheckedContinuation<CleanupOutcome, Never>?
     var isPending: Bool { continuation != nil }
     func remove(
         entries: [FileEntry], trashFirst: Bool, keepReceipt: Bool,
         userDataRemovalOverrides: Set<FileEntry.ID>, appDataRemovalOverrides: Set<FileEntry.ID>,
-        expectedIdentities: [FileEntry.ID: String]
+        expectedIdentities: [FileEntry.ID: String],
+        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval]
     ) async throws -> CleanupOutcome {
         requestCount += 1
         self.entries = entries
         self.overrides = userDataRemovalOverrides
         self.keepReceipt = keepReceipt
         self.trashFirst = trashFirst
-        return await withCheckedContinuation { continuation = $0 }
+        self.confirmedToolCommands = confirmedToolCommands
+        let outcome = await withCheckedContinuation { continuation = $0 }
+        wasCancelled = Task.isCancelled
+        return outcome
     }
     func removeOrphanedAppLeftovers(
         _ plan: OrphanedAppLeftoverPlan, bundleIdentifiers: Set<String>, itemPaths: Set<String>?,

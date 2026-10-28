@@ -58,6 +58,7 @@ public struct CleanupOutcome: Sendable, Equatable {
     public var applicationRemovalCancelled: Bool
     /// Worktree paths excluded because their removal checks changed.
     public var skippedWorktrees: [String]
+    public var toolCommandResults: [ToolCommandRemovalResult]
 
     public init(
         removedBytes: Int64 = 0,
@@ -70,7 +71,8 @@ public struct CleanupOutcome: Sendable, Equatable {
         applicationRemovalCancelled: Bool = false,
         trashedCount: Int = 0,
         deletedCount: Int = 0,
-        skippedWorktrees: [String] = []
+        skippedWorktrees: [String] = [],
+        toolCommandResults: [ToolCommandRemovalResult] = []
     ) {
         self.removedBytes = removedBytes
         self.freedBytes = freedBytes
@@ -83,6 +85,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         self.trashedCount = trashedCount
         self.deletedCount = deletedCount
         self.skippedWorktrees = skippedWorktrees
+        self.toolCommandResults = toolCommandResults
     }
 
     /// Bytes the removed items claimed but did not give back, because another file
@@ -101,6 +104,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         trashAccessDenied.append(contentsOf: other.trashAccessDenied)
         applicationRemovalCancelled = applicationRemovalCancelled || other.applicationRemovalCancelled
         skippedWorktrees.append(contentsOf: other.skippedWorktrees)
+        toolCommandResults.append(contentsOf: other.toolCommandResults)
     }
 }
 
@@ -125,6 +129,7 @@ public struct CleanupService: Sendable {
     private let privateMeasurer = PrivateSizeMeasurer()
     private let log: RemovalLog
     private let dockerImages: DockerImageService
+    private let toolCommands: ToolCommandRemovalService
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
     private let reviewBuildCache: @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement?
@@ -162,6 +167,7 @@ public struct CleanupService: Sendable {
         self.log = log
         self.registeredApplications = registeredApplications
         self.dockerImages = dockerImages
+        self.toolCommands = ToolCommandRemovalService()
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
         self.worktreeTrashDirectory = worktreeTrashDirectory
@@ -190,14 +196,58 @@ public struct CleanupService: Sendable {
         keepReceipt: Bool = true,
         userDataRemovalOverrides: Set<FileEntry.ID> = [],
         appDataRemovalOverrides: Set<FileEntry.ID> = [],
-        expectedIdentities: [FileEntry.ID: String] = [:]
+        expectedIdentities: [FileEntry.ID: String] = [:],
+        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
+        let hasToolCommands = entries.contains { $0.toolCommand != nil }
 
-        for entry in entries {
+        for (index, entry) in entries.enumerated() {
             // Between entries, never mid-item: a half-removed app bundle is worse
             // than one more removal after the user pressed stop.
+            if Task.isCancelled, hasToolCommands {
+                for skipped in entries[index...] {
+                    guard let command = skipped.toolCommand else {
+                        outcome.failed.append(skipped.id)
+                        continue
+                    }
+                    var result = ToolCommandRemovalResult(targetID: skipped.id, name: skipped.displayName, command: command.command)
+                    result.failureReason = "Removal stopped before this command ran."
+                    recordToolCommand(result, in: &outcome)
+                }
+                break
+            }
             try Task.checkCancellation()
+
+            if hasToolCommands, entry.toolCommand == nil {
+                // Finish the current file item before Stop starts another item.
+                let ordinary = await Task.detached {
+                    try await self.remove(entries: [entry], trashFirst: trashFirst, keepReceipt: keepReceipt,
+                        userDataRemovalOverrides: userDataRemovalOverrides, appDataRemovalOverrides: appDataRemovalOverrides,
+                        expectedIdentities: expectedIdentities)
+                }.result
+                switch ordinary {
+                case .success(let result): outcome.merge(result)
+                case .failure: outcome.failed.append(entry.id)
+                }
+                continue
+            }
+
+            if let review = entry.toolCommand {
+                let result: ToolCommandRemovalResult
+                do {
+                    try log.checkWritable()
+                    let confirmation = Self.removalAllowed(entry, userDataRemovalOverrides: userDataRemovalOverrides)
+                        ? confirmedToolCommands[entry.id] : nil
+                    result = await toolCommands.remove(entry, review: review, confirmed: confirmation)
+                } catch {
+                    var blocked = ToolCommandRemovalResult(targetID: entry.id, name: entry.displayName, command: review.command)
+                    blocked.failureReason = "Cleanup History is unavailable. No removal command was run."
+                    result = blocked
+                }
+                recordToolCommand(result, in: &outcome)
+                continue
+            }
 
             // Belt and braces beneath the UI's locks: a running app, tool-managed
             // row, or user-data row without its exact override is refused here too,
@@ -392,6 +442,31 @@ public struct CleanupService: Sendable {
         }
 
         return outcome
+    }
+
+    private func recordToolCommand(_ result: ToolCommandRemovalResult, in outcome: inout CleanupOutcome) {
+        var result = result
+        outcome.removedBytes += result.removedBytes ?? 0
+        outcome.freedBytes += result.freedBytes ?? 0
+        if result.freedBytes == nil, result.status == .completed || (result.removedBytes ?? 0) > 0 {
+            outcome.unreportedFreedCount += 1
+        }
+        if result.status == .completed {
+            outcome.removedCount += 1
+            outcome.deletedCount += 1
+        } else {
+            outcome.failed.append(result.targetID)
+        }
+        do {
+            try log.append([RemovalRecord(timestamp: Date(), originalPath: result.targetID,
+                bytes: result.removedBytes ?? 0,
+                disposition: result.status == .completed ? .deleted : .failed,
+                freedBytes: result.freedBytes ?? 0, toolCommandResult: result)])
+        } catch {
+            result.failureReason = [result.failureReason, "Cleanup History could not save this result."]
+                .compactMap { $0 }.joined(separator: " ")
+        }
+        outcome.toolCommandResults.append(result)
     }
 
     private func soundLibraryIsStillSafe(_ entry: FileEntry) -> Bool {
@@ -673,6 +748,7 @@ public struct CleanupService: Sendable {
         for entry: FileEntry,
         removeProtectedAppData: Bool
     ) -> [FileEntry] {
+        if entry.toolCommand != nil { return [entry] }
         if entry.xcodeBuildCacheReview?.isWholeFolder == true {
             var folder = entry
             folder.allocatedBytes = entry.displayBytes
@@ -689,7 +765,7 @@ public struct CleanupService: Sendable {
         }
 
         let children = entry.children.filter { child in
-            if child.manualRemoval != nil || child.protectionReason == .running || child.protectionReason == .inventory
+            if child.manualRemoval != nil || child.toolCommand != nil || child.protectionReason == .running || child.protectionReason == .inventory
                 || child.protectionReason == .folderRemainder || child.soundLibrary != nil {
                 return false
             }
@@ -707,6 +783,8 @@ public struct CleanupService: Sendable {
     ) -> Bool {
         if entry.manualRemoval != nil || entry.protectionReason == .running || entry.protectionReason == .folderRemainder
             || entry.protectionReason == .inventory || entry.dockerImage?.isRemovalLocked == true
+            || entry.toolCommand?.lockReason != nil
+            || (entry.kind != .appBundle && entry.children.contains { $0.toolCommand != nil })
             || !entry.unlockableChildren.isEmpty { return false }
         if entry.codexSession != nil {
             return entry.protectionReason == .userData && userDataRemovalOverrides.contains(entry.id)

@@ -15,7 +15,8 @@ struct RemovalOperationSurface: View {
         showsActivity || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == model.view
     }
 
-    private var cancelApplicationQuit: (() -> Void)? {
+    private var cancelCleanupOperation: (() -> Void)? {
+        if model.cleanup.canCancelRemoval { return { model.cleanup.cancelRemoval() } }
         guard model.cleanup.isWaitingForApplications else { return nil }
         return { model.cleanup.cancelApplicationQuit() }
     }
@@ -28,8 +29,8 @@ struct RemovalOperationSurface: View {
                     if showsActivity, let activity = model.activity {
                         ActivityOverlay(
                             activity: activity,
-                            onCancel: cancelApplicationQuit,
-                            isCancelling: model.cleanup.isInterruptingApplicationQuit
+                            onCancel: cancelCleanupOperation,
+                            isCancelling: model.cleanup.isInterruptingApplicationQuit || model.cleanup.isInterruptingRemoval
                         )
                             // Keep operation controls active above the disabled page.
                             .environment(\.isEnabled, true)

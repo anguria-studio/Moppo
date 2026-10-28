@@ -41,6 +41,9 @@ final class CleanupModel {
     @ObservationIgnored private var scanTask: Task<Bool, Never>?
     @ObservationIgnored private var scanID: UUID?
     @ObservationIgnored private var cleanUpSavingTask: Task<Void, Never>?
+    @ObservationIgnored private var removalTask: Task<Void, Never>?
+    private(set) var canCancelRemoval = false
+    private(set) var isInterruptingRemoval = false
     @ObservationIgnored private var applicationQuitTask: Task<[FileEntry.RunningOwner], Never>?
     @ObservationIgnored var canScan: (Bool) -> Bool = { _ in true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
@@ -265,6 +268,7 @@ final class CleanupModel {
                     entry.childCount = entry.children.count
                     return entry
                 }
+                if entry.toolCommand != nil, cleanupOutcome?.failed.contains(entry.id) == true { return entry }
                 guard entry.url.isFileURL, entry.manualRemoval == nil else { return entry }
                 let gone = !fileManager.fileExists(atPath: entry.url.path)
                 if gone { vanished.insert(entry.id) }
@@ -454,6 +458,13 @@ final class CleanupModel {
         var runningOwners: [FileEntry.RunningOwner] = []
 
         var freed: PrivateSizeMeasurement?
+        var confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
+        var quitsOwners = false
+
+        var toolCommandEntries: [FileEntry] { entries.filter { $0.toolCommand != nil } }
+        var nextToolCommand: FileEntry? {
+            toolCommandEntries.first { confirmedToolCommands[$0.id] != $0.toolCommand }
+        }
 
         var codexSessionCount: Int {
             entries.compactMap(\.codexSession).reduce(0) { $0 + $1.members.count }
@@ -545,7 +556,8 @@ final class CleanupModel {
         )
         pendingCleanUp = plan
 
-        if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil || plan.codexSessionCount > 0 {
+        if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil || plan.codexSessionCount > 0
+            || !plan.toolCommandEntries.isEmpty {
             onEvent(.confirmationRequested)
             measureCleanUpSaving(for: plan)
         } else {
@@ -557,7 +569,7 @@ final class CleanupModel {
 
     private func measureCleanUpSaving(for plan: CleanupPlan) {
         // Filesystem measurements cannot measure Docker image layers.
-        guard plan.dockerImageCount == 0 else { return }
+        guard plan.dockerImageCount == 0, plan.toolCommandEntries.isEmpty else { return }
         let urls = plan.entries.flatMap(Self.plannedTargets).map(\.url)
             + plan.orphanedApplicationItems.map(\.url)
         guard !urls.isEmpty else { return }
@@ -711,26 +723,50 @@ final class CleanupModel {
         onEvent(.confirmationDismissed)
     }
 
-    func performCleanUp(quittingOwners: Bool = false) async {
-        guard !Task.isCancelled, let task = beginRemoval(quittingOwners: quittingOwners) else { return }
+    func performCleanUp(quittingOwners: Bool = false, confirmingToolCommand: ToolCommandRemoval? = nil) async {
+        guard !Task.isCancelled, var plan = pendingCleanUp else { return }
+        plan.quitsOwners = plan.quitsOwners || quittingOwners
+        if let entry = plan.nextToolCommand, let command = entry.toolCommand {
+            guard confirmingToolCommand == command else { return }
+            plan.confirmedToolCommands[entry.id] = command
+            pendingCleanUp = plan
+            if plan.nextToolCommand != nil { return }
+        }
+        guard let task = beginRemoval(quittingOwners: plan.quitsOwners) else { return }
         await task.value
+    }
+
+    func cancelRemoval() {
+        guard canCancelRemoval, !isInterruptingRemoval else { return }
+        isInterruptingRemoval = true
+        removalTask?.cancel()
+        cancelApplicationQuit()
     }
 
     /// Removal owns its task so a closed view cannot discard completed work.
     @discardableResult
     private func beginRemoval(quittingOwners: Bool) -> Task<Void, Never>? {
-        guard let plan = pendingCleanUp,
-              let operation = operations.begin(.cleanupRemoval) else { return nil }
+        guard let plan = pendingCleanUp, plan.nextToolCommand == nil else { return nil }
+        let includesCommands = !plan.toolCommandEntries.isEmpty
+        let cancel: (() -> Void)? = includesCommands ? { [weak self] in self?.cancelRemoval() } : nil
+        guard let operation = operations.begin(.cleanupRemoval, cancel: cancel) else { return nil }
         isRemoving = true
+        canCancelRemoval = includesCommands
+        isInterruptingRemoval = false
         onEvent(.operationStarted)
         cancelCleanUp()
-        return Task { [self] in
+        let task = Task { [self] in
             let attempted = await execute(plan, quittingOwners: quittingOwners)
             onEvent(.operationFinished)
             isRemoving = false
+            canCancelRemoval = false
+            isInterruptingRemoval = false
+            removalTask = nil
             operations.finish(operation)
             if attempted { await refreshAfterRemoval() }
         }
+        removalTask = task
+        return task
     }
 
     private func execute(_ capturedPlan: CleanupPlan, quittingOwners: Bool) async -> Bool {
@@ -790,7 +826,8 @@ final class CleanupModel {
                 keepReceipt: plan.keepReceipt,
                 userDataRemovalOverrides: plan.userDataRemovalOverrides,
                 appDataRemovalOverrides: [],
-                expectedIdentities: [:]
+                expectedIdentities: [:],
+                confirmedToolCommands: plan.confirmedToolCommands
             )) ?? CleanupOutcome(failed: entries.map(\.id))
             outcome.merge(ordinary)
         }
@@ -809,6 +846,21 @@ final class CleanupModel {
             outcome.merge(orphaned)
         }
         cleanupOutcome = outcome
+        for result in outcome.toolCommandResults where result.status != .completed {
+            guard var results = scanResults else { continue }
+            results.categories = results.categories.map { category in
+                var copy = category
+                copy.entries = copy.entries.map { original in
+                    guard original.id == result.targetID else { return original }
+                    var entry = original
+                    if let bytes = result.afterBytes { entry.allocatedBytes = bytes }
+                    entry.safetyCaveat = result.failureReason
+                    return entry
+                }
+                return copy
+            }
+            scanResults = results
+        }
         let completed = Set(entries.map(\.id)).subtracting(outcome.failed)
         scannerSelection.subtract(completed)
         userDataRemovalOverrides.subtract(completed)

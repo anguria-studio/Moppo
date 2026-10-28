@@ -651,6 +651,10 @@ private struct FileRow: View {
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning
         }
+        if let command = entry.toolCommand {
+            return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
+                ?? "The tool removes this cache permanently after confirmation. Put Back cannot restore it."
+        }
         if entry.removalAction != nil {
             return "Select this application group to move all listed files to the Trash."
         }
@@ -926,6 +930,10 @@ private struct ChildRow: View {
     }
 
     private var childHelp: String {
+        if let command = entry.toolCommand {
+            return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
+                ?? "The tool removes this cache permanently after confirmation. Put Back cannot restore it."
+        }
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning
         }
@@ -1044,6 +1052,7 @@ struct ProtectedSelectionControl: View {
             return entry.kind == .cache ? "Cache files are in use" : "Application is running"
         }
         if entry.manualRemoval != nil { return "Manual removal required" }
+        if entry.toolCommand != nil { return "Removal tool required" }
         return "Protected item"
     }
 

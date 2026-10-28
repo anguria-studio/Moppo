@@ -279,9 +279,13 @@ struct MainWindow: View {
                 dockerImageBytes: model.cleanup.pendingCleanUp?.dockerImageBytes ?? 0,
                 codexSessionCount: model.cleanup.pendingCleanUp?.codexSessionCount ?? 0,
                 codexSessionWarning: model.cleanup.pendingCleanUp?.codexSessionWarning,
-                onConfirm: { Task { await model.cleanup.performCleanUp() } },
-                onQuitAndConfirm: {
-                    Task { await model.cleanup.performCleanUp(quittingOwners: true) }
+                toolCommandEntry: model.cleanup.pendingCleanUp?.nextToolCommand,
+                toolCommandCount: model.cleanup.pendingCleanUp?.toolCommandEntries.count ?? 0,
+                onConfirm: { [command = model.cleanup.pendingCleanUp?.nextToolCommand?.toolCommand] in
+                    Task { await model.cleanup.performCleanUp(confirmingToolCommand: command) }
+                },
+                onQuitAndConfirm: { [command = model.cleanup.pendingCleanUp?.nextToolCommand?.toolCommand] in
+                    Task { await model.cleanup.performCleanUp(quittingOwners: true, confirmingToolCommand: command) }
                 },
                 onCancel: { model.cleanup.cancelCleanUp() }
             )
