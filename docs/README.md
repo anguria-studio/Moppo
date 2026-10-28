@@ -220,6 +220,7 @@ Core/                         Swift package
     System/                  Disk information, snapshots, process execution, scan and Dashboard diagnostics
     Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
+    Resources/               Homebrew formula version adapter
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
   Sources/moppo-cli/         Command-line tools
@@ -292,13 +293,20 @@ This includes Cleanup, application data, sound libraries, Storage Explorer, dupl
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
 Each tool command also requires separate confirmation, including when routine confirmations are off.
-Cleanup currently uses this path for the Go module cache at `~/go/pkg/mod`.
-Moppo checks the tool and cache identities before it runs the fixed command arguments.
+Cleanup uses this path for the Go module cache at `~/go/pkg/mod` and obsolete Homebrew formula versions.
+Moppo checks the tool and item identities before it runs the fixed command arguments.
 Stop cancels the command and retains completed results from the selection.
 The current ordinary file operation can finish before cancellation takes effect.
 Command results always enter Cleanup History, including when Put Back receipts are off.
-The results distinguish measured cache size reduction from verified disk space recovery.
-Simulator runtimes and old Homebrew versions still need their separate tool integrations.
+The results distinguish measured item size reduction from verified disk space recovery.
+Simulator runtimes still need their separate tool integration.
+Homebrew formula versions appear separately under Package Manager Caches and require review.
+The adapter uses `brew ruby` with Homebrew eligibility, locking, and cleanup methods.
+Removal applies to one selected version and does not run general Homebrew cleanup or dependency removal.
+Pinned formulae, linked versions, active `opt` versions, and versions that Homebrew retains stay protected.
+The adapter checks the version path and installation receipt again under Homebrew's formula lock before removal.
+Unreadable or unsupported inventories report incomplete checks and do not create removal rows for affected formulae.
+Download cache rows remain separate and enter the total once.
 Docker images appear once per image identifier, with their tags grouped together.
 When this Mac has Docker Desktop but it is unavailable, Cleanup shows its setup card in All results.
 When Docker Desktop is absent, Cleanup hides the empty Docker card.

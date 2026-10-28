@@ -27,9 +27,12 @@ public struct ToolCommandRemoval: Sendable, Equatable {
     private let paths: [PathIdentity]?
     private let resolvedExecutable: String?
     private let executableIdentity: String?
+    private let scriptURL: URL?
+    private let scriptIdentity: String?
 
     init(targetURL: URL, executable: String?, arguments: [String], environment: [String: String],
-         expectedResult: ExpectedResult, timeout: Duration = .seconds(120), protectedPatterns: [String] = []) {
+         expectedResult: ExpectedResult, timeout: Duration = .seconds(120), protectedPatterns: [String] = [],
+         scriptURL: URL? = nil) {
         self.targetURL = targetURL.standardizedFileURL
         self.executable = executable
         self.arguments = arguments
@@ -39,7 +42,9 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         self.protectedPatterns = protectedPatterns
         paths = Self.directoryIdentities(targetURL)
         resolvedExecutable = executable.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-        executableIdentity = resolvedExecutable.flatMap(Self.executableVersion)
+        executableIdentity = resolvedExecutable.flatMap(Self.fileVersion)
+        self.scriptURL = scriptURL
+        scriptIdentity = scriptURL.flatMap { Self.fileVersion($0.path) }
     }
 
     public static func resolveGo() -> String? {
@@ -55,12 +60,29 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         ], expectedResult: .targetAbsent, protectedPatterns: protectedPatterns)
     }
 
+    static func homebrewVersion(_ version: HomebrewFormulaVersion, executable: String,
+                                protectedPatterns: [String] = []) -> Self {
+        let script = HomebrewFormulaVersions.scriptURL
+        return Self(targetURL: URL(fileURLWithPath: version.path), executable: executable,
+            arguments: ["ruby", script.path, "remove", version.path, version.token],
+            environment: HomebrewFormulaVersions.environment, expectedResult: .targetAbsent,
+            protectedPatterns: protectedPatterns, scriptURL: script)
+    }
+
+    var isHomebrewVersion: Bool {
+        guard let scriptURL else { return false }
+        return scriptURL == HomebrewFormulaVersions.scriptURL
+    }
+
     public var lockReason: String? {
         guard let executable, executableIdentity != nil,
               FileManager.default.isExecutableFile(atPath: executable) else {
             return "The removal tool is missing. Install the tool, then scan again."
         }
-        guard paths != nil else { return "The cache path could not be verified. Scan again before removal." }
+        guard scriptURL == nil || scriptIdentity != nil else {
+            return "The removal script is missing. Install Moppo again before removal."
+        }
+        guard paths != nil else { return "Moppo could not verify the item path. Scan again before removal." }
         return nil
     }
 
@@ -74,7 +96,8 @@ public struct ToolCommandRemoval: Sendable, Equatable {
     func isStillValid() -> Bool {
         guard lockReason == nil, let executable, let resolvedExecutable,
               URL(fileURLWithPath: executable).resolvingSymlinksInPath().path == resolvedExecutable,
-              Self.executableVersion(resolvedExecutable) == executableIdentity,
+              Self.fileVersion(resolvedExecutable) == executableIdentity,
+              scriptURL.map({ Self.fileVersion($0.path) == scriptIdentity }) ?? true,
               let paths, paths == Self.directoryIdentities(targetURL) else { return false }
         return true
     }
@@ -115,7 +138,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private static func executableVersion(_ path: String) -> String? {
+    private static func fileVersion(_ path: String) -> String? {
         var info = stat()
         guard lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return nil }
         return "\(info.st_dev):\(info.st_ino):\(info.st_size):\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)"
@@ -148,7 +171,7 @@ public struct ToolCommandRemovalResult: Sendable, Equatable, Codable {
     public var summary: String {
         var parts = [status == .completed ? "\(name) was removed permanently." : "\(name): \(failureReason ?? "Removal did not finish.")"]
         if let removedBytes {
-            parts.append("Cache storage decreased by \(ByteFormatting.string(removedBytes)).")
+            parts.append("Item storage decreased by \(ByteFormatting.string(removedBytes)).")
         }
         if let freedBytes {
             parts.append("Verified disk space recovery: \(ByteFormatting.string(freedBytes)).")

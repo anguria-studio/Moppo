@@ -7,7 +7,7 @@ public struct ToolCommandRemovalService: Sendable {
 
     public init() {
         self.init { review in
-            guard let executable = review.executable else { throw ProcessError.executableMissing("go") }
+            guard let executable = review.executable else { throw ProcessError.executableMissing("removal tool") }
             return try await ProcessRunner().runResult(executable, review.arguments, timeout: review.timeout,
                 environment: review.environment, allowsInput: false)
         }
@@ -26,7 +26,7 @@ public struct ToolCommandRemovalService: Sendable {
             return result
         }
         guard review.isStillValid() else {
-            result.failureReason = review.lockReason ?? "The cache or removal tool changed. Scan again before removal."
+            result.failureReason = review.lockReason ?? "The item or removal tool changed. Scan again before removal."
             return result
         }
         let measurer = AllocatedSizeMeasurer(protectedPatterns: review.protectedPatterns)
@@ -43,7 +43,7 @@ public struct ToolCommandRemovalService: Sendable {
         }
         guard before.unreadableCount == 0, !before.containsProtectedPattern, !before.containsCloudOnlyItem,
               review.isStillValid() else {
-            result.failureReason = "The cache changed or contains protected files. Scan again before removal."
+            result.failureReason = "The item changed or contains protected files. Scan again before removal."
             return result
         }
         result.beforeBytes = before.allocatedBytes
@@ -92,7 +92,7 @@ public struct ToolCommandRemovalService: Sendable {
         }
         if result.status == .completed, !review.removalIsVerified() {
             result.status = .failed
-            result.failureReason = "The cache is still present or could not be checked. Scan again before removal."
+            result.failureReason = "The item is still present, or Moppo could not check it. Scan again before removal."
         }
         return result
     }

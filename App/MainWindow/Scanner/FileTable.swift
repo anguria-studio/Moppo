@@ -653,7 +653,7 @@ private struct FileRow: View {
         }
         if let command = entry.toolCommand {
             return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
-                ?? "The tool removes this cache permanently after confirmation. Put Back cannot restore it."
+                ?? "The tool removes this item permanently after confirmation. Put Back cannot restore it."
         }
         if entry.removalAction != nil {
             return "Select this application group to move all listed files to the Trash."
@@ -709,6 +709,9 @@ private struct FileRow: View {
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if let badge = presentation.badge {
+                        Badge(text: badge).fixedSize()
+                    }
                     if entry.worktreeCount > 0, let onDisclose {
                         Button(action: onDisclose) {
                             Badge(text: "\(entry.worktreeCount) \(entry.worktreeCount == 1 ? "worktree" : "worktrees")").fixedSize()
@@ -756,12 +759,14 @@ private struct FileRow: View {
                     }
                 }
 
-                Text(entry.aiStorageSection?.summary ?? presentation.summary)
-                    .font(.mcBody)
-                    .foregroundStyle(Token.Text.secondary)
-                    .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
-                    .truncationMode(entry.xcodeBuildCacheReview?.isWholeFolder == true ? .middle : .tail)
-                    .help(entry.url.path)
+                if entry.aiStorageSection != nil || !presentation.summary.isEmpty {
+                    Text(entry.aiStorageSection?.summary ?? presentation.summary)
+                        .font(.mcBody)
+                        .foregroundStyle(Token.Text.secondary)
+                        .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
+                        .truncationMode(entry.xcodeBuildCacheReview?.isWholeFolder == true ? .middle : .tail)
+                        .help(entry.url.path)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(entry.url.path)
@@ -844,6 +849,10 @@ private struct ChildRow: View {
                         .truncationMode(.middle)
                         .layoutPriority(1)
 
+                    if let badge = presentation.badge {
+                        Badge(text: badge).fixedSize()
+                    }
+
                     if entry.codexSession != nil {
                         if entry.protectionReason == .inventory {
                             Badge(text: "in use").fixedSize()
@@ -863,11 +872,11 @@ private struct ChildRow: View {
                         if showsSafeToRemoveBadges && entry.regeneratesSafely {
                             Badge(text: "safe to remove", style: .safe).fixedSize()
                         }
-                    } else if let caveat = entry.safetyCaveat {
+                    } else if presentation.badge == nil, let caveat = entry.safetyCaveat {
                         Badge(text: caveat).fixedSize()
                     }
                 }
-                if entry.xcodeBuildCacheReview == nil {
+                if entry.xcodeBuildCacheReview == nil, !presentation.summary.isEmpty {
                     Text(presentation.summary)
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
@@ -932,7 +941,7 @@ private struct ChildRow: View {
     private var childHelp: String {
         if let command = entry.toolCommand {
             return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
-                ?? "The tool removes this cache permanently after confirmation. Put Back cannot restore it."
+                ?? "The tool removes this item permanently after confirmation. Put Back cannot restore it."
         }
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning

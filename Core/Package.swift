@@ -13,6 +13,7 @@ let package = Package(
     targets: [
         .target(
             name: "MoppoCore",
+            resources: [.copy("Resources/homebrew-versions.rb")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
