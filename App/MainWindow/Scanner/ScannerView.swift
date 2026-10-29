@@ -6,6 +6,7 @@ struct ScannerView: View {
     @Bindable var model: CleanupModel
     let activity: AppModel.Activity?
     let cleanupCompletion: AppModel.CleanupCompletion?
+    let onContinue: (UUID) -> Void
     let onViewDashboard: (UUID) -> Void
     let onUninstallApplication: (FileEntry) -> Void
     let onShowInStorageExplorer: (FileEntry) -> Void
@@ -30,8 +31,8 @@ struct ScannerView: View {
                     itemCount: completion.outcome.removedCount,
                     totalBytes: completion.outcome.removedBytes,
                     isComplete: true,
-                    canScan: !model.isBusyWithDisk,
-                    onScanAgain: { model.startScan() },
+                    canContinue: !model.isBusyWithDisk,
+                    onContinue: { onContinue(completion.id) },
                     onViewDashboard: { onViewDashboard(completion.id) }
                 )
                 .id(completion.id)
@@ -212,10 +213,16 @@ struct ScannerView: View {
 
     private func completion(_ outcome: CleanupOutcome) -> some View {
         HStack(spacing: 12) {
-            Text(outcome.deletedCount > 0
-                ? "\(outcome.removedCount) \(outcome.removedCount == 1 ? "item removed" : "items removed")"
-                : "\(ByteFormatting.string(outcome.removedBytes)) moved to Trash")
-                .font(.mcRowTitle)
+            Group {
+                if outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) {
+                    Text("Cleanup incomplete")
+                } else {
+                    Text(outcome.deletedCount > 0
+                        ? "\(outcome.removedCount) \(outcome.removedCount == 1 ? "item removed" : "items removed")"
+                        : "\(ByteFormatting.string(outcome.removedBytes)) moved to Trash")
+                }
+            }
+            .font(.mcRowTitle)
             if !outcome.failed.isEmpty {
                 Text("\(outcome.failed.count) items could not be removed.")
                     .font(.mcCaption)

@@ -215,6 +215,7 @@ struct MainWindow: View {
                     model: model.cleanup,
                     activity: model.activity,
                     cleanupCompletion: model.cleanupCompletion,
+                    onContinue: { model.dismissCleanupCompletion($0) },
                     onViewDashboard: { model.showDashboardAfterCleanup($0) },
                     onUninstallApplication: { model.uninstaller.planAppUninstall($0.url) },
                     onShowInStorageExplorer: model.showInStorageExplorer

@@ -4,6 +4,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Return to the remaining Cleanup results with Continue after removal, without a new scan.
+- Remove selected simulator runtimes through simctl after mandatory confirmation, with permanent Cleanup History records.
+- Protect runtimes used by installed Xcode versions and active simulators.
+- Keep retained simulator download images visible with their size and protection reason.
+- Report incomplete cleanup when macOS keeps simulator images after removal.
+- Explain the known Xcode deletion issue when an older Xcode version leaves a simulator image on disk.
 - Remove the Go module cache through Go after mandatory confirmation, with command results in Cleanup History.
 - Avoid Trash names that Git still reserves for missing worktrees.
 - Explain denied Trash access during worktree removal and show Full Disk Access guidance.

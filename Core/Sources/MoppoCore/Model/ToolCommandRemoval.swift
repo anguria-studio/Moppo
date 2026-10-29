@@ -10,6 +10,7 @@ public enum RemovalMethod: Sendable, Equatable {
 public struct ToolCommandRemoval: Sendable, Equatable {
     public enum ExpectedResult: Sendable, Equatable {
         case targetAbsent
+        case simulatorRuntimeAbsent(SimulatorRuntimeReview)
     }
 
     struct PathIdentity: Sendable, Equatable {
@@ -37,9 +38,11 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         self.expectedResult = expectedResult
         self.timeout = timeout
         self.protectedPatterns = protectedPatterns
-        paths = Self.directoryIdentities(targetURL)
+        let fileTarget: Bool
+        if case .simulatorRuntimeAbsent = expectedResult { fileTarget = true } else { fileTarget = false }
+        paths = Self.pathIdentities(targetURL, fileTarget: fileTarget)
         resolvedExecutable = executable.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
-        executableIdentity = resolvedExecutable.flatMap(Self.executableVersion)
+        executableIdentity = resolvedExecutable.flatMap(Self.fileVersion)
     }
 
     public static func resolveGo() -> String? {
@@ -55,12 +58,29 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         ], expectedResult: .targetAbsent, protectedPatterns: protectedPatterns)
     }
 
+    var simulatorRuntime: SimulatorRuntimeReview? {
+        if case .simulatorRuntimeAbsent(let review) = expectedResult { return review }
+        return nil
+    }
+
+    static func simulatorRuntime(_ review: SimulatorRuntimeReview, fallbackURL: URL,
+                                 protectedPatterns: [String]) -> Self {
+        Self(targetURL: review.runtime.backingURL ?? fallbackURL, executable: "/usr/bin/xcrun",
+            arguments: ["simctl", "runtime", "delete", review.runtime.identifier],
+            environment: ["DEVELOPER_DIR": review.developerDirectory], expectedResult: .simulatorRuntimeAbsent(review),
+            protectedPatterns: protectedPatterns)
+    }
+
     public var lockReason: String? {
         guard let executable, executableIdentity != nil,
               FileManager.default.isExecutableFile(atPath: executable) else {
             return "The removal tool is missing. Install the tool, then scan again."
         }
-        guard paths != nil else { return "The cache path could not be verified. Scan again before removal." }
+        if let runtime = simulatorRuntime {
+            if let reason = runtime.protectionExplanation { return reason }
+            guard runtime.toolsAreUnchanged else { return "The Xcode toolchain changed. Scan again before removal." }
+        }
+        guard paths != nil else { return "The item path could not be verified. Scan again before removal." }
         return nil
     }
 
@@ -74,38 +94,43 @@ public struct ToolCommandRemoval: Sendable, Equatable {
     func isStillValid() -> Bool {
         guard lockReason == nil, let executable, let resolvedExecutable,
               URL(fileURLWithPath: executable).resolvingSymlinksInPath().path == resolvedExecutable,
-              Self.executableVersion(resolvedExecutable) == executableIdentity,
-              let paths, paths == Self.directoryIdentities(targetURL) else { return false }
+              Self.fileVersion(resolvedExecutable) == executableIdentity,
+              let paths, paths == Self.pathIdentities(targetURL, fileTarget: simulatorRuntime != nil) else { return false }
         return true
     }
 
     func targetIsAbsentAfterRemoval() -> Bool {
         guard let paths, FileIdentity.isAbsent(targetURL) else { return false }
         return paths.dropFirst().allSatisfy {
-            FileIdentity.of(URL(fileURLWithPath: $0.path)) == $0.identity
+            let url = URL(fileURLWithPath: $0.path)
+            return FileIdentity.of(url) == $0.identity || (simulatorRuntime != nil && FileIdentity.isAbsent(url))
         }
     }
 
     func removalIsVerified() -> Bool {
         switch expectedResult {
         case .targetAbsent: targetIsAbsentAfterRemoval()
+        case .simulatorRuntimeAbsent: false
         }
     }
 
     func targetIsUnchangedAfterRemoval() -> Bool {
         guard let paths else { return false }
-        return paths == Self.directoryIdentities(targetURL)
+        return paths == Self.pathIdentities(targetURL, fileTarget: simulatorRuntime != nil)
     }
 
-    private static func directoryIdentities(_ url: URL) -> [PathIdentity]? {
+    private static func pathIdentities(_ url: URL, fileTarget: Bool) -> [PathIdentity]? {
         guard url.isFileURL, url.path.hasPrefix("/") else { return nil }
         var current = URL(fileURLWithPath: FileIdentity.physicalPath(url.standardizedFileURL.path))
         var result: [PathIdentity] = []
         while true {
             var info = stat()
-            guard lstat(current.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+            let isFile = result.isEmpty && fileTarget
+            guard lstat(current.path, &info) == 0, info.st_mode & S_IFMT == (isFile ? S_IFREG : S_IFDIR),
                   let identity = FileIdentity.of(current) else { return nil }
-            result.append(.init(path: current.path, identity: identity))
+            let version = isFile ? fileVersion(current.path) : identity
+            guard let version else { return nil }
+            result.append(.init(path: current.path, identity: version))
             if current.path == "/" { return result }
             current.deleteLastPathComponent()
         }
@@ -115,7 +140,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    private static func executableVersion(_ path: String) -> String? {
+    static func fileVersion(_ path: String) -> String? {
         var info = stat()
         guard lstat(path, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return nil }
         return "\(info.st_dev):\(info.st_ino):\(info.st_size):\(info.st_mtimespec.tv_sec):\(info.st_mtimespec.tv_nsec)"
@@ -139,6 +164,7 @@ public struct ToolCommandRemovalResult: Sendable, Equatable, Codable {
     public var afterBytes: Int64?
     public var freedBytes: Int64?
     public var failureReason: String?
+    public var remainingStorageReason: String?
 
     public var removedBytes: Int64? {
         guard let beforeBytes, let afterBytes else { return nil }
@@ -146,17 +172,24 @@ public struct ToolCommandRemovalResult: Sendable, Equatable, Codable {
     }
 
     public var summary: String {
-        var parts = [status == .completed ? "\(name) was removed permanently." : "\(name): \(failureReason ?? "Removal did not finish.")"]
-        if let removedBytes {
-            parts.append("Cache storage decreased by \(ByteFormatting.string(removedBytes)).")
+        let completed = remainingStorageReason == nil
+            ? "\(name) was removed permanently."
+            : "\(name) is no longer installed. Cleanup is incomplete."
+        var parts = [status == .completed ? completed : "\(name): \(failureReason ?? "Removal did not finish.")"]
+        if let remainingStorageReason {
+            parts.append(remainingStorageReason)
+            parts.append("This space remains on disk.")
+        }
+        if let removedBytes, removedBytes > 0 {
+            parts.append("Item storage decreased by \(ByteFormatting.string(removedBytes)).")
         }
         if let freedBytes {
             parts.append("Verified disk space recovery: \(ByteFormatting.string(freedBytes)).")
-        } else if beforeBytes != nil {
+        } else if beforeBytes != nil, remainingStorageReason == nil {
             parts.append("Disk space recovery could not be verified.")
         }
         if status == .completed, let failureReason { parts.append(failureReason) }
-        if let exitStatus { parts.append("Exit status: \(exitStatus).") }
+        if let exitStatus, exitStatus != 0 { parts.append("Exit status: \(exitStatus).") }
         if let terminationSignal { parts.append("Terminated by signal \(terminationSignal).") }
         if !standardError.isEmpty {
             parts.append(String(standardError.prefix(512)) + (standardError.count > 512 ? "…" : ""))

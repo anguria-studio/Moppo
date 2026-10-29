@@ -128,7 +128,15 @@ struct CompactTable<Item: Identifiable, Comparator: SortComparator>: NSViewRepre
             return view
         }
 
+        func tableViewSelectionIsChanging(_ notification: Notification) {
+            updateSelection()
+        }
+
         func tableViewSelectionDidChange(_ notification: Notification) {
+            updateSelection()
+        }
+
+        private func updateSelection() {
             guard !isUpdating, let table else { return }
             parent.selection = Set(table.selectedRowIndexes.compactMap {
                 parent.items.indices.contains($0) ? parent.items[$0].id : nil

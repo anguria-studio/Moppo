@@ -269,6 +269,7 @@ final class CleanupModel {
                     return entry
                 }
                 if entry.toolCommand != nil, cleanupOutcome?.failed.contains(entry.id) == true { return entry }
+                if let command = entry.toolCommand, case .simulatorRuntimeAbsent = command.expectedResult { return entry }
                 guard entry.url.isFileURL, entry.manualRemoval == nil else { return entry }
                 let gone = !fileManager.fileExists(atPath: entry.url.path)
                 if gone { vanished.insert(entry.id) }
@@ -846,12 +847,14 @@ final class CleanupModel {
             outcome.merge(orphaned)
         }
         cleanupOutcome = outcome
-        for result in outcome.toolCommandResults where result.status != .completed {
+        for result in outcome.toolCommandResults {
             guard var results = scanResults else { continue }
             results.categories = results.categories.map { category in
                 var copy = category
                 copy.entries = copy.entries.map { original in
                     guard original.id == result.targetID else { return original }
+                    if let download = original.retainedSimulatorDownload(after: result) { return download }
+                    guard result.status != .completed else { return original }
                     var entry = original
                     if let bytes = result.afterBytes { entry.allocatedBytes = bytes }
                     entry.safetyCaveat = result.failureReason

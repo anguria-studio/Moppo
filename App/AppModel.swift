@@ -412,6 +412,11 @@ final class AppModel {
         )
     }
 
+    func dismissCleanupCompletion(_ id: UUID) {
+        guard cleanupCompletion?.id == id else { return }
+        cleanupCompletion = nil
+    }
+
     func showDashboardAfterCleanup(_ id: UUID) {
         guard cleanupCompletion?.id == id else { return }
         view = .dashboard
@@ -626,13 +631,14 @@ final class AppModel {
             files.toolCommandResults = []
             files.failed.removeAll { toolIDs.contains($0) }
             files.removedCount -= outcome.toolCommandResults.filter { $0.status == .completed }.count
-            var notice = cleanUpNotice(files) ?? Notice(title: "Tool Command Results", message: "")
+            var notice = cleanUpNotice(files) ?? Notice(title: "Cleanup Results", message: "")
             if !notice.message.isEmpty { messages.append(notice.message) }
             if outcome.trashedCount > 0 {
                 messages.append("\(outcome.trashedCount) \(outcome.trashedCount == 1 ? "item moved" : "items moved") to the Trash.")
             }
             notice.message = messages.joined(separator: "\n\n")
-            notice.finderURLs = (outcome.failed + outcome.skippedWorktrees).map { URL(fileURLWithPath: $0) }
+            notice.finderURLs = (outcome.failed + outcome.skippedWorktrees)
+                .filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) }
             return notice
         }
         guard !outcome.failed.isEmpty || !outcome.skippedWorktrees.isEmpty else { return nil }

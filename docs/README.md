@@ -292,13 +292,41 @@ This includes Cleanup, application data, sound libraries, Storage Explorer, dupl
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
 Each tool command also requires separate confirmation, including when routine confirmations are off.
-Cleanup currently uses this path for the Go module cache at `~/go/pkg/mod`.
-Moppo checks the tool and cache identities before it runs the fixed command arguments.
+Cleanup uses this path for simulator runtimes and the Go module cache at `~/go/pkg/mod`.
+Moppo checks the tool and item identities before it runs the fixed command arguments.
 Stop cancels the command and retains completed results from the selection.
 The current ordinary file operation can finish before cancellation takes effect.
 Command results always enter Cleanup History, including when Put Back receipts are off.
-The results distinguish measured cache size reduction from verified disk space recovery.
-Simulator runtimes and old Homebrew versions still need their separate tool integrations.
+The results distinguish measured item size reduction from verified disk space recovery.
+Old Homebrew versions still need their separate tool integration.
+Simulator runtime inventory uses `simctl runtime list --json`.
+Each runtime row shows its platform, version, build, and measured backing image size.
+Mounted runtime contents and shared caches do not enter that size.
+Shared backing images enter the total once and keep all affected runtime rows protected.
+Xcode discovery includes the selected developer directory, registered Xcode copies, `/Applications`, and `~/Applications`.
+Each discovered Xcode supplies its runtime matches and device activity.
+Chosen runtime builds, active simulators, unsupported records, and incomplete ownership checks prevent removal.
+Before removal, Moppo repeats these checks and reads the runtime identifier again.
+Moppo uses `simctl runtime delete` with one reviewed UUID and a fixed developer directory.
+After the command, a fresh runtime inventory must confirm removal.
+Verification waits for the runtime inventory to update, with a 30-second limit.
+Each inventory command has a ten-second limit.
+Verification does not start another command when less than one second remains.
+Temporary inventory errors receive another check within that limit.
+macOS can remove the runtime but keep its downloaded image.
+The result identifies that retained storage and does not claim its space as recovered.
+Retained image results state that cleanup is incomplete.
+Failed verification also reports measured image storage that remains on disk.
+Confirmed runtime removal with a retained image includes guidance for the selected Xcode version.
+Moppo reads the version from the selected Xcode application metadata without another command.
+Versions before 27.2 show Apple's documented deletion issue and fix version.
+Unknown versions receive conditional guidance, and 27.2 or later receive no older-version diagnosis.
+Failed inventory checks do not identify the retained image as this Xcode issue.
+Retained images stay visible as protected Simulator Runtime Download rows after removal and during later scans.
+Download discovery validates Apple metadata under the verified `com_apple_MobileAsset_iOSSimulatorRuntime` asset layout.
+Images that an installed runtime already represents do not enter the total again.
+Unknown registration checks keep the download protected without claiming that its runtime is absent.
+The service measures the backing image again and reports verified space recovery only when available.
 Docker images appear once per image identifier, with their tags grouped together.
 When this Mac has Docker Desktop but it is unavailable, Cleanup shows its setup card in All results.
 When Docker Desktop is absent, Cleanup hides the empty Docker card.

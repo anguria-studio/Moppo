@@ -124,6 +124,7 @@ struct AIStorageGroupTests {
         cleanup.scanFilter = .all
         cleanup.openCategories = []
         let host = NSHostingView(rootView: ScannerView(model: cleanup, activity: nil, cleanupCompletion: nil,
+            onContinue: { _ in },
             onViewDashboard: { _ in }, onUninstallApplication: { _ in }, onShowInStorageExplorer: { _ in })
             .background(Token.pageBackground)
             .environment(\.colorScheme, dark ? .dark : .light))

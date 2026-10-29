@@ -98,6 +98,7 @@ The comparison menu appears only when its options start at different measurement
 With one option, the card shows its name as text.
 Without a comparison, the card shows no option.
 After a cleanup, the Cleanup totals keep the items that remain on the disk.
+Choose **Continue** to return to these results without a new scan.
 
 ## Appearance and iCloud
 
@@ -144,7 +145,7 @@ Moppo does not delete APFS snapshots.
 
 With **Confirm before every clean-up** off, removals that support recovery start without a Moppo confirmation.
 
-### Tool commands and the Go module cache
+### Tool commands
 
 Put Back cannot restore items removed by a tool command.
 Cleanup lists the Go module cache at `~/go/pkg/mod` under **Package Manager Caches**.
@@ -152,8 +153,8 @@ The row stays locked when Moppo cannot find Go at a supported installation path.
 Go installations from Homebrew and the standard Go installer use supported paths.
 Custom module cache locations are outside this removal rule.
 
-Before removal, Moppo shows the command, cache path, size, and permanent removal warning.
-Select **Confirm Command** for each command.
+Before removal, Moppo names the item and explains that Put Back cannot restore it.
+Select **Remove** for each command.
 After the last confirmation, removal starts for the reviewed selection.
 Select **Cancel** to stop the review before removal starts.
 During removal, select **Stop** to request cancellation.
@@ -163,9 +164,42 @@ Moppo checks the cache and tool identities again before it runs `go clean -modca
 The command receives the reviewed cache path through `GOMODCACHE`.
 Projects can need another dependency download after removal.
 Command results always enter Cleanup History, including when Put Back receipts are off.
-The result includes the exit status, error output, and measured cache size reduction when available.
+The result includes command failures, error output, and measured cache size reduction when available.
 Cache size reduction and verified disk space recovery are separate figures.
 Failed rows stay visible with their removal reason.
+
+### Simulator runtimes
+
+Put Back cannot restore a deleted simulator runtime.
+Cleanup lists each simulator runtime under **Xcode & iOS Dev**.
+Each row shows the platform, version, build, and backing image size.
+The size excludes mounted contents and shared caches.
+Shared backing images enter the total once.
+
+Moppo protects runtimes used by installed Xcode versions and active simulators.
+Runtimes with shared images or incomplete checks also stay protected.
+If a simulator uses the runtime, shut down the simulator before another scan.
+
+Select each runtime that you want to remove.
+Review the item name and permanent removal warning.
+Select **Remove** for each runtime.
+These confirmations remain required when routine confirmations are off.
+Moppo checks the runtime identifier and Xcode use again before removal.
+Only `xcrun simctl runtime delete <identifier>` removes the runtime.
+Command results enter Cleanup History, including when Put Back receipts are off.
+Failures and timeouts keep the row visible with a reason.
+Moppo waits for the runtime inventory to update before it reports the result.
+If macOS keeps the downloaded image, the result identifies that retained storage.
+Cleanup shows **Cleanup incomplete** because the image still occupies disk space.
+The image stays visible as **Simulator Runtime Download**, including after another scan.
+Moppo keeps this row protected because macOS manages the image.
+Older Xcode versions can leave simulator images on disk after removal.
+Apple lists a fix in Xcode 27.2.
+See the [release notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_2-release-notes).
+For an older selected Xcode version, the result explains this issue and identifies the version with the fix.
+If Moppo cannot read the Xcode version, it shows conditional update guidance.
+Xcode Components can download a runtime again when it remains available from Apple.
+Moppo does not remove unavailable simulator devices through this command.
 
 ### Homebrew applications
 

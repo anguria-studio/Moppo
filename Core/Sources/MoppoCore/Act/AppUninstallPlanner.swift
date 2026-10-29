@@ -927,6 +927,7 @@ public struct AppUninstallPlanner: Sendable {
     static func installedApplications(
         in roots: [URL], fileManager: FileManager,
         excluding isExcluded: (URL) -> Bool = { _ in false },
+        requireCompleteInventory: Bool = false,
         checkCancellation: () throws -> Void
     ) throws -> [URL] {
         let diagnostics = ScanDiagnostics.current
@@ -938,14 +939,23 @@ public struct AppUninstallPlanner: Sendable {
         for root in roots where fileManager.fileExists(atPath: root.path) {
             try checkCancellation()
             guard !isExcluded(root) else { continue }
+            var readError: Error?
             guard let enumerator = fileManager.enumerator(
                 at: root, includingPropertiesForKeys: keys,
-                options: [.skipsHiddenFiles], errorHandler: nil
-            ) else { continue }
+                options: [.skipsHiddenFiles], errorHandler: { _, error in
+                    readError = error
+                    return !requireCompleteInventory
+                }
+            ) else {
+                if requireCompleteInventory { throw CocoaError(.fileReadNoPermission) }
+                continue
+            }
             for case let url as URL in enumerator {
                 diagnostics?.update(span, path: url.path)
                 try checkCancellation()
-                let values = try? url.resourceValues(forKeys: Set(keys))
+                let values: URLResourceValues?
+                if requireCompleteInventory { values = try url.resourceValues(forKeys: Set(keys)) }
+                else { values = try? url.resourceValues(forKeys: Set(keys)) }
                 // The enumerator does not follow symbolic links. Skipping their descendants can skip the next folder.
                 if values?.isSymbolicLink == true { continue }
                 if isExcluded(url) {
@@ -958,6 +968,7 @@ public struct AppUninstallPlanner: Sendable {
                 result.append(url.standardizedFileURL)
                 enumerator.skipDescendants()
             }
+            if requireCompleteInventory, let readError { throw readError }
         }
         return result
     }

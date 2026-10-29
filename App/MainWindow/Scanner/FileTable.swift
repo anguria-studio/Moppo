@@ -653,7 +653,7 @@ private struct FileRow: View {
         }
         if let command = entry.toolCommand {
             return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
-                ?? "The tool removes this cache permanently after confirmation. Put Back cannot restore it."
+                ?? "The tool removes this item permanently after confirmation. Put Back cannot restore it."
         }
         if entry.removalAction != nil {
             return "Select this application group to move all listed files to the Trash."
@@ -932,7 +932,7 @@ private struct ChildRow: View {
     private var childHelp: String {
         if let command = entry.toolCommand {
             return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
-                ?? "The tool removes this cache permanently after confirmation. Put Back cannot restore it."
+                ?? "The tool removes this item permanently after confirmation. Put Back cannot restore it."
         }
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning

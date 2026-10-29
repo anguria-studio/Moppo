@@ -273,7 +273,11 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
               !entries.isEmpty
         else { return self }
         var copy = self
-        copy.entries = entries.filter { $0.totalBytesIncludingChildren >= floor || $0.worktreeCount > 0 }
+        copy.entries = entries.filter { entry in
+            if let command = entry.toolCommand, case .simulatorRuntimeAbsent = command.expectedResult { return true }
+            if categoryID == .xcode, entry.protectionReason == .inventory { return true }
+            return entry.totalBytesIncludingChildren >= floor || entry.worktreeCount > 0
+        }
         copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
         // Everything it found was noise — that is "nothing worth cleaning", not a
         // category with an empty table.
