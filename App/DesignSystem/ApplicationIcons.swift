@@ -17,7 +17,8 @@ enum ApplicationIcons {
         .chatGPT: "com.openai.codex",
         .claude: "com.anthropic.claudefordesktop",
         .cursor: "com.todesktop.230313mzl4w4u92",
-        .grokBot: "com.anysphere.sand"
+        .grokBot: "com.anysphere.sand",
+        .antigravity: "com.google.antigravity"
     ]
 
     static func icon(for url: URL) -> NSImage {

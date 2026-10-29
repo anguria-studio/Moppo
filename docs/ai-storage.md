@@ -23,6 +23,7 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
 | T3 Code | `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
+| Gemini CLI, Antigravity | `~/.gemini`, `~/Library/Application Support/Antigravity` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
 | Ollama | Default model store | Protected inventory. Moppo cannot verify complete model ownership or active models. |
 | Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
 
@@ -208,6 +209,38 @@ Moppo therefore refuses CLI session removal, including when Cursor desktop is ab
 Deleting exported project history or worktrees does not delete the desktop chat database.
 Worktree removal keeps its separate Git checks.
 
+## Gemini CLI and Antigravity inventory
+
+Gemini CLI and Antigravity share `~/.gemini`.
+Installation does not establish which tool owns each child, so Moppo shows one shared row under Gemini.
+Each byte in the folder counts once.
+
+| Observed child | Displayed storage |
+| --- | --- |
+| `antigravity`, `antigravity-cli`, `antigravity-ide` | Antigravity data, CLI data, and editor data |
+| `history` | Shared history |
+| `bin` | Shared installed tools |
+| `logs` | Shared logs |
+| `tmp` | Shared temporary files |
+
+Account files, settings, `config`, and unknown files remain in the protected parent remainder.
+The Antigravity desktop application uses bundle identifier `com.google.antigravity`.
+Its support folder has a separate protected row under Antigravity.
+Moppo does not apply the generic Electron cache rule to this folder. Cache folder names do not establish safe removal.
+Applications and Hidden & System Data do not count or offer these paths again.
+If the application is absent, Application Leftovers keeps its existing review for the desktop support folder.
+Generic Git worktree discovery and removal review do not run inside this storage.
+No Gemini CLI or Antigravity storage contributes to Safe to Remove.
+User-data overrides cannot unlock these inventory rows.
+
+A rented Mac test on 29 October 2026 used Antigravity CLI 1.4.10 and Antigravity desktop 2.28.1.
+The CLI completed a real coding task. The desktop application passed launch and sign-in only.
+Gemini CLI 0.66.0 installed, but Google rejected its sign-in. No Gemini task ran.
+A metadata check read file names and types. It did not read file contents or credentials.
+These results verify storage discovery and measurement. They do not establish safe session, cache, or uninstall removal.
+The [Gemini CLI session management](https://geminicli.com/docs/cli/tutorials/session-management/) and [checkpointing](https://geminicli.com/docs/cli/checkpointing/) guides describe its conversations and checkpoints.
+The results and remaining checks are in [issue #216](https://github.com/anguria-studio/Moppo/issues/216).
+
 ## Preserved data and other tools
 
 Grok Bot desktop uses bundle identifier `com.anysphere.sand`.
@@ -334,10 +367,8 @@ Documented paths can supply fixtures without application installation.
 
 | Tool | Source | Protected storage to verify |
 | --- | --- | --- |
-| Gemini CLI | [Session management](https://geminicli.com/docs/cli/tutorials/session-management/) and [checkpointing](https://geminicli.com/docs/cli/checkpointing/) | Conversations, checkpoints, shadow Git history, settings, and authentication files. |
 | GitHub Copilot CLI | [Configuration directory](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) | `~/.copilot` sessions, plans, checkpoints, plugins, settings, and credentials. |
 | Windsurf and Devin Desktop | [Cascade memories](https://docs.devin.ai/desktop/cascade/memories) | Legacy `~/.codeium/windsurf/memories` and workspace rules. Current documentation uses Devin Desktop. |
-| Antigravity | Local desktop support folder observed | AI Tools has no separate Antigravity rows. Standard application and Electron cache rules apply. Session and workspace removal rules require verification. |
 
 Custom paths and further tools remain in [issue #66](https://github.com/anguria-studio/Moppo/issues/66).
 The retention review in [issue #67](https://github.com/anguria-studio/Moppo/issues/67) keeps unverified session deletion locked.

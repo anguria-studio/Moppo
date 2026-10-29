@@ -541,7 +541,7 @@ clears it.
 
 ## AI storage
 
-AI Tools shows default Codex, Claude, Cursor, and Grok Bot data paths.
+AI Tools shows default Codex, Claude, Cursor, Grok Bot, T3 Code, Gemini CLI, and Antigravity data paths.
 Tool rows use application icons. Child rows keep their file or folder icons.
 Bundled vendor icons identify tools when their desktop applications are absent.
 It also includes the existing Ollama, Hugging Face, and LM Studio model rows.

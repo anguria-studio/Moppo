@@ -8,6 +8,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case codex = "Codex", chatGPT = "ChatGPT", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
         case t3Code = "T3Code"
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
+        case gemini = "Gemini", antigravity = "Antigravity"
     }
 
     /// A removal workflow that needs more checks than ordinary file cleanup.

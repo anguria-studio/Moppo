@@ -202,6 +202,18 @@ struct CleanupPlanTests {
         #expect(FileManager.default.fileExists(atPath: weight.url.path))
     }
 
+    @Test(arguments: ["Gemini and Antigravity shared data", "Antigravity data", "Shared temporary files",
+                      "Antigravity desktop data"])
+    func googleStorageRefusesPlansFromActualScannerOutput(name: String) async throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let files = try [".gemini/settings.json", ".gemini/antigravity/brain/task.json",
+                         ".gemini/tmp/project/checkpoint.json", "Library/Application Support/Antigravity/GPUCache/data_0"]
+            .map { try f.file($0) }
+        _ = try await expectProtectedScannerRow(f, named: name)
+        #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
+    }
+
     @Test func lmStudioSymbolicImportRefusesHubPlansFromActualScannerOutput() async throws {
         let f = try Fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }

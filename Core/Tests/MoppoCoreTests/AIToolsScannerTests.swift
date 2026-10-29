@@ -136,6 +136,44 @@ struct AIToolsScannerTests {
         #expect(excluded.claimedStoragePaths.contains(row.url.path))
     }
 
+    @Test("Gemini and Antigravity storage counts shared bytes once and keeps cache folders protected")
+    func googleStorage() async throws {
+        let sandbox = try Sandbox()
+        for path in ["antigravity/brain/task.json", "antigravity-cli/settings.json", "antigravity-ide/state.db",
+                     "history/project.json", "bin/agent", "logs/run.log", "tmp/project/checkpoint.json"] {
+            try sandbox.file(".gemini/" + path)
+        }
+        let unknown = try sandbox.file(".gemini/oauth_creds.json", bytes: 4096)
+        for path in ["Cache/data", "Code Cache/js/index", "GPUCache/data_0", "User/globalStorage/state.vscdb"] {
+            try sandbox.file("Library/Application Support/Antigravity/" + path)
+        }
+        let context = ScanContext()
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let shared = try #require(ai.entries.first { $0.aiStorageSection?.owner == .gemini })
+        #expect(shared.aiTool == .gemini)
+        #expect(shared.children.map(\.displayName) == ["Antigravity data", "Antigravity CLI data",
+            "Antigravity editor data", "Shared history", "Shared installed tools", "Shared logs", "Shared temporary files"])
+        #expect(shared.allocatedBytes >= (try await context.measurer.measure(unknown)).allocatedBytes)
+        #expect(shared.displayBytes == (try await context.measurer.measure(shared.url)).allocatedBytes)
+        let desktop = try #require(ai.entries.first { $0.aiStorageSection?.owner == .antigravity })
+        #expect(desktop.aiTool == .antigravity)
+        #expect(desktop.children.isEmpty)
+        #expect(desktop.displayBytes == (try await context.measurer.measure(desktop.url)).allocatedBytes)
+        for entry in [shared, desktop] + shared.children {
+            #expect(entry.protectionReason == .inventory)
+            #expect(entry.protectionExplanation?.isEmpty == false)
+            #expect(!entry.regeneratesSafely)
+            #expect(!CleanupService.removalAllowed(entry, userDataRemovalOverrides: [entry.id]))
+        }
+        #expect(ai.entries.count == 2)
+        #expect(ai.totalBytes == shared.displayBytes + desktop.displayBytes)
+        #expect(ai.safeToRemoveBytes == 0)
+        #expect(ai.claimedStoragePaths.contains(shared.url.path))
+        #expect(ai.claimedStoragePaths.contains(desktop.url.path))
+        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        #expect(!hidden.entries.contains { $0.url.lastPathComponent == ".gemini" })
+    }
+
     @Test("AI attachments cannot enter the archive sweep when AI Tools is disabled",
           arguments: [".cursor/chats/workspace/session", ".t3/userdata"])
     func sessionArchives(path: String) async throws {
