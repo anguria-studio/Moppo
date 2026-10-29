@@ -413,6 +413,14 @@ public struct ApplicationsScanner: CategoryScanner {
             remainderName: "Cursor settings and data"
         ),
 
+        // Antigravity desktop 2.28.1 uses this identifier and support folder.
+        // The evidence does not verify its cache folders, so no path counts as regenerable.
+        "com.google.antigravity": AppDataCuration(
+            root: "Library/Application Support/Antigravity",
+            regenerable: [],
+            remainderName: "Antigravity settings and data"
+        ),
+
         // Grok Bot 0.70.2 uses Chromium partitions and rebuilds V8 caches from bundled JavaScript.
         // Credentials, session state, and staged attachments remain outside these cache paths.
         "com.anysphere.sand": AppDataCuration(

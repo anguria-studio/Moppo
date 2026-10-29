@@ -325,10 +325,12 @@ struct AIToolsScannerTests {
         #expect(guarded.last?.entries.isEmpty == true)
     }
 
-    @Test("Removed AI desktop data uses the leftover review and installed owners retain AI storage", arguments: ["Cursor", "Grok Bot"])
+    @Test("Removed AI desktop data uses the leftover review and installed owners retain AI storage",
+          arguments: ["Cursor", "Grok Bot", "Antigravity"])
     func desktopOwnership(appName: String) async throws {
         let sandbox = try Sandbox()
-        let identifier = appName == "Cursor" ? "com.todesktop.230313mzl4w4u92" : "com.anysphere.sand"
+        let identifier = ["Cursor": "com.todesktop.230313mzl4w4u92", "Grok Bot": "com.anysphere.sand",
+                          "Antigravity": "com.google.antigravity"][appName]!
         let desktop = sandbox.home.appendingPathComponent("Library/Application Support/" + appName, isDirectory: true)
         try sandbox.file("Library/Application Support/" + appName + "/Cache/data")
         try sandbox.file("Library/Application Support/" + appName + "/User/history.db")
