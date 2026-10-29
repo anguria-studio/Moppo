@@ -13,6 +13,8 @@ public struct AIStorageSection: Sendable, Equatable {
         case ollama = "Ollama"
         case huggingFace = "Hugging Face"
         case lmStudio = "LM Studio"
+        case gemini = "Gemini"
+        case antigravity = "Antigravity"
 
         public var tool: FileEntry.AITool {
             switch self {
@@ -25,6 +27,8 @@ public struct AIStorageSection: Sendable, Equatable {
             case .ollama: .ollama
             case .huggingFace: .huggingFace
             case .lmStudio: .lmStudio
+            case .gemini: .gemini
+            case .antigravity: .antigravity
             }
         }
     }
