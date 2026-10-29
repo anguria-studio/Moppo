@@ -4,37 +4,45 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
-- Show Gemini CLI and Antigravity storage with their icons in AI Tools.
-- Keep all Gemini CLI and Antigravity files protected. Count the shared `~/.gemini` folder once.
+## [0.4.0] - 2026-10-29
+
+Build 53.
+
+### Command line and agents
+
+- Add the `moppo` command for scans, saved cleanup plans, and removal from Terminal.
+- Install `moppo` and the agent skill for Claude Code, Codex, or Cursor from Settings > Advanced.
+- Require confirmation and Touch ID or the login password before the CLI removes items permanently.
+- Open saved CLI plans for review in Moppo. Show their results and validation skips in Cleanup History.
+
+### Cleanup
+
+- Add Never Offer This Again to row menus. The `moppo exclude` command saves the same rules.
+- Remove obsolete Homebrew formula versions through Homebrew after review.
+- Remove the Go module cache through Go after mandatory confirmation.
+- Allow reviewed deletion of compressed Codex history through Codex.
+- Offer administrator approval when Cleanup cannot move an Apple sound library to the Trash.
+- Return to the remaining results with Continue after removal, without a new scan.
+- Add Open and Empty Trash to the Trash item in the sidebar.
+
+### AI Tools
+
+- Protect Hugging Face and LM Studio models that another application opens, links to, or shares.
+- Count hard-linked model files once.
+- Keep all Ollama models protected.
+- Show protected Gemini CLI and Antigravity storage with their icons. Count the shared `~/.gemini` folder once.
 - Show Antigravity desktop data in Application Leftovers after you remove Antigravity.
 
-- Offer administrator approval when Cleanup cannot move recognized Apple sound libraries to Trash. Preserve receipts and approved Put Back.
+### Fixes
 
-- Add Never Offer This Again to Cleanup row menus, with saved exclusions for files, folders, local models, and Docker images.
-- Add `moppo exclude` to save the same exclusions as Never Offer This Again from the CLI.
-- Install the `moppo` command and the agent skill for Claude Code, Codex, or Cursor from Settings > Advanced.
-- Add plan removal from Terminal at an exact plan revision, with shared operation locking and saved outcomes.
-- Require Touch ID or the login password before the CLI removes items permanently.
-- Keep plans valid when cache sizes or directory contents change after the scan. Plans show the current sizes.
-- Keep the scans that saved plans use when the CLI removes old scans.
-- Show validation skips in Cleanup History.
-
-- Add a portable Moppo agent skill and guidance for disclosure, user confirmation, and client validation.
-- Add optional app review for saved CLI plans, mandatory confirmation, and saved removal outcomes.
-- Add saved CLI cleanup proposals with revision, exclusion, and file identity checks.
-- Add a read-only CLI with private scan reports, JSON output, filters, and shared app exclusions.
-
-- Offer obsolete Homebrew formula versions for reviewed permanent removal through Homebrew, with separate sizes and Cleanup History results.
-- Add Open and Empty Trash to a native sidebar popover with an arrow that points to Trash.
-- Allow Command-Q to quit from the worktree review dialog.
-- Allow reviewed deletion of compressed Codex history through Codex, including compressed child sessions.
-- Remove the Go module cache through Go after mandatory confirmation, with command results in Cleanup History.
 - Avoid Trash names that Git still reserves for missing worktrees.
 - Explain denied Trash access during worktree removal and show Full Disk Access guidance.
+- Allow Command-Q to quit from the worktree review dialog.
+- Keep text colors correct while you select table rows.
+- Keep AI application headers and their icons stable while you press them.
+- Remove the comparison footer from Dashboard and shorten its measurement guidance.
 - Show the draggable Moppo icon when a Full Disk Access action opens System Settings.
-- Use white fills for Settings action buttons in Light appearance.
-- Reduce the hover color change on Cleanup rows and section headers in both appearances.
-- Shorten cleanup measurement guidance in Dashboard.
+- Use white fills for Settings action buttons and softer hover colors in Light appearance.
 
 ## [0.3.0] - 2026-10-27
 
@@ -87,6 +95,7 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.4.0
 [0.3.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.3.0
 [0.2.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.2.0
