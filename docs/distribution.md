@@ -47,10 +47,10 @@ Set `SPARKLE_BIN` to the pinned Sparkle package's `bin` folder.
 Run the package tool from the repository root:
 
 ```sh
-scripts/package-dmg.sh --version 0.3.0 --build 50 \
-  --output dist/releases/Moppo-0.3.0-50 \
+scripts/package-dmg.sh --version 0.4.0 --build 53 \
+  --output dist/releases/Moppo-0.4.0-53 \
   --sparkle-tools "$SPARKLE_BIN" \
-  --notes docs/releases/0.3.0.md
+  --notes docs/releases/0.4.0.md
 ```
 
 The output folder must not exist for a new build.
@@ -85,18 +85,18 @@ An unnotarized candidate must remain local.
 Do not distribute a candidate until notarization and the required release checks pass.
 
 ```sh
-scripts/package-dmg.sh --prepare --version 0.3.0 --build 50 \
-  --output dist/releases/Moppo-0.3.0-50
+scripts/package-dmg.sh --prepare --version 0.4.0 --build 53 \
+  --output dist/releases/Moppo-0.4.0-53
 ```
 
 Use `--archive` to export an existing Release archive.
 Finish the prepared candidate with the same version, build, and output folder:
 
 ```sh
-scripts/package-dmg.sh --finish --version 0.3.0 --build 50 \
-  --output dist/releases/Moppo-0.3.0-50 \
+scripts/package-dmg.sh --finish --version 0.4.0 --build 53 \
+  --output dist/releases/Moppo-0.4.0-53 \
   --sparkle-tools "$SPARKLE_BIN" \
-  --notes docs/releases/0.3.0.md
+  --notes docs/releases/0.4.0.md
 ```
 
 The local `release.json` file records the source commit and whether the source had uncommitted changes.
@@ -131,13 +131,13 @@ Create a draft GitHub release with tag `v<VERSION>` at that commit.
 Attach all files from the verified package's `assets` folder.
 Keep `release.json`, the archive, and notarization receipts outside the release downloads.
 
-For version `0.3.0`, use the commit from the package manifest:
+For version `0.4.0`, use the commit from the package manifest:
 
 ```sh
-RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.3.0-50/release.json"))["source_commit"])')
-gh release create v0.3.0 dist/releases/Moppo-0.3.0-50/assets/* \
+RELEASE_COMMIT=$(python3 -c 'import json; print(json.load(open("dist/releases/Moppo-0.4.0-53/release.json"))["source_commit"])')
+gh release create v0.4.0 dist/releases/Moppo-0.4.0-53/assets/* \
   --repo anguria-studio/Moppo --draft --target "$RELEASE_COMMIT" \
-  --title 'Moppo 0.3.0' --notes-file docs/releases/0.3.0.md
+  --title 'Moppo 0.4.0' --notes-file docs/releases/0.4.0.md
 ```
 
 Before publishing the draft, verify its signatures, checksums, versioned addresses, and remaining release checks.

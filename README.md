@@ -47,12 +47,13 @@ brew install --cask anguria-studio/tap/moppo
 | Dashboard | See disk usage and compare changes between saved measurements. |
 | Cleanup | Review caches, application leftovers, Xcode data, developer folders, and Git worktrees. |
 | Storage Explorer | Browse folders with a table and treemap. |
-| AI Tools | Review AI tool storage, Codex sessions, worktrees, and local models. |
+| AI Tools | Review AI tool storage, Codex sessions, worktrees, and local models. Models in use stay protected. |
 | Duplicates | Compare file contents or find identical and similar photos. |
 | App Uninstaller | Review applications and related files. Remove Homebrew packages through Homebrew. |
 | Docker images | Review unused images and remove them through Docker. |
 | History and Put Back | Review removal results and restore eligible items from the Trash. |
 | Everyday controls | Set exclusions, scan schedules, low-space alerts, and menu bar mode. |
+| Command line | Scan, save cleanup plans, and remove items from Terminal or an AI agent. |
 
 See the [user guide](docs/user-guide.md) for filters, file access, settings, and removal behavior.
 
@@ -76,7 +77,7 @@ Moppo checks for updates automatically. You can turn off automatic checks in **S
 | --- | --- |
 | Reported sizes | Shared storage can reduce the space that removal recovers. |
 | Put Back | Recovery requires a saved receipt and the item still in the Trash. |
-| Permanent removal | Put Back cannot restore Homebrew packages, Docker images, or permanently deleted items. |
+| Permanent removal | Put Back cannot restore Homebrew packages, Docker images, tool command removals, or permanently deleted items. |
 | Photos | With iCloud Photos enabled, deletion affects the linked library and its other devices. |
 
 Read the [removal and Put Back guide](docs/user-guide.md#removal-and-put-back) for confirmation, permission, and recovery details.
@@ -87,9 +88,8 @@ Scans run locally. Moppo stores scan caches, preferences, and cleanup history on
 Photo previews and originals can download from iCloud. Controls are in **Settings > Advanced**.
 macOS manages file and Photos access.
 
-The next release includes a command line for scans, saved plans, terminal removal, and optional app review.
-Read the [CLI guide](docs/cli.md) for installation, JSON output, and access requirements.
-Read the [agent workflow](docs/agent-workflow.md) to install the skill and remove plans that the user approves.
+Install the `moppo` command and the agent skill from **Settings > Advanced**.
+Read the [CLI guide](docs/cli.md) and the [agent workflow](docs/agent-workflow.md) for details.
 
 Read the [privacy policy](https://anguria.studio/moppo/privacy/) and [terms of use](https://anguria.studio/moppo/terms/).
 
@@ -103,6 +103,7 @@ See the [build and test guide](docs/building.md) for requirements, signing, comm
 | Guide | Contents |
 | --- | --- |
 | [User guide](docs/user-guide.md) | Permissions, Cleanup filters, settings, removal, recovery, and updates |
+| [CLI guide](docs/cli.md) | The `moppo` command, JSON output, and saved cleanup plans |
 | [Development notes](docs/README.md) | Source layout, measurement rules, and current limits |
 | [Build and test](docs/building.md) | Development setup and required checks |
 | [Release packages](docs/distribution.md) | Signing, notarization, and packaging |
