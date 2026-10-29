@@ -6,6 +6,7 @@ struct ScannerView: View {
     @Bindable var model: CleanupModel
     let activity: AppModel.Activity?
     let cleanupCompletion: AppModel.CleanupCompletion?
+    let onContinue: (UUID) -> Void
     let onViewDashboard: (UUID) -> Void
     let onUninstallApplication: (FileEntry) -> Void
     let onShowInStorageExplorer: (FileEntry) -> Void
@@ -30,8 +31,8 @@ struct ScannerView: View {
                     itemCount: completion.outcome.removedCount,
                     totalBytes: completion.outcome.removedBytes,
                     isComplete: true,
-                    canScan: !model.isBusyWithDisk,
-                    onScanAgain: { model.startScan() },
+                    canContinue: !model.isBusyWithDisk,
+                    onContinue: { onContinue(completion.id) },
                     onViewDashboard: { onViewDashboard(completion.id) }
                 )
                 .id(completion.id)

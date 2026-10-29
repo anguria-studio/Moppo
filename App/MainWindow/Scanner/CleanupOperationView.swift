@@ -6,8 +6,8 @@ struct CleanupOperationView: View {
     let itemCount: Int
     let totalBytes: Int64
     var isComplete = false
-    var canScan = true
-    var onScanAgain: () -> Void = {}
+    var canContinue = true
+    var onContinue: () -> Void = {}
     var onViewDashboard: () -> Void = {}
     var onCancel: (() -> Void)? = nil
     var isCancelling = false
@@ -18,11 +18,9 @@ struct CleanupOperationView: View {
                 Text(summary)
             } actions: {
                 PageStateActions {
-                    Button(action: onScanAgain) {
-                        Label("Scan Again", systemImage: "magnifyingglass")
-                    }
+                    Button("Continue", action: onContinue)
                     .buttonStyle(PageStateButtonStyle.primary)
-                    .disabled(!canScan)
+                    .disabled(!canContinue)
                     Button("View Dashboard", action: onViewDashboard)
                 }
             }

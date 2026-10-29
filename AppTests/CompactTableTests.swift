@@ -16,12 +16,14 @@ struct CompactTableTests {
         var selection: Set<Int> = []
         var order = [KeyPathComparator(\Item.id)]
         var menuSelection: Set<Int> = []
+        var cellSelection: [Int: Bool] = [:]
         let view = CompactTable(
             items: (0..<300).map(Item.init),
             selection: Binding(get: { selection }, set: { selection = $0 }),
             sortOrder: Binding(get: { order }, set: { order = $0 }),
             columns: [
-                CompactTableColumn("Name", width: 300, min: 150, sort: KeyPathComparator(\Item.id)) { item, _ in
+                CompactTableColumn("Name", width: 300, min: 150, sort: KeyPathComparator(\Item.id)) { item, selected in
+                    let _ = cellSelection.updateValue(selected, forKey: item.id)
                     Text(item.name)
                 },
                 CompactTableColumn("Size", width: 90, min: 80, max: 120) { _, _ in Text("125 MB") }
@@ -51,6 +53,20 @@ struct CompactTableTests {
 
         table.selectRowIndexes(IndexSet([1, 2, 3, 5]), byExtendingSelection: false)
         #expect(selection == [1, 2, 3, 5])
+        // Reproduce tracking before AppKit sends the final selection notification.
+        let coordinator = try #require(table.delegate as? CompactTable<Item, KeyPathComparator<Item>>.Coordinator)
+        coordinator.isUpdating = true
+        table.selectRowIndexes(IndexSet(integer: 7), byExtendingSelection: false)
+        coordinator.isUpdating = false
+        #expect(cellSelection[1] == true)
+        #expect(cellSelection[7] == false)
+        table.delegate?.tableViewSelectionIsChanging?(
+            Notification(name: NSTableView.selectionIsChangingNotification, object: table)
+        )
+        #expect(cellSelection[1] == false)
+        #expect(cellSelection[7] == true)
+        #expect(selection == [7])
+        table.selectRowIndexes(IndexSet([1, 2, 3, 5]), byExtendingSelection: false)
         #expect(table.rect(ofRow: 0) == firstFrame)
         table.sortDescriptors = [NSSortDescriptor(key: "0", ascending: false)]
         #expect(order.first?.order == .reverse)

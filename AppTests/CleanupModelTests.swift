@@ -1638,6 +1638,42 @@ struct CleanupModelTests {
         #expect(ApplicationRuntime.canQuitForCleanup(sameName))
     }
 
+    @Test("Continue retains cleanup results without a new scan", arguments: [false, true])
+    func continueAfterCleanup(hasRemainingItems: Bool) async throws {
+        let fixture = try CleanupFixture()
+        let removed = try fixture.entry("removed")
+        let remaining = try fixture.entry("remaining")
+        let settings = try RemovalSettingsFixture(confirm: true)
+        let scanner = HeldCleanupScanner()
+        let removal = HeldCleanupRemoval()
+        let app = AppModel(settings: settings.settings, hasFullDiskAccess: { true },
+            cleanupScanner: scanner, cleanupRemover: removal)
+        app.cleanup.refreshAfterRemoval = {}
+        app.cleanup.scanResults = cleanupResults(hasRemainingItems ? [removed, remaining] : [removed])
+        app.cleanup.scanFilter = .all
+        app.cleanup.scannerSelection = [removed.id]
+        app.cleanup.requestCleanUp(in: .all)
+        let task = Task { await app.cleanup.performCleanUp() }
+        try await waitUntil { await removal.isPending }
+        await removal.finish(CleanupOutcome(removedBytes: removed.allocatedBytes, removedCount: 1, trashedCount: 1))
+        await task.value
+        let completion = try #require(app.cleanupCompletion)
+        let results = try #require(app.cleanup.scanResults)
+        #expect(results.categories.flatMap(\.entries).map(\.id) == (hasRemainingItems ? [remaining.id] : []))
+
+        app.dismissCleanupCompletion(UUID())
+        #expect(app.cleanupCompletion?.id == completion.id)
+        app.dismissCleanupCompletion(completion.id)
+        app.startInitialCleanupScan()
+        #expect(app.cleanupCompletion == nil)
+        #expect(app.view == .scanner)
+        #expect(app.cleanup.scanResults == results)
+        #expect(app.cleanup.scanFilter == .all)
+        #expect(app.cleanup.cleanupOutcome == completion.outcome)
+        #expect(!app.cleanup.isScanning)
+        #expect(await scanner.requestCount == 0)
+    }
+
     @Test("Partial cleanup retains its receipt and Put Back invalidates later results")
     func partialRemovalAndRecovery() async throws {
         let fixture = try CleanupFixture()
