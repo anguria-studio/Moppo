@@ -66,6 +66,78 @@ struct AppleSoundLibraryTests {
         }
     }
 
+    @Test("Administrator retry preserves receipts and cancellation", arguments: [false, true])
+    func administratorRetry(cancelled: Bool) async throws {
+        let box = try Sandbox()
+        try box.content("Application Support/Logic/Factory.aif")
+        let item = try #require(try await box.leftovers().plan().groups.first?.items.first)
+        let source = item.url
+        let parent = source.deletingLastPathComponent()
+        let trash = box.home.appendingPathComponent(".Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let destination = trash.appendingPathComponent("Logic")
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: parent.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path) }
+        let log = RemovalLog(directory: box.root.appendingPathComponent("logs"))
+        let service = CleanupService(measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: log,
+            administratorTrash: { inventory in
+                #expect(inventory == item.soundLibrary)
+                if cancelled { throw AdministratorTrashError.cancelled }
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path)
+                try FileManager.default.moveItem(at: source, to: destination)
+                return destination
+            })
+        let result = try await service.remove(entries: [item.fileEntry], trashFirst: true)
+        #expect(result.administratorApprovalCancelled == cancelled)
+        #expect(result.removedCount == (cancelled ? 0 : 1))
+        #expect(result.failed == (cancelled ? [source.path] : []))
+        if !cancelled {
+            let record = try #require(log.recentEntries().first)
+            #expect(record.disposition == .trashed)
+            #expect(record.trashedIdentity == FileIdentity.of(destination))
+            try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: parent.path)
+            let restore = TrashService(home: box.home, log: log, administratorRestore: { from, to, identity in
+                #expect(from.path == destination.path && to.path == source.path)
+                #expect(FileIdentity.of(from) == identity)
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path)
+                try FileManager.default.moveItem(at: from, to: to)
+            })
+            try await restore.putBack(TrashItem(url: destination, bytes: item.allocatedBytes, canPutBack: true))
+            #expect(FileIdentity.of(source) == record.trashedIdentity)
+            #expect(log.recentEntries().first?.disposition == .restored)
+        }
+    }
+
+    @Test("The approved helper rechecks receipts, content, and installed owners", arguments: ["unchanged", "content", "owner", "receipt"])
+    func approvedInventory(change: String) async throws {
+        let box = try Sandbox()
+        try box.content("Application Support/Logic/Factory.aif")
+        let item = try #require(try await box.leftovers().plan().groups.first?.items.first)
+        let request = try AdministratorTrashRequest(source: item.url, destination: box.home.appendingPathComponent("Trash"),
+                                                    identity: #require(FileIdentity.of(item.url)), inventory: item.soundLibrary)
+        switch change {
+        case "content": try box.content("Application Support/Logic/Custom.aif", recognized: false)
+        case "owner": try box.application(AppleSoundLibrary.garageBandIdentifier)
+        case "receipt": box.receiptPaths = []
+        default: break
+        }
+        if change == "unchanged" { try await request.validateInventory(using: box.sounds()) }
+        else {
+            await #expect(throws: AdministratorTrashError.invalidRequest) { try await request.validateInventory(using: box.sounds()) }
+        }
+        #expect(!FileIdentity.isAbsent(item.url))
+    }
+
+    @Test("A new exclusion protects sound library children before retry")
+    func retryExclusion() async throws {
+        let box = try Sandbox()
+        let sample = try box.content("Application Support/Logic/Factory.aif")
+        let library = try #require(try await box.leftovers().plan().groups.first?.items.first?.soundLibrary)
+        #expect(library.isExcluded(in: ScanContext(excludedPaths: [sample.path])))
+        #expect(library.isExcluded(in: ScanContext(excludedPatterns: ["*.aif"])))
+        #expect(!library.isExcluded(in: ScanContext()))
+    }
+
     @Test("Receipt content becomes a named leftover without application containers")
     func absentApplication() async throws {
         let box = try Sandbox()

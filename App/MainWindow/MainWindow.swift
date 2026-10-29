@@ -104,6 +104,12 @@ struct MainWindow: View {
             ),
             presenting: model.notice
         ) { notice in
+            if notice.showsAdministratorRetry {
+                Button("Retry with Administrator Approval") {
+                    model.notice = nil
+                    Task { await model.cleanup.retryWithAdministrator() }
+                }
+            }
             if notice.showsFullDiskAccessAction {
                 Button("Open Full Disk Access") { FullDiskAccess.openSystemSettings() }
             }

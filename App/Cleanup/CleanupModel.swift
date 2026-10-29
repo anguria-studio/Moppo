@@ -32,6 +32,9 @@ final class CleanupModel {
     @ObservationIgnored private let operations: OperationCoordinator
     @ObservationIgnored private let scanner: any CleanupScanning
     @ObservationIgnored private let remover: any CleanupRemoving
+    @ObservationIgnored private let isAdministratorRetryEligible: (AppleSoundLibrary.Inventory) -> Bool
+    @ObservationIgnored private let administratorRemover: any CleanupRemoving
+    @ObservationIgnored private var administratorRetryEntries: [FileEntry] = []
     @ObservationIgnored private let saveExclusion: (FileEntry) -> Bool
     @ObservationIgnored private let preferences: () -> Preferences
     @ObservationIgnored private let applications: CleanupApplications
@@ -56,6 +59,8 @@ final class CleanupModel {
         operations: OperationCoordinator,
         scanner: any CleanupScanning = CleanupScanService(),
         remover: any CleanupRemoving = CleanupService(),
+        administratorRemover: any CleanupRemoving = CleanupService(administratorTrash: AdministratorTrashService().trash),
+        isAdministratorRetryEligible: @escaping (AppleSoundLibrary.Inventory) -> Bool = AdministratorTrashRequest.canRetry,
         preferences: @escaping () -> Preferences = { Preferences() },
         saveExclusion: @escaping (FileEntry) -> Bool = { _ in false },
         applications: CleanupApplications = CleanupApplications(),
@@ -75,6 +80,8 @@ final class CleanupModel {
         self.operations = operations
         self.scanner = scanner
         self.remover = remover
+        self.administratorRemover = administratorRemover
+        self.isAdministratorRetryEligible = isAdministratorRetryEligible
         self.preferences = preferences
         self.saveExclusion = saveExclusion
         self.applications = applications
@@ -678,6 +685,7 @@ final class CleanupModel {
         scannerSelection.subtract(userDataRemovalOverrides)
         userDataRemovalOverrides.removeAll()
         cleanupOutcome = nil
+        administratorRetryEntries = []
         isScanning = true
         isInterruptingScan = false
         scanProgress = 0
@@ -775,6 +783,7 @@ final class CleanupModel {
         let includesCommands = !plan.toolCommandEntries.isEmpty
         let cancel: (() -> Void)? = includesCommands ? { [weak self] in self?.cancelRemoval() } : nil
         guard let operation = operations.begin(.cleanupRemoval, cancel: cancel) else { return nil }
+        administratorRetryEntries = []
         isRemoving = true
         canCancelRemoval = includesCommands
         isInterruptingRemoval = false
@@ -870,6 +879,11 @@ final class CleanupModel {
             )) ?? CleanupOutcome(failed: plan.orphanedApplicationItems.map { $0.url.path })
             outcome.merge(orphaned)
         }
+        administratorRetryEntries = (entries.flatMap(Self.plannedTargets) + plan.orphanedApplicationItems.map(\.fileEntry))
+            .filter { entry in
+                outcome.permissionDenied.contains(entry.id)
+                    && entry.soundLibrary.map(isAdministratorRetryEligible) == true
+            }
         cleanupOutcome = outcome
         for result in outcome.toolCommandResults where result.status != .completed {
             guard var results = scanResults else { continue }
@@ -924,6 +938,48 @@ final class CleanupModel {
         return true
     }
 
+    var administratorRetryCount: Int { Set(administratorRetryEntries.map(\.id)).count }
+    var canRetryWithAdministrator: Bool { administratorRetryCount > 0 && preferences().keepReceipt }
+
+    /// Retries only captured failures. A changed selection cannot add another item.
+    func retryWithAdministrator() async {
+        guard canRetryWithAdministrator, pendingCleanUp == nil,
+              let operation = operations.begin(.cleanupRemoval) else { return }
+        let captured = administratorRetryEntries
+        administratorRetryEntries = []
+        let previous = cleanupOutcome ?? CleanupOutcome()
+        let current = preferences()
+        let context = ScanContext(excludedPaths: current.excludedPaths, excludedPatterns: current.excludedPatterns)
+        let entries = captured.filter { $0.soundLibrary?.isExcluded(in: context) == false }
+        isRemoving = true
+        onEvent(.operationStarted)
+        onEvent(.removalStarted(count: entries.count, bytes: entries.reduce(0) { $0 + $1.allocatedBytes }))
+        let task = Task { [self] in
+            let result = entries.isEmpty ? CleanupOutcome() : (try? await administratorRemover.remove(
+                entries: entries, trashFirst: true, keepReceipt: true, userDataRemovalOverrides: [],
+                appDataRemovalOverrides: [], expectedIdentities: [:], confirmedToolCommands: [:]
+            )) ?? CleanupOutcome(failed: entries.map(\.id))
+            let succeeded = Set(entries.map(\.id)).subtracting(result.failed)
+            var combined = previous
+            combined.failed.removeAll { succeeded.contains($0) }
+            combined.permissionDenied.removeAll { succeeded.contains($0) }
+            var delta = result
+            delta.failed = Array(Set(combined.failed).union(result.failed)).sorted()
+            combined.failed = []
+            combined.merge(delta)
+            cleanupOutcome = combined
+            scannerSelection.subtract(succeeded)
+            pruneVanishedEntries()
+            // Events report only this attempt's bytes so Dashboard does not count the first move twice.
+            if !result.administratorApprovalCancelled || result.removedCount > 0 { onEvent(.removed(delta)) }
+            onEvent(.operationFinished)
+            isRemoving = false
+            operations.finish(operation)
+            if result.removedCount > 0 { await refreshAfterRemoval() }
+        }
+        await task.value
+    }
+
     func quitAppsForCleanup() async {
         guard !Task.isCancelled, pendingCleanUp == nil, !isBusyWithDisk else { return }
         refreshCleanupRunningOwners()
@@ -975,6 +1031,7 @@ final class CleanupModel {
         cancelScan()
         cancelCleanUp()
         scanResults = nil
+        administratorRetryEntries = []
         scannerSelection.removeAll()
         userDataRemovalOverrides.removeAll()
         cleanupRunningOwners = []

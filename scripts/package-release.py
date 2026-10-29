@@ -69,7 +69,7 @@ def validate_app(app, version, build, team):
         "--feed", info["SUFeedURL"], "--key", info.get("SUPublicEDKey", ""))
     run("codesign", "--verify", "--deep", "--strict", app)
     framework = app / "Contents/Frameworks/Sparkle.framework/Versions/Current"
-    executables = [app, app / "Contents/Helpers/MoppoHomebrewAskpass",
+    executables = [app, app / "Contents/Helpers/MoppoAdministratorTrash", app / "Contents/Helpers/MoppoHomebrewAskpass",
                    app / "Contents/Helpers/moppo", framework / "Autoupdate", framework / "Updater.app",
                    framework / "XPCServices/Installer.xpc",
                    framework / "XPCServices/Downloader.xpc"]
@@ -87,7 +87,8 @@ def validate_app(app, version, build, team):
         if executable == app and entitlements.get("com.apple.security.personal-information.photos-library") is not True:
             raise RuntimeError("The Photos Library entitlement is missing")
     for architecture in ("arm64", "x86_64"):
-        for executable in (app / "Contents/MacOS/Moppo", app / "Contents/Helpers/MoppoHomebrewAskpass",
+        for executable in (app / "Contents/MacOS/Moppo", app / "Contents/Helpers/MoppoAdministratorTrash",
+                           app / "Contents/Helpers/MoppoHomebrewAskpass",
                            app / "Contents/Helpers/moppo"):
             run("lipo", executable, "-verify_arch", architecture)
     validate_cli(app, version)

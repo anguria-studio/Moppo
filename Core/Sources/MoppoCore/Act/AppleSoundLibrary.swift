@@ -12,13 +12,17 @@ public struct AppleSoundLibrary: Sendable {
     public static var ownerIdentifiers: Set<String> { Set(ownerNames.keys) }
 
     /// Records the reviewed content and the application allowed to retain ownership.
-    public struct Inventory: Sendable, Equatable {
+    public struct Inventory: Sendable, Equatable, Codable {
         public let url: URL
         public let ownerIdentifiers: Set<String>
         let permittedOwner: String?
         let applicationRoots: [URL]
         let libraryRoot: URL
         let identities: [String: String]
+
+        public func isExcluded(in context: ScanContext) -> Bool {
+            context.isExcluded(url) || identities.keys.contains { context.isExcluded(URL(fileURLWithPath: $0)) }
+        }
 
         func isStillSafe(registeredOwners: Set<String>) -> Bool {
             var installed = AppUninstallPlanner.installedBundleIdentifiers(in: applicationRoots)
@@ -57,13 +61,18 @@ public struct AppleSoundLibrary: Sendable {
              name: "Sound Library: Apple Loops", owners: ownerIdentifiers),
     ] }
 
+    static var systemContentPaths: Set<String> {
+        Set(roots.map { "/Library/" + $0.relativePath })
+    }
+
     private let systemLibrary: URL
     private let applicationRoots: [URL]
     private let receiptPaths: @Sendable () async throws -> Set<String>
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
 
-    public init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+    public init() { self.init(home: FileManager.default.homeDirectoryForCurrentUser) }
+
+    init(home: URL) {
         self.init(
             systemLibrary: URL(fileURLWithPath: "/Library", isDirectory: true),
             applicationRoots: [URL(fileURLWithPath: "/Applications", isDirectory: true),

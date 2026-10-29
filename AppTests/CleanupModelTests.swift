@@ -6,6 +6,49 @@ import Testing
 @Suite("Cleanup feature ownership")
 @MainActor
 struct CleanupModelTests {
+    @Test("Administrator retry uses only captured failures and preserves completed totals", arguments: [false, true])
+    func administratorRetry(excluded: Bool) async throws {
+        let folder = try TemporaryFolder()
+        let item = soundLibraryItem().fileEntry
+        let other = FileEntry(url: try folder.write("Other"), kind: .file, allocatedBytes: 10)
+        let remover = HeldCleanupRemoval()
+        let retry = HeldCleanupRemoval()
+        let operations = OperationCoordinator()
+        var excludedPaths: [String] = []
+        let model = CleanupModel(operations: operations, remover: remover, administratorRemover: retry,
+            isAdministratorRetryEligible: { _ in true }, preferences: { .init(excludedPaths: excludedPaths) })
+        model.scanResults = cleanupResults([item, other])
+        model.scannerSelection = [item.id, other.id]
+        model.requestCleanUp(in: .all)
+        let first = Task { await model.performCleanUp() }
+        try await waitUntil { await remover.isPending }
+        await remover.finish(CleanupOutcome(removedBytes: 10, removedCount: 1, failed: [item.id],
+                                           permissionDenied: [item.id], trashedCount: 1))
+        await first.value
+        #expect(model.canRetryWithAdministrator)
+        model.scannerSelection = [other.id]
+        if excluded { excludedPaths = [item.id] }
+        var reportedBytes: Int64 = 0
+        model.onEvent = { if case .removed(let outcome) = $0 { reportedBytes += outcome.removedBytes } }
+        let second = Task { await model.retryWithAdministrator() }
+        if !excluded {
+            try await waitUntil { await retry.isPending }
+            #expect(operations.isBusy)
+            #expect(await retry.entries.map(\.id) == [item.id])
+            #expect(await retry.keepReceipt)
+            #expect(await retry.trashFirst)
+            #expect(await retry.overrides.isEmpty)
+            await retry.finish(CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
+        }
+        await second.value
+        #expect(!operations.isBusy)
+        #expect(await retry.requestCount == (excluded ? 0 : 1))
+        #expect(model.cleanupOutcome?.removedBytes == (excluded ? 10 : 74))
+        #expect(model.cleanupOutcome?.failed == (excluded ? [item.id] : []))
+        #expect(reportedBytes == (excluded ? 0 : 64))
+        #expect(!model.canRetryWithAdministrator)
+    }
+
     @Test("Row exclusions persist, clear selections, and can be removed in Settings")
     func persistentRowExclusion() async throws {
         let suite = "RowExclusionTests.\(UUID().uuidString)"
