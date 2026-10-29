@@ -5,6 +5,10 @@ public struct AIToolsScanner: CategoryScanner {
     public let id: CategoryID = .aiTools
     private let home: URL
     private let codexExecutable: String?
+    /// Reads open model files. Tests replace the process check.
+    var captureModelActivity: @Sendable ([URL]) async throws -> WorktreeActivity = {
+        try await WorktreeActivity.capture(roots: $0)
+    }
 
     public init(home: URL = URL(fileURLWithPath: NSHomeDirectory())) {
         self.home = home
@@ -142,18 +146,42 @@ public struct AIToolsScanner: CategoryScanner {
         context: ScanContext, to found: inout Found
     ) async throws {
         let huggingFace = home.appendingPathComponent(".cache/huggingface")
+        let ollama = home.appendingPathComponent(".ollama/models", isDirectory: true)
+        if !context.isExcluded(ollama), isOwnedPath(ollama),
+           FileManager.default.fileExists(atPath: ollama.path) {
+            let measurement = try await context.measurer.measure(ollama)
+            found.unreadableCount += measurement.unreadableCount
+            if measurement.allocatedBytes > 0, !measurement.containsProtectedPattern {
+                let explanation = "Moppo cannot verify all Ollama model references or active models. Use Ollama to manage these files."
+                found.entries.append(FileEntry(
+                    url: ollama, displayName: "Ollama models", kind: .folder,
+                    allocatedBytes: measurement.allocatedBytes, lastOpened: lastOpenedDate(for: ollama),
+                    protectionReason: .inventory, protectionExplanation: explanation,
+                    aiTool: .ollama,
+                    aiStorageSection: .init(owner: .ollama, title: "Models", summary: explanation)
+                ))
+            }
+        }
 
-        for model in LocalModelStores.all(home: home, context: context) {
+        let models = LocalModelStores.all(home: home, context: context).filter { model in
+            ([model.primary] + model.exclusive).allSatisfy { !context.isExcluded($0) && isOwnedPath($0) }
+        }
+        // LM Studio can link to Hugging Face files without a matching model row.
+        let links = models.isEmpty ? LocalModelStores.ExternalLinks() : LocalModelStores.lmStudioLinks(home: home)
+        let activity = models.isEmpty ? nil : try await captureModelActivity(models.map(\.primary))
+        var countedInodes: Set<String> = []
+        for model in models {
             try Task.checkCancellation()
-            guard ([model.primary] + model.exclusive).allSatisfy({ !context.isExcluded($0) && isOwnedPath($0) }) else { continue }
-            let own = try await context.measurer.measure(model.primary)
+            guard let activity else { break }
+            let files = ModelFiles(owner: model.primary, activity: activity)
+            let own = try await files.measure(model.primary, with: context.measurer)
             found.unreadableCount += own.unreadableCount
             guard !own.containsProtectedPattern else { continue }
 
             var children: [FileEntry] = []
             var protectsModel = own.unreadableCount > 0
             for url in model.exclusive {
-                let size = try await context.measurer.measure(url)
+                let size = try await files.measure(url, with: context.measurer)
                 found.unreadableCount += size.unreadableCount
                 protectsModel = protectsModel || size.containsProtectedPattern || size.unreadableCount > 0
                 children.append(FileEntry(
@@ -165,6 +193,20 @@ public struct AIToolsScanner: CategoryScanner {
             guard !protectsModel else { continue }
             let total = own.allocatedBytes + children.reduce(0) { $0 + $1.allocatedBytes }
             guard total > 0 else { continue }
+
+            // Count each hard-linked file once across model rows.
+            var ownBytes = own.allocatedBytes
+            for link in files.hardLinks where !countedInodes.insert(link.identity).inserted {
+                if link.root == model.primary.standardizedFileURL {
+                    ownBytes = max(0, ownBytes - link.bytes)
+                } else if let index = children.firstIndex(where: { $0.url.standardizedFileURL == link.root }) {
+                    children[index].allocatedBytes = max(0, children[index].allocatedBytes - link.bytes)
+                }
+            }
+            let targetsChecked = files.observeLinkTargets()
+            var check = activity.check(model.primary, measurement: own)
+            if check == .clear, !targetsChecked { check = .unknown("Some link targets could not be checked.") }
+            let (reason, explanation) = Self.protection(for: model, files: files, links: links, activity: check)
 
             var qualifier = model.memberNames.count == 1
                 ? "\(model.runtime) model"
@@ -181,16 +223,17 @@ public struct AIToolsScanner: CategoryScanner {
                 displayName: model.name,
                 parentDisplay: qualifier,
                 kind: isFolder ? .folder : .file,
-                allocatedBytes: own.allocatedBytes,
+                allocatedBytes: ownBytes,
                 lastOpened: children.compactMap(\.lastOpened).max()
                     ?? lastOpenedDate(for: model.primary),
                 childCount: children.isEmpty ? nil : children.count,
                 children: children
             )
+            row.protectionReason = reason
+            row.protectionExplanation = explanation
             row.removesAsUnit = true
             row.localModelPaths = model.memberPaths
             let owner: AIStorageSection.Owner? = switch model.runtime {
-            case "Ollama": .ollama
             case "Hugging Face": .huggingFace
             case "LM Studio": .lmStudio
             default: nil
@@ -220,8 +263,103 @@ public struct AIToolsScanner: CategoryScanner {
         }
     }
 
+    /// Protects a model when Moppo cannot show that removal is safe and frees its space.
+    static func protection(
+        for model: LocalModel, files: ModelFiles, links: LocalModelStores.ExternalLinks,
+        activity: GitWorktreeReview.Check
+    ) -> (FileEntry.ProtectionReason?, String?) {
+        if case .found(let names) = activity {
+            return (.running, "Files are open in: \(names). Unload the model or quit the tool. Then scan again.")
+        }
+        if ([model.primary] + model.exclusive).contains(where: links.reach) {
+            return (.inventory, "An LM Studio model links to these files. Use LM Studio to remove that model first.")
+        }
+        if !links.isComplete, model.runtime == "Hugging Face" {
+            return (.inventory, "Moppo could not read all LM Studio links. LM Studio can use these files.")
+        }
+        if !files.hardLinks.isEmpty {
+            return (.inventory, "Other paths share these files through hard links. Removal might not free their space.")
+        }
+        if activity != .clear {
+            return (.inventory, "Open files could not be checked. Scan again before removal.")
+        }
+        return (nil, nil)
+    }
+
     private struct Found {
         var entries: [FileEntry] = []
         var unreadableCount = 0
+    }
+}
+
+/// Records link facts for one model row during its measurement.
+final class ModelFiles: @unchecked Sendable {
+    struct HardLink: Equatable {
+        let identity: String
+        /// The measured path that includes this file.
+        let root: URL
+        let bytes: Int64
+    }
+
+    private let owner: URL
+    private let activity: WorktreeActivity
+    private let lock = NSLock()
+    private var linkedFiles: [HardLink] = []
+    private var symbolicLinks: [URL] = []
+
+    init(owner: URL, activity: WorktreeActivity) {
+        self.owner = owner
+        self.activity = activity
+    }
+
+    /// Files with more than one hard link, once for each measured path.
+    var hardLinks: [HardLink] { lock.withLock { linkedFiles } }
+
+    func measure(_ url: URL, with measurer: AllocatedSizeMeasurer) async throws -> SizeMeasurement {
+        let root = url.standardizedFileURL
+        // The subtree walk lists its root, so a file root is observed here.
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .linkCountKey,
+            .totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .fileSizeKey, .volumeIdentifierKey, .fileIdentifierKey]
+        if let values = try? root.resourceValues(forKeys: keys), values.isDirectory != true {
+            observe(root, values: values, root: root)
+            return try await measurer.measure(root)
+        }
+        let measurements = try await measurer.measure(root, retaining: []) { [self] entry, values, _ in
+            observe(entry, values: values, root: root)
+        }
+        return measurements[root] ?? .zero
+    }
+
+    private func observe(_ entry: URL, values: URLResourceValues, root: URL) {
+        activity.observe(entry, values: values, attribution: [owner])
+        if values.isSymbolicLink == true {
+            lock.withLock { symbolicLinks.append(entry) }
+        } else if values.isRegularFile == true, (values.linkCount ?? 1) > 1,
+                  let identity = FileIdentity.of(entry) {
+            let link = HardLink(identity: identity, root: root,
+                                bytes: AllocatedSizeMeasurer.allocatedSize(of: values) ?? 0)
+            lock.withLock { if !linkedFiles.contains(link) { linkedFiles.append(link) } }
+        }
+    }
+
+    /// Checks link targets, because a runtime opens the target and not the link.
+    /// Returns false when a target exists but cannot be checked. A missing target cannot be open.
+    func observeLinkTargets() -> Bool {
+        var checked = true
+        for link in lock.withLock({ symbolicLinks }) {
+            var info = stat()
+            guard stat(link.path, &info) == 0 else {
+                if errno != ENOENT { checked = false }
+                continue
+            }
+            let target = link.resolvingSymlinksInPath()
+            guard target.path != link.path,
+                  let values = try? target.resourceValues(
+                    forKeys: [.isSymbolicLinkKey, .volumeIdentifierKey, .fileIdentifierKey]),
+                  values.isSymbolicLink != true
+            else { checked = false; continue }
+            activity.observe(target, values: values, attribution: [owner])
+        }
+        return checked
     }
 }

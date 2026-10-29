@@ -23,7 +23,8 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
 | T3 Code | `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
-| Ollama, Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. |
+| Ollama | Default model store | Protected inventory. Moppo cannot verify complete model ownership or active models. |
+| Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
 
 Cleanup groups related storage under application headings.
 Codex and ChatGPT have separate headings because their displayed storage has different owners.
@@ -232,8 +233,26 @@ Custom paths remain outside current default-path coverage.
 Codex memories have separate [memory controls](https://learn.chatgpt.com/docs/customization/memories).
 Moppo keeps their files protected during session cleanup.
 
-The Ollama, Hugging Face, and LM Studio readers target model files only.
+Ollama models remain protected inventory.
+Moppo cannot verify all current Ollama model references or active models.
+Use Ollama to manage these files.
+The Hugging Face and LM Studio readers target model files only.
 They do not offer session history removal.
+
+Moppo protects a Hugging Face or LM Studio model row in these conditions:
+
+- A process has a model file or a link target open. LM Studio loads models in this way.
+- A link in the LM Studio folders points to the Hugging Face files. The `lms import --symbolic-link` command makes these links.
+- Moppo cannot read all LM Studio folders. A missing LM Studio row does not prove that no link exists.
+- Moppo cannot check a link target for open files.
+- A model file has more than one hard link. Removal of one link does not free the space.
+- Moppo cannot complete the open file check.
+
+Moppo counts a hard-linked model file once across model rows.
+Plan creation and plan execution scan again, so these checks apply before removal.
+Moppo reads only the default LM Studio folders.
+Moppo also reads the folders that their directory links point to.
+Moppo does not check links from other folders.
 Ollama keys, LM Studio settings and conversations, and non-model Hugging Face files stay outside model removal targets.
 Model removal does not prove that the tool deleted chat history or its attachments.
 
@@ -271,6 +290,7 @@ The initial findings remain in [issue #199](https://github.com/anguria-studio/Mo
 ### Regression fixtures
 
 - [AI scanner fixtures](../Core/Tests/MoppoCoreTests/AIToolsScannerTests.swift) cover credentials, memories, attachments, child transcripts, storage ownership, and totals.
+- [Local model fixtures](../Core/Tests/MoppoCoreTests/LocalModelStoresTests.swift) cover shared files, LM Studio links, hard links, and open model files.
 - [Codex session fixtures](../Core/Tests/MoppoCoreTests/CodexSessionsTests.swift) cover child sessions, writer locks, open files, changed reviews, unsupported history, deletion failures, and receipts.
 - [Cleanup state tests](../AppTests/CleanupModelTests.swift) cover group unlocking, separate selection, changed reviews, child counts, and required confirmation.
 
