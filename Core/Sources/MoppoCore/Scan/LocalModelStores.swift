@@ -2,7 +2,7 @@ import Foundation
 
 /// One locally stored machine-learning model, as its runtime's store describes it.
 public struct LocalModel: Sendable, Equatable {
-    /// The name the user pulled it by: `llama3:8b`, `org/repo`. For a set of models
+    /// The downloaded repository name, such as `org/repo`. For a set of models
     /// that share their weights, the names joined — see `LocalModelStores.grouped`.
     public var name: String {
         memberNames.count <= 2
@@ -12,8 +12,7 @@ public struct LocalModel: Sendable, Equatable {
     /// One name, or every model in a set.
     public let memberNames: [String]
     public let runtime: String
-    /// What stands for the model in its store — Ollama's manifest, a hub repository
-    /// folder. Removing it is what makes the runtime stop listing the model.
+    /// The repository folder that represents the model in its store.
     public let primary: URL
     /// Every manifest or repository folder represented by this row.
     public let memberPaths: [URL]
@@ -23,36 +22,14 @@ public struct LocalModel: Sendable, Equatable {
     public let sharedBytes: Int64
 }
 
-/// Reads the model stores of Ollama, the Hugging Face hub and LM Studio.
-///
-/// The models are usually the largest files in a developer's home and none of the
-/// scanners could say so truthfully, because **a model is not a folder**. Every
-/// store here is content-addressed, and what a model "is" and what removing it
-/// frees are different questions:
-///
-/// * On this Mac on 20 Sep 2026 the one Hugging Face model, 261 MB of weights, sat
-///   in a repository folder that measured **0 bytes** — it holds symbolic links.
-///   The weights were in `hub/blobs/a5/<hash>`, a store shared by every repository,
-///   beside a `.refs` file naming which of them use it. A row for the folder would
-///   have read "0 B", and removing it would have freed nothing.
-/// * Ollama keeps each layer once under `blobs/` and names it from every manifest
-///   that uses it. Two tags of one model share the multi-gigabyte weights; removing
-///   one frees a few kilobytes of template.
-///
-/// So each reader answers the second question: the files that *only* this model
-/// refers to. What is shared is measured and reported, never offered. It is the
-/// argument `PrivateSizeMeasurer` makes about APFS clones, one level up.
-///
-/// **What is verified.** The hub layout was read off a real store. Ollama and LM
-/// Studio were not installed here; their readers follow each tool's published
-/// layout and are tested against fixtures only. Reading manifests is Purge's idea
-/// (`AIModelScanner`, github.com/jithin-sabu/purge-app); the hub's shared-blob
-/// reader is this project's.
-/// See THIRD_PARTY_NOTICES.md for Jithin Sabu's credit and the MIT license.
+/// Reads the default Hugging Face and LM Studio model stores.
+/// Shared files remain outside removal targets unless every owner belongs to the selected group.
+/// Ollama models remain protected inventory until ownership and runtime checks support their storage.
+/// See THIRD_PARTY_NOTICES.md for source credits.
 public enum LocalModelStores {
 
     public static func all(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
-        ollama(home: home, context: context) + huggingFace(home: home, context: context)
+        huggingFace(home: home, context: context)
             + lmStudio(home: home).filter { !context.isExcluded($0.primary) }
     }
 
@@ -61,67 +38,6 @@ public enum LocalModelStores {
     /// and `~/.ollama` whole would offer the user's `id_ed25519` with the models.
     public static let homeDotFolders: Set<String> = [".ollama", ".lmstudio"]
     public static let dotCacheFolders: Set<String> = ["huggingface", "lm-studio"]
-
-    // MARK: - Ollama
-
-    /// `~/.ollama/models/manifests/<host>/<namespace>/<model>/<tag>` is a JSON
-    /// manifest naming a config blob and layer blobs by digest; the bytes are in
-    /// `~/.ollama/models/blobs/sha256-<hex>`. `OLLAMA_MODELS` can move the store, and
-    /// an app launched from the Dock does not see the shell's environment, so only
-    /// the default is read.
-    static func ollama(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
-        let root = home.appendingPathComponent(".ollama/models", isDirectory: true)
-        let manifests = root.appendingPathComponent("manifests", isDirectory: true)
-        let blobs = root.appendingPathComponent("blobs", isDirectory: true)
-
-        struct Manifest: Decodable {
-            struct Layer: Decodable { let digest: String }
-            let config: Layer?
-            let layers: [Layer]
-        }
-
-        // Exactly four levels, as Ollama itself globs them (`manifests/*/*/*/*` in its
-        // `manifest` package): host, namespace, model, tag.
-        let depth = manifests.standardizedFileURL.pathComponents.count + 4
-        var members: [Member] = []
-        var blobUsers: [String: Set<Int>] = [:]
-        for url in regularFiles(under: manifests)
-        where url.standardizedFileURL.pathComponents.count == depth {
-            guard let data = try? Data(contentsOf: url),
-                  let manifest = try? JSONDecoder().decode(Manifest.self, from: data)
-            else { continue }
-            let index = members.count
-            members.append(Member(name: ollamaName(url, under: manifests), primary: url))
-            for digest in Set(manifest.layers.map(\.digest) + [manifest.config?.digest].compactMap { $0 }) {
-                blobUsers[digest, default: []].insert(index)
-            }
-        }
-
-        let sharedBlobs = blobUsers.keys.sorted().compactMap { digest -> Blob? in
-            // `sha256-<hex>` on disk — Ollama's `BlobsPath` replaces the colon — and
-            // the colon itself on a store written before it did.
-            let candidates = [digest.replacingOccurrences(of: ":", with: "-"), digest]
-            guard let file = candidates.map({ blobs.appendingPathComponent($0) })
-                .first(where: { isRegularFile($0) })
-            else { return nil }
-            return Blob(files: [file], bytes: allocatedSize(file), users: blobUsers[digest] ?? [],
-                        usersAreComplete: true)
-        }
-        return grouped(members, sharedBlobs, runtime: "Ollama", context: context)
-    }
-
-    /// `registry.ollama.ai/library/gemma3/4b` reads back as `gemma3:4b`, the name
-    /// the user typed to pull it.
-    static func ollamaName(_ manifest: URL, under root: URL) -> String {
-        let parts = Array(manifest.standardizedFileURL.pathComponents
-            .dropFirst(root.standardizedFileURL.pathComponents.count))
-        guard parts.count >= 4 else { return parts.joined(separator: "/") }
-        let tag = parts[parts.count - 1], model = parts[parts.count - 2]
-        var prefix = Array(parts.dropLast(2))
-        if prefix.first == "registry.ollama.ai" { prefix.removeFirst() }
-        if prefix == ["library"] { prefix = [] }
-        return (prefix + ["\(model):\(tag)"]).joined(separator: "/")
-    }
 
     // MARK: - Hugging Face hub
 
@@ -201,7 +117,7 @@ public enum LocalModelStores {
     /// with nothing shared between two of them. The store is `~/.lmstudio/models`,
     /// and `~/.cache/lm-studio/models` on installs from before it moved.
     static func lmStudio(home: URL) -> [LocalModel] {
-        [".lmstudio/models", ".cache/lm-studio/models"].flatMap { relative -> [LocalModel] in
+        lmStudioStores.flatMap { relative -> [LocalModel] in
             let store = home.appendingPathComponent(relative, isDirectory: true)
             return directoryNames(store).flatMap { publisher -> [LocalModel] in
                 let publisherURL = store.appendingPathComponent(publisher, isDirectory: true)
@@ -216,6 +132,49 @@ public enum LocalModelStores {
             }
         }
         .sorted { $0.name < $1.name }
+    }
+
+    static let lmStudioStores = [".lmstudio/models", ".cache/lm-studio/models"]
+
+    /// Symbolic links that LM Studio keeps, such as `lms import --symbolic-link` models.
+    struct ExternalLinks: Sendable, Equatable {
+        /// Each link target, as written and with all links resolved.
+        var targets: Set<String> = []
+        /// False when a folder could not be read. Missing links then do not prove independence.
+        var isComplete = true
+
+        /// True when a link target is `url` or is inside it.
+        func reach(_ url: URL) -> Bool {
+            let paths = Set([url.standardizedFileURL.path, url.resolvingSymlinksInPath().path])
+            return targets.contains { target in
+                paths.contains { target == $0 || target.hasPrefix($0 + "/") }
+            }
+        }
+    }
+
+    /// Reads every symbolic link in the LM Studio folders, with or without a model row.
+    static func lmStudioLinks(home: URL) -> ExternalLinks {
+        var links = ExternalLinks()
+        let fm = FileManager.default
+        for relative in [".lmstudio", ".cache/lm-studio"] {
+            let root = home.appendingPathComponent(relative, isDirectory: true).resolvingSymlinksInPath()
+            guard fm.fileExists(atPath: root.path) else { continue }
+            guard let enumerator = fm.enumerator(
+                at: root, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [],
+                errorHandler: { _, _ in links.isComplete = false; return true }
+            ) else { links.isComplete = false; continue }
+            for case let url as URL in enumerator {
+                guard (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true else { continue }
+                guard let destination = try? fm.destinationOfSymbolicLink(atPath: url.path) else {
+                    links.isComplete = false
+                    continue
+                }
+                links.targets.insert(URL(fileURLWithPath: destination, relativeTo: url.deletingLastPathComponent())
+                    .standardizedFileURL.path)
+                links.targets.insert(url.resolvingSymlinksInPath().path)
+            }
+        }
+        return links
     }
 
     // MARK: - Sets
@@ -233,28 +192,11 @@ public enum LocalModelStores {
         let usersAreComplete: Bool
     }
 
-    /// Two models become one row when they share a blob at or above this size.
-    ///
-    /// It is the scan's own noise floor, `ScanCoordinator.entryNoiseFloor`, and the
-    /// line it draws is the one that matters here: weights, projectors and adapters
-    /// are megabytes to gigabytes; a licence, a template or a parameter file is
-    /// kilobytes, and nearly every Ollama model carries the same licence text. Joined
-    /// on *any* shared blob, every model on the disk becomes one row.
+    /// Groups models that share files of at least 1 MiB.
     static let setThreshold: Int64 = 1024 * 1024
 
-    /// Turns models and the blobs they refer to into rows.
-    ///
-    /// As a row each, two tags of one model read a few kilobytes apiece and the
-    /// gigabytes of weights they share could be removed through neither. So models
-    /// that share a large blob are **one row**, removed together: the other members'
-    /// manifests and every blob used only inside the set go with it.
-    /// Excluded models remain blob owners but do not join removal groups.
-    /// Other tags can then appear separately, with shared blobs kept on disk.
-    ///
-    /// A blob also used outside the set stays and is counted in `sharedBytes`.
-    /// Ollama prunes what nothing refers to when it next starts (unless
-    /// `OLLAMA_NOPRUNE` is set), so a kilobyte of licence left behind does not stay
-    /// for ever.
+    /// Keeps excluded owners in reference counts but outside removal groups.
+    /// Files with other owners remain on disk.
     static func grouped(
         _ members: [Member], _ blobs: [Blob], runtime: String, context: ScanContext = ScanContext()
     ) -> [LocalModel] {
@@ -301,13 +243,6 @@ public enum LocalModelStores {
         ((try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? [])
             .filter { !$0.hasPrefix(".") }
             .sorted()
-    }
-
-    private static func regularFiles(under root: URL) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
-        ) else { return [] }
-        return enumerator.compactMap { $0 as? URL }.filter(isRegularFile)
     }
 
     private static func isRegularFile(_ url: URL) -> Bool {

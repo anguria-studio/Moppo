@@ -173,6 +173,53 @@ struct CleanupPlanTests {
         }
     }
 
+    /// Scans `f.root` with the AI Tools scanner and checks that a plan for `name` is refused.
+    private func expectProtectedScannerRow(_ f: Fixture, named name: String) async throws -> ScanReport.Item {
+        let scanner = AIToolsScanner(home: f.root)
+        let scan: CleanupPlanService.Scanner = { _ in
+            let category = try await scanner.scan(context: ScanContext())
+            return ScanResults(categories: [category], startedAt: Date(), finishedAt: Date())
+        }
+        let report = ScanReport(results: try await scan(f.configuration), configuration: f.configuration)
+        try f.scans.save(report)
+        let row = try #require(report.items.first { $0.name == name })
+        #expect(row.eligibility == "protected")
+        #expect(row.protection == "inventory" && !row.safeToRemove)
+        let service = CleanupPlanService(scans: f.scans, plans: f.plans,
+            configuration: { f.configuration }, scanner: scan)
+        await #expect(throws: PlanValidationError.protectedItem) {
+            try await f.create(report, using: service, ids: [row.id])
+        }
+        #expect(!FileManager.default.fileExists(atPath: f.plans.directory.path))
+        return row
+    }
+
+    @Test func ollamaInventoryRefusesPlansFromActualScannerOutput() async throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let weight = try f.file(".ollama/models/blobs/sha256-weights")
+        _ = try await expectProtectedScannerRow(f, named: "Ollama models")
+        #expect(FileManager.default.fileExists(atPath: weight.url.path))
+    }
+
+    @Test func lmStudioSymbolicImportRefusesHubPlansFromActualScannerOutput() async throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let repository = ".cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct-GGUF"
+        let blob = try f.file(repository + "/blobs/9217f5db")
+        let snapshot = f.root.appendingPathComponent(repository + "/snapshots/rev/q4_k_m.gguf")
+        let imported = f.root.appendingPathComponent(".lmstudio/models/test/qwen/q4_k_m.gguf")
+        for url in [snapshot, imported] {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        }
+        try FileManager.default.createSymbolicLink(atPath: snapshot.path, withDestinationPath: "../../blobs/9217f5db")
+        try FileManager.default.createSymbolicLink(at: imported, withDestinationURL: snapshot)
+
+        let row = try await expectProtectedScannerRow(f, named: "Qwen/Qwen2.5-0.5B-Instruct-GGUF")
+        #expect(row.detail?.contains("LM Studio") == true)
+        #expect(FileManager.default.fileExists(atPath: blob.url.path))
+    }
+
     @Test func overlapAndSharedModelStorage() async throws {
         let f = try Fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
