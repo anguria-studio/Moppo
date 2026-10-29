@@ -433,6 +433,11 @@ final class AppModel {
         )
     }
 
+    func dismissCleanupCompletion(_ id: UUID) {
+        guard cleanupCompletion?.id == id else { return }
+        cleanupCompletion = nil
+    }
+
     func showDashboardAfterCleanup(_ id: UUID) {
         guard cleanupCompletion?.id == id else { return }
         view = .dashboard
