@@ -228,7 +228,9 @@ The Antigravity desktop application uses bundle identifier `com.google.antigravi
 Its support folder has a separate protected row under Antigravity.
 Moppo does not apply the generic Electron cache rule to this folder. Cache folder names do not establish safe removal.
 Applications and Hidden & System Data do not count or offer these paths again.
-If the application is absent, Application Leftovers keeps its existing review for the desktop support folder.
+The bundle identifier links the support folder to its application.
+If the application is absent, Application Leftovers owns the support folder and requires the existing user-data review.
+The uninstall review also treats the whole folder as user data. No Antigravity cache folder counts as regenerable.
 Generic Git worktree discovery and removal review do not run inside this storage.
 No Gemini CLI or Antigravity storage contributes to Safe to Remove.
 User-data overrides cannot unlock these inventory rows.

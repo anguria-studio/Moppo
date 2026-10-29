@@ -4,7 +4,9 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
-- Show Gemini CLI and Antigravity storage in AI Tools. Keep all files protected and count the shared `~/.gemini` folder once.
+- Show Gemini CLI and Antigravity storage with their icons in AI Tools.
+- Keep all Gemini CLI and Antigravity files protected. Count the shared `~/.gemini` folder once.
+- Show Antigravity desktop data in Application Leftovers after you remove Antigravity.
 
 - Offer administrator approval when Cleanup cannot move recognized Apple sound libraries to Trash. Preserve receipts and approved Put Back.
 
