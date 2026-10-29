@@ -4,6 +4,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Offer administrator approval when Cleanup cannot move recognized Apple sound libraries to Trash. Preserve receipts and approved Put Back.
+
 - Add Never Offer This Again to Cleanup row menus, with saved exclusions for files, folders, local models, and Docker images.
 - Add `moppo exclude` to save the same exclusions as Never Offer This Again from the CLI.
 - Install the `moppo` command and the agent skill for Claude Code, Codex, or Cursor from Settings > Advanced.

@@ -257,3 +257,13 @@ Review the email before you send it to `hello@anguria.studio`.
 The generated report excludes file paths, photos, and removal logs.
 
 See [update setup](updates.md) for release configuration and pending distribution checks.
+
+## Administrator approval for sound libraries
+
+Full Disk Access and administrator approval control different permissions.
+If Cleanup cannot move recognized Apple sound libraries, select **Retry with Administrator Approval**.
+Approve the request in the macOS dialog.
+Moppo checks the content again and moves eligible folders to Trash.
+The retry requires **Keep Put Back receipts** to be on.
+Put Back can request administrator approval to restore these folders.
+If you cancel approval, the current folder remains in place.

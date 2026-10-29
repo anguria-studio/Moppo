@@ -35,7 +35,7 @@ final class AppModel {
         launchAccess: LaunchAccess = .ready,
         onboardingProgress: OnboardingProgress? = nil,
         hasFullDiskAccess: @escaping () -> Bool = { FullDiskAccess.isGranted },
-        trashService: any TrashServicing = TrashService(),
+        trashService: any TrashServicing = TrashService(administratorRestore: AdministratorTrashService().restore),
         historyReader: (any CleanupHistoryReading)? = nil,
         dashboardService: any DashboardMeasuring = DashboardMeasurementService(),
         dashboardPersistence: any DashboardPersisting = DashboardPersistence(),
@@ -472,6 +472,7 @@ final class AppModel {
         var message: String
         var finderURLs: [URL] = []
         var showsFullDiskAccessAction = false
+        var showsAdministratorRetry = false
     }
 
     var notice: Notice?
@@ -867,6 +868,21 @@ final class AppModel {
             if !showAppDataAccessAlertIfNeeded(outcome),
                destination == .scanner, let unfinished = cleanUpNotice(outcome) {
                 notice = unfinished
+                if cleanup.canRetryWithAdministrator {
+                    notice?.showsAdministratorRetry = true
+                    if cleanup.administratorRetryCount == Set(outcome.failed).count,
+                       outcome.skippedWorktrees.isEmpty, outcome.toolCommandResults.isEmpty {
+                        notice?.title = "Administrator Approval Needed"
+                        let content = cleanup.administratorRetryCount == 1 ? "this sound library" : "these sound libraries"
+                        notice?.message = "Allow Moppo to move \(content) to Trash."
+                        if outcome.removedCount > 0 {
+                            let items = outcome.removedCount == 1 ? "item" : "items"
+                            notice?.message += "\nMoppo removed \(outcome.removedCount) other \(items)."
+                        }
+                    } else {
+                        notice?.message += "\nRetry with administrator approval to move eligible sound libraries to Trash."
+                    }
+                }
             }
             if destination == .scanner {
                 if outcome.removedCount > 0 { dashboard.recordCleanup() }

@@ -168,6 +168,8 @@ final class RecoveryModel {
                 do {
                     try await trashService.putBack(item)
                     restored = true
+                } catch AdministratorTrashError.cancelled {
+                    break
                 } catch TrashError.destinationOccupied {
                     finderURLs.append(item.url)
                     failures.append((item.name,

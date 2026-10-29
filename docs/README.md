@@ -252,6 +252,9 @@ App/                          SwiftUI app
   Uninstaller/               App Uninstaller model, scan services, and permanent removal
   Updates/                   Sparkle controller, preferences, and installation guard
   Support/                   Privacy information, support reports, and scan log access
+Helpers/                      Separate application tools
+  AdministratorTrash/        Approved sound library moves and recovery
+  HomebrewAskpass/            Homebrew password prompt
 skills/moppo-cleanup/          Portable agent instructions for CLI inspection and saved plans
 design/                       Archived design handoff, kept locally
 ```
@@ -707,7 +710,12 @@ If Git is available, Git moves the worktree and updates its registration.
 Git can refuse locked worktrees or unsupported moves. Moppo does not force these moves.
 If Git is unavailable, Moppo uses the normal Trash action.
 Put Back restores the worktree and updates Git registration when Git is available.
-Put Back requires a saved receipt. Emptying the Trash ends recovery through Moppo.
+Put Back requires a saved receipt.
+When folder permissions block Cleanup, **Retry with Administrator Approval** can move recognized Apple sound libraries to Trash.
+The separate helper checks the reviewed content again after approval.
+The retry requires receipts and does not replace existing files.
+Put Back can request administrator approval for the same system locations.
+Other permission failures retain their existing recovery actions. Emptying the Trash ends recovery through Moppo.
 
 ## The boot snapshot
 
