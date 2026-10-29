@@ -203,11 +203,10 @@ public struct AIToolsScanner: CategoryScanner {
                     children[index].allocatedBytes = max(0, children[index].allocatedBytes - link.bytes)
                 }
             }
-            files.observeLinkTargets()
-            let (reason, explanation) = Self.protection(
-                for: model, files: files, links: links,
-                activity: activity.check(model.primary, measurement: own)
-            )
+            let targetsChecked = files.observeLinkTargets()
+            var check = activity.check(model.primary, measurement: own)
+            if check == .clear, !targetsChecked { check = .unknown("Some link targets could not be checked.") }
+            let (reason, explanation) = Self.protection(for: model, files: files, links: links, activity: check)
 
             var qualifier = model.memberNames.count == 1
                 ? "\(model.runtime) model"
@@ -344,14 +343,23 @@ final class ModelFiles: @unchecked Sendable {
     }
 
     /// Checks link targets, because a runtime opens the target and not the link.
-    func observeLinkTargets() {
+    /// Returns false when a target exists but cannot be checked. A missing target cannot be open.
+    func observeLinkTargets() -> Bool {
+        var checked = true
         for link in lock.withLock({ symbolicLinks }) {
+            var info = stat()
+            guard stat(link.path, &info) == 0 else {
+                if errno != ENOENT { checked = false }
+                continue
+            }
             let target = link.resolvingSymlinksInPath()
             guard target.path != link.path,
                   let values = try? target.resourceValues(
-                    forKeys: [.isSymbolicLinkKey, .volumeIdentifierKey, .fileIdentifierKey])
-            else { continue }
+                    forKeys: [.isSymbolicLinkKey, .volumeIdentifierKey, .fileIdentifierKey]),
+                  values.isSymbolicLink != true
+            else { checked = false; continue }
             activity.observe(target, values: values, attribution: [owner])
         }
+        return checked
     }
 }

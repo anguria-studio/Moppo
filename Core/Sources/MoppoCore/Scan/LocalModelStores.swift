@@ -152,26 +152,45 @@ public enum LocalModelStores {
         }
     }
 
+    /// Limits the entries read through LM Studio folders and their directory links.
+    static let linkEntryLimit = 200_000
+
     /// Reads every symbolic link in the LM Studio folders, with or without a model row.
-    static func lmStudioLinks(home: URL) -> ExternalLinks {
+    /// Directory links are read once each, so a link cycle stops.
+    static func lmStudioLinks(home: URL, entryLimit: Int = linkEntryLimit) -> ExternalLinks {
         var links = ExternalLinks()
         let fm = FileManager.default
-        for relative in [".lmstudio", ".cache/lm-studio"] {
-            let root = home.appendingPathComponent(relative, isDirectory: true).resolvingSymlinksInPath()
-            guard fm.fileExists(atPath: root.path) else { continue }
+        var pending = [".lmstudio", ".cache/lm-studio"].map {
+            home.appendingPathComponent($0, isDirectory: true).resolvingSymlinksInPath()
+        }
+        var visited: Set<String> = []
+        var entries = 0
+        while let root = pending.popLast() {
+            guard visited.insert(root.standardizedFileURL.path).inserted,
+                  fm.fileExists(atPath: root.path) else { continue }
             guard let enumerator = fm.enumerator(
                 at: root, includingPropertiesForKeys: [.isSymbolicLinkKey], options: [],
                 errorHandler: { _, _ in links.isComplete = false; return true }
             ) else { links.isComplete = false; continue }
             for case let url as URL in enumerator {
+                entries += 1
+                guard entries <= entryLimit else { links.isComplete = false; return links }
                 guard (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true else { continue }
                 guard let destination = try? fm.destinationOfSymbolicLink(atPath: url.path) else {
                     links.isComplete = false
                     continue
                 }
+                let resolved = url.resolvingSymlinksInPath()
                 links.targets.insert(URL(fileURLWithPath: destination, relativeTo: url.deletingLastPathComponent())
                     .standardizedFileURL.path)
-                links.targets.insert(url.resolvingSymlinksInPath().path)
+                links.targets.insert(resolved.path)
+                // The enumerator does not follow directory links, so read their targets next.
+                var info = stat()
+                if stat(url.path, &info) == 0 {
+                    if info.st_mode & S_IFMT == S_IFDIR { pending.append(resolved) }
+                } else if errno != ENOENT {
+                    links.isComplete = false
+                }
             }
         }
         return links

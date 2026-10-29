@@ -247,6 +247,50 @@ struct LocalModelStoresTests {
         #expect(try modelRow(result, "org/unlinked").protectionReason == nil)
     }
 
+    @Test("LM Studio links inside directory links protect Hugging Face files")
+    func directoryLinkedDefaultLMStudioStoreProtectsHubFiles() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file(".cache/huggingface/hub/models--Qwen--model/blobs/9217", bytes: 4 * mb)
+        try sandbox.link(".cache/huggingface/hub/models--Qwen--model/snapshots/rev/q4.gguf",
+                         to: "../../blobs/9217")
+        let shared = sandbox.home.appendingPathComponent("Shared/models")
+        try sandbox.link("Shared/models/test/qwen/q4.gguf", to: sandbox.home
+            .appendingPathComponent(".cache/huggingface/hub/models--Qwen--model/snapshots/rev/q4.gguf").path)
+        // A cycle must not stop the scan.
+        try sandbox.link("Shared/models/loop", to: shared.path)
+        try FileManager.default.createDirectory(at: sandbox.home.appendingPathComponent(".lmstudio"),
+                                                withIntermediateDirectories: true)
+        try sandbox.link(".lmstudio/models", to: shared.path)
+
+        let row = try modelRow(try await scanner(sandbox).scan(context: ScanContext()), "Qwen/model")
+
+        #expect(row.protectionReason == .inventory)
+        #expect(row.protectionExplanation?.contains("LM Studio model links to these files") == true)
+        #expect(LocalModelStores.lmStudioLinks(home: sandbox.home).isComplete)
+        #expect(!LocalModelStores.lmStudioLinks(home: sandbox.home, entryLimit: 1).isComplete)
+    }
+
+    @Test("A link target that cannot be checked protects the model")
+    func uncheckedLinkTargetProtectsTheModel() async throws {
+        let sandbox = try Sandbox()
+        let target = try sandbox.file("Private/weights/q4.gguf", bytes: 2 * mb)
+        try sandbox.file(".lmstudio/models/test/denied/model.json", bytes: 4096)
+        try sandbox.link(".lmstudio/models/test/denied/q4.gguf", to: target.path)
+        try sandbox.file(".lmstudio/models/test/broken/model.json", bytes: 4096)
+        try sandbox.link(".lmstudio/models/test/broken/q4.gguf", to: sandbox.home.appendingPathComponent("Missing/q4.gguf").path)
+        let open = [FileIdentity.of(target)!: Set(["llmster"])]
+        let parent = target.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: parent.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path) }
+
+        let result = try await scanner(sandbox, open: open).scan(context: ScanContext())
+
+        let denied = try modelRow(result, "test/denied")
+        #expect(denied.protectionReason == .inventory)
+        #expect(denied.protectionExplanation == "Open files could not be checked. Scan again before removal.")
+        #expect(try modelRow(result, "test/broken").protectionReason == nil)
+    }
+
     @Test("Unreadable LM Studio folders protect Hugging Face models")
     func unreadableLMStudioLinksProtectHubModels() async throws {
         let sandbox = try Sandbox()

@@ -244,12 +244,14 @@ Moppo protects a Hugging Face or LM Studio model row in these conditions:
 - A process has a model file or a link target open. LM Studio loads models in this way.
 - A link in the LM Studio folders points to the Hugging Face files. The `lms import --symbolic-link` command makes these links.
 - Moppo cannot read all LM Studio folders. A missing LM Studio row does not prove that no link exists.
+- Moppo cannot check a link target for open files.
 - A model file has more than one hard link. Removal of one link does not free the space.
 - Moppo cannot complete the open file check.
 
 Moppo counts a hard-linked model file once across model rows.
 Plan creation and plan execution scan again, so these checks apply before removal.
 Moppo reads only the default LM Studio folders.
+Moppo also reads the folders that their directory links point to.
 Moppo does not check links from other folders.
 Ollama keys, LM Studio settings and conversations, and non-model Hugging Face files stay outside model removal targets.
 Model removal does not prove that the tool deleted chat history or its attachments.
