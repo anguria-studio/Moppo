@@ -150,10 +150,8 @@ public struct DockerScanner: CategoryScanner {
             // far more expensive call. The column stays empty rather than guessing.
             lastOpened: nil,
             isRegenerable: isBuildCache,
-            // Nothing here is a path this app can trash: every byte lives inside
-            // Docker's VM disk image, and only Docker can give it back. The row
-            // therefore hands over the exact command, like a simulator runtime does,
-            // instead of a checkbox that would fail on confirm.
+            // Docker owns this storage inside its VM disk image.
+            // The row shows the command for manual removal.
             manualRemoval: FileEntry.ManualRemoval(
                 explanation: "This space lives inside Docker Desktop's disk image, "
                     + "and only Docker can release it.",

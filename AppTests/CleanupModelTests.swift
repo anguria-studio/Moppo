@@ -6,6 +6,51 @@ import Testing
 @Suite("Cleanup feature ownership")
 @MainActor
 struct CleanupModelTests {
+    @Test("Retained simulator downloads stay visible after runtime removal")
+    func retainedRuntimeDownloadAfterRemoval() async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-retained-runtime")
+        let entry = try runtimeCommandEntry(at: folder.url.appendingPathComponent("runtime.dmg"))
+        let remover = HeldCleanupRemoval()
+        let cleanup = CleanupModel(operations: OperationCoordinator(), remover: remover)
+        cleanup.scanResults = cleanupResults([entry])
+        cleanup.scannerSelection = [entry.id]
+        cleanup.requestCleanUp(in: .all)
+        let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
+        try await waitUntil { await remover.isPending }
+        var result = ToolCommandRemovalResult(targetID: entry.id, name: entry.displayName,
+            command: try #require(entry.toolCommand).command)
+        result.status = .completed
+        result.beforeBytes = entry.allocatedBytes
+        result.afterBytes = entry.allocatedBytes
+        result.remainingStorageReason = "macOS still stores the downloaded image."
+        await remover.finish(CleanupOutcome(removedCount: 1, deletedCount: 1, toolCommandResults: [result]))
+        await task.value
+        let row = try #require(cleanup.scanResults?.categories.first?.entries.first)
+        #expect(row.displayName == "Simulator Runtime Download 18.1 (22B81)")
+        #expect(row.id == entry.url.path)
+        #expect(row.isRemovalLocked)
+        #expect(row.toolCommand == nil)
+        #expect(row.displayBytes == entry.allocatedBytes)
+        #expect(cleanup.scannerSelection.isEmpty)
+    }
+
+    @Test("Runtime inventory rows remain visible when their backing image is unavailable")
+    func runtimeInventoryPruning() throws {
+        let folder = try TemporaryFolder(prefix: "moppo-runtime-inventory")
+        let runtime = try JSONDecoder().decode(SimulatorRuntimeReview.Runtime.self,
+            from: Data("{\"identifier\":\"62F84A00-333C-4895-B0A5-C19C5717C4EF\"}".utf8))
+        let review = SimulatorRuntimeReview(runtime: runtime, developerDirectory: "", toolchains: [],
+            protectionExplanation: "Runtime details are unavailable.")
+        let command = ToolCommandRemoval.simulatorRuntime(review,
+            fallbackURL: folder.url.appendingPathComponent("missing-image.dmg"), protectedPatterns: [])
+        let row = FileEntry(url: command.targetURL, kind: .diskImage, allocatedBytes: 0,
+            protectionReason: .inventory, removalMethod: .toolCommand(command))
+        let cleanup = CleanupModel(operations: OperationCoordinator())
+        cleanup.scanResults = cleanupResults([row])
+        cleanup.pruneVanishedEntries()
+        #expect(cleanup.scanResults?.categories.first?.entries.map(\.id) == [row.id])
+    }
+
     @Test("Administrator retry uses only captured failures and preserves completed totals", arguments: [false, true])
     func administratorRetry(excluded: Bool) async throws {
         let folder = try TemporaryFolder()
@@ -196,10 +241,11 @@ struct CleanupModelTests {
         for directory in directories {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
-        let entries = directories.map { url in
+        var entries = directories.map { url in
             FileEntry(url: url, kind: .cache, allocatedBytes: 100, isRegenerable: true,
                 removalMethod: .toolCommand(.goModuleCache(at: url, executable: "/usr/bin/true")))
         }
+        entries[1] = try runtimeCommandEntry(at: directories[1].appendingPathComponent("runtime.dmg"))
         let remover = HeldCleanupRemoval()
         let cleanup = CleanupModel(operations: OperationCoordinator(), remover: remover,
             preferences: { .init(confirmBeforeCleanup: routine, keepReceipt: false) },
@@ -271,33 +317,71 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.categories.first?.entries.first?.allocatedBytes == 0)
     }
 
-    @Test("Tool command review renders in both appearances")
-    func toolCommandReviewRendering() async throws {
+    @Test("The cleanup button says Remove when the selection has a tool command")
+    func toolCommandRemoveLabel() throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-label")
+        let command = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache, allocatedBytes: 300,
+            isRegenerable: true, removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
+        let app = AppModel()
+        app.view = .scanner
+        app.cleanup.scanFilter = .all
+        app.cleanup.scanResults = cleanupResults([command])
+        app.cleanup.scannerSelection = [command.id]
+        #expect(app.cleanup.hasSelectedPermanentItems)
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(command.allocatedBytes)))")
+    }
+
+    enum ToolCommandReviewCase: String, CaseIterable { case go, homebrew, runtime }
+
+    @Test("Tool command review explains each command and renders in both appearances",
+          arguments: ToolCommandReviewCase.allCases)
+    func toolCommandReviewRendering(reviewCase: ToolCommandReviewCase) async throws {
         let folder = try TemporaryFolder(prefix: "moppo-command-render")
-        let entry = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache,
-            allocatedBytes: 1_234_567_890, isRegenerable: true,
-            removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
+        let entry: FileEntry
+        let explanation: String
+        switch reviewCase {
+        case .go:
+            entry = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache,
+                allocatedBytes: 1_234_567_890, isRegenerable: true,
+                removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
+            explanation = "Projects may need another dependency download."
+        case .homebrew:
+            let version = HomebrewFormulaVersion(name: "xz", version: "5.8.3", path: folder.url.path,
+                token: String(repeating: "a", count: 64))
+            entry = FileEntry(url: folder.url, displayName: "xz 5.8.3", kind: .cache, allocatedBytes: 2_900_000,
+                removalMethod: .toolCommand(.homebrewVersion(version, executable: "/opt/homebrew/bin/brew")))
+            explanation = "Homebrew keeps the other installed versions of this formula."
+        case .runtime:
+            entry = try runtimeCommandEntry(at: folder.url.appendingPathComponent("runtime.dmg"))
+            explanation = "Download available runtimes again manually in Xcode Components."
+        }
         for dark in [false, true] {
-            let sheet = ConfirmationSheet(variant: .cleanUp(itemCount: 1, totalBytes: entry.allocatedBytes,
-                protectedDataCount: 0, saving: nil), toolCommandEntry: entry, toolCommandCount: 1,
-                onConfirm: {}, onCancel: {})
+            let sheet = ConfirmationSheet(variant: .cleanUp(itemCount: reviewCase == .runtime ? 2 : 1,
+                totalBytes: entry.allocatedBytes, protectedDataCount: 0, saving: nil),
+                toolCommandEntry: entry, toolCommandCount: 1, onConfirm: {}, onCancel: {})
+            #expect(sheet.message.contains(explanation))
             let size = try await renderTestView(sheet.background(Token.chrome), width: 404, dark: dark,
-                output: URL(fileURLWithPath: "/tmp/moppo-258-command-review-\(dark ? "dark" : "light").png"))
-            #expect(size.height > 300)
+                output: URL(fileURLWithPath: "/tmp/moppo-244-\(reviewCase.rawValue)-review-\(dark ? "dark" : "light").png"))
+            #expect(size.height > 100 && size.height < 300)
         }
     }
 
-    @Test("Mixed tool results retain the Full Disk Access action and command failure details")
-    func mixedToolFailureNotice() async throws {
+    @Test("Mixed tool results retain the Full Disk Access action and command failure details", arguments: [true, false])
+    func mixedToolFailureNotice(runtime: Bool) async throws {
         let folder = try TemporaryFolder(prefix: "moppo-mixed-command")
         let commandURL = folder.url.appendingPathComponent("module-cache")
         let worktreeURL = folder.url.appendingPathComponent("worktree")
         for url in [commandURL, worktreeURL] {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
-        let command = ToolCommandRemoval.goModuleCache(at: commandURL, executable: "/usr/bin/true")
-        let entry = FileEntry(url: commandURL, kind: .cache, allocatedBytes: 100,
-            removalMethod: .toolCommand(command))
+        let entry: FileEntry
+        if runtime {
+            entry = try runtimeCommandEntry(at: folder.url.appendingPathComponent("runtime.dmg"))
+        } else {
+            let command = ToolCommandRemoval.goModuleCache(at: commandURL, executable: "/usr/bin/true")
+            entry = FileEntry(url: commandURL, kind: .cache, allocatedBytes: 100, removalMethod: .toolCommand(command))
+        }
+        let command = try #require(entry.toolCommand)
         let worktree = FileEntry(url: worktreeURL, kind: .folder, allocatedBytes: 100)
         let remover = HeldCleanupRemoval()
         let app = AppModel(hasFullDiskAccess: { false }, cleanupRemover: remover)
@@ -308,20 +392,20 @@ struct CleanupModelTests {
         app.cleanup.requestCleanUp(in: .all)
         let task = Task { await app.cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
         try await waitUntil { await remover.isPending }
-        var result = ToolCommandRemovalResult(targetID: entry.id, name: "Go module cache", command: command.command)
+        var result = ToolCommandRemovalResult(targetID: entry.id, name: entry.displayName, command: command.command)
         result.status = .failed
         result.exitStatus = 23
-        result.standardError = "cache is busy"
+        result.standardError = runtime ? "runtime is busy" : "cache is busy"
         result.failureReason = "The command failed."
         await remover.finish(CleanupOutcome(failed: [entry.id, worktree.id],
             permissionDenied: [worktree.id], trashAccessDenied: [worktree.id], toolCommandResults: [result]))
         await task.value
         let notice = try #require(app.notice)
         #expect(notice.showsFullDiskAccessAction)
-        #expect(notice.message.contains("cache is busy"))
+        #expect(notice.message.contains(result.standardError))
         #expect(notice.message.contains("Exit status: 23"))
         #expect(notice.message.contains("Full Disk Access"))
-        #expect(notice.finderURLs.map(\.path) == [commandURL.path, worktreeURL.path])
+        #expect(notice.finderURLs.map(\.path) == (runtime ? [worktreeURL.path] : [commandURL.path, worktreeURL.path]))
     }
 
     @Test("Type options count nested matches and follow safety and scan results")
@@ -481,9 +565,9 @@ struct CleanupModelTests {
         cleanup.scanFilter = .all
         cleanup.scanResults = cleanupResults([node, archive, image])
         cleanup.scannerSelection = [node.id, archive.id, image.id]
-        #expect(cleanup.hasSelectedDockerImages)
+        #expect(cleanup.hasSelectedPermanentItems)
         cleanup.dataTypeFilter = .nodeModules
-        #expect(!cleanup.hasSelectedDockerImages)
+        #expect(!cleanup.hasSelectedPermanentItems)
         #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(node.allocatedBytes)))")
         cleanup.setScannerSelection(cleanup.scannerSelection.subtracting([node.id]))
         #expect(cleanup.cleanupSelection(in: cleanup.scanFilter).isEmpty)
@@ -492,11 +576,11 @@ struct CleanupModelTests {
         #expect(cleanup.pendingCleanUp == nil)
         cleanup.dataTypeFilter = .all
         #expect(cleanup.scannerSelection == [archive.id, image.id])
-        #expect(cleanup.hasSelectedDockerImages)
+        #expect(cleanup.hasSelectedPermanentItems)
         let remainingBytes = archive.allocatedBytes + image.allocatedBytes
         #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
         cleanup.scanFilter = .safeToRemove
-        #expect(!cleanup.hasSelectedDockerImages)
+        #expect(!cleanup.hasSelectedPermanentItems)
         #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
         cleanup.requestCleanUp(in: cleanup.scanFilter)
         #expect(cleanup.pendingCleanUp == nil)
@@ -2010,4 +2094,16 @@ private actor CleanupContextRecorder: CategoryScanner {
         self.context = context
         return ScanCategoryResult(categoryID: id, totalBytes: 0, entries: [])
     }
+}
+
+private func runtimeCommandEntry(at image: URL) throws -> FileEntry {
+    try Data([1]).write(to: image)
+    let details = try JSONDecoder().decode(SimulatorRuntimeReview.Runtime.self, from: JSONSerialization.data(withJSONObject: [
+        "identifier": "62F84A00-333C-4895-B0A5-C19C5717C4EF", "path": image.path,
+        "version": "18.1", "build": "22B81",
+    ]))
+    let review = SimulatorRuntimeReview(runtime: details, developerDirectory: "/Applications/Xcode.app/Contents/Developer",
+        toolchains: [], protectionExplanation: nil)
+    return FileEntry(url: image, displayName: "iOS 18.1 Simulator Runtime (22B81)", kind: .diskImage, allocatedBytes: 8_843_726_848,
+        removalMethod: .toolCommand(.simulatorRuntime(review, fallbackURL: image, protectedPatterns: [])))
 }

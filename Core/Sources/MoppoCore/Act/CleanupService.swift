@@ -156,6 +156,7 @@ public struct CleanupService: Sendable {
         log: RemovalLog,
         registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] },
         dockerImages: DockerImageService = DockerImageService(),
+        toolCommands: ToolCommandRemovalService = ToolCommandRemovalService(),
         deleteCodexSession: @escaping @Sendable (CodexSessionReview) async throws -> Void = {
             try await CodexSessions(home: $0.codexHome).remove($0)
         },
@@ -173,7 +174,7 @@ public struct CleanupService: Sendable {
         self.log = log
         self.registeredApplications = registeredApplications
         self.dockerImages = dockerImages
-        self.toolCommands = ToolCommandRemovalService()
+        self.toolCommands = toolCommands
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
         self.worktreeTrashDirectory = worktreeTrashDirectory

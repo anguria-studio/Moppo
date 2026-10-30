@@ -44,6 +44,7 @@ struct HomebrewFormulaVersionTests {
         let result = try await scanner.scan(context: ScanContext())
         #expect(result.entries.map(\.displayName) == ["example 1.0", "Homebrew cache"])
         #expect(result.totalBytes == result.entries.reduce(0) { $0 + $1.allocatedBytes })
+        #expect(result.filteringNoise(below: 1_048_576).entries.map(\.displayName) == ["example 1.0"])
         let row = try #require(result.entries.first)
         let command = try #require(row.toolCommand)
         #expect(!row.isRegenerable)

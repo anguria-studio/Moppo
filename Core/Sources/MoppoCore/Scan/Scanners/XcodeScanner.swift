@@ -33,12 +33,10 @@ public struct XcodeScanner: CategoryScanner {
         try await WorktreeActivity.capture(roots: $0)
     }
 
-    /// The machine-wide simulator directory, whose runtimes are reported as a
-    /// manual-removal row. Injectable for the same reason `developerRoot` is: it is
-    /// an absolute system path, so a scanner built entirely out of fixtures still
-    /// reached the real one, and every assertion about a fixture's totals was really
-    /// an assertion about whether this Mac had an iOS runtime installed.
+    /// The system runtime inventory root. Tests use a separate directory.
     private let systemSimulatorRoot: URL
+    private let simulatorAssetRoots: [URL]
+    var simulatorRuntimes = SimulatorRuntimeService()
 
     public static let defaultProjectRoots: [URL] = {
         let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
@@ -52,12 +50,15 @@ public struct XcodeScanner: CategoryScanner {
             .appending(path: "Library/Developer", directoryHint: .isDirectory),
         projectRoots: [URL] = XcodeScanner.defaultProjectRoots,
         systemSimulatorRoot: URL = URL(fileURLWithPath: "/Library/Developer/CoreSimulator"),
-        temporaryRoots: [URL] = [URL(fileURLWithPath: "/private/tmp", isDirectory: true), FileManager.default.temporaryDirectory]
+        temporaryRoots: [URL] = [URL(fileURLWithPath: "/private/tmp", isDirectory: true), FileManager.default.temporaryDirectory],
+        simulatorAssetRoots: [URL]? = nil
     ) {
         self.developerRoot = developerRoot
         self.projectRoots = projectRoots
         self.temporaryRoots = temporaryRoots
         self.systemSimulatorRoot = systemSimulatorRoot
+        self.simulatorAssetRoots = simulatorAssetRoots ?? (systemSimulatorRoot.standardizedFileURL.path == "/Library/Developer/CoreSimulator"
+            ? SimulatorRuntimeService.assetRoots() : [])
     }
 
     // MARK: - Roots
@@ -126,31 +127,8 @@ public struct XcodeScanner: CategoryScanner {
 
     // MARK: - Deliberately not scanned
     //
-    // ### `/Library/Developer/CoreSimulator` — iOS runtimes
-    //
-    // The machine-wide CoreSimulator directory is the largest pile in this whole
-    // area: every installed iOS runtime is several gigabytes, and Xcode keeps the old
-    // ones after an upgrade. It is also the one pile that cannot be reclaimed by
-    // deleting files. Since Xcode 15 runtimes ship as cryptexes, mounted read-only —
-    // observed on this machine:
-    //
-    //     /dev/disk5s1 on /Library/Developer/CoreSimulator/Cryptex/Images/bundle/
-    //         SimRuntimeBundle-51D71395-… (apfs, read-only, noowners, nobrowse)
-    //
-    // `rm -rf` there fails with `Operation not permitted` for root exactly as it does
-    // for the user: the mount is read-only, so there is no permission to grant and no
-    // privilege escalation that helps. The only supported removal is
-    // `xcrun simctl runtime delete <identifier>`, which unmounts the cryptex and then
-    // deletes its backing image.
-    //
-    // `FileEntry` cannot express "worth this many bytes, but not removable by
-    // unlinking" — every entry in a result is a removal candidate and the remover
-    // will unlink it. A row the user can select, confirm and then watch fail is worse
-    // than no row, so the runtimes stay out until an entry can carry its own removal
-    // strategy. When it can, they return as `simctl runtime delete`, not as files.
-    //
-    // Simulator *devices* are unaffected: `~/Library/Developer/CoreSimulator/Devices`
-    // is plain user-owned directories and is scanned above.
+    // Simulator runtimes use simctl for removal. Their mounted files never enter file cleanup.
+    // User-owned simulator device directories retain their separate cleanup rows.
     //
     // ### `/Library/Developer/PrivateFrameworks` and `/Library/Developer/CoreDevice`
     //
@@ -339,13 +317,9 @@ public struct XcodeScanner: CategoryScanner {
             }
         }
 
-        // System-level simulator runtimes, which this scanner used to omit
-        // entirely (see the note above). `FileEntry.manualRemoval` now exists, so
-        // they are listed with a locked checkbox and their own `simctl` command
-        // instead of being invisible.
-        if let runtime = try await simulatorRuntimeEntry(context: context) {
-            entries.append(runtime)
-        }
+        let runtimes = try await simulatorRuntimeEntries(context: context)
+        entries += runtimes.entries
+        unreadableCount += runtimes.unreadableCount
 
         guard !entries.isEmpty else {
             // Ordinary outcome, not an edge case: a machine with Xcode installed but
@@ -449,74 +423,57 @@ public struct XcodeScanner: CategoryScanner {
 
     // MARK: - Simulator runtimes
 
-    /// One aggregated entry for `/Library/Developer/CoreSimulator`.
-    ///
-    /// `simctl` is invoked for the inventory only, never for sizes; the bytes come
-    /// from the measurer, which stays on the start volume and therefore reports the
-    /// real allocated footprint rather than double-counting the mounted image the
-    /// way `du` does. One entry for the whole tree, not one per runtime: the staging
-    /// and dyld caches beside the images belong to no single runtime, and a made-up
-    /// per-runtime split would be a guess dressed as a measurement.
-    private func simulatorRuntimeEntry(context: ScanContext) async throws -> FileEntry? {
+    private func simulatorRuntimeEntries(context: ScanContext) async throws -> (entries: [FileEntry], unreadableCount: Int) {
         let root = systemSimulatorRoot
-        // Before `xcrun`: a machine without the directory has no runtimes to
-        // describe, and a fixture pointed elsewhere should not pay for a subprocess.
-        guard FileManager.default.fileExists(atPath: root.path) else { return nil }
-        guard !context.isWithinExclusion(root) else { return nil }
-
-        // Inventory. A missing or broken xcrun means no runtimes to describe, and a
-        // wedged one must not hang the scan.
-        let listing: String
-        do {
-            let data = try await ProcessRunner().run(
-                "/usr/bin/xcrun", ["simctl", "runtime", "list"], timeout: .seconds(10)
-            )
-            listing = String(decoding: data, as: UTF8.self)
-        } catch {
-            return nil
+        let scanInstalled = FileManager.default.fileExists(atPath: root.path) && !context.isWithinExclusion(root)
+        guard scanInstalled || !simulatorAssetRoots.isEmpty else { return ([], 0) }
+        context.onPhase?("Checking simulator runtimes")
+        var snapshot: SimulatorRuntimeService.Snapshot?
+        var entries: [FileEntry] = []
+        var measured: Set<String> = []
+        var unreadableCount = 0
+        if scanInstalled {
+            do { snapshot = try await simulatorRuntimes.snapshot() }
+            catch is CancellationError { throw CancellationError() }
+            catch {
+                entries.append(FileEntry(url: root, displayName: "Simulator runtime inventory unavailable", kind: .diskImage,
+                    allocatedBytes: 0, protectionReason: .inventory,
+                    protectionExplanation: "Runtime details could not be read. Open Xcode Components, then scan again."))
+                unreadableCount += 1
+            }
         }
-
-        // Lines look like: "iOS 18.1 (22B81) - <UUID> (Ready)". Parsed leniently:
-        // a runtime we fail to parse is dropped from the description, never invented.
-        var names: [String] = []
-        var commands: [String] = []
-        for line in listing.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard let dash = trimmed.range(of: " - ") else { continue }
-            let name = String(trimmed[..<dash.lowerBound])
-            let rest = trimmed[dash.upperBound...]
-            guard let uuid = rest.split(separator: " ").first,
-                  uuid.count == 36 else { continue }
-            names.append(name)
-            commands.append("xcrun simctl runtime delete \(uuid)")
+        for runtime in snapshot?.runtimes ?? [] {
+            try Task.checkCancellation()
+            guard !runtime.relatedURLs.contains(where: { context.isExcluded($0) || context.isExcluded($0.resolvingSymlinksInPath()) })
+            else { continue }
+            guard let review = snapshot?.review(runtime) else { continue }
+            let command = ToolCommandRemoval.simulatorRuntime(review,
+                fallbackURL: root.appendingPathComponent(runtime.identifier), protectedPatterns: context.excludedPatterns)
+            var size = SizeMeasurement.zero
+            var caveat = "Size includes the backing image only. Mounted contents and shared caches are excluded."
+            if let backing = runtime.backingURL, let key = runtime.storageKey, measured.insert(key).inserted {
+                size = try await context.measurer.measure(backing)
+                unreadableCount += size.unreadableCount
+                if size.unreadableCount > 0 { caveat = "The backing image size could not be measured completely." }
+            } else if runtime.backingURL != nil {
+                caveat = "Another runtime row includes this shared backing image."
+            } else {
+                unreadableCount += 1
+                caveat = "The runtime size could not be measured."
+            }
+            guard !size.containsProtectedPattern, !size.containsCloudOnlyItem else { continue }
+            let lockReason = command.lockReason ?? (size.unreadableCount > 0 ? caveat : nil)
+            entries.append(FileEntry(url: command.targetURL, displayName: runtime.name,
+                parentDisplay: "Simulator runtime · " + runtime.identifier, kind: .diskImage,
+                allocatedBytes: size.allocatedBytes, protectionReason: lockReason == nil ? nil : .inventory,
+                protectionExplanation: lockReason,
+                removalMethod: .toolCommand(command), safetyCaveat: caveat))
         }
-        guard !commands.isEmpty else { return nil }
-
-        let size = try await context.measurer.measure(root)
-        guard size.allocatedBytes > 0, !size.containsProtectedPattern else { return nil }
-
-        // Much of this tree is root-only, so the measured figure is a lower bound.
-        // The explanation says so rather than letting the number pose as exact.
-        let sizeCaveat = size.unreadableCount > 0
-            ? " The size shown counts only what this app is allowed to read; "
-                + "deleting the runtime frees more."
-            : ""
-
-        return FileEntry(
-            url: root,
-            displayName: "Simulator runtimes (\(names.joined(separator: ", ")))",
-            kind: .diskImage,
-            allocatedBytes: size.allocatedBytes,
-            lastOpened: lastOpenedDate(for: root),
-            manualRemoval: FileEntry.ManualRemoval(
-                explanation: "A simulator runtime is a sealed, read-only system "
-                    + "volume that macOS mounts for Xcode. This app cannot delete "
-                    + "it, and neither can the Finder. Run the command below in "
-                    + "Terminal. Xcode downloads a fresh runtime on demand from "
-                    + "Settings \u{203A} Components." + sizeCaveat,
-                command: commands.joined(separator: "\n")
-            )
-        )
+        let downloads = try await SimulatorRuntimeService.downloadEntries(in: simulatorAssetRoots,
+            registeredRuntimes: snapshot?.runtimes, context: context,
+            removalGuidance: snapshot.flatMap { SimulatorRuntimeService.retainedImageGuidance(developerDirectory: $0.developerDirectory) })
+        entries += downloads.entries
+        unreadableCount += downloads.unreadableCount
+        return (entries, unreadableCount)
     }
-
 }
