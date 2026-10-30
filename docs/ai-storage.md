@@ -8,7 +8,8 @@ AI Tools measures default paths, including command-line data without a desktop a
 Application Leftovers owns verified desktop data when its application is absent.
 Settings and history require the existing leftover review before removal.
 The scanner does not follow symlinks or parse conversation messages.
-Codex session review reads stored titles, child relationships, and the first session metadata record.
+Codex session review reads stored titles, child relationships, and file metadata.
+For plaintext history, it also reads the first session metadata record.
 Exclusions and protected file patterns take priority over storage rules.
 Other categories do not offer paths owned by an enabled AI Tools scan.
 If you disable AI Tools, its home data and model stores remain outside generic cleanup scans.
@@ -22,7 +23,9 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
 | T3 Code | `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
-| Ollama, Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. |
+| Gemini CLI, Antigravity | `~/.gemini`, `~/Library/Application Support/Antigravity` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
+| Ollama | Default model store | Protected inventory. Moppo cannot verify complete model ownership or active models. |
+| Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
 
 Cleanup groups related storage under application headings.
 Codex and ChatGPT have separate headings because their displayed storage has different owners.
@@ -122,13 +125,15 @@ Session sections remain visible when the installed Codex CLI does not support ve
 Moppo lists recognized conversation files even when the expected database schema is unavailable.
 These conversations stay locked. Use Codex to manage them.
 Available database titles identify conversations. Otherwise, each row shows its session identifier.
-Moppo reads the first metadata record without reading conversation messages.
-Compressed history files remain visible and locked.
+For plaintext history, Moppo reads the first metadata record without reading conversation messages.
+Compressed history uses the session identifier in its filename and the matching database record.
+Codex owns compressed history parsing and deletion. Moppo does not decompress conversation history.
 
 Moppo reads `state_5.sqlite` without writing to it.
 The reader checks stored titles, rollout paths, and `thread_spawn_edges`.
-It supports plaintext rollout files with a verified first metadata record.
-Missing records, unknown formats, symlinks, and exclusions keep affected storage protected.
+It supports plaintext and compressed rollout files in the same deletion review.
+For compressed history, the saved path can still name the missing plaintext file at the same location.
+Missing records, unknown formats, duplicate history files, symlinks, and exclusions keep affected storage protected.
 A held Codex writer lock protects the session and its deletion group.
 Open history files also protect sessions from removal, including sessions from older clients.
 Before deletion, Moppo checks the child relationships, file identities, modification dates, sizes, and writer locks again.
@@ -204,6 +209,40 @@ Moppo therefore refuses CLI session removal, including when Cursor desktop is ab
 Deleting exported project history or worktrees does not delete the desktop chat database.
 Worktree removal keeps its separate Git checks.
 
+## Gemini CLI and Antigravity inventory
+
+Gemini CLI and Antigravity share `~/.gemini`.
+Installation does not establish which tool owns each child, so Moppo shows one shared row under Gemini.
+Each byte in the folder counts once.
+
+| Observed child | Displayed storage |
+| --- | --- |
+| `antigravity`, `antigravity-cli`, `antigravity-ide` | Antigravity data, CLI data, and editor data |
+| `history` | Shared history |
+| `bin` | Shared installed tools |
+| `logs` | Shared logs |
+| `tmp` | Shared temporary files |
+
+Account files, settings, `config`, and unknown files remain in the protected parent remainder.
+The Antigravity desktop application uses bundle identifier `com.google.antigravity`.
+Its support folder has a separate protected row under Antigravity.
+Moppo does not apply the generic Electron cache rule to this folder. Cache folder names do not establish safe removal.
+Applications and Hidden & System Data do not count or offer these paths again.
+The bundle identifier links the support folder to its application.
+If the application is absent, Application Leftovers owns the support folder and requires the existing user-data review.
+The uninstall review also treats the whole folder as user data. No Antigravity cache folder counts as regenerable.
+Generic Git worktree discovery and removal review do not run inside this storage.
+No Gemini CLI or Antigravity storage contributes to Safe to Remove.
+User-data overrides cannot unlock these inventory rows.
+
+A rented Mac test on 29 October 2026 used Antigravity CLI 1.4.10 and Antigravity desktop 2.28.1.
+The CLI completed a real coding task. The desktop application passed launch and sign-in only.
+Gemini CLI 0.66.0 installed, but Google rejected its sign-in. No Gemini task ran.
+A metadata check read file names and types. It did not read file contents or credentials.
+These results verify storage discovery and measurement. They do not establish safe session, cache, or uninstall removal.
+The [Gemini CLI session management](https://geminicli.com/docs/cli/tutorials/session-management/) and [checkpointing](https://geminicli.com/docs/cli/checkpointing/) guides describe its conversations and checkpoints.
+The results and remaining checks are in [issue #216](https://github.com/anguria-studio/Moppo/issues/216).
+
 ## Preserved data and other tools
 
 Grok Bot desktop uses bundle identifier `com.anysphere.sand`.
@@ -229,8 +268,26 @@ Custom paths remain outside current default-path coverage.
 Codex memories have separate [memory controls](https://learn.chatgpt.com/docs/customization/memories).
 Moppo keeps their files protected during session cleanup.
 
-The Ollama, Hugging Face, and LM Studio readers target model files only.
+Ollama models remain protected inventory.
+Moppo cannot verify all current Ollama model references or active models.
+Use Ollama to manage these files.
+The Hugging Face and LM Studio readers target model files only.
 They do not offer session history removal.
+
+Moppo protects a Hugging Face or LM Studio model row in these conditions:
+
+- A process has a model file or a link target open. LM Studio loads models in this way.
+- A link in the LM Studio folders points to the Hugging Face files. The `lms import --symbolic-link` command makes these links.
+- Moppo cannot read all LM Studio folders. A missing LM Studio row does not prove that no link exists.
+- Moppo cannot check a link target for open files.
+- A model file has more than one hard link. Removal of one link does not free the space.
+- Moppo cannot complete the open file check.
+
+Moppo counts a hard-linked model file once across model rows.
+Plan creation and plan execution scan again, so these checks apply before removal.
+Moppo reads only the default LM Studio folders.
+Moppo also reads the folders that their directory links point to.
+Moppo does not check links from other folders.
 Ollama keys, LM Studio settings and conversations, and non-model Hugging Face files stay outside model removal targets.
 Model removal does not prove that the tool deleted chat history or its attachments.
 
@@ -268,6 +325,7 @@ The initial findings remain in [issue #199](https://github.com/anguria-studio/Mo
 ### Regression fixtures
 
 - [AI scanner fixtures](../Core/Tests/MoppoCoreTests/AIToolsScannerTests.swift) cover credentials, memories, attachments, child transcripts, storage ownership, and totals.
+- [Local model fixtures](../Core/Tests/MoppoCoreTests/LocalModelStoresTests.swift) cover shared files, LM Studio links, hard links, and open model files.
 - [Codex session fixtures](../Core/Tests/MoppoCoreTests/CodexSessionsTests.swift) cover child sessions, writer locks, open files, changed reviews, unsupported history, deletion failures, and receipts.
 - [Cleanup state tests](../AppTests/CleanupModelTests.swift) cover group unlocking, separate selection, changed reviews, child counts, and required confirmation.
 
@@ -311,10 +369,8 @@ Documented paths can supply fixtures without application installation.
 
 | Tool | Source | Protected storage to verify |
 | --- | --- | --- |
-| Gemini CLI | [Session management](https://geminicli.com/docs/cli/tutorials/session-management/) and [checkpointing](https://geminicli.com/docs/cli/checkpointing/) | Conversations, checkpoints, shadow Git history, settings, and authentication files. |
 | GitHub Copilot CLI | [Configuration directory](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) | `~/.copilot` sessions, plans, checkpoints, plugins, settings, and credentials. |
 | Windsurf and Devin Desktop | [Cascade memories](https://docs.devin.ai/desktop/cascade/memories) | Legacy `~/.codeium/windsurf/memories` and workspace rules. Current documentation uses Devin Desktop. |
-| Antigravity | Local desktop support folder observed | AI Tools has no separate Antigravity rows. Standard application and Electron cache rules apply. Session and workspace removal rules require verification. |
 
 Custom paths and further tools remain in [issue #66](https://github.com/anguria-studio/Moppo/issues/66).
 The retention review in [issue #67](https://github.com/anguria-studio/Moppo/issues/67) keeps unverified session deletion locked.

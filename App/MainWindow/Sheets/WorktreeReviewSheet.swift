@@ -139,6 +139,7 @@ struct WorktreeReviewSheet: View {
         }
         .frame(width: 500, height: 620)
         .presentationBackground(Token.chrome)
+        .background(WorktreeReviewWindowBehavior())
         .background {
             Button("Close worktree review", action: onClose).keyboardShortcut(.cancelAction)
                 .frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
@@ -268,5 +269,17 @@ struct WorktreeReviewSheet: View {
                 }
             }
         }
+    }
+}
+
+/// Allows quitting from the review on all supported macOS versions.
+private struct WorktreeReviewWindowBehavior: NSViewRepresentable {
+    func makeNSView(context: Context) -> DialogAnchorView { DialogAnchorView() }
+
+    func updateNSView(_ nsView: DialogAnchorView, context: Context) {
+        nsView.onWindowChange = { window in
+            window?.preventsApplicationTerminationWhenModal = false
+        }
+        nsView.window?.preventsApplicationTerminationWhenModal = false
     }
 }

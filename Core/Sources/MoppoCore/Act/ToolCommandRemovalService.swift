@@ -116,7 +116,8 @@ public struct ToolCommandRemovalService: Sendable {
         }
         if result.status == .completed, !verification.removed {
             result.status = .failed
-            result.failureReason = verification.failureReason ?? "The item is still present or could not be checked. Scan again before removal."
+            result.failureReason = verification.failureReason
+                ?? "The item is still present, or Moppo could not check it. Scan again before removal."
             if let error = verification.error {
                 result.standardError = String([result.standardError, error].filter { !$0.isEmpty }
                     .joined(separator: "\n").prefix(4096))

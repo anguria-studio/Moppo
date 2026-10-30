@@ -208,7 +208,7 @@ public actor ScanCoordinator {
             for try await raw in group {
                 // Apply this centrally so all scanners share one definition of
                 // "too small to bother the user with".
-                let result = raw.filteringNoise(below: Self.entryNoiseFloor)
+                let result = raw.excluding(context).filteringNoise(below: Self.entryNoiseFloor)
                 results.append(result)
                 onCategory?(result)
                 let weight = weights[result.categoryID] ?? 1.0

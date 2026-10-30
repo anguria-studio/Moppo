@@ -29,7 +29,7 @@ extension RemovalPreferences {
     @MainActor
     init(settings: SettingsStore?) {
         self.init(
-            excludedPaths: settings?.excludedFolderPaths ?? [],
+            excludedPaths: settings?.excludedPaths ?? [],
             excludedPatterns: settings?.excludedPatterns ?? [],
             confirmBeforeCleanup: settings?.confirmBeforeCleanup ?? SettingsStore.Defaults.confirmBeforeCleanup,
             keepReceipt: settings?.keepReceipt ?? SettingsStore.Defaults.keepReceipt

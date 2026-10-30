@@ -211,6 +211,10 @@ The command-line profiler can create the same detailed logs:
 Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory /tmp/moppo-scan-logs
 ```
 
+The [CLI guide](cli.md) describes the supported command interface.
+The [agent workflow](agent-workflow.md) covers skill installation, confirmation, disclosure, and client validation.
+The app and CLI share exclusion decoding and macOS scan context construction.
+
 ## Layout
 
 ```
@@ -220,9 +224,16 @@ Core/                         Swift package
     System/                  Disk information, snapshots, process execution, scan and Dashboard diagnostics
     Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
+    Resources/               Homebrew formula version adapter
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
-  Sources/moppo-cli/         Command-line tools
+  Sources/MoppoScan/         Shared macOS scan context and application ownership
+  Sources/MoppoPlans/        Private scan reports, saved plans, validation, and removal outcomes
+  Sources/MoppoCLI/          Supported command interface
+  Sources/moppo/             Supported command executable
+  Sources/moppo-cli/         Developer diagnostics
+  Tests/MoppoPlansTests/     Proposal validation, file identity, and retention tests
+  Tests/MoppoCLITests/       CLI contract, settings, cancellation, and storage tests
   Tests/MoppoCoreTests/      Engine tests
 App/                          SwiftUI app
   Cleanup/                   Cleanup model, services, and scheduler
@@ -232,7 +243,8 @@ App/                          SwiftUI app
       Beams/                 Scan beams, deletion rays, and floor light
       Acts/                  One file for each act, and the act protocol
   Duplicates/                File duplicate model
-  MainWindow/                Main views, sidebar, and sheets
+  MainWindow/                Main views, sidebar, sheets, and external requests
+  SavedPlans/                Saved plan review, mandatory confirmation, and outcomes
   Photos/                    Photo model, PhotoKit access, and thumbnails
   Preferences/               Four panes and the settings store
   Recovery/                  History, Trash, and Put Back model
@@ -240,6 +252,10 @@ App/                          SwiftUI app
   Uninstaller/               App Uninstaller model, scan services, and permanent removal
   Updates/                   Sparkle controller, preferences, and installation guard
   Support/                   Privacy information, support reports, and scan log access
+Helpers/                      Separate application tools
+  AdministratorTrash/        Approved sound library moves and recovery
+  HomebrewAskpass/            Homebrew password prompt
+skills/moppo-cleanup/          Portable agent instructions for CLI inspection and saved plans
 design/                       Archived design handoff, kept locally
 ```
 
@@ -292,13 +308,14 @@ This includes Cleanup, application data, sound libraries, Storage Explorer, dupl
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
 Each tool command also requires separate confirmation, including when routine confirmations are off.
-Cleanup uses this path for simulator runtimes and the Go module cache at `~/go/pkg/mod`.
+Cleanup uses this path for simulator runtimes, the Go module cache at `~/go/pkg/mod`, and obsolete Homebrew formula versions.
 Moppo checks the tool and item identities before it runs the fixed command arguments.
 Stop cancels the command and retains completed results from the selection.
 The current ordinary file operation can finish before cancellation takes effect.
 Command results always enter Cleanup History, including when Put Back receipts are off.
 The results distinguish measured item size reduction from verified disk space recovery.
-Old Homebrew versions still need their separate tool integration.
+A successful result appears in the Cleanup banner with its verified disk space recovery.
+An alert opens only for failures, retained storage, or unverified disk space recovery.
 Simulator runtime inventory uses `simctl runtime list --json`.
 Each runtime row shows its platform, version, build, and measured backing image size.
 Mounted runtime contents and shared caches do not enter that size.
@@ -327,6 +344,13 @@ Download discovery validates Apple metadata under the verified `com_apple_Mobile
 Images that an installed runtime already represents do not enter the total again.
 Unknown registration checks keep the download protected without claiming that its runtime is absent.
 The service measures the backing image again and reports verified space recovery only when available.
+Homebrew formula versions appear separately under Package Manager Caches and require review.
+The adapter uses `brew ruby` with Homebrew eligibility, locking, and cleanup methods.
+Removal applies to one selected version and does not run general Homebrew cleanup or dependency removal.
+Pinned formulae, linked versions, active `opt` versions, and versions that Homebrew retains stay protected.
+The adapter checks the version path and installation receipt again under Homebrew's formula lock before removal.
+Unreadable or unsupported inventories report incomplete checks and do not create removal rows for affected formulae.
+Download cache rows remain separate and enter the total once.
 Docker images appear once per image identifier, with their tags grouped together.
 When this Mac has Docker Desktop but it is unavailable, Cleanup shows its setup card in All results.
 When Docker Desktop is absent, Cleanup hides the empty Docker card.
@@ -546,7 +570,7 @@ clears it.
 
 ## AI storage
 
-AI Tools shows default Codex, Claude, Cursor, and Grok Bot data paths.
+AI Tools shows default Codex, Claude, Cursor, Grok Bot, T3 Code, Gemini CLI, and Antigravity data paths.
 Tool rows use application icons. Child rows keep their file or folder icons.
 Bundled vendor icons identify tools when their desktop applications are absent.
 It also includes the existing Ollama, Hugging Face, and LM Studio model rows.
@@ -715,7 +739,12 @@ If Git is available, Git moves the worktree and updates its registration.
 Git can refuse locked worktrees or unsupported moves. Moppo does not force these moves.
 If Git is unavailable, Moppo uses the normal Trash action.
 Put Back restores the worktree and updates Git registration when Git is available.
-Put Back requires a saved receipt. Emptying the Trash ends recovery through Moppo.
+Put Back requires a saved receipt.
+When folder permissions block Cleanup, **Retry with Administrator Approval** can move recognized Apple sound libraries to Trash.
+The separate helper checks the reviewed content again after approval.
+The retry requires receipts and does not replace existing files.
+Put Back can request administrator approval for the same system locations.
+Other permission failures retain their existing recovery actions. Emptying the Trash ends recovery through Moppo.
 
 ## The boot snapshot
 

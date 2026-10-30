@@ -9,6 +9,8 @@ public enum RemovalDisposition: String, Sendable, CaseIterable {
     case deleted
     /// A requested removal that did not complete.
     case failed
+    /// Validation kept this item unchanged.
+    case skipped
     /// A Put Back consumed the matching `trashed` record. Appended as a tombstone
     /// (the log is append-only), so the Trash path it names cannot match a later,
     /// unrelated occupant of the same path.

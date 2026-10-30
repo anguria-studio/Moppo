@@ -8,16 +8,27 @@ let package = Package(
     platforms: [.macOS("15.0")],
     products: [
         .library(name: "MoppoCore", targets: ["MoppoCore"]),
+        .library(name: "MoppoScan", targets: ["MoppoScan"]),
+        .library(name: "MoppoPlans", targets: ["MoppoPlans"]),
+        .library(name: "MoppoCLI", targets: ["MoppoCLI"]),
+        .executable(name: "moppo", targets: ["moppo"]),
         .executable(name: "moppo-cli", targets: ["moppo-cli"])
     ],
     targets: [
+        .target(name: "MoppoScan", dependencies: ["MoppoCore"]),
+        .target(name: "MoppoPlans", dependencies: ["MoppoCore"]),
+        .target(name: "MoppoCLI", dependencies: ["MoppoScan", "MoppoPlans"]),
+        .testTarget(name: "MoppoPlansTests", dependencies: ["MoppoPlans"]),
+        .executableTarget(name: "moppo", dependencies: ["MoppoCLI"]),
+        .testTarget(name: "MoppoCLITests", dependencies: ["MoppoCLI"]),
         .target(
             name: "MoppoCore",
+            resources: [.copy("Resources/homebrew-versions.rb")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
             name: "moppo-cli",
-            dependencies: ["MoppoCore"],
+            dependencies: ["MoppoCore", "MoppoScan"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

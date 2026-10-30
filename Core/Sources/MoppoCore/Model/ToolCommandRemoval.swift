@@ -28,9 +28,12 @@ public struct ToolCommandRemoval: Sendable, Equatable {
     private let paths: [PathIdentity]?
     private let resolvedExecutable: String?
     private let executableIdentity: String?
+    private let scriptURL: URL?
+    private let scriptIdentity: String?
 
     init(targetURL: URL, executable: String?, arguments: [String], environment: [String: String],
-         expectedResult: ExpectedResult, timeout: Duration = .seconds(120), protectedPatterns: [String] = []) {
+         expectedResult: ExpectedResult, timeout: Duration = .seconds(120), protectedPatterns: [String] = [],
+         scriptURL: URL? = nil) {
         self.targetURL = targetURL.standardizedFileURL
         self.executable = executable
         self.arguments = arguments
@@ -43,6 +46,8 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         paths = Self.pathIdentities(targetURL, fileTarget: fileTarget)
         resolvedExecutable = executable.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
         executableIdentity = resolvedExecutable.flatMap(Self.fileVersion)
+        self.scriptURL = scriptURL
+        scriptIdentity = scriptURL.flatMap { Self.fileVersion($0.path) }
     }
 
     public static func resolveGo() -> String? {
@@ -71,6 +76,20 @@ public struct ToolCommandRemoval: Sendable, Equatable {
             protectedPatterns: protectedPatterns)
     }
 
+    static func homebrewVersion(_ version: HomebrewFormulaVersion, executable: String,
+                                protectedPatterns: [String] = []) -> Self {
+        let script = HomebrewFormulaVersions.scriptURL
+        return Self(targetURL: URL(fileURLWithPath: version.path), executable: executable,
+            arguments: ["ruby", script.path, "remove", version.path, version.token],
+            environment: HomebrewFormulaVersions.environment, expectedResult: .targetAbsent,
+            protectedPatterns: protectedPatterns, scriptURL: script)
+    }
+
+    var isHomebrewVersion: Bool {
+        guard let scriptURL else { return false }
+        return scriptURL == HomebrewFormulaVersions.scriptURL
+    }
+
     public var lockReason: String? {
         guard let executable, executableIdentity != nil,
               FileManager.default.isExecutableFile(atPath: executable) else {
@@ -80,7 +99,10 @@ public struct ToolCommandRemoval: Sendable, Equatable {
             if let reason = runtime.protectionExplanation { return reason }
             guard runtime.toolsAreUnchanged else { return "The Xcode toolchain changed. Scan again before removal." }
         }
-        guard paths != nil else { return "The item path could not be verified. Scan again before removal." }
+        guard scriptURL == nil || scriptIdentity != nil else {
+            return "The removal script is missing. Install Moppo again before removal."
+        }
+        guard paths != nil else { return "Moppo could not verify the item path. Scan again before removal." }
         return nil
     }
 
@@ -95,6 +117,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         guard lockReason == nil, let executable, let resolvedExecutable,
               URL(fileURLWithPath: executable).resolvingSymlinksInPath().path == resolvedExecutable,
               Self.fileVersion(resolvedExecutable) == executableIdentity,
+              scriptURL.map({ Self.fileVersion($0.path) == scriptIdentity }) ?? true,
               let paths, paths == Self.pathIdentities(targetURL, fileTarget: simulatorRuntime != nil) else { return false }
         return true
     }

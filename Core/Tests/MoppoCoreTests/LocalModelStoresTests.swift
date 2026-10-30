@@ -2,9 +2,7 @@ import Foundation
 import Testing
 @testable import MoppoCore
 
-/// A model is not a folder. Each store here is content-addressed, so what a model
-/// occupies and what removing it frees are different figures — see
-/// `LocalModelStores`.
+/// Checks protected inventory and shared model storage.
 @Suite("Locally stored models")
 struct LocalModelStoresTests {
 
@@ -63,42 +61,35 @@ struct LocalModelStoresTests {
 
     private let mb = 1024 * 1024
 
-    // MARK: - Ollama
-
-    /// Two tags of one model share the weights. As two rows, each read a few
-    /// kilobytes and the gigabytes could be removed through neither.
-    @Test("Ollama tags that share their weights are one row; a shared licence does not join models")
-    func ollamaSetsShareWeights() throws {
+    @Test("Ollama models stay protected with legacy names, v2 aliases, and shared weights")
+    func ollamaModelsStayProtected() async throws {
         let sandbox = try Sandbox()
-        try sandbox.file(".ollama/models/blobs/sha256-weights", bytes: 8 * mb)
-        try sandbox.file(".ollama/models/blobs/sha256-cfgA", bytes: 4096)
-        try sandbox.file(".ollama/models/blobs/sha256-cfgB", bytes: 4096)
-        try sandbox.file(".ollama/models/blobs/sha256-solo", bytes: 6 * mb)
-        try sandbox.ollamaManifest("registry.ollama.ai/library/llama3/8b", config: "cfgA", layers: ["weights"])
-        try sandbox.ollamaManifest("registry.ollama.ai/library/llama3/latest", config: "cfgB", layers: ["weights"])
-        try sandbox.ollamaManifest("registry.ollama.ai/someone/tuned/v1", config: "cfgA", layers: ["solo"])
-        // The user's key lives beside the models and is nobody's to offer.
+        let weight = try sandbox.file(".ollama/models/blobs/sha256-weights", bytes: 4 * mb)
+        try sandbox.ollamaManifest("registry.ollama.ai/library/qwen3/0.6b", config: "cfg", layers: ["weights"])
+        try sandbox.file(".ollama/models/blobs/sha256-manifest",
+            text: #"{"schemaVersion":2,"layers":[{"digest":"sha256:weights"}]}"#)
+        try sandbox.link(".ollama/models/manifests-v2/ollama.com/library/test-alias/latest",
+            to: "../../../../blobs/sha256-manifest")
         try sandbox.file(".ollama/id_ed25519", bytes: 400)
-        // Ollama reads `manifests/*/*/*/*` and nothing else. A manifest-shaped file
-        // a level up is not a model it knows, so it is not one here.
-        try sandbox.ollamaManifest("registry.ollama.ai/library/stray", config: "cfgA", layers: ["solo"])
+        let modelStore = sandbox.home.appendingPathComponent(".ollama/models")
+        let context = ScanContext()
+        let result = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let row = try #require(result.entries.first { $0.aiTool == .ollama })
+        #expect(result.entries.filter { $0.aiTool == .ollama }.count == 1)
+        #expect(row.url.path == modelStore.path)
+        #expect(row.protectionReason == .inventory)
+        #expect(row.isRemovalLocked && !row.isRegenerable)
+        #expect(row.children.isEmpty && row.localModelPaths.isEmpty)
+        #expect(row.allocatedBytes == (try await context.measurer.measure(modelStore)).allocatedBytes)
+        #expect(row.allocatedBytes >= (try await context.measurer.measure(weight)).allocatedBytes)
+        #expect(result.safeToRemoveBytes == 0)
+        #expect(result.claimedStoragePaths.contains(sandbox.home.appendingPathComponent(".ollama").path))
+        #expect(!result.entries.contains { $0.url.lastPathComponent == "id_ed25519" })
+        #expect(LocalModelStores.all(home: sandbox.home).isEmpty)
 
-        let models = LocalModelStores.ollama(home: sandbox.home)
-
-        #expect(models.map(\.memberNames) == [["llama3:8b", "llama3:latest"], ["someone/tuned:v1"]])
-        let llama = try #require(models.first)
-        #expect(llama.name == "llama3:8b + llama3:latest")
-        #expect(llama.primary.lastPathComponent == "8b")
-        // The other tag's manifest, the weights the two share, and the one config
-        // that is this set's alone. `cfgA` is also `tuned`'s: it stays.
-        #expect(Set(llama.exclusive.map(\.lastPathComponent)) == ["latest", "sha256-weights", "sha256-cfgB"])
-        #expect(llama.sharedBytes > 0 && llama.sharedBytes < Int64(mb))
-
-        // `cfgA` is four kilobytes. Sharing it does not make `tuned` part of llama3:
-        // every Ollama model carries the same licence text somewhere.
-        let tuned = try #require(models.last)
-        #expect(tuned.exclusive.map(\.lastPathComponent) == ["sha256-solo"])
-        #expect(!models.flatMap(\.exclusive).contains { $0.lastPathComponent == "id_ed25519" })
+        let excluded = try await AIToolsScanner(home: sandbox.home).scan(
+            context: ScanContext(excludedPaths: [modelStore.path]))
+        #expect(excluded.entries.isEmpty)
     }
 
     // MARK: - Hugging Face
@@ -157,10 +148,24 @@ struct LocalModelStoresTests {
         #expect(models.map(\.name) == ["TheBloke/Old-GGUF", "lmstudio-community/Qwen-GGUF"])
     }
 
+    @Test("An excluded Hugging Face repository keeps shared files and its sibling available")
+    func excludedHubRepositoryKeepsSharedBlobs() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.hubSharedBlob("a5both", bytes: 4 * mb,
+            usedBy: ["models--org--keep", "models--org--other"])
+        let kept = sandbox.home.appendingPathComponent(".cache/huggingface/hub/models--org--keep")
+        let models = LocalModelStores.all(home: sandbox.home, context: ScanContext(excludedPaths: [kept.path]))
+        let remaining = try #require(models.first)
+        #expect(models.count == 1)
+        #expect(remaining.name == "org/other")
+        #expect(remaining.exclusive.isEmpty)
+        #expect(remaining.sharedBytes >= Int64(4 * mb))
+    }
+
     // MARK: - In the scan
 
-    @Test("each model is one review row carrying what only it uses; its store is listed nowhere else")
-    func modelsAreRowsAndTheirStoresAreNotListedWhole() async throws {
+    @Test("AI model stores remain separate from generic caches")
+    func modelStoresStayOutsideGenericCaches() async throws {
         let sandbox = try Sandbox()
         try sandbox.file(".ollama/models/blobs/sha256-weights", bytes: 8 * mb)
         try sandbox.file(".ollama/models/blobs/sha256-cfg", bytes: 4096)
@@ -172,21 +177,19 @@ struct LocalModelStoresTests {
         try sandbox.file(".cache/huggingface/xet/chunks.bin", bytes: 2 * mb)
         try sandbox.file(".cache/sometool/blob", bytes: 2 * mb)
 
-        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext())
+        let ai = try await scanner(sandbox).scan(context: ScanContext())
         let system = try await SystemCachesScanner(
             cachesRoot: sandbox.home.appendingPathComponent("Library/Caches"),
             logsRoot: sandbox.home.appendingPathComponent("Library/Logs"),
             dotCacheRoot: sandbox.home.appendingPathComponent(".cache")
         ).scan(context: ScanContext())
 
-        let gemma = try #require(ai.entries.first { $0.displayName == "gemma3:4b" })
-        #expect(gemma.parentDisplay.hasPrefix("Ollama model"))
-        #expect(gemma.totalBytesIncludingChildren >= Int64(8 * mb))
-        #expect(!gemma.isRegenerable && !gemma.isRemovalLocked)
-        // The weights without the manifest are a model Ollama lists and cannot load.
-        #expect(gemma.removesAsUnit)
-        #expect(CleanupService.removalTargets(for: gemma, removeProtectedAppData: false)
-            .map(\.url.lastPathComponent).sorted() == ["4b", "sha256-cfg", "sha256-weights"])
+        let ollama = try #require(ai.entries.first { $0.aiTool == .ollama })
+        #expect(ollama.displayName == "Ollama models")
+        #expect(ollama.totalBytesIncludingChildren >= Int64(8 * mb))
+        #expect(!ollama.isRegenerable && ollama.isRemovalLocked)
+        #expect(ollama.protectionReason == .inventory)
+        #expect(ollama.children.isEmpty)
 
         // The two repositories share seven megabytes, so they are one row and the
         // twelve go together. Apart, neither could have removed the seven.
@@ -202,5 +205,151 @@ struct LocalModelStoresTests {
         #expect(ai.entries.contains { $0.url.lastPathComponent == "xet" })
         #expect(system.entries.map(\.url.lastPathComponent) == ["sometool"])
         #expect(ai.safeToRemoveBytes == 0)
+    }
+
+    // MARK: - Shared ownership and runtime use
+
+    /// Replaces `lsof` with the given open files, keyed by `FileIdentity`.
+    private func scanner(_ sandbox: Sandbox, open: [String: Set<String>] = [:],
+                         issue: String? = nil) -> AIToolsScanner {
+        var scanner = AIToolsScanner(home: sandbox.home)
+        scanner.captureModelActivity = { WorktreeActivity(roots: $0, processes: open, issue: issue) }
+        return scanner
+    }
+
+    private func modelRow(_ result: ScanCategoryResult, _ name: String) throws -> FileEntry {
+        try #require(result.entries.first { $0.displayName == name })
+    }
+
+    @Test("LM Studio symbolic imports protect the Hugging Face files they use")
+    func lmStudioSymbolicImportsProtectHubFiles() async throws {
+        let sandbox = try Sandbox()
+        // Classic layout: the snapshot links to a blob inside the repository.
+        try sandbox.file(".cache/huggingface/hub/models--Qwen--classic/blobs/9217", bytes: 4 * mb)
+        try sandbox.link(".cache/huggingface/hub/models--Qwen--classic/snapshots/rev/q4.gguf",
+                         to: "../../blobs/9217")
+        // Shared layout: the repository links to a blob in `hub/blobs`.
+        try sandbox.hubSharedBlob("a5shared", bytes: 3 * mb, usedBy: ["models--Qwen--shared"])
+        try sandbox.hubSharedBlob("b7free", bytes: 2 * mb, usedBy: ["models--org--unlinked"])
+        let hub = sandbox.home.appendingPathComponent(".cache/huggingface/hub")
+        try sandbox.link(".lmstudio/models/test/classic/q4.gguf",
+                         to: hub.appendingPathComponent("models--Qwen--classic/snapshots/rev/q4.gguf").path)
+        try sandbox.link(".lmstudio/models/test/shared/q4.gguf",
+                         to: hub.appendingPathComponent("models--Qwen--shared/blobs/link-a5shared").path)
+
+        let result = try await scanner(sandbox).scan(context: ScanContext())
+
+        for name in ["Qwen/classic", "Qwen/shared"] {
+            let row = try modelRow(result, name)
+            #expect(row.protectionReason == .inventory && row.isRemovalLocked)
+            #expect(row.protectionExplanation?.contains("LM Studio model links to these files") == true)
+        }
+        #expect(try modelRow(result, "org/unlinked").protectionReason == nil)
+    }
+
+    @Test("LM Studio links inside directory links protect Hugging Face files")
+    func directoryLinkedDefaultLMStudioStoreProtectsHubFiles() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file(".cache/huggingface/hub/models--Qwen--model/blobs/9217", bytes: 4 * mb)
+        try sandbox.link(".cache/huggingface/hub/models--Qwen--model/snapshots/rev/q4.gguf",
+                         to: "../../blobs/9217")
+        let shared = sandbox.home.appendingPathComponent("Shared/models")
+        try sandbox.link("Shared/models/test/qwen/q4.gguf", to: sandbox.home
+            .appendingPathComponent(".cache/huggingface/hub/models--Qwen--model/snapshots/rev/q4.gguf").path)
+        // A cycle must not stop the scan.
+        try sandbox.link("Shared/models/loop", to: shared.path)
+        try FileManager.default.createDirectory(at: sandbox.home.appendingPathComponent(".lmstudio"),
+                                                withIntermediateDirectories: true)
+        try sandbox.link(".lmstudio/models", to: shared.path)
+
+        let row = try modelRow(try await scanner(sandbox).scan(context: ScanContext()), "Qwen/model")
+
+        #expect(row.protectionReason == .inventory)
+        #expect(row.protectionExplanation?.contains("LM Studio model links to these files") == true)
+        #expect(LocalModelStores.lmStudioLinks(home: sandbox.home).isComplete)
+        #expect(!LocalModelStores.lmStudioLinks(home: sandbox.home, entryLimit: 1).isComplete)
+    }
+
+    @Test("A link target that cannot be checked protects the model")
+    func uncheckedLinkTargetProtectsTheModel() async throws {
+        let sandbox = try Sandbox()
+        let target = try sandbox.file("Private/weights/q4.gguf", bytes: 2 * mb)
+        try sandbox.file(".lmstudio/models/test/denied/model.json", bytes: 4096)
+        try sandbox.link(".lmstudio/models/test/denied/q4.gguf", to: target.path)
+        try sandbox.file(".lmstudio/models/test/broken/model.json", bytes: 4096)
+        try sandbox.link(".lmstudio/models/test/broken/q4.gguf", to: sandbox.home.appendingPathComponent("Missing/q4.gguf").path)
+        let open = [FileIdentity.of(target)!: Set(["llmster"])]
+        let parent = target.deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: parent.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: parent.path) }
+
+        let result = try await scanner(sandbox, open: open).scan(context: ScanContext())
+
+        let denied = try modelRow(result, "test/denied")
+        #expect(denied.protectionReason == .inventory)
+        #expect(denied.protectionExplanation == "Open files could not be checked. Scan again before removal.")
+        #expect(try modelRow(result, "test/broken").protectionReason == nil)
+    }
+
+    @Test("Unreadable LM Studio folders protect Hugging Face models")
+    func unreadableLMStudioLinksProtectHubModels() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.hubSharedBlob("a5only", bytes: 2 * mb, usedBy: ["models--org--model"])
+        let locked = try sandbox.file(".lmstudio/models/test/locked/q4.gguf").deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+
+        let row = try modelRow(try await scanner(sandbox).scan(context: ScanContext()), "org/model")
+
+        #expect(row.protectionReason == .inventory)
+        #expect(row.protectionExplanation?.contains("could not read all LM Studio links") == true)
+    }
+
+    @Test("Open model files and their link targets protect the model")
+    func openModelFilesProtectTheModel() async throws {
+        let sandbox = try Sandbox()
+        let copy = try sandbox.file(".lmstudio/models/test/copy/q4.gguf", bytes: 2 * mb)
+        let outside = try sandbox.file("Downloads/q4.gguf", bytes: 2 * mb)
+        try sandbox.file(".lmstudio/models/test/linked/model.json", bytes: 4096)
+        try sandbox.link(".lmstudio/models/test/linked/q4.gguf", to: outside.path)
+        try sandbox.file(".lmstudio/models/test/idle/q4.gguf", bytes: 2 * mb)
+        let open = [FileIdentity.of(copy)!: Set(["llmster"]), FileIdentity.of(outside)!: Set(["llmster"])]
+
+        let loaded = try await scanner(sandbox, open: open).scan(context: ScanContext())
+
+        for name in ["test/copy", "test/linked"] {
+            let row = try modelRow(loaded, name)
+            #expect(row.protectionReason == .running)
+            #expect(row.protectionExplanation?.contains("llmster") == true)
+        }
+        #expect(try modelRow(loaded, "test/idle").protectionReason == nil)
+
+        let unchecked = try await scanner(sandbox, issue: "Incomplete process information.").scan(context: ScanContext())
+        let row = try modelRow(unchecked, "test/idle")
+        #expect(row.protectionReason == .inventory)
+        #expect(row.protectionExplanation == "Open files could not be checked. Scan again before removal.")
+    }
+
+    @Test("Hard-linked imports are protected and counted once")
+    func hardLinkedImportsCountOnce() async throws {
+        let sandbox = try Sandbox()
+        let blob = try sandbox.file(".cache/huggingface/hub/models--Qwen--model/blobs/9217", bytes: 4 * mb)
+        let imported = sandbox.home.appendingPathComponent(".lmstudio/models/test/model/q4.gguf")
+        try FileManager.default.createDirectory(at: imported.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try FileManager.default.linkItem(at: blob, to: imported)
+
+        let result = try await scanner(sandbox).scan(context: ScanContext())
+
+        let hub = try modelRow(result, "Qwen/model")
+        let lmStudio = try modelRow(result, "test/model")
+        for row in [hub, lmStudio] {
+            #expect(row.protectionReason == .inventory)
+            #expect(row.protectionExplanation?.contains("hard links") == true)
+        }
+        let blobBytes = try await ScanContext().measurer.measure(blob).allocatedBytes
+        #expect(hub.displayBytes == blobBytes)
+        #expect(lmStudio.displayBytes == 0)
+        #expect(result.totalBytes < 2 * blobBytes)
     }
 }

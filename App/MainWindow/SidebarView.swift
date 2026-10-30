@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import MoppoCore
 
 /// Shows navigation and storage information in a fixed sidebar.
@@ -8,6 +9,9 @@ struct SidebarView: View {
 
     /// Shows selection before the destination finishes its first layout.
     @State private var pendingView: AppModel.View?
+    @State private var showsTrashMenu = false
+    @State private var trashMenuAnchor = UnitPoint.trailing
+    @State private var selectedTrashAction: TrashSidebarMenu.Action?
     @FocusState private var sidebarIsFocused: Bool
     @AccessibilityFocusState(for: .voiceOver) private var voiceOverView: AppModel.View?
     @Environment(\.isFocusEffectEnabled) private var showsKeyboardFocus
@@ -42,17 +46,20 @@ struct SidebarView: View {
             .focusEffectDisabled()
             .focused($sidebarIsFocused)
             .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                if showsTrashMenu { return handleTrashMenuKey(press) }
                 let views = AppModel.View.sidebarViews
                 guard let index = views.firstIndex(of: pendingView ?? model.view) else { return .ignored }
                 let next = index + (press.key == .upArrow ? -1 : 1)
                 if views.indices.contains(next) { select(views[next]) }
                 return .handled
             }
-            .onKeyPress(keys: [.space, .return]) { _ in
+            .onKeyPress(keys: [.space, .return]) { press in
+                if showsTrashMenu { return handleTrashMenuKey(press) }
                 guard sidebarIsFocused else { return .ignored }
                 select(pendingView ?? model.view)
                 return .handled
             }
+            .onKeyPress(keys: [.escape], action: handleTrashMenuKey)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Sidebar")
         }
@@ -64,7 +71,41 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { capacityFooter }
     }
 
+    @ViewBuilder
     private func navigationRow(_ view: AppModel.View) -> some View {
+        if view == .trash {
+            navigationButton(view)
+                .overlay {
+                    TrashMenuClickTarget { anchor in
+                        sidebarIsFocused = true
+                        trashMenuAnchor = anchor
+                        selectedTrashAction = nil
+                        showsTrashMenu = true
+                    }
+                }
+                .accessibilityAction(named: "Show Trash Menu") {
+                    sidebarIsFocused = true
+                    trashMenuAnchor = .trailing
+                    selectedTrashAction = nil
+                    showsTrashMenu = true
+                }
+                .popover(isPresented: $showsTrashMenu, attachmentAnchor: .point(trashMenuAnchor), arrowEdge: .trailing) {
+                    TrashSidebarMenu(
+                        canEmptyTrash: model.canEmptyTrash,
+                        selectedAction: $selectedTrashAction,
+                        onKeyPress: handleTrashMenuKey
+                    ) {
+                        select(.trash)
+                    } onEmptyTrash: {
+                        model.requestEmptyTrash()
+                    }
+                }
+        } else {
+            navigationButton(view)
+        }
+    }
+
+    private func navigationButton(_ view: AppModel.View) -> some View {
         Button {
             select(view)
         } label: {
@@ -88,10 +129,11 @@ struct SidebarView: View {
             .frame(maxWidth: .infinity, minHeight: Token.Size.sidebarRow, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(SidebarRowButtonStyle())
+        .buttonStyle(LabelOnlyButtonStyle())
         // Mouse selection starts on press. The button also supports keyboard activation.
+        // A right-click opens the menu without changing the page.
         .onLongPressGesture(minimumDuration: 0, maximumDistance: 4) { isPressing in
-            if isPressing {
+            if isPressing, NSEvent.pressedMouseButtons & 2 == 0 {
                 select(view)
             }
         } perform: {}
@@ -109,6 +151,28 @@ struct SidebarView: View {
             }
         }
         .accessibilityAddTraits(isSelected(view) ? .isSelected : [])
+    }
+
+    private func handleTrashMenuKey(_ press: KeyPress) -> KeyPress.Result {
+        guard showsTrashMenu else { return .ignored }
+        switch press.key {
+        case .downArrow, .upArrow:
+            selectedTrashAction = model.canEmptyTrash
+                && (selectedTrashAction == .open || (selectedTrashAction == nil && press.key == .upArrow))
+                ? .emptyTrash : .open
+        case .return, .space:
+            showsTrashMenu = false
+            if selectedTrashAction == .emptyTrash {
+                model.requestEmptyTrash()
+            } else {
+                select(.trash)
+            }
+        case .escape:
+            showsTrashMenu = false
+        default:
+            return .ignored
+        }
+        return .handled
     }
 
     @ViewBuilder
@@ -200,6 +264,92 @@ struct SidebarView: View {
             return items > 0 ? items : nil
         default:
             return nil
+        }
+    }
+}
+
+private struct TrashSidebarMenu: View {
+    let canEmptyTrash: Bool
+    @Binding var selectedAction: Action?
+    let onKeyPress: (KeyPress) -> KeyPress.Result
+    let onOpen: () -> Void
+    let onEmptyTrash: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    enum Action { case open, emptyTrash }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Button { activate(.open) } label: {
+                Text("Open").padding(.horizontal, 4)
+            }
+            .buttonStyle(MenuItemButtonStyle(isHighlighted: selectedAction == .open))
+            .onHover { hovering in
+                if hovering { selectedAction = .open }
+                else if selectedAction == .open { selectedAction = nil }
+            }
+            Divider().padding(.horizontal, 10)
+            Button { activate(.emptyTrash) } label: {
+                Text("Empty Trash").padding(.horizontal, 4)
+            }
+            .disabled(!canEmptyTrash)
+            .buttonStyle(MenuItemButtonStyle(isHighlighted: selectedAction == .emptyTrash))
+            .onHover { hovering in
+                if hovering, canEmptyTrash { selectedAction = .emptyTrash }
+                else if selectedAction == .emptyTrash { selectedAction = nil }
+            }
+        }
+        .padding(6)
+        .fixedSize()
+        .onKeyPress(keys: [.upArrow, .downArrow, .return, .space, .escape], action: onKeyPress)
+    }
+
+    private func activate(_ action: Action) {
+        guard action != .emptyTrash || canEmptyTrash else { return }
+        dismiss()
+        switch action {
+        case .open: onOpen()
+        case .emptyTrash: onEmptyTrash()
+        }
+    }
+}
+
+/// Receives secondary clicks and lets other input reach the navigation button.
+private struct TrashMenuClickTarget: NSViewRepresentable {
+    let onClick: (UnitPoint) -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeNSView(context: Context) -> ClickView {
+        let view = ClickView()
+        view.setAccessibilityElement(false)
+        return view
+    }
+
+    func updateNSView(_ nsView: ClickView, context: Context) {
+        nsView.onClick = isEnabled ? onClick : nil
+    }
+
+    final class ClickView: NSView {
+        var onClick: ((UnitPoint) -> Void)?
+
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard onClick != nil, super.hitTest(point) != nil,
+                  let event = NSApp.currentEvent,
+                  event.type == .rightMouseDown
+                    || (event.type == .leftMouseDown && event.modifierFlags.contains(.control))
+            else { return nil }
+            return self
+        }
+
+        override func rightMouseDown(with event: NSEvent) { showMenu(for: event) }
+        override func mouseDown(with event: NSEvent) { showMenu(for: event) }
+
+        private func showMenu(for event: NSEvent) {
+            guard bounds.width > 0, bounds.height > 0 else { return }
+            let point = convert(event.locationInWindow, from: nil)
+            onClick?(UnitPoint(
+                x: (point.x - bounds.minX) / bounds.width,
+                y: 1 - (point.y - bounds.minY) / bounds.height
+            ))
         }
     }
 }

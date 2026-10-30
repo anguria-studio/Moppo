@@ -72,6 +72,35 @@ Select the parent folder to move all its reviewed contents to the Trash.
 Moppo checks the whole folder again before removal.
 Active, excluded, or unverified contents block whole-folder removal.
 
+### Keep an item out of cleanup
+
+In Cleanup or AI Tools, open a row's **More actions** menu.
+Select **Never Offer This Again**.
+You can also right-click the row to select this action.
+Moppo removes the row from the current results and selections without removing its files.
+The exclusion remains after later scans and app restarts.
+To offer the item again, remove its rule in **Settings > Exclusions**.
+Then scan again.
+
+A folder rule protects its contents.
+A child rule does not add exclusions for its parent or siblings.
+Moppo blocks whole-folder removal when the folder contains an excluded item.
+Other eligible child items remain available.
+
+A model rule identifies its manifest or repository folder.
+For a grouped model row, the action excludes every model named in that row.
+Shared blobs stay protected while an excluded model uses them.
+Other models remain available, with shared bytes excluded from their removal size.
+A Docker image rule applies to that image in its recorded Docker context.
+
+### AI tool storage
+
+AI Tools groups storage under each application.
+Conversations, memories, credentials, and settings stay protected.
+Moppo protects a local model when another application opens it, links to it, or shares its files.
+Hard-linked model files count once.
+Gemini CLI and Antigravity share `~/.gemini`. Moppo shows this folder once, under Gemini, and keeps it protected.
+
 ### Open items elsewhere
 
 Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer** or **Reveal in Finder**.
@@ -82,47 +111,26 @@ Storage Explorer opens folder contents or highlights a file in its containing fo
 ## Dashboard storage
 
 Dashboard shows physical Used and Free space for the volume.
-Category measurements use allocated file sizes and can include shared storage.
-Files can also change during a scan.
-These measurements can therefore total more than physical used space.
-When this occurs, the capacity bar scales the categories to fit the used space.
-The category list shows the measured values and states the difference.
-Moppo keeps the physical Free value unchanged.
-Storage comparisons retain both accounts.
+Category measurements use allocated file sizes. They can include shared storage and files that change during a scan.
+If the categories total more than the used space, the capacity bar scales them to fit.
+The category list shows the measured values and the difference.
 
-Storage changes compares the latest measurement with an earlier measurement.
-Since last cleanup starts at the measurement before the newest cleanup.
-The comparison therefore shows what the cleanup removed after one measurement.
-Last 7 days shows its real start until seven days of measurements exist.
-The comparison menu appears only when its options start at different measurements.
-With one option, the card shows its name as text.
-Without a comparison, the card shows no option.
-After a cleanup, the Cleanup totals keep the items that remain on the disk.
-Choose **Continue** to return to these results without a new scan.
+Storage changes compares the latest measurement with an earlier one.
+**Since last cleanup** starts at the measurement before the newest cleanup.
+**Last 7 days** shows its real start until seven days of measurements exist.
+After a cleanup, choose **Continue** to return to the remaining results without a new scan.
 
 ## Appearance and iCloud
 
-### Appearance
-
 Choose **System**, **Light**, or **Dark** in **Settings > General > Appearance**.
-Changes apply immediately and remain saved across launches.
-**System** follows macOS appearance changes and is the default.
-**Reset Settings** restores **System**.
-
-### iCloud storage
+**System** is the default and follows macOS.
 
 The Dashboard shows an iCloud setup card when storage information is unavailable.
 Select **Set Up** to check access and open iCloud settings.
+iCloud measurements require Full Disk Access.
 To hide the card, select its **X** button.
-This choice remains saved across launches.
-To restore it, enable **Settings > General > iCloud > Show on Dashboard**.
-The same section contains **Set Up** and the storage plan control.
-Moppo requires Full Disk Access for iCloud measurements.
-If macOS restarts Moppo during setup, Moppo returns to Dashboard and checks storage.
-The setup guide returns only if access or storage information remains unavailable.
-The guide shows account settings after a failed measurement.
-It does not require a separate Moppo sign-in or report the iCloud Drive switch state.
-When a measurement fails, select **Try Again** or check the setup guide.
+To show it again, turn on **Settings > General > iCloud > Show on Dashboard**.
+If a measurement fails, select **Try Again** or open the setup guide.
 
 ## Removal and Put Back
 
@@ -147,26 +155,30 @@ With **Confirm before every clean-up** off, removals that support recovery start
 
 ### Tool commands
 
-Put Back cannot restore items removed by a tool command.
-Cleanup lists the Go module cache at `~/go/pkg/mod` under **Package Manager Caches**.
-The row stays locked when Moppo cannot find Go at a supported installation path.
-Go installations from Homebrew and the standard Go installer use supported paths.
-Custom module cache locations are outside this removal rule.
-
+Put Back cannot restore items that a tool command removes.
 Before removal, Moppo names the item and explains that Put Back cannot restore it.
-Select **Remove** for each command.
-After the last confirmation, removal starts for the reviewed selection.
+Select **Remove** for each command. Moppo requires this step even when routine confirmations are off.
 Select **Cancel** to stop the review before removal starts.
 During removal, select **Stop** to request cancellation.
-The current file operation can finish before the command sequence stops.
+Cleanup History records each command result, including failures.
+A successful result appears in the Cleanup banner with its verified disk space recovery.
+An alert opens only for failures, retained storage, or unverified disk space recovery.
 
-Moppo checks the cache and tool identities again before it runs `go clean -modcache`.
-The command receives the reviewed cache path through `GOMODCACHE`.
-Projects can need another dependency download after removal.
-Command results always enter Cleanup History, including when Put Back receipts are off.
-The result includes command failures, error output, and measured cache size reduction when available.
-Cache size reduction and verified disk space recovery are separate figures.
-Failed rows stay visible with their removal reason.
+### Go module cache
+
+Cleanup lists the Go module cache at `~/go/pkg/mod` under **Package Manager Caches**.
+The row stays locked if Moppo cannot find Go in a Homebrew or standard Go installation.
+Moppo checks the cache and Go again, and then runs `go clean -modcache`.
+Projects can need to download their dependencies again.
+
+### Old Homebrew formula versions
+
+Put Back cannot restore formula versions that Homebrew removes.
+Cleanup lists eligible old versions under **Package Manager Caches**. They stay outside **Safe to Remove**.
+Pinned, linked, active, and retained versions stay protected.
+Select **Remove** for each version, also when routine confirmations are off.
+Homebrew removes only the selected version after another check.
+Cleanup History records the result.
 
 ### Simulator runtimes
 
@@ -225,6 +237,14 @@ Select **Cancel** to keep the application and stop the uninstall.
 Select **Delete Permanently** to continue. macOS can request administrator approval.
 Related files use the normal Trash operation after application removal succeeds.
 If application removal fails, Moppo keeps its related files.
+
+### Apple sound libraries
+
+If Cleanup cannot move a recognized Apple sound library, select **Retry with Administrator Approval**.
+Approve the request in the macOS dialog.
+Moppo checks the content again and moves eligible folders to the Trash.
+The retry requires **Keep Put Back receipts** to be on.
+Put Back can request administrator approval to restore these folders.
 
 ### Docker images
 

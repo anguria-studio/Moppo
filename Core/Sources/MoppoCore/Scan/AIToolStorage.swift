@@ -19,7 +19,7 @@ enum AIToolStorage {
         var parts: [Part] = []
     }
 
-    static let homeDotFolders: Set<String> = [".codex", ".claude", ".grokbot", ".t3"]
+    static let homeDotFolders: Set<String> = [".codex", ".claude", ".grokbot", ".t3", ".gemini"]
     static let dotCacheFolders: Set<String> = ["codex-runtimes"]
 
     static let roots: [Root] = [
@@ -98,6 +98,25 @@ enum AIToolStorage {
              section: .init(owner: .cursor, title: "Desktop data",
                  summary: "Desktop settings, workspace state, and caches."), curationIdentifier: "com.todesktop.230313mzl4w4u92", parts: [
             Part(path: "User", name: "Cursor settings and workspace state", explanation: "Chat history, checkpoints, settings, and unsaved files remain protected. Delete individual chats in Cursor.")
-        ])
+        ]),
+        // Gemini CLI and Antigravity share this folder. One root counts each byte once.
+        Root(path: ".gemini", name: "Gemini and Antigravity shared data",
+             section: .init(owner: .gemini, title: "Shared data",
+                 summary: "Gemini CLI and Antigravity settings, history, and installed tools."),
+             explanation: "Gemini CLI and Antigravity share this folder. Moppo keeps all files protected, including credentials, settings, and unknown files.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "antigravity", name: "Antigravity data", explanation: "Antigravity task data and settings. Use Antigravity to manage these files."),
+            Part(path: "antigravity-cli", name: "Antigravity CLI data", explanation: "Antigravity command-line data and settings. Use Antigravity to manage these files."),
+            Part(path: "antigravity-ide", name: "Antigravity editor data", explanation: "Antigravity editor data and settings. Use Antigravity to manage these files."),
+            Part(path: "history", name: "Shared history", explanation: "Saved history can contain task content. Moppo keeps these files protected."),
+            Part(path: "bin", name: "Shared installed tools", explanation: "Gemini CLI or Antigravity can require these tools. Moppo keeps them protected."),
+            Part(path: "logs", name: "Shared logs", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected."),
+            Part(path: "tmp", name: "Shared temporary files", explanation: "These files can belong to active tasks. Moppo keeps them protected.")
+        ]),
+        Root(path: "Library/Application Support/Antigravity", name: "Antigravity desktop data",
+             section: .init(owner: .antigravity, title: "Desktop data",
+                 summary: "Desktop profile, settings, credentials, and caches."),
+             explanation: "Moppo has not verified which Antigravity desktop files are safe to remove. All files remain protected, including cache folders.",
+             reviewsWorktrees: false)
     ]
 }

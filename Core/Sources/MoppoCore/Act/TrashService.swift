@@ -77,8 +77,8 @@ public enum TrashError: Error, Equatable {
 ///
 /// ### Nothing here scripts Finder
 ///
-/// This service uses normal file permissions. App Uninstaller can separately request
-/// permanent deletion when a reviewed application Trash move fails.
+/// This service uses normal file permissions first. Approved sound library restoration can request administrator access.
+/// App Uninstaller can separately request permanent deletion when a reviewed application Trash move fails.
 ///
 /// ### Why Put Back has no public API
 ///
@@ -110,14 +110,17 @@ public struct TrashService: Sendable {
     private let home: URL
     private let log: RemovalLog
     private let measurer: AllocatedSizeMeasurer
+    private let administratorRestore: (@Sendable (URL, URL, String) async throws -> Void)?
 
     /// `home` is injectable for the same reason ``HiddenDataScanner``'s is: so tests
     /// exercise a Trash of their own instead of the user's.
     public init(
         home: URL = URL(fileURLWithPath: NSHomeDirectory()),
         log: RemovalLog = RemovalLog(),
-        measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer()
+        measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
+        administratorRestore: (@Sendable (URL, URL, String) async throws -> Void)? = nil
     ) {
+        self.administratorRestore = administratorRestore
         self.home = home
         self.log = log
         self.measurer = measurer
@@ -300,8 +303,15 @@ public struct TrashService: Sendable {
         try fileManager.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true
         )
-        if try await !GitWorktreeDetector.move(item.url, to: destination) {
-            try fileManager.moveItem(at: item.url, to: destination)
+        do {
+            if try await !GitWorktreeDetector.move(item.url, to: destination) {
+                try fileManager.moveItem(at: item.url, to: destination)
+            }
+        } catch {
+            guard FileAccessFailure.isPermissionDenied(error),
+                  let identity = record.trashedIdentity, let administratorRestore else { throw error }
+            try log.checkWritable()
+            try await administratorRestore(item.url, destination, identity)
         }
         // Retire the record: its Trash path is vacant now, and whoever occupies it
         // next is a stranger.
@@ -352,7 +362,7 @@ public struct TrashService: Sendable {
                 if byTrashPath[key] == nil { byTrashPath[key] = record }
             case .deleted:
                 continue
-            case .failed:
+            case .failed, .skipped:
                 continue
             }
         }

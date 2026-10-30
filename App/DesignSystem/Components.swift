@@ -293,16 +293,8 @@ struct Badge: View {
 
 // MARK: - Button styles
 
-/// A sidebar row: the label, and nothing else.
-///
-/// `.buttonStyle(.plain)` fades its label while the mouse is held down. No Mac source
-/// list does that — press a row in Finder and the only thing that moves is the
-/// selection. The moving pill is the whole feedback here, so this style reads
-/// `configuration.isPressed` nowhere.
-///
-/// The row's other half of the fix lives at the call site: the selection is made on
-/// mouse *down*, because a `Button` alone acts on mouse up and the delay reads as lag.
-struct SidebarRowButtonStyle: ButtonStyle {
+/// Keeps the label unchanged when the button is pressed.
+struct LabelOnlyButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
     }
@@ -374,11 +366,12 @@ struct DestructiveButtonStyle: ButtonStyle {
 /// follow the pointer over "Scan for Junk" while a scan is already running, and a
 /// hover recorded before the button was disabled must not survive into that state.
 struct MenuItemButtonStyle: ButtonStyle {
+    var isHighlighted: Bool?
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovering = false
 
     func makeBody(configuration: Configuration) -> some View {
-        let highlighted = isEnabled && (isHovering || configuration.isPressed)
+        let highlighted = isEnabled && ((isHighlighted ?? isHovering) || configuration.isPressed)
         return configuration.label
             // 13 pt, the size AppKit draws a menu item at — not the app's 12 pt
             // control label, because this reads as a menu and not as a control.

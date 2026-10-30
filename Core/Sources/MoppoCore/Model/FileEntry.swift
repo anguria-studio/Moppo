@@ -8,6 +8,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case codex = "Codex", chatGPT = "ChatGPT", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
         case t3Code = "T3Code"
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
+        case gemini = "Gemini", antigravity = "Antigravity"
     }
 
     /// A removal workflow that needs more checks than ordinary file cleanup.
@@ -185,6 +186,20 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// nothing claims. The table draws such children as part of the row, with no
     /// checkbox of their own — see `LocalModelStores`.
     public var removesAsUnit: Bool = false
+
+    /// Model manifests or repository folders represented by this row.
+    public var localModelPaths: [URL] = []
+
+    /// Exclude model identities without excluding shared blobs.
+    public var exclusionURLs: [URL] {
+        if !localModelPaths.isEmpty { return localModelPaths }
+        if removalAction != nil { return children.map(\.url) }
+        return [url]
+    }
+
+    public var canExcludeFromCleanup: Bool {
+        !isRemovalLocked || protectionReason == .userData
+    }
 
     /// A specialized cleanup action for this row.
     public var removalAction: RemovalAction?

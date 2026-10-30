@@ -11,7 +11,7 @@ Include the Moppo version, the steps that show the problem, and the impact.
 ## Supported versions
 
 Moppo supports the latest release.
-The latest release is 0.3.0.
+The latest release is 0.4.0.
 Moppo does not provide security updates for an older release.
 
 ## Sensitive surfaces

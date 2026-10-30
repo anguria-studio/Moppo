@@ -11,6 +11,8 @@ The names and icons belong to their respective owners.
 - Ollama: Ollama. The fallback icon comes from the [official repository](https://github.com/ollama/ollama).
 - Hugging Face: Hugging Face. The fallback icon comes from the [official website](https://huggingface.co/).
 - LM Studio: LM Studio. The fallback icon comes from the [official website](https://lmstudio.ai/).
+- Antigravity: Google. The fallback icon comes from the [Antigravity press assets](https://antigravity.google/press).
+- Gemini CLI: Google. The fallback icon comes from the [Gemini CLI brand kit](https://geminicli.com/brand-kit/).
 
 Installed application icons take priority over the bundled fallback icons.
 

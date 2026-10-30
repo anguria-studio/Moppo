@@ -51,6 +51,189 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.categories.first?.entries.map(\.id) == [row.id])
     }
 
+    @Test("Administrator retry uses only captured failures and preserves completed totals", arguments: [false, true])
+    func administratorRetry(excluded: Bool) async throws {
+        let folder = try TemporaryFolder()
+        let item = soundLibraryItem().fileEntry
+        let other = FileEntry(url: try folder.write("Other"), kind: .file, allocatedBytes: 10)
+        let remover = HeldCleanupRemoval()
+        let retry = HeldCleanupRemoval()
+        let operations = OperationCoordinator()
+        var excludedPaths: [String] = []
+        let model = CleanupModel(operations: operations, remover: remover, administratorRemover: retry,
+            isAdministratorRetryEligible: { _ in true }, preferences: { .init(excludedPaths: excludedPaths) })
+        model.scanResults = cleanupResults([item, other])
+        model.scannerSelection = [item.id, other.id]
+        model.requestCleanUp(in: .all)
+        let first = Task { await model.performCleanUp() }
+        try await waitUntil { await remover.isPending }
+        await remover.finish(CleanupOutcome(removedBytes: 10, removedCount: 1, failed: [item.id],
+                                           permissionDenied: [item.id], trashedCount: 1))
+        await first.value
+        #expect(model.canRetryWithAdministrator)
+        model.scannerSelection = [other.id]
+        if excluded { excludedPaths = [item.id] }
+        var reportedBytes: Int64 = 0
+        model.onEvent = { if case .removed(let outcome) = $0 { reportedBytes += outcome.removedBytes } }
+        let second = Task { await model.retryWithAdministrator() }
+        if !excluded {
+            try await waitUntil { await retry.isPending }
+            #expect(operations.isBusy)
+            #expect(await retry.entries.map(\.id) == [item.id])
+            #expect(await retry.keepReceipt)
+            #expect(await retry.trashFirst)
+            #expect(await retry.overrides.isEmpty)
+            await retry.finish(CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
+        }
+        await second.value
+        #expect(!operations.isBusy)
+        #expect(await retry.requestCount == (excluded ? 0 : 1))
+        #expect(model.cleanupOutcome?.removedBytes == (excluded ? 10 : 74))
+        #expect(model.cleanupOutcome?.failed == (excluded ? [item.id] : []))
+        #expect(reportedBytes == (excluded ? 0 : 64))
+        #expect(!model.canRetryWithAdministrator)
+    }
+
+    @Test("Row exclusions persist, clear selections, and can be removed in Settings")
+    func persistentRowExclusion() async throws {
+        let suite = "RowExclusionTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        let scanner = HeldCleanupScanner()
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(operations: operations, scanner: scanner,
+            preferences: { .init(excludedPaths: settings.excludedPaths, excludedPatterns: settings.excludedPatterns) },
+            saveExclusion: settings.exclude, defaults: defaults)
+        let item = cleanupEntry("keep[1].bin")
+        let sibling = cleanupEntry("keep1.bin")
+        cleanup.scanResults = cleanupResults([item, sibling])
+        cleanup.scannerSelection = [item.id, sibling.id]
+        cleanup.userDataRemovalOverrides = [item.id]
+        cleanup.neverOfferAgain(item)
+        #expect(cleanup.allEntries.map(\.id) == [sibling.id])
+        #expect(cleanup.scannerSelection == [sibling.id])
+        #expect(cleanup.userDataRemovalOverrides.isEmpty)
+        #expect(cleanup.scanResults?.totalBytes == sibling.allocatedBytes)
+        cleanup.selectAllInCurrentView()
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.cleanupSelection(in: .safeToRemove) == [sibling.id])
+
+        let restored = SettingsStore(defaults: defaults, managesLoginItem: false)
+        let rule = try #require(restored.exclusions.first { $0.value == item.id })
+        #expect(rule.kind == .item)
+        #expect(restored.excludedPaths == [item.id])
+        #expect(!restored.excludedPatterns.contains(item.id))
+        cleanup.startScan()
+        try await waitUntil { await scanner.requestCount == 1 }
+        #expect(await scanner.preferences.first?.excludedPaths == [item.id])
+        await scanner.finish(0, results: cleanupResults([item, sibling]))
+        #expect(await cleanup.waitForScan())
+        #expect(cleanup.allEntries.map(\.id) == [sibling.id])
+        settings.remove(ids: [rule.id])
+        cleanup.startScan()
+        try await waitUntil { await scanner.requestCount == 2 }
+        await scanner.finish(1, results: cleanupResults([item, sibling]))
+        #expect(await cleanup.waitForScan())
+        #expect(Set(cleanup.allEntries.map(\.id)) == [item.id, sibling.id])
+        #expect(SettingsStore(defaults: defaults, managesLoginItem: false).excludedPaths.isEmpty)
+    }
+
+    @Test("A child exclusion protects its parent without hiding its sibling")
+    func childRowExclusion() throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        let settings = fixture.settings
+        let cleanup = CleanupModel(operations: OperationCoordinator(),
+            preferences: { .init(excludedPaths: settings.excludedPaths) }, saveExclusion: settings.exclude)
+        let child = cleanupEntry("parent/keep")
+        let sibling = cleanupEntry("parent/other")
+        var parent = cleanupEntry("parent")
+        parent.kind = .folder
+        parent.children = [child, sibling]
+        cleanup.scanResults = cleanupResults([parent])
+        cleanup.scannerSelection = [parent.id, child.id]
+        cleanup.neverOfferAgain(child)
+        let retained = try #require(cleanup.scanResults?.categories.first?.entries.first)
+        #expect(retained.id == parent.id)
+        #expect(retained.isRemovalLocked)
+        #expect(retained.children == [sibling])
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(settings.excludedPaths == [child.id])
+        cleanup.selectAllInCurrentView()
+        #expect(cleanup.cleanupSelection(in: .safeToRemove) == [sibling.id])
+    }
+
+    @Test("Model group exclusions save each manifest without saving blob or store paths")
+    func modelGroupExclusion() throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        let settings = fixture.settings
+        let first = cleanupEntry("models/manifests/model/first")
+        let second = cleanupEntry("models/manifests/model/second")
+        let blob = cleanupEntry("models/blobs/weights")
+        var group = first
+        group.removesAsUnit = true
+        group.localModelPaths = [first.url, second.url]
+        group.children = [second, blob]
+        let cleanup = CleanupModel(operations: OperationCoordinator(),
+            preferences: { .init(excludedPaths: settings.excludedPaths) }, saveExclusion: settings.exclude)
+        cleanup.scanResults = cleanupResults([group])
+        cleanup.scannerSelection = [group.id]
+        cleanup.neverOfferAgain(group)
+        #expect(Set(settings.excludedPaths) == [first.id, second.id])
+        #expect(cleanup.allEntries.isEmpty)
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(settings.exclude(group))
+        #expect(settings.exclusions.filter { $0.kind == .item }.count == 2)
+    }
+
+    @Test("Docker exclusions use the complete image URL and preserve other contexts")
+    func dockerRowExclusion() throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        let imageID = "sha256:" + String(repeating: "a", count: 64)
+        let item = FileEntry(url: URL(string: "docker://images/first/\(imageID)")!, kind: .diskImage,
+            allocatedBytes: 100, dockerImage: DockerImage(imageID: imageID, context: "first", tags: [], containerCount: 0))
+        #expect(fixture.settings.exclude(item))
+        let context = ScanContext(excludedPaths: fixture.settings.excludedPaths)
+        #expect(context.isExcluded(item.url))
+        #expect(!context.isExcluded(URL(string: "docker://images/second/\(imageID)")!))
+        #expect(!context.isExcluded(URL(fileURLWithPath: item.url.path)))
+        #expect(!context.isExcluded(URL(string: "docker://images/first/\(imageID)-other")!))
+    }
+
+    @Test("Rules that the CLI adds survive later changes in the app")
+    func cliExclusionsSurviveAppChanges() throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        let added = try ScanConfiguration.addExclusions([ExclusionRule(kind: .item, value: "/tmp/cli-model")],
+                                                        to: fixture.defaults)
+        #expect(added.count == 1)
+        #expect(fixture.settings.addPattern("*.partial"))
+        let stored = try ScanConfiguration.readExclusions(from: fixture.defaults)
+        #expect(stored.contains { $0.kind == .item && $0.value == "/tmp/cli-model" })
+        #expect(stored.contains { $0.kind == .pattern && $0.value == "*.partial" })
+        #expect(fixture.settings.excludedPaths.contains("/tmp/cli-model"))
+    }
+
+    @Test("Exclusion cannot change a captured cleanup plan or an active operation")
+    func exclusionDuringOperation() throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        let operations = OperationCoordinator()
+        let cleanup = CleanupModel(operations: operations,
+            preferences: { .init(confirmBeforeCleanup: true) }, saveExclusion: fixture.settings.exclude,
+            measureSaving: { _ in nil })
+        let entry = cleanupEntry("keep")
+        cleanup.scanResults = cleanupResults([entry])
+        cleanup.scannerSelection = [entry.id]
+        cleanup.requestCleanUp(in: .all)
+        cleanup.neverOfferAgain(entry)
+        #expect(fixture.settings.excludedPaths.isEmpty)
+        #expect(cleanup.pendingCleanUp?.entries == [entry])
+        cleanup.cancelCleanUp()
+        let operation = try #require(operations.begin(.cleanupScan))
+        cleanup.neverOfferAgain(entry)
+        #expect(fixture.settings.excludedPaths.isEmpty)
+        operations.finish(operation)
+    }
+
     @Test("Each tool command needs confirmation with either routine confirmation setting", arguments: [true, false])
     func toolCommandConfirmations(routine: Bool) async throws {
         let folder = try TemporaryFolder(prefix: "moppo-command-review")
@@ -463,6 +646,22 @@ struct CleanupModelTests {
         #expect(SettingsStore(defaults: defaults, managesLoginItem: false).isEnabled(.docker))
     }
 
+    @Test("CLI configuration reads the app's saved exclusions and category choices")
+    func sharedScanConfiguration() throws {
+        let suite = "moppo-tests.shared-scan.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        settings.setEnabled(false, for: .xcode)
+        _ = settings.addPattern("*.keep")
+        let configuration = try ScanConfiguration(defaults: defaults)
+        #expect(configuration.enabledCategories == Set(CategoryID.allCases.filter { settings.isEnabled($0) }))
+        #expect(configuration.excludedPatterns == settings.excludedPatterns)
+        #expect(configuration.excludedPaths == settings.excludedPaths)
+        let reopened = SettingsStore(defaults: defaults, managesLoginItem: false)
+        #expect(reopened.exclusions == settings.exclusions)
+    }
+
     enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable, mergeLost }
 
     @Test("Docker setup remains visible across filters only for an installed application", arguments: CleanupModel.ScanFilter.allCases)
@@ -844,10 +1043,12 @@ struct CleanupModelTests {
         otherData.protectionReason = .inventory
         var group = cleanupEntry("codex-sessions")
         group.aiTool = .codex
+        group.isRegenerable = false
         group.protectionReason = .inventory
         group.children = [first, second, active, otherData]
         let operations = OperationCoordinator()
         let cleanup = CleanupModel(operations: operations)
+        cleanup.scanFilter = .all
         cleanup.scanResults = cleanupResults([group])
         let unrelated = cleanupEntry("unrelated")
         cleanup.scannerSelection = [unrelated.id]

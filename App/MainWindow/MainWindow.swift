@@ -22,11 +22,11 @@ struct MainWindow: View {
         // Native title bar layout keeps the window controls aligned during resizing.
         .background(WindowChrome())
         .modifier(KeyboardFocusVisibility())
-        .disabled(!showsAppUninstallDetail && (model.activity != nil
-                  || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil))
+        .disabled(model.savedPlans.isPresented || (!showsAppUninstallDetail && (model.activity != nil
+                  || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil)))
         // Keep the scroll view enabled so its scrollbar keeps the same width.
-        .allowsHitTesting(!showsAppUninstallDetail)
-        .accessibilityHidden(model.photoDuplicates.preview != nil || showsAppUninstallDetail)
+        .allowsHitTesting(!showsAppUninstallDetail && !model.savedPlans.isPresented)
+        .accessibilityHidden(model.photoDuplicates.preview != nil || showsAppUninstallDetail || model.savedPlans.isPresented)
         .overlay {
             if model.photoDuplicates.preview != nil || showsAppUninstallDetail {
                 Token.Fill.previewBackdrop
@@ -58,6 +58,10 @@ struct MainWindow: View {
         .task {
             if scenePhase == .active { model.startInitialCleanupScan() }
             await model.loadDashboard()
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active, model.view != .trash else { return }
+            await model.recovery.loadTrash()
         }
         .onChange(of: model.view) { _, view in
             model.photoDuplicates.preview = nil
@@ -100,6 +104,12 @@ struct MainWindow: View {
             ),
             presenting: model.notice
         ) { notice in
+            if notice.showsAdministratorRetry {
+                Button("Retry with Administrator Approval") {
+                    model.notice = nil
+                    Task { await model.cleanup.retryWithAdministrator() }
+                }
+            }
             if notice.showsFullDiskAccessAction {
                 Button("Open Full Disk Access") { FullDiskAccess.openSystemSettings() }
             }
@@ -347,7 +357,7 @@ struct MainWindow: View {
         case .storageExplorer: return model.storageExplorer.canRemoveSelection
             && !model.storageExplorer.isMapSelectionPending
             && !model.storageExplorer.isMeasurementBlocked
-        case .trash:           return (model.recovery.trashSummary?.itemCount ?? 0) > 0
+        case .trash:           return model.canEmptyTrash
         case .dashboard, .history: return false
         }
     }
@@ -368,7 +378,7 @@ struct MainWindow: View {
                 Task { await model.uninstaller.requestLeftoverRemoval() }
             }
         case .storageExplorer: Task { await model.storageExplorer.requestRemoval() }
-        case .trash:      model.activeSheet = .emptyTrash
+        case .trash:      model.requestEmptyTrash()
         case .dashboard, .history: break
         }
     }

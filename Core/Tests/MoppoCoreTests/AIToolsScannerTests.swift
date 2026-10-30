@@ -129,8 +129,49 @@ struct AIToolsScannerTests {
         #expect(!spans.contains { $0["operation"] == "worktree_discovery" && $0["path"] == row.url.path })
         let excluded = try await AIToolsScanner(home: sandbox.home).scan(
             context: ScanContext(excludedPaths: [source.path]))
-        #expect(!excluded.entries.contains { $0.aiTool == .t3Code })
+        let retained = try #require(excluded.entries.first { $0.aiTool == .t3Code })
+        #expect(retained.isRemovalLocked)
+        #expect(!retained.children.contains { $0.displayName == "T3 Code scratch projects" })
+        #expect(retained.children.contains { $0.displayName == "T3 Code downloaded tools" })
         #expect(excluded.claimedStoragePaths.contains(row.url.path))
+    }
+
+    @Test("Gemini and Antigravity storage counts shared bytes once and keeps cache folders protected")
+    func googleStorage() async throws {
+        let sandbox = try Sandbox()
+        for path in ["antigravity/brain/task.json", "antigravity-cli/settings.json", "antigravity-ide/state.db",
+                     "history/project.json", "bin/agent", "logs/run.log", "tmp/project/checkpoint.json"] {
+            try sandbox.file(".gemini/" + path)
+        }
+        let unknown = try sandbox.file(".gemini/oauth_creds.json", bytes: 4096)
+        for path in ["Cache/data", "Code Cache/js/index", "GPUCache/data_0", "User/globalStorage/state.vscdb"] {
+            try sandbox.file("Library/Application Support/Antigravity/" + path)
+        }
+        let context = ScanContext()
+        let ai = try await AIToolsScanner(home: sandbox.home).scan(context: context)
+        let shared = try #require(ai.entries.first { $0.aiStorageSection?.owner == .gemini })
+        #expect(shared.aiTool == .gemini)
+        #expect(shared.children.map(\.displayName) == ["Antigravity data", "Antigravity CLI data",
+            "Antigravity editor data", "Shared history", "Shared installed tools", "Shared logs", "Shared temporary files"])
+        #expect(shared.allocatedBytes >= (try await context.measurer.measure(unknown)).allocatedBytes)
+        #expect(shared.displayBytes == (try await context.measurer.measure(shared.url)).allocatedBytes)
+        let desktop = try #require(ai.entries.first { $0.aiStorageSection?.owner == .antigravity })
+        #expect(desktop.aiTool == .antigravity)
+        #expect(desktop.children.isEmpty)
+        #expect(desktop.displayBytes == (try await context.measurer.measure(desktop.url)).allocatedBytes)
+        for entry in [shared, desktop] + shared.children {
+            #expect(entry.protectionReason == .inventory)
+            #expect(entry.protectionExplanation?.isEmpty == false)
+            #expect(!entry.regeneratesSafely)
+            #expect(!CleanupService.removalAllowed(entry, userDataRemovalOverrides: [entry.id]))
+        }
+        #expect(ai.entries.count == 2)
+        #expect(ai.totalBytes == shared.displayBytes + desktop.displayBytes)
+        #expect(ai.safeToRemoveBytes == 0)
+        #expect(ai.claimedStoragePaths.contains(shared.url.path))
+        #expect(ai.claimedStoragePaths.contains(desktop.url.path))
+        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        #expect(!hidden.entries.contains { $0.url.lastPathComponent == ".gemini" })
     }
 
     @Test("AI attachments cannot enter the archive sweep when AI Tools is disabled",
@@ -274,17 +315,22 @@ struct AIToolsScannerTests {
         #expect(results.first { $0.categoryID == .hiddenSystemData }?.availability == .empty)
 
         let excluded = try await AIToolsScanner(home: sandbox.home).scan(context: ScanContext(excludedPaths: [cache.url.path]))
-        #expect(excluded.entries.isEmpty)
+        let retained = try #require(excluded.entries.first)
+        #expect(retained.id == root.id)
+        #expect(retained.isRemovalLocked)
+        #expect(!retained.children.contains { $0.id == cache.id })
         #expect(!excluded.claimedStoragePaths.isEmpty)
         let guarded = ScanCoordinator.removingAIToolOverlaps(from: [excluded,
             ScanCategoryResult(categoryID: .systemCaches, entries: [cache])])
         #expect(guarded.last?.entries.isEmpty == true)
     }
 
-    @Test("Removed AI desktop data uses the leftover review and installed owners retain AI storage", arguments: ["Cursor", "Grok Bot"])
+    @Test("Removed AI desktop data uses the leftover review and installed owners retain AI storage",
+          arguments: ["Cursor", "Grok Bot", "Antigravity"])
     func desktopOwnership(appName: String) async throws {
         let sandbox = try Sandbox()
-        let identifier = appName == "Cursor" ? "com.todesktop.230313mzl4w4u92" : "com.anysphere.sand"
+        let identifier = ["Cursor": "com.todesktop.230313mzl4w4u92", "Grok Bot": "com.anysphere.sand",
+                          "Antigravity": "com.google.antigravity"][appName]!
         let desktop = sandbox.home.appendingPathComponent("Library/Application Support/" + appName, isDirectory: true)
         try sandbox.file("Library/Application Support/" + appName + "/Cache/data")
         try sandbox.file("Library/Application Support/" + appName + "/User/history.db")

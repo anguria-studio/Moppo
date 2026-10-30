@@ -8,6 +8,7 @@ public enum CleanupHistoryState: String, Sendable, Equatable, CaseIterable {
     case removedPermanently
     case noLongerInTrash
     case failed
+    case skipped
 }
 
 /// One readable item from the append-only removal log.
@@ -130,6 +131,9 @@ public struct CleanupHistoryService: Sendable {
                 removedCount += 1
                 permanentlyRemovedCount += 1
                 items.append(item(record, state: .removedPermanently, occurrences: &occurrences))
+
+            case .skipped:
+                items.append(item(record, state: .skipped, occurrences: &occurrences))
 
             case .failed:
                 if let result = record.toolCommandResult {

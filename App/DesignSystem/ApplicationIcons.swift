@@ -17,7 +17,8 @@ enum ApplicationIcons {
         .chatGPT: "com.openai.codex",
         .claude: "com.anthropic.claudefordesktop",
         .cursor: "com.todesktop.230313mzl4w4u92",
-        .grokBot: "com.anysphere.sand"
+        .grokBot: "com.anysphere.sand",
+        .antigravity: "com.google.antigravity"
     ]
 
     static func icon(for url: URL) -> NSImage {
@@ -33,10 +34,16 @@ enum ApplicationIcons {
            FileManager.default.fileExists(atPath: url.path) {
             return Icon(image: icon(for: url), includesPadding: true)
         }
+        let key = "tool:\(tool.rawValue)" as NSString
+        if let image = cache.object(forKey: key) {
+            return Icon(image: image, includesPadding: tool == .codex)
+        }
         let fallback = tool == .chatGPT
             ? NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
             : Bundle(for: BundleToken.self).image(forResource: tool.rawValue + "ToolIcon")
         guard let image = fallback else { return nil }
+        // Keep the same image during animated row updates.
+        cache.setObject(image, forKey: key)
         return Icon(image: image, includesPadding: tool == .codex)
     }
 

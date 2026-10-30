@@ -79,7 +79,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             self.soundLibrary = soundLibrary
         }
 
-        var fileEntry: FileEntry {
+        public var fileEntry: FileEntry {
             let kind: FileEntry.Kind = switch category {
             case .application: .appBundle
             case .caches, .logs, .state: .cache

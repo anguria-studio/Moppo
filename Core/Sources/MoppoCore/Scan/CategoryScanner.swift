@@ -26,7 +26,7 @@ public struct ScanContext: Sendable {
     /// Measures every tree this scan sizes. Carries the protected globs, so a
     /// candidate holding one comes back flagged — see `isExcluded`.
     public var measurer: AllocatedSizeMeasurer
-    /// Absolute paths skipped entirely, from Preferences → Exclusions.
+    /// File paths and exact tool item URLs skipped by scans.
     public var excludedPaths: [String]
     /// Glob rules such as `*.sparsebundle`.
     public var excludedPatterns: [String]
@@ -127,6 +127,7 @@ public struct ScanContext: Sendable {
     /// ``isWithinExclusion(_:)`` instead, or one deep exclusion would switch off the
     /// whole category above it.
     public func isExcluded(_ url: URL) -> Bool {
+        guard url.isFileURL else { return excludedPaths.contains(url.absoluteString) }
         let path = url.standardizedFileURL.path
 
         if isWithinExclusion(url) { return true }
@@ -157,8 +158,9 @@ public struct ScanContext: Sendable {
     /// check for category roots: a root that merely *contains* an exclusion is
     /// still walked, and the exclusion is honoured row by row.
     public func isWithinExclusion(_ url: URL) -> Bool {
+        guard url.isFileURL else { return excludedPaths.contains(url.absoluteString) }
         let path = url.standardizedFileURL.path
-        return excludedPaths.contains { path == $0 || path.hasPrefix($0 + "/") }
+        return excludedPaths.contains { $0 == "/" || path == $0 || path.hasPrefix($0 + "/") }
     }
 }
 

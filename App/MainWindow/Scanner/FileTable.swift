@@ -22,6 +22,7 @@ struct FileTable: View {
     var confirmBeforeCleanup = false
     var onUninstallApplication: ((FileEntry) -> Void)? = nil
     var onShowInStorageExplorer: ((FileEntry) -> Void)? = nil
+    var onNeverOfferAgain: ((FileEntry) -> Void)? = nil
     var onReviewWorktree: ((FileEntry) -> Void)? = nil
     var onUnlockChildren: ((FileEntry) -> Void)? = nil
     var onToggleChildren: ((Bool, FileEntry) -> Void)? = nil
@@ -245,6 +246,7 @@ struct FileTable: View {
             },
             onShowInStorageExplorer: onShowInStorageExplorer.map { action in { action(entry) } },
             onReviewWorktree: onReviewWorktree.map { action in { action(entry) } },
+            onNeverOfferAgain: onNeverOfferAgain.map { action in { action(entry) } },
             hasUnlockedChildren: !entry.unlockableChildren.isEmpty
                 && entry.unlockableChildren.allSatisfy { userDataRemovalOverrides.contains($0.id) },
             onUnlockChildren: onUnlockChildren != nil && !entry.unlockableChildren.isEmpty
@@ -278,7 +280,9 @@ struct FileTable: View {
                     },
                     onRequestUserDataOverride: { requestUserDataOverride(child) },
                     onShowInStorageExplorer: onShowInStorageExplorer.map { action in { action(child) } },
-                    onReviewWorktree: onReviewWorktree.map { action in { action(child) } }
+                    onReviewWorktree: onReviewWorktree.map { action in { action(child) } },
+                    onNeverOfferAgain: entry.removesAsUnit || entry.removalAction != nil
+                        ? nil : onNeverOfferAgain.map { action in { action(child) } }
                 )
             }
         }
@@ -397,7 +401,7 @@ struct AIStorageGroupHeader: View {
 
     var body: some View {
         Button(action: onToggle) { rowContent }
-            .buttonStyle(.plain)
+            .buttonStyle(LabelOnlyButtonStyle())
             .hoverHighlight(fill: Token.Fill.cleanupRowHover)
             .accessibilityLabel("\(owner.rawValue), storage shown, \(ByteFormatting.string(totalBytes))")
             .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
@@ -467,6 +471,7 @@ private struct FileRow: View {
     var onUninstallApplication: (() -> Void)? = nil
     var onShowInStorageExplorer: (() -> Void)? = nil
     var onReviewWorktree: (() -> Void)? = nil
+    var onNeverOfferAgain: (() -> Void)? = nil
     var hasUnlockedChildren = false
     var onUnlockChildren: (() -> Void)? = nil
     var onToggleChildren: ((Bool) -> Void)? = nil
@@ -566,8 +571,8 @@ private struct FileRow: View {
                     ? "Total storage, \(ByteFormatting.string(entry.rowDisplayBytes)). Includes all child items."
                     : ByteFormatting.string(entry.rowDisplayBytes))
 
-            if entry.url.isFileURL {
-                FileRowMenu(entry: entry, isRowHovered: isRowHovered,
+            if entry.url.isFileURL || (entry.canExcludeFromCleanup && onNeverOfferAgain != nil) {
+                FileRowMenu(onNeverOfferAgain: onNeverOfferAgain, entry: entry, isRowHovered: isRowHovered,
                     onShowInStorageExplorer: onShowInStorageExplorer,
                     onUninstallApplication: onUninstallApplication)
             } else {
@@ -620,7 +625,7 @@ private struct FileRow: View {
             }
         }
         .contextMenu {
-            FileRowActions(entry: entry, onShowInStorageExplorer: onShowInStorageExplorer,
+            FileRowActions(onNeverOfferAgain: onNeverOfferAgain, entry: entry, onShowInStorageExplorer: onShowInStorageExplorer,
                 onUninstallApplication: onUninstallApplication)
         }
     }
@@ -709,6 +714,9 @@ private struct FileRow: View {
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if let badge = presentation.badge {
+                        Badge(text: badge).fixedSize()
+                    }
                     if entry.worktreeCount > 0, let onDisclose {
                         Button(action: onDisclose) {
                             Badge(text: "\(entry.worktreeCount) \(entry.worktreeCount == 1 ? "worktree" : "worktrees")").fixedSize()
@@ -756,12 +764,14 @@ private struct FileRow: View {
                     }
                 }
 
-                Text(entry.aiStorageSection?.summary ?? presentation.summary)
-                    .font(.mcBody)
-                    .foregroundStyle(Token.Text.secondary)
-                    .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
-                    .truncationMode(entry.xcodeBuildCacheReview?.isWholeFolder == true ? .middle : .tail)
-                    .help(entry.url.path)
+                if entry.aiStorageSection != nil || !presentation.summary.isEmpty {
+                    Text(entry.aiStorageSection?.summary ?? presentation.summary)
+                        .font(.mcBody)
+                        .foregroundStyle(Token.Text.secondary)
+                        .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
+                        .truncationMode(entry.xcodeBuildCacheReview?.isWholeFolder == true ? .middle : .tail)
+                        .help(entry.url.path)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(entry.url.path)
@@ -798,6 +808,7 @@ private struct ChildRow: View {
     let onRequestUserDataOverride: () -> Void
     var onShowInStorageExplorer: (() -> Void)? = nil
     var onReviewWorktree: (() -> Void)? = nil
+    var onNeverOfferAgain: (() -> Void)? = nil
     @FocusState private var isFocused: Bool
     @State private var isRowHovered = false
 
@@ -844,6 +855,10 @@ private struct ChildRow: View {
                         .truncationMode(.middle)
                         .layoutPriority(1)
 
+                    if let badge = presentation.badge {
+                        Badge(text: badge).fixedSize()
+                    }
+
                     if entry.codexSession != nil {
                         if entry.protectionReason == .inventory {
                             Badge(text: "in use").fixedSize()
@@ -863,11 +878,11 @@ private struct ChildRow: View {
                         if showsSafeToRemoveBadges && entry.regeneratesSafely {
                             Badge(text: "safe to remove", style: .safe).fixedSize()
                         }
-                    } else if let caveat = entry.safetyCaveat {
+                    } else if presentation.badge == nil, let caveat = entry.safetyCaveat {
                         Badge(text: caveat).fixedSize()
                     }
                 }
-                if entry.xcodeBuildCacheReview == nil {
+                if entry.xcodeBuildCacheReview == nil, !presentation.summary.isEmpty {
                     Text(presentation.summary)
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
@@ -887,8 +902,8 @@ private struct ChildRow: View {
                 .fixedSize()
                 .frame(width: Metrics.size, alignment: .trailing)
 
-            if entry.url.isFileURL {
-                FileRowMenu(entry: entry, isRowHovered: isRowHovered,
+            if entry.url.isFileURL || (entry.canExcludeFromCleanup && onNeverOfferAgain != nil) {
+                FileRowMenu(onNeverOfferAgain: onNeverOfferAgain, entry: entry, isRowHovered: isRowHovered,
                     onShowInStorageExplorer: onShowInStorageExplorer)
             } else {
                 Color.clear.frame(width: Metrics.action)
@@ -925,7 +940,7 @@ private struct ChildRow: View {
             }
         }
         .contextMenu {
-            FileRowActions(entry: entry, onShowInStorageExplorer: onShowInStorageExplorer)
+            FileRowActions(onNeverOfferAgain: onNeverOfferAgain, entry: entry, onShowInStorageExplorer: onShowInStorageExplorer)
         }
     }
 
@@ -1262,11 +1277,16 @@ private struct UninstallHoverTipShape: Shape {
 }
 
 private struct FileRowActions: View {
+    var onNeverOfferAgain: (() -> Void)? = nil
     let entry: FileEntry
     var onShowInStorageExplorer: (() -> Void)? = nil
     var onUninstallApplication: (() -> Void)? = nil
 
     var body: some View {
+        if entry.canExcludeFromCleanup, let onNeverOfferAgain {
+            Button("Never Offer This Again", systemImage: "eye.slash", action: onNeverOfferAgain)
+            if entry.url.isFileURL { Divider() }
+        }
         if entry.kind == .appBundle, let onUninstallApplication {
             Button("Review Uninstall", systemImage: "trash", action: onUninstallApplication)
             Divider()
@@ -1283,6 +1303,7 @@ private struct FileRowActions: View {
 }
 
 private struct FileRowMenu: View {
+    var onNeverOfferAgain: (() -> Void)? = nil
     let entry: FileEntry
     let isRowHovered: Bool
     var onShowInStorageExplorer: (() -> Void)? = nil
@@ -1292,7 +1313,7 @@ private struct FileRowMenu: View {
 
     var body: some View {
         Menu {
-            FileRowActions(entry: entry, onShowInStorageExplorer: onShowInStorageExplorer,
+            FileRowActions(onNeverOfferAgain: onNeverOfferAgain, entry: entry, onShowInStorageExplorer: onShowInStorageExplorer,
                 onUninstallApplication: onUninstallApplication)
         } label: {
             Image(systemName: "ellipsis")

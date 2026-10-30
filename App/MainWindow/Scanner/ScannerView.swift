@@ -312,6 +312,7 @@ struct ScannerView: View {
                     confirmBeforeCleanup: model.confirmBeforeCleanup,
                     onUninstallApplication: onUninstallApplication,
                     onShowInStorageExplorer: onShowInStorageExplorer,
+                    onNeverOfferAgain: model.neverOfferAgain,
                     onReviewWorktree: { worktreeReviewEntry = $0 },
                     onUnlockChildren: { model.unlockChildren(in: $0) },
                     onToggleChildren: { model.setChildrenSelected($0, in: $1.id) },

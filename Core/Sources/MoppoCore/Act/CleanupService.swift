@@ -55,6 +55,7 @@ public struct CleanupOutcome: Sendable, Equatable {
     public var permissionDenied: [String]
     /// Worktree paths kept because macOS blocked access to the Trash.
     public var trashAccessDenied: [String]
+    public var administratorApprovalCancelled = false
     public var applicationRemovalCancelled: Bool
     /// Worktree paths excluded because their removal checks changed.
     public var skippedWorktrees: [String]
@@ -102,6 +103,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         failed.append(contentsOf: other.failed)
         permissionDenied.append(contentsOf: other.permissionDenied)
         trashAccessDenied.append(contentsOf: other.trashAccessDenied)
+        administratorApprovalCancelled = administratorApprovalCancelled || other.administratorApprovalCancelled
         applicationRemovalCancelled = applicationRemovalCancelled || other.applicationRemovalCancelled
         skippedWorktrees.append(contentsOf: other.skippedWorktrees)
         toolCommandResults.append(contentsOf: other.toolCommandResults)
@@ -122,6 +124,7 @@ public struct CleanupService: Sendable {
         URL, @escaping @Sendable () -> Bool
     ) async throws -> Void
     private let applicationRemovalFallback: ApplicationRemovalFallback?
+    private let administratorTrash: (@Sendable (AppleSoundLibrary.Inventory) async throws -> URL)?
     private let measureSize: @Sendable (URL) async throws -> SizeMeasurement
     /// Read per item in the instant before that item is removed. Kept out of the
     /// scan's measurement entirely — see ``PrivateSizeMeasurer`` for the 62 % that
@@ -139,12 +142,13 @@ public struct CleanupService: Sendable {
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         log: RemovalLog = RemovalLog(),
         dockerImages: DockerImageService = DockerImageService(),
-        applicationRemovalFallback: ApplicationRemovalFallback? = nil
+        applicationRemovalFallback: ApplicationRemovalFallback? = nil,
+        administratorTrash: (@Sendable (AppleSoundLibrary.Inventory) async throws -> URL)? = nil
     ) {
         self.init(measureSize: { try await measurer.measure($0) }, log: log,
                   registeredApplications: AppleSoundLibrary.registeredOwners, dockerImages: dockerImages,
                   reviewBuildCache: { try await XcodeBuildCache.measureForRemoval($0, with: measurer) },
-                  applicationRemovalFallback: applicationRemovalFallback)
+                  applicationRemovalFallback: applicationRemovalFallback, administratorTrash: administratorTrash)
     }
 
     init(
@@ -162,8 +166,10 @@ public struct CleanupService: Sendable {
         worktreeTrashDirectory: @escaping @Sendable (URL) throws -> URL = {
             try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: $0, create: true)
         },
-        applicationRemovalFallback: ApplicationRemovalFallback? = nil
+        applicationRemovalFallback: ApplicationRemovalFallback? = nil,
+        administratorTrash: (@Sendable (AppleSoundLibrary.Inventory) async throws -> URL)? = nil
     ) {
+        self.administratorTrash = administratorTrash
         self.measureSize = measureSize
         self.log = log
         self.registeredApplications = registeredApplications
@@ -219,6 +225,10 @@ public struct CleanupService: Sendable {
                 break
             }
             try Task.checkCancellation()
+            if outcome.administratorApprovalCancelled {
+                outcome.failed.append(entry.id)
+                continue
+            }
 
             if hasToolCommands, entry.toolCommand == nil {
                 // Finish the current file item before Stop starts another item.
@@ -336,6 +346,10 @@ public struct CleanupService: Sendable {
                 for: entry,
                 removeProtectedAppData: appDataRemovalOverrides.contains(entry.id)
             ) {
+                if outcome.administratorApprovalCancelled {
+                    outcome.failed.append(target.id)
+                    continue
+                }
                 guard soundLibraryIsStillSafe(target) else {
                     outcome.failed.append(target.url.path)
                     records.append(Self.failureRecord(for: target))
@@ -402,7 +416,16 @@ public struct CleanupService: Sendable {
                         if try await GitWorktreeDetector.move(target.url, to: destination) { landed = destination }
                         else { landed = try Self.discard(target.url, disposition: .trashed) }
                     } else {
-                        landed = try Self.discard(target.url, disposition: disposition)
+                        do {
+                            landed = try Self.discard(target.url, disposition: disposition)
+                        } catch {
+                            guard FileAccessFailure.isPermissionDenied(error), disposition == .trashed,
+                                  keepReceipt, !outcome.administratorApprovalCancelled,
+                                  let library = target.soundLibrary, let administratorTrash,
+                                  soundLibraryIsStillSafe(target) else { throw error }
+                            try log.checkWritable()
+                            landed = try await administratorTrash(library)
+                        }
                     }
                 } catch let error as CocoaError where error.code == .fileNoSuchFile {
                     // Already gone: someone else removed it since the scan. That is
@@ -411,6 +434,9 @@ public struct CleanupService: Sendable {
                     _ = error
                     continue
                 } catch {
+                    if error as? AdministratorTrashError == .cancelled {
+                        outcome.administratorApprovalCancelled = true
+                    }
                     let trashAccessDenied: Bool
                     if case TrashError.unreadable = error { trashAccessDenied = true }
                     else { trashAccessDenied = false }
@@ -864,7 +890,7 @@ public struct CleanupService: Sendable {
             // Never a removal instruction — `restored` exists only as a log
             // tombstone written by Put Back.
             return nil
-        case .failed:
+        case .failed, .skipped:
             // Never a removal instruction. This value records an attempt only.
             return nil
         }
