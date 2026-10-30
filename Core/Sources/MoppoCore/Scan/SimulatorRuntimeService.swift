@@ -19,11 +19,28 @@ public struct SimulatorRuntimeReview: Sendable, Equatable {
         let mountPath: String?
         let runtimeBundlePath: String?
 
+        static let patchableKind = "Patchable Cryptex Disk Image"
+
+        /// Newer Xcode versions keep the disk image and its signing files in a MobileAsset folder.
+        var isPatchable: Bool { kind == Self.patchableKind }
+
         var backingURL: URL? {
             if kind == "Cryptex Disk Image", parentImagePath == nil { return nil }
             guard let path = parentImagePath ?? path, path.hasPrefix("/"),
                   URL(fileURLWithPath: path).standardizedFileURL.path == path else { return nil }
-            return URL(fileURLWithPath: path)
+            let url = URL(fileURLWithPath: path)
+            if isPatchable {
+                let asset = url.deletingLastPathComponent()
+                let root = asset.deletingLastPathComponent().lastPathComponent
+                guard parentImagePath == nil, url.lastPathComponent == "AssetData", asset.pathExtension == "asset",
+                      root.hasPrefix("com_apple_MobileAsset_"), root.hasSuffix("SimulatorRuntime") else { return nil }
+            }
+            return url
+        }
+
+        /// simctl reports an unknown signature state for patchable runtimes. Other kinds must be verified.
+        var hasAcceptedSignature: Bool {
+            signatureState == "Verified" || (isPatchable && signatureState == "Unknown")
         }
 
         var storageKey: String? {
@@ -98,8 +115,8 @@ struct SimulatorRuntimeService: Sendable {
             else if UUID(uuidString: runtime.identifier) == nil || runtime.runtimeIdentifier?.isEmpty != false
                 || runtime.version?.isEmpty != false || runtime.build?.isEmpty != false || runtime.platform == "Unknown platform" {
                 reason = "Runtime details are incomplete. Scan again before removal."
-            } else if runtime.deletable != true || runtime.state != "Ready" || runtime.signatureState != "Verified"
-                || !["Cryptex Disk Image", "Disk Image"].contains(runtime.kind ?? "") {
+            } else if runtime.deletable != true || runtime.state != "Ready" || !runtime.hasAcceptedSignature
+                || !["Cryptex Disk Image", "Disk Image", SimulatorRuntimeReview.Runtime.patchableKind].contains(runtime.kind ?? "") {
                 reason = "This runtime cannot be removed safely through simctl. Manage it in Xcode Components."
             } else if requiredBuilds.contains(runtime.matchKey) {
                 reason = "An installed Xcode version uses this runtime. Moppo keeps it protected."
@@ -227,6 +244,14 @@ struct SimulatorRuntimeService: Sendable {
             + "After you update Xcode, retry removal in Xcode Components."
     }
 
+    /// Every simulator runtime download folder that macOS keeps, one for each platform.
+    static func assetRoots(in assets: URL = URL(fileURLWithPath: "/System/Library/AssetsV2")) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: assets.path)) ?? []
+        let roots = names.filter { $0.hasPrefix("com_apple_MobileAsset_") && $0.hasSuffix("SimulatorRuntime") }.sorted()
+        return roots.isEmpty ? [assets.appendingPathComponent("com_apple_MobileAsset_iOSSimulatorRuntime")]
+            : roots.map { assets.appendingPathComponent($0) }
+    }
+
     static func downloadEntries(in roots: [URL], registeredRuntimes: [SimulatorRuntimeReview.Runtime]?,
                                 context: ScanContext, removalGuidance: String? = nil) async throws -> (entries: [FileEntry], unreadableCount: Int) {
         struct AssetInfo: Decodable {
@@ -266,16 +291,29 @@ struct SimulatorRuntimeService: Sendable {
                     guard infoValues.isRegularFile == true, infoValues.isSymbolicLink != true,
                           let infoSize = infoValues.fileSize, infoSize <= 1_048_576 else { unreadableCount += 1; continue }
                     let info = try PropertyListDecoder().decode(AssetInfo.self, from: Data(contentsOf: infoURL))
-                    guard info.CFBundleIdentifier == "com.apple.MobileAsset.iOSSimulatorRuntime" else { continue }
+                    guard info.CFBundleIdentifier == root.lastPathComponent.replacingOccurrences(of: "_", with: "."),
+                          info.CFBundleIdentifier.hasSuffix("SimulatorRuntime") else { continue }
                     let dataURL = asset.appendingPathComponent("AssetData")
                     let dataValues = try dataURL.resourceValues(forKeys: keys)
                     guard dataValues.isDirectory == true, dataValues.isSymbolicLink != true else { continue }
-                    let images = try manager.contentsOfDirectory(at: dataURL, includingPropertiesForKeys: Array(keys))
-                    for image in images.sorted(by: { $0.path < $1.path }) where image.pathExtension.lowercased() == "dmg" {
+                    let contents = try manager.contentsOfDirectory(at: dataURL, includingPropertiesForKeys: Array(keys))
+                        .sorted { $0.path < $1.path }
+                    var images = contents.filter { $0.pathExtension.lowercased() == "dmg" }
+                    // A patchable image keeps its disk image and signing files together, so the folder is one download.
+                    if images.isEmpty, let restore = contents.first(where: { $0.lastPathComponent == "Restore" }) {
+                        let restoreValues = try restore.resourceValues(forKeys: keys)
+                        if restoreValues.isDirectory == true, restoreValues.isSymbolicLink != true,
+                           try manager.contentsOfDirectory(at: restore, includingPropertiesForKeys: nil)
+                               .contains(where: { $0.pathExtension.lowercased() == "dmg" }) {
+                            images = [dataURL]
+                        }
+                    }
+                    for image in images {
                         try Task.checkCancellation()
                         guard !context.isExcluded(image), !context.isExcluded(image.resolvingSymlinksInPath()) else { continue }
                         let imageValues = try image.resourceValues(forKeys: keys)
-                        guard imageValues.isRegularFile == true, imageValues.isSymbolicLink != true else { continue }
+                        let isExpectedType = image == dataURL ? imageValues.isDirectory == true : imageValues.isRegularFile == true
+                        guard isExpectedType, imageValues.isSymbolicLink != true else { continue }
                         let key = FileIdentity.of(image) ?? image.resolvingSymlinksInPath().path
                         guard represented.insert(key).inserted else { continue }
                         let size = try await context.measurer.measure(image)

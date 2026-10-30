@@ -28,18 +28,26 @@ struct SimulatorRuntimeTests {
         let downloadsRoot: URL
         let id = "62F84A00-333C-4895-B0A5-C19C5717C4EF"
         let otherID = "62F84A00-333C-4895-B0A5-C19C5717C4EE"
+        let patchable: Bool
 
-        init() throws {
+        /// A patchable runtime uses an `AssetData` folder as its backing storage instead of one image file.
+        init(patchable: Bool = false) throws {
+            self.patchable = patchable
             root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("moppo-runtime-\(UUID())")
-            asset = root.appendingPathComponent("runtime.dmg")
             developer = root.appendingPathComponent("Xcode.app/Contents/Developer")
             otherDeveloper = root.appendingPathComponent("Xcode-beta.app/Contents/Developer")
             executable = root.appendingPathComponent("simctl")
             downloadsRoot = root.appendingPathComponent("AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime")
             try FileManager.default.createDirectory(at: developer, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: otherDeveloper, withIntermediateDirectories: true)
-            try Data(repeating: 1, count: 65_536).write(to: asset)
             try Data("stub executable".utf8).write(to: executable)
+            if patchable {
+                asset = try Self.writeDownload(in: downloadsRoot, name: "installed",
+                    identifier: "com.apple.MobileAsset.iOSSimulatorRuntime", patchable: true)
+            } else {
+                asset = root.appendingPathComponent("runtime.dmg")
+                try Data(repeating: 1, count: 65_536).write(to: asset)
+            }
         }
 
         deinit { try? FileManager.default.removeItem(at: root) }
@@ -51,18 +59,28 @@ struct SimulatorRuntimeTests {
             try data.write(to: developer.deletingLastPathComponent().appendingPathComponent("Info.plist"))
         }
 
-        func download(_ name: String, identifier: String = "com.apple.MobileAsset.iOSSimulatorRuntime") throws -> URL {
+        /// Returns the image file, or the `AssetData` folder for a patchable download.
+        func download(_ name: String, identifier: String = "com.apple.MobileAsset.iOSSimulatorRuntime",
+                      patchable: Bool = false) throws -> URL {
+            try Self.writeDownload(in: downloadsRoot, name: name, identifier: identifier, patchable: patchable)
+        }
+
+        private static func writeDownload(in downloadsRoot: URL, name: String, identifier: String,
+                                          patchable: Bool) throws -> URL {
             let asset = downloadsRoot.appendingPathComponent(name + ".asset")
             let data = asset.appendingPathComponent("AssetData")
-            try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+            let images = patchable ? data.appendingPathComponent("Restore") : data
+            try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
             let info = try PropertyListSerialization.data(fromPropertyList: [
                 "CFBundleIdentifier": identifier,
                 "MobileAssetProperties": ["Build": "22B81", "SimulatorVersion": "18.1"],
             ], format: .binary, options: 0)
             try info.write(to: asset.appendingPathComponent("Info.plist"))
-            let image = data.appendingPathComponent("runtime.dmg")
+            let image = images.appendingPathComponent("runtime.dmg")
             try Data(repeating: 1, count: 65_536).write(to: image)
-            return image
+            guard patchable else { return image }
+            try Data("signing data".utf8).write(to: images.appendingPathComponent("BuildManifest.plist"))
+            return data
         }
 
         func inventory(present: Bool = true, change: [String: Any] = [:], shared: Bool = false) throws -> Data {
@@ -75,6 +93,13 @@ struct SimulatorRuntimeTests {
                 "mountPath": root.appendingPathComponent("Volumes/iOS_22B81").path,
                 "sizeBytes": 999_999_999
             ]
+            if patchable {
+                record["kind"] = "Patchable Cryptex Disk Image"
+                record["signatureState"] = "Unknown"
+                record["path"] = asset.path
+                record["parentImagePath"] = nil
+                record["parentIdentifier"] = nil
+            }
             record.merge(change) { _, value in value }
             var records = present ? [id: record] : [:]
             if shared {
@@ -134,9 +159,9 @@ struct SimulatorRuntimeTests {
         }
     }
 
-    @Test("Runtime rows measure backing storage and respect runtime path exclusions")
-    func inventoryAndSizes() async throws {
-        let fixture = try Fixture()
+    @Test("Runtime rows measure backing storage and respect runtime path exclusions", arguments: [false, true])
+    func inventoryAndSizes(patchable: Bool) async throws {
+        let fixture = try Fixture(patchable: patchable)
         let scanner = fixture.scanner(fixture.service())
         let result = try await scanner.scan(context: ScanContext())
         let row = try #require(result.entries.first)
@@ -155,11 +180,11 @@ struct SimulatorRuntimeTests {
         #expect(protected.entries.isEmpty)
     }
 
-    @Test("A fresh scan lists retained simulator downloads and refuses file removal")
-    func retainedDownloadInventory() async throws {
+    @Test("A fresh scan lists retained simulator downloads and refuses file removal", arguments: [false, true])
+    func retainedDownloadInventory(patchable: Bool) async throws {
         let fixture = try Fixture()
         try fixture.writeXcodeVersion("27.1")
-        let image = try fixture.download("retained")
+        let image = try fixture.download("retained", patchable: patchable)
         let scanner = fixture.scanner(fixture.service(inventoryData: Data("{}".utf8)), assetRoots: [fixture.downloadsRoot])
         let result = try await scanner.scan(context: ScanContext())
         let row = try #require(result.entries.first)
@@ -187,11 +212,11 @@ struct SimulatorRuntimeTests {
         #expect(protected.entries.isEmpty)
     }
 
-    @Test("Registered runtime images are not counted again as downloads")
-    func registeredDownloadOverlap() async throws {
-        let fixture = try Fixture()
-        let image = try fixture.download("installed")
-        let scanner = fixture.scanner(fixture.service(change: ["parentImagePath": image.path]), assetRoots: [fixture.downloadsRoot])
+    @Test("Registered runtime images are not counted again as downloads", arguments: [false, true])
+    func registeredDownloadOverlap(patchable: Bool) async throws {
+        let fixture = try Fixture(patchable: patchable)
+        let change = patchable ? [:] : ["parentImagePath": try fixture.download("installed").path]
+        let scanner = fixture.scanner(fixture.service(change: change), assetRoots: [fixture.downloadsRoot])
         let result = try await scanner.scan(context: ScanContext())
         #expect(result.entries.count == 1)
         #expect(result.entries.first?.toolCommand != nil)
@@ -278,6 +303,18 @@ struct SimulatorRuntimeTests {
         }
     }
 
+    @Test("Patchable runtimes need the MobileAsset folder layout and a known signature state")
+    func patchableRuntimeChecks() async throws {
+        let fixture = try Fixture(patchable: true)
+        let elsewhere = fixture.root.appendingPathComponent("Elsewhere/AssetData")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        for change in [["signatureState": "Invalid"], ["path": elsewhere.path], ["kind": "Cryptex Disk Image"]] {
+            let row = try await fixture.entry(fixture.service(change: change))
+            #expect(row.isRemovalLocked)
+            #expect(row.protectionExplanation != nil)
+        }
+    }
+
     @Test("Shared backing assets appear once in totals and have distinct protected rows")
     func sharedAsset() async throws {
         let fixture = try Fixture()
@@ -304,9 +341,9 @@ struct SimulatorRuntimeTests {
         }
     }
 
-    @Test("Runtime removal records permanent History with receipts off")
-    func removalAndHistory() async throws {
-        let fixture = try Fixture()
+    @Test("Runtime removal records permanent History with receipts off", arguments: [false, true])
+    func removalAndHistory(patchable: Bool) async throws {
+        let fixture = try Fixture(patchable: patchable)
         let service = fixture.service()
         let row = try await fixture.entry(service)
         let command = try #require(row.toolCommand)
@@ -418,14 +455,21 @@ struct SimulatorRuntimeTests {
         }
     }
 
-    @Test("Changed backing images and toolchains reject an earlier review", arguments: [true, false])
-    func changedFiles(asset: Bool) async throws {
-        let fixture = try Fixture()
+    enum ChangedFile: CaseIterable { case image, patchableFolder, toolchain }
+
+    @Test("Changed backing images and toolchains reject an earlier review", arguments: ChangedFile.allCases)
+    func changedFiles(change: ChangedFile) async throws {
+        let fixture = try Fixture(patchable: change == .patchableFolder)
         let service = fixture.service()
         let row = try await fixture.entry(service)
         let command = try #require(row.toolCommand)
-        let path = asset ? fixture.asset : fixture.executable
-        try Data("changed file".utf8).write(to: path)
+        switch change {
+        case .image: try Data("changed file".utf8).write(to: fixture.asset)
+        case .toolchain: try Data("changed file".utf8).write(to: fixture.executable)
+        case .patchableFolder:
+            try FileManager.default.removeItem(at: fixture.asset)
+            try FileManager.default.createDirectory(at: fixture.asset, withIntermediateDirectories: true)
+        }
         let result = await fixture.remover(service).remove(row, review: command, confirmed: command)
         #expect(result.status == .notStarted)
         #expect(result.exitStatus == nil)

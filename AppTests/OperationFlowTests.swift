@@ -359,6 +359,20 @@ struct OperationFlowTests {
         #expect(!model.isBusyWithDisk)
     }
 
+    @Test("The Cleanup banner names empty, permanent, and Trash results with correct counts")
+    func cleanupBannerText() {
+        let cases: [(CleanupOutcome, String, String?)] = [
+            (CleanupOutcome(failed: ["runtime"]), "No items removed", "1 item could not be removed."),
+            (CleanupOutcome(removedCount: 1, deletedCount: 1), "1 item removed", nil),
+            (CleanupOutcome(removedBytes: 2_048, removedCount: 2, failed: ["a", "b"], trashedCount: 2),
+             "\(ByteFormatting.string(2_048)) moved to Trash", "2 items could not be removed."),
+        ]
+        for (outcome, title, note) in cases {
+            #expect(ScannerView.completionTitle(outcome) == title)
+            #expect(ScannerView.failureNote(outcome) == note)
+        }
+    }
+
     enum ToolCommandResultCase: CaseIterable { case verified, failed, retainedStorage, unverifiedRecovery }
 
     @Test("Cleanup shows a tool command alert only when the result needs attention",

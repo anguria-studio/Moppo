@@ -58,7 +58,7 @@ public struct XcodeScanner: CategoryScanner {
         self.temporaryRoots = temporaryRoots
         self.systemSimulatorRoot = systemSimulatorRoot
         self.simulatorAssetRoots = simulatorAssetRoots ?? (systemSimulatorRoot.standardizedFileURL.path == "/Library/Developer/CoreSimulator"
-            ? [URL(fileURLWithPath: "/System/Library/AssetsV2/com_apple_MobileAsset_iOSSimulatorRuntime")] : [])
+            ? SimulatorRuntimeService.assetRoots() : [])
     }
 
     // MARK: - Roots

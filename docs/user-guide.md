@@ -186,6 +186,8 @@ Cleanup History records the result.
 Put Back cannot restore a deleted simulator runtime.
 Cleanup lists each simulator runtime under **Xcode & iOS Dev**.
 Each row shows the platform, version, build, and backing image size.
+Newer Xcode versions store each runtime image in a folder with its signing files.
+For these runtimes, the size includes that folder.
 The size excludes mounted contents and shared caches.
 Shared backing images enter the total once.
 

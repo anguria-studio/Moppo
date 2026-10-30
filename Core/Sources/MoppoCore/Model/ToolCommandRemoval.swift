@@ -41,9 +41,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         self.expectedResult = expectedResult
         self.timeout = timeout
         self.protectedPatterns = protectedPatterns
-        let fileTarget: Bool
-        if case .simulatorRuntimeAbsent = expectedResult { fileTarget = true } else { fileTarget = false }
-        paths = Self.pathIdentities(targetURL, fileTarget: fileTarget)
+        paths = Self.pathIdentities(targetURL, fileTarget: Self.targetIsFile(expectedResult))
         resolvedExecutable = executable.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
         executableIdentity = resolvedExecutable.flatMap(Self.fileVersion)
         self.scriptURL = scriptURL
@@ -66,6 +64,12 @@ public struct ToolCommandRemoval: Sendable, Equatable {
     var simulatorRuntime: SimulatorRuntimeReview? {
         if case .simulatorRuntimeAbsent(let review) = expectedResult { return review }
         return nil
+    }
+
+    /// A runtime backing image is one file, except for a patchable runtime folder.
+    private static func targetIsFile(_ expectedResult: ExpectedResult) -> Bool {
+        if case .simulatorRuntimeAbsent(let review) = expectedResult { return !review.runtime.isPatchable }
+        return false
     }
 
     static func simulatorRuntime(_ review: SimulatorRuntimeReview, fallbackURL: URL,
@@ -118,7 +122,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
               URL(fileURLWithPath: executable).resolvingSymlinksInPath().path == resolvedExecutable,
               Self.fileVersion(resolvedExecutable) == executableIdentity,
               scriptURL.map({ Self.fileVersion($0.path) == scriptIdentity }) ?? true,
-              let paths, paths == Self.pathIdentities(targetURL, fileTarget: simulatorRuntime != nil) else { return false }
+              let paths, paths == Self.pathIdentities(targetURL, fileTarget: Self.targetIsFile(expectedResult)) else { return false }
         return true
     }
 
@@ -139,7 +143,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
 
     func targetIsUnchangedAfterRemoval() -> Bool {
         guard let paths else { return false }
-        return paths == Self.pathIdentities(targetURL, fileTarget: simulatorRuntime != nil)
+        return paths == Self.pathIdentities(targetURL, fileTarget: Self.targetIsFile(expectedResult))
     }
 
     private static func pathIdentities(_ url: URL, fileTarget: Bool) -> [PathIdentity]? {

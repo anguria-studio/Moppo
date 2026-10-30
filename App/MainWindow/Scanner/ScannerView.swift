@@ -211,18 +211,26 @@ struct ScannerView: View {
         .padding(.leading, 15)
     }
 
+    /// The banner heading. It names permanent removals and Trash moves differently.
+    static func completionTitle(_ outcome: CleanupOutcome) -> String {
+        if outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) { return "Cleanup incomplete" }
+        if outcome.removedCount == 0 { return "No items removed" }
+        if outcome.deletedCount > 0 {
+            return "\(outcome.removedCount) \(outcome.removedCount == 1 ? "item removed" : "items removed")"
+        }
+        return "\(ByteFormatting.string(outcome.removedBytes)) moved to Trash"
+    }
+
+    static func failureNote(_ outcome: CleanupOutcome) -> String? {
+        let count = outcome.failed.count
+        guard count > 0 else { return nil }
+        return "\(count) \(count == 1 ? "item" : "items") could not be removed."
+    }
+
     private func completion(_ outcome: CleanupOutcome) -> some View {
         HStack(spacing: 12) {
-            Group {
-                if outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) {
-                    Text("Cleanup incomplete")
-                } else {
-                    Text(outcome.deletedCount > 0
-                        ? "\(outcome.removedCount) \(outcome.removedCount == 1 ? "item removed" : "items removed")"
-                        : "\(ByteFormatting.string(outcome.removedBytes)) moved to Trash")
-                }
-            }
-            .font(.mcRowTitle)
+            Text(Self.completionTitle(outcome))
+                .font(.mcRowTitle)
             let recoveredBytes = outcome.toolCommandResults
                 .compactMap { $0.status == .completed ? $0.freedBytes : nil }.reduce(0, +)
             if recoveredBytes > 0, !outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) {
@@ -230,8 +238,8 @@ struct ScannerView: View {
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
             }
-            if !outcome.failed.isEmpty {
-                Text("\(outcome.failed.count) items could not be removed.")
+            if let note = Self.failureNote(outcome) {
+                Text(note)
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
             }
