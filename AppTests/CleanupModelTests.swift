@@ -317,21 +317,51 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.categories.first?.entries.first?.allocatedBytes == 0)
     }
 
-    @Test("Tool command review renders in both appearances", arguments: [true, false])
-    func toolCommandReviewRendering(runtime: Bool) async throws {
+    @Test("The cleanup button says Remove when the selection has a tool command")
+    func toolCommandRemoveLabel() throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-label")
+        let command = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache, allocatedBytes: 300,
+            isRegenerable: true, removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
+        let app = AppModel()
+        app.view = .scanner
+        app.cleanup.scanFilter = .all
+        app.cleanup.scanResults = cleanupResults([command])
+        app.cleanup.scannerSelection = [command.id]
+        #expect(app.cleanup.hasSelectedPermanentItems)
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(command.allocatedBytes)))")
+    }
+
+    enum ToolCommandReviewCase: String, CaseIterable { case go, homebrew, runtime }
+
+    @Test("Tool command review explains each command and renders in both appearances",
+          arguments: ToolCommandReviewCase.allCases)
+    func toolCommandReviewRendering(reviewCase: ToolCommandReviewCase) async throws {
         let folder = try TemporaryFolder(prefix: "moppo-command-render")
-        var entry = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache,
-            allocatedBytes: 1_234_567_890, isRegenerable: true,
-            removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
-        if runtime {
+        let entry: FileEntry
+        let explanation: String
+        switch reviewCase {
+        case .go:
+            entry = FileEntry(url: folder.url, displayName: "Go module cache", kind: .cache,
+                allocatedBytes: 1_234_567_890, isRegenerable: true,
+                removalMethod: .toolCommand(.goModuleCache(at: folder.url, executable: "/opt/homebrew/bin/go")))
+            explanation = "Projects may need another dependency download."
+        case .homebrew:
+            let version = HomebrewFormulaVersion(name: "xz", version: "5.8.3", path: folder.url.path,
+                token: String(repeating: "a", count: 64))
+            entry = FileEntry(url: folder.url, displayName: "xz 5.8.3", kind: .cache, allocatedBytes: 2_900_000,
+                removalMethod: .toolCommand(.homebrewVersion(version, executable: "/opt/homebrew/bin/brew")))
+            explanation = "Homebrew keeps the other installed versions of this formula."
+        case .runtime:
             entry = try runtimeCommandEntry(at: folder.url.appendingPathComponent("runtime.dmg"))
+            explanation = "Download available runtimes again manually in Xcode Components."
         }
         for dark in [false, true] {
-            let sheet = ConfirmationSheet(variant: .cleanUp(itemCount: runtime ? 2 : 1, totalBytes: entry.allocatedBytes,
-                protectedDataCount: 0, saving: nil), toolCommandEntry: entry, toolCommandCount: 1,
-                onConfirm: {}, onCancel: {})
+            let sheet = ConfirmationSheet(variant: .cleanUp(itemCount: reviewCase == .runtime ? 2 : 1,
+                totalBytes: entry.allocatedBytes, protectedDataCount: 0, saving: nil),
+                toolCommandEntry: entry, toolCommandCount: 1, onConfirm: {}, onCancel: {})
+            #expect(sheet.message.contains(explanation))
             let size = try await renderTestView(sheet.background(Token.chrome), width: 404, dark: dark,
-                output: URL(fileURLWithPath: "/tmp/moppo-244-\(runtime ? "runtime" : "go")-review-\(dark ? "dark" : "light").png"))
+                output: URL(fileURLWithPath: "/tmp/moppo-244-\(reviewCase.rawValue)-review-\(dark ? "dark" : "light").png"))
             #expect(size.height > 100 && size.height < 300)
         }
     }
@@ -535,9 +565,9 @@ struct CleanupModelTests {
         cleanup.scanFilter = .all
         cleanup.scanResults = cleanupResults([node, archive, image])
         cleanup.scannerSelection = [node.id, archive.id, image.id]
-        #expect(cleanup.hasSelectedDockerImages)
+        #expect(cleanup.hasSelectedPermanentItems)
         cleanup.dataTypeFilter = .nodeModules
-        #expect(!cleanup.hasSelectedDockerImages)
+        #expect(!cleanup.hasSelectedPermanentItems)
         #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(node.allocatedBytes)))")
         cleanup.setScannerSelection(cleanup.scannerSelection.subtracting([node.id]))
         #expect(cleanup.cleanupSelection(in: cleanup.scanFilter).isEmpty)
@@ -546,11 +576,11 @@ struct CleanupModelTests {
         #expect(cleanup.pendingCleanUp == nil)
         cleanup.dataTypeFilter = .all
         #expect(cleanup.scannerSelection == [archive.id, image.id])
-        #expect(cleanup.hasSelectedDockerImages)
+        #expect(cleanup.hasSelectedPermanentItems)
         let remainingBytes = archive.allocatedBytes + image.allocatedBytes
         #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
         cleanup.scanFilter = .safeToRemove
-        #expect(!cleanup.hasSelectedDockerImages)
+        #expect(!cleanup.hasSelectedPermanentItems)
         #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
         cleanup.requestCleanUp(in: cleanup.scanFilter)
         #expect(cleanup.pendingCleanUp == nil)

@@ -598,7 +598,7 @@ final class AppModel {
     var removeLabel: String {
         switch view {
         case .scanner:
-            cleanup.hasSelectedDockerImages
+            cleanup.hasSelectedPermanentItems
                 ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: cleanup.scanFilter))))"
                 : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: cleanup.scanFilter))))"
         case .duplicates:

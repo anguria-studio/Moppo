@@ -274,7 +274,11 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
         else { return self }
         var copy = self
         copy.entries = entries.filter { entry in
-            if let command = entry.toolCommand, case .simulatorRuntimeAbsent = command.expectedResult { return true }
+            // Each runtime and old Homebrew version is a separate reviewed item, so small ones stay visible.
+            if let command = entry.toolCommand {
+                if case .simulatorRuntimeAbsent = command.expectedResult { return true }
+                if command.isHomebrewVersion { return true }
+            }
             if categoryID == .xcode, entry.protectionReason == .inventory { return true }
             return entry.totalBytesIncludingChildren >= floor || entry.worktreeCount > 0 || !entry.localModelPaths.isEmpty
         }

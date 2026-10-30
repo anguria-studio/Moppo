@@ -345,6 +345,7 @@ Images that an installed runtime already represents do not enter the total again
 Unknown registration checks keep the download protected without claiming that its runtime is absent.
 The service measures the backing image again and reports verified space recovery only when available.
 Homebrew formula versions appear separately under Package Manager Caches and require review.
+The 1 MB scan noise floor does not apply to these rows.
 The adapter uses `brew ruby` with Homebrew eligibility, locking, and cleanup methods.
 Removal applies to one selected version and does not run general Homebrew cleanup or dependency removal.
 Pinned formulae, linked versions, active `opt` versions, and versions that Homebrew retains stay protected.

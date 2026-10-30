@@ -176,6 +176,7 @@ Projects can need to download their dependencies again.
 Put Back cannot restore formula versions that Homebrew removes.
 Cleanup lists eligible old versions under **Package Manager Caches**. They stay outside **Safe to Remove**.
 Pinned, linked, active, and retained versions stay protected.
+Cleanup hides most rows smaller than 1 MB, but it shows each old version at any size.
 Select **Remove** for each version, also when routine confirmations are off.
 Homebrew removes only the selected version after another check.
 Cleanup History records the result.

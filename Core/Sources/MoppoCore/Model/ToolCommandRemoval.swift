@@ -85,7 +85,7 @@ public struct ToolCommandRemoval: Sendable, Equatable {
             protectedPatterns: protectedPatterns, scriptURL: script)
     }
 
-    var isHomebrewVersion: Bool {
+    public var isHomebrewVersion: Bool {
         guard let scriptURL else { return false }
         return scriptURL == HomebrewFormulaVersions.scriptURL
     }

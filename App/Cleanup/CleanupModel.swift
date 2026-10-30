@@ -229,9 +229,12 @@ final class CleanupModel {
         }
     }
 
-    var hasSelectedDockerImages: Bool {
+    /// True when the visible selection has a Docker image, a tool command, or a Codex session.
+    var hasSelectedPermanentItems: Bool {
         let selected = cleanupSelection(in: scanFilter)
-        return selectedEntries.contains { selected.contains($0.id) && $0.dockerImage != nil }
+        return selectedEntries.contains {
+            selected.contains($0.id) && ($0.dockerImage != nil || $0.toolCommand != nil || $0.codexSession != nil)
+        }
     }
 
     private var selectedOrphanApplicationEntries: [FileEntry] {

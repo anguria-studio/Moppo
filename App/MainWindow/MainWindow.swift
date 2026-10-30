@@ -403,8 +403,8 @@ struct MainWindow: View {
         .disabled(!canRemove)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.removeLabel)
         .help(model.view == .scanner
-              ? model.cleanup.hasSelectedDockerImages
-                ? "Docker permanently removes selected images in this view. Other selected items in this view move to the Trash."
+              ? model.cleanup.hasSelectedPermanentItems
+                ? "Some selected items in this view cannot go to the Trash. Their tools remove them permanently. Other selected items move to the Trash."
                 : "Moves selected items in this view to the Trash."
               : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
                 ? "Checks each selected application before uninstall."

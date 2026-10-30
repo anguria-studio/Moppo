@@ -207,12 +207,14 @@ struct ConfirmationSheet: View {
         }
     }
 
-    private var message: String {
+    var message: String {
         if let entry = toolCommandEntry {
             guard case .cleanUp(let count, _, let protected, _) = variant else { return "" }
             var message = "This selection contains \(entry.displayName), which you cannot restore."
             if let command = entry.toolCommand, case .simulatorRuntimeAbsent = command.expectedResult {
                 message += " Download available runtimes again manually in Xcode Components."
+            } else if entry.toolCommand?.isHomebrewVersion == true {
+                message += " Homebrew keeps the other installed versions of this formula."
             } else {
                 message += " Projects may need another dependency download."
             }
