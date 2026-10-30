@@ -4,6 +4,7 @@ import Foundation
 public struct ToolCommandRemovalService: Sendable {
     typealias Run = @Sendable (ToolCommandRemoval) async throws -> ProcessResult
     private let run: Run
+    private let runtimes: SimulatorRuntimeService
 
     public init() {
         self.init { review in
@@ -13,7 +14,10 @@ public struct ToolCommandRemovalService: Sendable {
         }
     }
 
-    init(run: @escaping Run) { self.run = run }
+    init(run: @escaping Run, runtimes: SimulatorRuntimeService = SimulatorRuntimeService()) {
+        self.run = run
+        self.runtimes = runtimes
+    }
 
     func remove(_ entry: FileEntry, review: ToolCommandRemoval, confirmed: ToolCommandRemoval?) async -> ToolCommandRemovalResult {
         var result = ToolCommandRemovalResult(targetID: entry.id, name: entry.displayName, command: review.command)
@@ -35,10 +39,15 @@ public struct ToolCommandRemovalService: Sendable {
         do {
             before = try await measurer.measure(review.targetURL)
             privateSize = try await PrivateSizeMeasurer().measure([review.targetURL])
+            if let runtime = review.simulatorRuntime, try await !runtimes.isStillSafe(runtime) {
+                result.failureReason = "The runtime or its Xcode use changed. Scan again before removal."
+                return result
+            }
             try Task.checkCancellation()
         } catch {
             result.status = Task.isCancelled ? .cancelled : .notStarted
             result.failureReason = "Removal stopped before the command ran."
+            result.standardError = String(String(describing: error).prefix(4096))
             return result
         }
         guard before.unreadableCount == 0, !before.containsProtectedPattern, !before.containsCloudOnlyItem,
@@ -78,21 +87,41 @@ public struct ToolCommandRemovalService: Sendable {
         }
 
         // Verification finishes after cancellation so completed removals retain their results.
-        let after = await Task.detached { () -> SizeMeasurement? in
-            if review.targetIsAbsentAfterRemoval() { return .zero }
+        let verification = await Task.detached { () -> (measurement: SizeMeasurement?, removed: Bool, failureReason: String?, error: String?) in
+            let verified: Bool
+            var reason: String?
+            var error: String?
+            if let runtime = review.simulatorRuntime {
+                let state = await runtimes.verifyRemoval(runtime)
+                if case .removed = state { verified = true } else { verified = false }
+                reason = state.failureReason
+                if case .unavailable(let detail) = state { error = detail }
+            } else { verified = review.removalIsVerified() }
+            if review.targetIsAbsentAfterRemoval() { return (.zero, verified, reason, error) }
             guard review.targetIsUnchangedAfterRemoval(),
                   let measured = try? await measurer.measure(review.targetURL), measured.unreadableCount == 0,
                   !measured.containsProtectedPattern, !measured.containsCloudOnlyItem,
-                  review.targetIsUnchangedAfterRemoval() else { return nil }
-            return measured
+                  review.targetIsUnchangedAfterRemoval() else { return (nil, verified, reason, error) }
+            return (measured, verified, reason, error)
         }.value
-        result.afterBytes = after?.allocatedBytes
-        if review.targetIsAbsentAfterRemoval(), let privateSize, privateSize.unreportedCount == 0 {
+        result.afterBytes = verification.measurement?.allocatedBytes
+        if let runtime = review.simulatorRuntime, let bytes = result.afterBytes, bytes > 0 {
+            let guidance = verification.removed
+                ? SimulatorRuntimeService.retainedImageGuidance(developerDirectory: runtime.developerDirectory) : nil
+            result.remainingStorageReason = ["macOS still stores the downloaded image (\(ByteFormatting.string(bytes))).", guidance]
+                .compactMap { $0 }.joined(separator: "\n")
+        }
+        if verification.removed, review.targetIsAbsentAfterRemoval(), let privateSize, privateSize.unreportedCount == 0 {
             result.freedBytes = privateSize.privateBytes
         }
-        if result.status == .completed, !review.removalIsVerified() {
+        if result.status == .completed, !verification.removed {
             result.status = .failed
-            result.failureReason = "The item is still present, or Moppo could not check it. Scan again before removal."
+            result.failureReason = verification.failureReason
+                ?? "The item is still present, or Moppo could not check it. Scan again before removal."
+            if let error = verification.error {
+                result.standardError = String([result.standardError, error].filter { !$0.isEmpty }
+                    .joined(separator: "\n").prefix(4096))
+            }
         }
         return result
     }

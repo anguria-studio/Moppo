@@ -55,6 +55,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// The file path, application group identifier, or Docker image URL.
     public var id: String {
         if dockerImage != nil { return url.absoluteString }
+        if let runtime = toolCommand?.simulatorRuntime { return "simulator-runtime:\(runtime.runtime.identifier)" }
         return switch removalAction {
         case .orphanedApplication(let identifier):
             "orphaned-application:\(identifier)"
@@ -99,14 +100,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case folderRemainder
     }
 
-    /// How to remove something this app cannot: the explanation of what it is and
-    /// the exact terminal command that removes it.
-    ///
-    /// Exists for things like simulator runtimes, which are sealed read-only
-    /// volumes: `rm` fails on every file inside them even as root, and only their
-    /// owning tool (`simctl`) can take them away. Hiding them made a 29 GB
-    /// consumer invisible; listing them with a working checkbox would be a lie the
-    /// user discovers only after confirming. This is the honest third option.
+    /// Instructions for storage that requires removal outside Moppo.
     public struct ManualRemoval: Sendable, Equatable {
         public let explanation: String
         public let command: String
@@ -325,18 +319,10 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         return isRemovalLocked ? childBytes : allocatedBytes + childBytes + remainderBytes
     }
 
-    /// The figure a row advertises, and the one every *display* total sums —
-    /// category totals, tiles, list headers. `reclaimableBytes` answers a different
-    /// question, "what would removal free", and belongs to cleanup arithmetic only.
-    ///
-    /// For an ordinary entry this is what removal frees. A manual-removal row
-    /// frees nothing *through this app* — Docker's images, a sealed simulator
-    /// runtime — but the space is real and the row states it, so the tile above the
-    /// list and the list header have to agree with the rows. Summing
-    /// `reclaimableBytes` instead made Docker's 5 GB appear as "0 B" over a list of
-    /// gigabyte rows.
+    /// Storage shown in the row and category totals, including protected tool storage.
+    /// Removal estimates use `reclaimableBytes` separately.
     public var displayBytes: Int64 {
-        if dockerImage != nil { return allocatedBytes }
+        if dockerImage != nil || toolCommand != nil { return allocatedBytes }
         if removalAction != nil { return reclaimableBytes }
         return manualRemoval != nil || protectionReason == .inventory || protectionReason == .folderRemainder
             || codexSession != nil || !unlockableChildren.isEmpty

@@ -4,6 +4,19 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Remove selected simulator runtimes through simctl after mandatory confirmation, with permanent Cleanup History records.
+- Protect runtimes used by installed Xcode versions and active simulators.
+- Support the patchable runtime format that newer Xcode versions download.
+- Show retained simulator downloads for tvOS, watchOS, and visionOS, as well as iOS.
+- Keep retained simulator download images visible with their size and protection reason.
+- Report incomplete cleanup when macOS keeps simulator images after removal.
+- Explain the known Xcode deletion issue when an older Xcode version leaves a simulator image on disk.
+- Show successful tool command results in the Cleanup banner instead of an alert.
+- Show **Remove** on the Cleanup button when the selection has items that cannot go to the Trash.
+- Explain that Homebrew keeps the other installed versions when you remove an old formula version.
+- Show old Homebrew formula versions smaller than 1 MB in Cleanup.
+- Show **No items removed** in the Cleanup banner when a cleanup removes nothing, and count one failed item correctly.
+
 ## [0.4.0] - 2026-10-29
 
 Build 53.

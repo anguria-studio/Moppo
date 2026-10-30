@@ -118,6 +118,7 @@ The category list shows the measured values and the difference.
 Storage changes compares the latest measurement with an earlier one.
 **Since last cleanup** starts at the measurement before the newest cleanup.
 **Last 7 days** shows its real start until seven days of measurements exist.
+After a cleanup, choose **Continue** to return to the remaining results without a new scan.
 
 ## Appearance and iCloud
 
@@ -152,25 +153,68 @@ Moppo does not delete APFS snapshots.
 
 With **Confirm before every clean-up** off, removals that support recovery start without a Moppo confirmation.
 
-### Go module cache
+### Tool commands
 
 Put Back cannot restore items that a tool command removes.
+Before removal, Moppo names the item and explains that Put Back cannot restore it.
+Select **Remove** for each command. Moppo requires this step even when routine confirmations are off.
+Select **Cancel** to stop the review before removal starts.
+During removal, select **Stop** to request cancellation.
+Cleanup History records each command result, including failures.
+A successful result appears in the Cleanup banner with its verified disk space recovery.
+An alert opens only for failures, retained storage, or unverified disk space recovery.
+
+### Go module cache
+
 Cleanup lists the Go module cache at `~/go/pkg/mod` under **Package Manager Caches**.
 The row stays locked if Moppo cannot find Go in a Homebrew or standard Go installation.
-Review the command, path, size, and permanent removal warning.
-Select **Confirm Command**. Moppo requires this step even when routine confirmations are off.
 Moppo checks the cache and Go again, and then runs `go clean -modcache`.
 Projects can need to download their dependencies again.
-Cleanup History records each command result, including failures.
 
 ### Old Homebrew formula versions
 
 Put Back cannot restore formula versions that Homebrew removes.
 Cleanup lists eligible old versions under **Package Manager Caches**. They stay outside **Safe to Remove**.
 Pinned, linked, active, and retained versions stay protected.
-Select **Confirm Command** for each version, also when routine confirmations are off.
+Cleanup hides most rows smaller than 1 MB, but it shows each old version at any size.
+Select **Remove** for each version, also when routine confirmations are off.
 Homebrew removes only the selected version after another check.
 Cleanup History records the result.
+
+### Simulator runtimes
+
+Put Back cannot restore a deleted simulator runtime.
+Cleanup lists each simulator runtime under **Xcode & iOS Dev**.
+Each row shows the platform, version, build, and backing image size.
+Newer Xcode versions store each runtime image in a folder with its signing files.
+For these runtimes, the size includes that folder.
+The size excludes mounted contents and shared caches.
+Shared backing images enter the total once.
+
+Moppo protects runtimes used by installed Xcode versions and active simulators.
+Runtimes with shared images or incomplete checks also stay protected.
+If a simulator uses the runtime, shut down the simulator before another scan.
+
+Select each runtime that you want to remove.
+Review the item name and permanent removal warning.
+Select **Remove** for each runtime.
+These confirmations remain required when routine confirmations are off.
+Moppo checks the runtime identifier and Xcode use again before removal.
+Only `xcrun simctl runtime delete <identifier>` removes the runtime.
+Command results enter Cleanup History, including when Put Back receipts are off.
+Failures and timeouts keep the row visible with a reason.
+Moppo waits for the runtime inventory to update before it reports the result.
+If macOS keeps the downloaded image, the result identifies that retained storage.
+Cleanup shows **Cleanup incomplete** because the image still occupies disk space.
+The image stays visible as **Simulator Runtime Download**, including after another scan.
+Moppo keeps this row protected because macOS manages the image.
+Older Xcode versions can leave simulator images on disk after removal.
+Apple lists a fix in Xcode 27.2.
+See the [release notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_2-release-notes).
+For an older selected Xcode version, the result explains this issue and identifies the version with the fix.
+If Moppo cannot read the Xcode version, it shows conditional update guidance.
+Xcode Components can download a runtime again when it remains available from Apple.
+Moppo does not remove unavailable simulator devices through this command.
 
 ### Homebrew applications
 

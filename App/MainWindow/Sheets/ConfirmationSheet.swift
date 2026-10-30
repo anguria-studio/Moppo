@@ -94,30 +94,6 @@ struct ConfirmationSheet: View {
                     .padding(.top, 14)
             }
 
-            if let entry = toolCommandEntry, let command = entry.toolCommand {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Put Back cannot restore items removed by this command.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Token.textColor(.orange))
-                    Text("\(entry.displayName) · \(ByteFormatting.string(entry.allocatedBytes))")
-                    Text(FileEntry.abbreviate(entry.url.path))
-                    ScrollView {
-                        Text(command.command)
-                            .font(.system(size: 11, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 105)
-                    Text("Moppo records this command result in Cleanup History, including when Put Back receipts are off.")
-                    if toolCommandCount > 1 {
-                        Text("Confirm each tool command. Removal starts after the last confirmation.")
-                    }
-                }
-                .font(.mcSubtitle)
-                .foregroundStyle(Token.Text.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 14)
-            }
-
             if let runningOwnersNote {
                 Label {
                     Text(runningOwnersNote)
@@ -204,7 +180,9 @@ struct ConfirmationSheet: View {
     }
 
     private var title: String {
-        if toolCommandEntry != nil { return "Run this removal command?" }
+        if toolCommandEntry != nil, case .cleanUp(let count, _, _, _) = variant {
+            return count == 1 ? "Remove selected item?" : "Remove selected items?"
+        }
         if codexSessionCount > 0 { return "Remove selected items, including Codex sessions?" }
         switch variant {
         case .cleanUp(let count, _, let protected, _):
@@ -229,13 +207,19 @@ struct ConfirmationSheet: View {
         }
     }
 
-    private var message: String {
-        if toolCommandEntry != nil {
-            guard case .cleanUp(let count, let bytes, let protected, _) = variant else { return "" }
-            var message = "The selection contains \(count) \(count == 1 ? "item" : "items") (\(ByteFormatting.string(bytes))). "
-                + "The tool permanently removes this cache. Projects may need another download."
+    var message: String {
+        if let entry = toolCommandEntry {
+            guard case .cleanUp(let count, _, let protected, _) = variant else { return "" }
+            var message = "This selection contains \(entry.displayName), which you cannot restore."
+            if let command = entry.toolCommand, case .simulatorRuntimeAbsent = command.expectedResult {
+                message += " Download available runtimes again manually in Xcode Components."
+            } else if entry.toolCommand?.isHomebrewVersion == true {
+                message += " Homebrew keeps the other installed versions of this formula."
+            } else {
+                message += " Projects may need another dependency download."
+            }
             if count > toolCommandCount {
-                message += " Ordinary files move to the Trash."
+                message += " Other files move to the Trash."
             }
             if dockerImageCount > 0 { message += " Docker removes the selected images permanently." }
             if protected > 0 { message += " Protected data removal can erase profiles, history, or settings." }
@@ -327,7 +311,7 @@ struct ConfirmationSheet: View {
     }
 
     private var confirmLabel: String {
-        if toolCommandEntry != nil { return "Confirm Command" }
+        if toolCommandEntry != nil { return "Remove" }
         if codexSessionCount > 0 { return "Delete Sessions and Clean Up" }
         switch variant {
         case .cleanUp(_, _, let protected, _):

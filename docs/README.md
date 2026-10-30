@@ -308,14 +308,49 @@ This includes Cleanup, application data, sound libraries, Storage Explorer, dupl
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
 Each tool command also requires separate confirmation, including when routine confirmations are off.
-Cleanup uses this path for the Go module cache at `~/go/pkg/mod` and obsolete Homebrew formula versions.
+Cleanup uses this path for simulator runtimes, the Go module cache at `~/go/pkg/mod`, and obsolete Homebrew formula versions.
 Moppo checks the tool and item identities before it runs the fixed command arguments.
 Stop cancels the command and retains completed results from the selection.
 The current ordinary file operation can finish before cancellation takes effect.
 Command results always enter Cleanup History, including when Put Back receipts are off.
 The results distinguish measured item size reduction from verified disk space recovery.
-Simulator runtimes still need their separate tool integration.
+A successful result appears in the Cleanup banner with its verified disk space recovery.
+An alert opens only for failures, retained storage, or unverified disk space recovery.
+Simulator runtime inventory uses `simctl runtime list --json`.
+Each runtime row shows its platform, version, build, and measured backing image size.
+A `Patchable Cryptex Disk Image` runtime uses its `AssetData` folder as backing storage.
+Moppo accepts this kind only inside a `com_apple_MobileAsset_*SimulatorRuntime` asset folder.
+For this kind, simctl reports the signature state as `Unknown`. Other kinds must report `Verified`.
+Mounted runtime contents and shared caches do not enter that size.
+Shared backing images enter the total once and keep all affected runtime rows protected.
+Xcode discovery includes the selected developer directory, registered Xcode copies, `/Applications`, and `~/Applications`.
+Each discovered Xcode supplies its runtime matches and device activity.
+Chosen runtime builds, active simulators, unsupported records, and incomplete ownership checks prevent removal.
+Before removal, Moppo repeats these checks and reads the runtime identifier again.
+Moppo uses `simctl runtime delete` with one reviewed UUID and a fixed developer directory.
+After the command, a fresh runtime inventory must confirm removal.
+Verification waits for the runtime inventory to update, with a 30-second limit.
+Each inventory command has a ten-second limit.
+Verification does not start another command when less than one second remains.
+Temporary inventory errors receive another check within that limit.
+macOS can remove the runtime but keep its downloaded image.
+The result identifies that retained storage and does not claim its space as recovered.
+Retained image results state that cleanup is incomplete.
+Failed verification also reports measured image storage that remains on disk.
+Confirmed runtime removal with a retained image includes guidance for the selected Xcode version.
+Moppo reads the version from the selected Xcode application metadata without another command.
+Versions before 27.2 show Apple's documented deletion issue and fix version.
+Unknown versions receive conditional guidance, and 27.2 or later receive no older-version diagnosis.
+Failed inventory checks do not identify the retained image as this Xcode issue.
+Retained images stay visible as protected Simulator Runtime Download rows after removal and during later scans.
+Download discovery validates Apple metadata in each `com_apple_MobileAsset_*SimulatorRuntime` asset folder.
+The asset identifier must match its folder name.
+A patchable download counts as one `AssetData` folder.
+Images that an installed runtime already represents do not enter the total again.
+Unknown registration checks keep the download protected without claiming that its runtime is absent.
+The service measures the backing image again and reports verified space recovery only when available.
 Homebrew formula versions appear separately under Package Manager Caches and require review.
+The 1 MB scan noise floor does not apply to these rows.
 The adapter uses `brew ruby` with Homebrew eligibility, locking, and cleanup methods.
 Removal applies to one selected version and does not run general Homebrew cleanup or dependency removal.
 Pinned formulae, linked versions, active `opt` versions, and versions that Homebrew retains stay protected.
