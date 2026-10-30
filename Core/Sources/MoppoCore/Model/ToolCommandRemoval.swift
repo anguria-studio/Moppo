@@ -171,6 +171,12 @@ public struct ToolCommandRemovalResult: Sendable, Equatable, Codable {
         return max(0, beforeBytes - afterBytes)
     }
 
+    /// True when the result has a failure, retained storage, or unverified disk space recovery.
+    public var needsAttention: Bool {
+        status != .completed || failureReason != nil || remainingStorageReason != nil
+            || (beforeBytes != nil && freedBytes == nil)
+    }
+
     public var summary: String {
         let completed = remainingStorageReason == nil
             ? "\(name) was removed permanently."

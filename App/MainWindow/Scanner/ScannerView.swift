@@ -223,6 +223,13 @@ struct ScannerView: View {
                 }
             }
             .font(.mcRowTitle)
+            let recoveredBytes = outcome.toolCommandResults
+                .compactMap { $0.status == .completed ? $0.freedBytes : nil }.reduce(0, +)
+            if recoveredBytes > 0, !outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) {
+                Text("\(ByteFormatting.string(recoveredBytes)) recovered")
+                    .font(.mcCaption)
+                    .foregroundStyle(Token.Text.secondary)
+            }
             if !outcome.failed.isEmpty {
                 Text("\(outcome.failed.count) items could not be removed.")
                     .font(.mcCaption)

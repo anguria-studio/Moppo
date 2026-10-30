@@ -1,5 +1,5 @@
 import Foundation
-import MoppoCore
+@testable import MoppoCore
 import Testing
 
 @Suite("Scan and removal flows")
@@ -357,6 +357,36 @@ struct OperationFlowTests {
         #expect(FileManager.default.fileExists(atPath: fixture.original.path))
         #expect(model.notice == nil)
         #expect(!model.isBusyWithDisk)
+    }
+
+    enum ToolCommandResultCase: CaseIterable { case verified, failed, retainedStorage, unverifiedRecovery }
+
+    @Test("Cleanup shows a tool command alert only when the result needs attention",
+          arguments: ToolCommandResultCase.allCases)
+    func toolCommandNotice(resultCase: ToolCommandResultCase) {
+        let model = AppModel(launchAccess: .limited, hasFullDiskAccess: { false })
+        model.view = .scanner
+        var result = ToolCommandRemovalResult(targetID: "runtime", name: "iOS 18.1 Simulator Runtime (22B81)",
+            command: "xcrun simctl runtime delete")
+        result.status = .completed
+        result.beforeBytes = 100
+        result.afterBytes = 0
+        result.freedBytes = 100
+        switch resultCase {
+        case .verified: break
+        case .failed:
+            result.status = .failed
+            result.failureReason = "The command reached its time limit."
+        case .retainedStorage:
+            result.afterBytes = 100
+            result.remainingStorageReason = "macOS still stores the downloaded image."
+        case .unverifiedRecovery: result.freedBytes = nil
+        }
+        let completed = result.status == .completed
+        model.cleanup.onEvent(.removed(CleanupOutcome(removedCount: completed ? 1 : 0,
+            failed: completed ? [] : [result.targetID], deletedCount: completed ? 1 : 0, toolCommandResults: [result])))
+
+        #expect((model.notice == nil) == (resultCase == .verified))
     }
 }
 

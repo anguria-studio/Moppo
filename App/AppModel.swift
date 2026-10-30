@@ -390,7 +390,8 @@ final class AppModel {
         dashboard.recordTrashRemoval(outcome)
         let remaining = outcome.failed.count + extraFailures
         let success = remaining == 0 && outcome.removedCount > 0
-        if !outcome.toolCommandResults.isEmpty, let result = cleanUpNotice(outcome) {
+        if !outcome.toolCommandResults.isEmpty {
+            let result = toolCommandSummary(outcome)
             removalCompletion = RemovalCompletion(destination: destination, title: result.title,
                 detail: result.message, isSuccess: success, finderURLs: result.finderURLs)
             return
@@ -623,23 +624,14 @@ final class AppModel {
     /// actually give back — and the result is the rows leaving the list and the
     /// Dashboard being measured again. A partial failure is different in kind:
     /// silent partial failure is how a cleaner loses trust.
+    ///
+    /// The same rule applies to tool commands. History keeps each command result,
+    /// and the result banner shows the verified disk space recovery.
     private func cleanUpNotice(_ outcome: CleanupOutcome) -> Notice? {
         if !outcome.toolCommandResults.isEmpty {
-            var messages = outcome.toolCommandResults.map(\.summary)
-            let toolIDs = Set(outcome.toolCommandResults.map(\.targetID))
-            var files = outcome
-            files.toolCommandResults = []
-            files.failed.removeAll { toolIDs.contains($0) }
-            files.removedCount -= outcome.toolCommandResults.filter { $0.status == .completed }.count
-            var notice = cleanUpNotice(files) ?? Notice(title: "Cleanup Results", message: "")
-            if !notice.message.isEmpty { messages.append(notice.message) }
-            if outcome.trashedCount > 0 {
-                messages.append("\(outcome.trashedCount) \(outcome.trashedCount == 1 ? "item moved" : "items moved") to the Trash.")
-            }
-            notice.message = messages.joined(separator: "\n\n")
-            notice.finderURLs = (outcome.failed + outcome.skippedWorktrees)
-                .filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) }
-            return notice
+            guard outcome.toolCommandResults.contains(where: \.needsAttention)
+                    || cleanUpNotice(Self.fileOutcome(outcome)) != nil else { return nil }
+            return toolCommandSummary(outcome)
         }
         guard !outcome.failed.isEmpty || !outcome.skippedWorktrees.isEmpty else { return nil }
         let removedSummary = "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
@@ -697,6 +689,30 @@ final class AppModel {
             notice.message += "\nmacOS denied access to some items. Review them in Finder."
         }
         return notice
+    }
+
+    /// The complete result of a cleanup with tool commands, including successful commands.
+    private func toolCommandSummary(_ outcome: CleanupOutcome) -> Notice {
+        var messages = outcome.toolCommandResults.map(\.summary)
+        var notice = cleanUpNotice(Self.fileOutcome(outcome)) ?? Notice(title: "Cleanup Results", message: "")
+        if !notice.message.isEmpty { messages.append(notice.message) }
+        if outcome.trashedCount > 0 {
+            messages.append("\(outcome.trashedCount) \(outcome.trashedCount == 1 ? "item moved" : "items moved") to the Trash.")
+        }
+        notice.message = messages.joined(separator: "\n\n")
+        notice.finderURLs = (outcome.failed + outcome.skippedWorktrees)
+            .filter { $0.hasPrefix("/") }.map { URL(fileURLWithPath: $0) }
+        return notice
+    }
+
+    /// The part of an outcome that tool commands did not remove.
+    private static func fileOutcome(_ outcome: CleanupOutcome) -> CleanupOutcome {
+        let toolIDs = Set(outcome.toolCommandResults.map(\.targetID))
+        var files = outcome
+        files.toolCommandResults = []
+        files.failed.removeAll { toolIDs.contains($0) }
+        files.removedCount -= outcome.toolCommandResults.filter { $0.status == .completed }.count
+        return files
     }
 
     /// macOS controls access to the data of other apps separately from Full Disk Access.
