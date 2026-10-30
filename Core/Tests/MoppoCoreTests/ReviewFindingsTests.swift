@@ -166,6 +166,24 @@ struct ReviewFindingsTests {
         #expect(filtered.entries.count == 1)
     }
 
+    @Test("The small items setting keeps rows under 1 MB and still hides empty rows", arguments: [false, true])
+    func smallItemsSetting(showsSmallItems: Bool) async throws {
+        struct SizedScanner: CategoryScanner {
+            let id = CategoryID.systemCaches
+            func scan(context: ScanContext) async throws -> ScanCategoryResult {
+                let entries = [("large", Int64(2_000_000)), ("small", 4_096), ("empty", 0)].map {
+                    FileEntry(url: URL(fileURLWithPath: "/tmp/\($0.0)"), kind: .cache, allocatedBytes: $0.1)
+                }
+                return ScanCategoryResult(categoryID: id, totalBytes: 2_004_096, entries: entries)
+            }
+        }
+        let results = try await ScanCoordinator(scanners: [SizedScanner()])
+            .scan(context: ScanContext(showsSmallItems: showsSmallItems))
+        let category = try #require(results.categories.first)
+        #expect(category.entries.map(\.url.lastPathComponent) == (showsSmallItems ? ["large", "small"] : ["large"]))
+        #expect(category.totalBytes == (showsSmallItems ? 2_004_096 : 2_000_000))
+    }
+
     // MARK: - Xcode archives, on a real layout
 
     @Test("an archive date directory is never classified regenerable")

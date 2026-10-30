@@ -50,6 +50,13 @@ Each type includes its item count and size.
 Changing filters keeps earlier selections. A notice identifies selected items outside the current view.
 Removal includes all selected items.
 
+### Small items
+
+Cleanup hides most items smaller than 1 MB to keep the lists short.
+To show them, turn on **Settings > General > Scanning > Show items smaller than 1 MB**.
+The change applies after the next scan.
+Empty items stay hidden because they do not free disk space.
+
 ### Worktrees and grouped folders
 
 Detected worktrees appear separately from grouped folders. Moppo counts each byte once.

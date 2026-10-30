@@ -12,6 +12,7 @@ final class CleanupModel {
         var enabledCategories: Set<CategoryID>?
         var excludedPaths: [String] = []
         var excludedPatterns: [String] = []
+        var showsSmallItems = false
         var confirmBeforeCleanup = true
         var keepReceipt = true
     }

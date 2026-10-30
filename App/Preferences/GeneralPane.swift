@@ -55,6 +55,12 @@ struct GeneralPane: View {
             PrefDivider()
             PrefToggleRow(title: "Only when plugged in and idle", isOn: $settings.idleOnly)
             PrefDivider()
+            PrefToggleRow(
+                title: "Show items smaller than 1 MB",
+                description: "Cleanup shows these items after the next scan. Lists can become much longer.",
+                isOn: $settings.showsSmallItems
+            )
+            PrefDivider()
             PrefToggleRow(title: "Low-space alerts", isOn: $settings.lowSpaceAlertsEnabled)
             PrefDivider()
             PrefRow(

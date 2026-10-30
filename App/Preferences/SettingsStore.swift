@@ -118,6 +118,7 @@ final class SettingsStore {
         static let idleOnly = true
         static let warnBelowGB = 20
         static let lowSpaceAlertsEnabled = true
+        static let showsSmallItems = false
         static let confirmBeforeCleanup = false
         static let keepReceipt = true
         static let allowPhotoDownloads = true
@@ -144,6 +145,7 @@ final class SettingsStore {
         static let idleOnly = "settings.idleOnly"
         static let warnBelowGB = "settings.warnBelowGB"
         static let lowSpaceAlertsEnabled = "settings.lowSpaceAlertsEnabled"
+        static let showsSmallItems = ScanConfiguration.showsSmallItemsKey
         static let iCloudPlan = "settings.iCloudPlan"
         static let showICloudOnDashboard = "settings.showICloudOnDashboard"
         static let hasPendingICloudSetup = "settings.hasPendingICloudSetup"
@@ -187,6 +189,11 @@ final class SettingsStore {
 
     var lowSpaceAlertsEnabled: Bool {
         didSet { defaults.set(lowSpaceAlertsEnabled, forKey: Key.lowSpaceAlertsEnabled) }
+    }
+
+    /// Cleanup keeps items smaller than 1 MB after the next scan.
+    var showsSmallItems: Bool {
+        didSet { defaults.set(showsSmallItems, forKey: Key.showsSmallItems) }
     }
 
     var warnBelowGB: Int {
@@ -351,6 +358,7 @@ final class SettingsStore {
         }
 
         self.lowSpaceAlertsEnabled = bool(Key.lowSpaceAlertsEnabled, or: Defaults.lowSpaceAlertsEnabled)
+        self.showsSmallItems = bool(Key.showsSmallItems, or: Defaults.showsSmallItems)
         self.showInMenuBar = bool(Key.showInMenuBar, or: Defaults.showInMenuBar)
         self.scanSchedule = (defaults.string(forKey: Key.scanSchedule)
             .flatMap(ScanSchedule.init(rawValue:))) ?? Defaults.scanSchedule
@@ -403,6 +411,7 @@ final class SettingsStore {
         idleOnly = Defaults.idleOnly
         warnBelowGB = Defaults.warnBelowGB
         lowSpaceAlertsEnabled = Defaults.lowSpaceAlertsEnabled
+        showsSmallItems = Defaults.showsSmallItems
         iCloudPlan = .automatic
         showICloudOnDashboard = true
         hasPendingICloudSetup = false

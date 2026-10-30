@@ -44,6 +44,8 @@ public struct ScanContext: Sendable {
     /// rather than scanning again and possibly meeting a new one the resolution
     /// never saw.
     public var applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan?
+    /// True when results include items smaller than 1 MB.
+    public var showsSmallItems: Bool
 
     /// Reports the current phase within this category.
     var onPhase: (@Sendable (String) -> Void)?
@@ -55,7 +57,8 @@ public struct ScanContext: Sendable {
         runningApplicationPaths: Set<String> = [],
         runningApplications: [FileEntry.RunningOwner] = [],
         registeredApplicationBundleIdentifiers: Set<String> = [],
-        applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan? = nil
+        applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan? = nil,
+        showsSmallItems: Bool = false
     ) {
         // The measurer must know the globs or nothing detects a protected tree.
         // Taking them from the same argument keeps the two halves of the rule from
@@ -70,6 +73,7 @@ public struct ScanContext: Sendable {
         self.runningApplications = runningApplications
         self.registeredApplicationBundleIdentifiers = registeredApplicationBundleIdentifiers
         self.applicationLeftoverCandidates = applicationLeftoverCandidates
+        self.showsSmallItems = showsSmallItems
     }
 
     /// The running application at this bundle path, if there is one.

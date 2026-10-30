@@ -85,7 +85,8 @@ public enum ScanEnvironment {
             runningApplicationPaths: running,
             runningApplications: owners,
             registeredApplicationBundleIdentifiers: registered,
-            applicationLeftoverCandidates: candidates
+            applicationLeftoverCandidates: candidates,
+            showsSmallItems: configuration.showsSmallItems
         )
         return context
     }

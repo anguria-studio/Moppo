@@ -81,6 +81,7 @@ final class AppModel {
                     },
                     excludedPaths: removal.excludedPaths,
                     excludedPatterns: removal.excludedPatterns,
+                    showsSmallItems: settings?.showsSmallItems ?? SettingsStore.Defaults.showsSmallItems,
                     confirmBeforeCleanup: removal.confirmBeforeCleanup,
                     keepReceipt: removal.keepReceipt
                 )

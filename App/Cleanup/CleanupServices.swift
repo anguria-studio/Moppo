@@ -35,7 +35,8 @@ struct CleanupScanService: CleanupScanning {
             }
             let context = try await ScanEnvironment.context(
                 configuration: ScanConfiguration(enabledCategories: preferences.enabledCategories ?? Set(CategoryID.allCases),
-                    excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns),
+                    excludedPaths: preferences.excludedPaths, excludedPatterns: preferences.excludedPatterns,
+                    showsSmallItems: preferences.showsSmallItems),
                 leftoverPlanner: leftoverPlanner
             )
             let result = try await coordinator.scan(
