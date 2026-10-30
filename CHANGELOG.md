@@ -4,6 +4,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Add a setting that shows Cleanup items smaller than 1 MB.
+
 ## [0.4.0] - 2026-10-29
 
 Build 53.

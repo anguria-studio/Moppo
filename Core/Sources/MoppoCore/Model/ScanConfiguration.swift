@@ -56,18 +56,22 @@ public struct ScanConfiguration: Sendable {
     public static let categoriesEnabledByDefault = true
     public static let categoriesKey = "settings.categoryEnabled"
     public static let exclusionsKey = "settings.exclusions"
+    public static let showsSmallItemsKey = "settings.showsSmallItems"
     public static let defaultExclusions: [ExclusionRule] = [
         .pattern("*.sparsebundle", isLocked: true), .pattern("*.keychain-db", isLocked: true)
     ]
     public var enabledCategories: Set<CategoryID>
     public var excludedPaths: [String]
     public var excludedPatterns: [String]
+    /// True when scans keep items smaller than 1 MB.
+    public var showsSmallItems: Bool
 
     public init(enabledCategories: Set<CategoryID> = Set(CategoryID.allCases),
-                excludedPaths: [String] = [], excludedPatterns: [String] = []) {
+                excludedPaths: [String] = [], excludedPatterns: [String] = [], showsSmallItems: Bool = false) {
         self.enabledCategories = enabledCategories
         self.excludedPaths = excludedPaths
         self.excludedPatterns = excludedPatterns
+        self.showsSmallItems = showsSmallItems
     }
 
     public init(defaults: UserDefaults) throws {
@@ -75,6 +79,7 @@ public struct ScanConfiguration: Sendable {
         let exclusions = try Self.readExclusions(from: defaults)
         excludedPaths = exclusions.filter { $0.kind != .pattern }.map(\.value)
         excludedPatterns = exclusions.filter { $0.kind == .pattern }.map(\.value)
+        showsSmallItems = defaults.bool(forKey: Self.showsSmallItemsKey)
     }
 
     public static func current() throws -> Self {

@@ -214,6 +214,8 @@ Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory
 The [CLI guide](cli.md) describes the supported command interface.
 The [agent workflow](agent-workflow.md) covers skill installation, confirmation, disclosure, and client validation.
 The app and CLI share exclusion decoding and macOS scan context construction.
+They also share the `settings.showsSmallItems` value.
+When this value is on, the scan coordinator hides only empty rows instead of rows under 1 MB.
 
 ## Layout
 

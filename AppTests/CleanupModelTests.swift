@@ -592,20 +592,26 @@ struct CleanupModelTests {
         #expect(SettingsStore(defaults: defaults, managesLoginItem: false).isEnabled(.docker))
     }
 
-    @Test("CLI configuration reads the app's saved exclusions and category choices")
+    @Test("CLI configuration reads the app's saved exclusions, category choices, and small items setting")
     func sharedScanConfiguration() throws {
         let suite = "moppo-tests.shared-scan.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = SettingsStore(defaults: defaults, managesLoginItem: false)
+        #expect(!(try ScanConfiguration(defaults: defaults).showsSmallItems))
         settings.setEnabled(false, for: .xcode)
         _ = settings.addPattern("*.keep")
+        settings.showsSmallItems = true
         let configuration = try ScanConfiguration(defaults: defaults)
         #expect(configuration.enabledCategories == Set(CategoryID.allCases.filter { settings.isEnabled($0) }))
         #expect(configuration.excludedPatterns == settings.excludedPatterns)
         #expect(configuration.excludedPaths == settings.excludedPaths)
+        #expect(configuration.showsSmallItems)
         let reopened = SettingsStore(defaults: defaults, managesLoginItem: false)
         #expect(reopened.exclusions == settings.exclusions)
+        #expect(reopened.showsSmallItems)
+        reopened.resetToDefaults()
+        #expect(!(try ScanConfiguration(defaults: defaults).showsSmallItems))
     }
 
     enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable, mergeLost }

@@ -72,6 +72,8 @@ public actor ScanCoordinator {
 
     /// Hides small ordinary entries. Worktree rows remain available for review.
     private static let entryNoiseFloor: Int64 = 1024 * 1024
+    /// Hides only empty entries when the user shows small items. Empty entries recover no space.
+    private static let smallItemsFloor: Int64 = 1
 
     private let scanners: [any CategoryScanner]
     private var runningTask: Task<ScanResults, Error>?
@@ -208,7 +210,8 @@ public actor ScanCoordinator {
             for try await raw in group {
                 // Apply this centrally so all scanners share one definition of
                 // "too small to bother the user with".
-                let result = raw.excluding(context).filteringNoise(below: Self.entryNoiseFloor)
+                let floor = context.showsSmallItems ? Self.smallItemsFloor : Self.entryNoiseFloor
+                let result = raw.excluding(context).filteringNoise(below: floor)
                 results.append(result)
                 onCategory?(result)
                 let weight = weights[result.categoryID] ?? 1.0
