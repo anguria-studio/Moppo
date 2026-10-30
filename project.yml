@@ -133,8 +133,8 @@ targets:
         PRODUCT_NAME: Moppo
         MOPPO_UPDATE_FEED_URL: "https://anguria.studio/moppo/appcast.xml"
         MOPPO_UPDATE_PUBLIC_KEY: "UR2YX2TLBED1cQO57OcTydSt21gEmOelgJeCXbbBmNE="
-        MARKETING_VERSION: "0.4.0"
-        CURRENT_PROJECT_VERSION: "53"
+        MARKETING_VERSION: "0.5.0"
+        CURRENT_PROJECT_VERSION: "54"
         MOPPO_DETAILED_SCAN_LOGGING: "NO"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
@@ -177,8 +177,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.tommasolaterza.Moppo.CLI
         GENERATE_INFOPLIST_FILE: YES
         CREATE_INFOPLIST_SECTION_IN_BINARY: YES
-        MARKETING_VERSION: "0.4.0"
-        CURRENT_PROJECT_VERSION: "53"
+        MARKETING_VERSION: "0.5.0"
+        CURRENT_PROJECT_VERSION: "54"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
         CODE_SIGN_IDENTITY: "Apple Development"

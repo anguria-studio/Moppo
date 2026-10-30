@@ -76,7 +76,7 @@ Before distribution, check the feed and its referenced files without GitHub cred
 Create an archive that preserves framework symbolic links:
 
 ```sh
-ditto -c -k --sequesterRsrc --keepParent /path/to/Moppo.app "$UPDATE_ARCHIVES/Moppo-0.4.0.zip"
+ditto -c -k --sequesterRsrc --keepParent /path/to/Moppo.app "$UPDATE_ARCHIVES/Moppo-0.5.0.zip"
 ```
 
 Put release notes beside the archive with the same base name and an `.html` or `.md` extension.
