@@ -347,6 +347,8 @@ Responses include the scan identifier, revision, timestamps, expiry, and scan st
 
 Eligibility values are `protected`, `parent_review`, `app_review`, and `review_required`.
 None authorizes removal.
+`app_review` items need a review screen in Moppo. Examples are applications, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
+A saved plan cannot include these items, and plan creation returns `unsupported_target`.
 Recovery values are `trash_if_supported`, `permanent`, and `external_tool`.
 Removal commands must check Trash availability.
 

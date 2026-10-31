@@ -4,6 +4,11 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Command line and agents
+
+- Show `app_review` for Xcode build caches, Git worktrees, sound libraries, and Codex sessions in CLI results.
+- Reject these items when an agent creates a plan, so removal does not fail at the last step.
+
 ## [0.5.0] - 2026-10-30
 
 Build 54.

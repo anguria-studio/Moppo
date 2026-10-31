@@ -105,11 +105,12 @@ public struct PlanExecutionService: Sendable {
     }
 
     /// Specialized app workflows retain their existing review screens.
+    /// Scan reports mark the same items `app_review`, so plan creation rejects them first.
     public static func checkSupported(_ review: PlanReview) throws {
         func check(_ entry: FileEntry, child: Bool) throws {
-            guard entry.gitWorktreeReview == nil, entry.soundLibrary == nil, entry.xcodeBuildCacheReview == nil,
-                  entry.codexSession == nil,
-                  !child || entry.toolCommand == nil else { throw PlanValidationError.unsupportedTarget }
+            guard !entry.requiresAppReview, !child || entry.toolCommand == nil else {
+                throw PlanValidationError.unsupportedTarget
+            }
             for child in entry.children { try check(child, child: true) }
         }
         for entry in review.entries { try check(entry, child: false) }
@@ -118,5 +119,12 @@ public struct PlanExecutionService: Sendable {
     private static func skipped(_ id: String, status: PlanOutcome.ItemStatus, reason: String) -> PlanOutcome.Item {
         .init(itemId: id, status: status, reason: reason, removedCount: 0, trashedCount: 0, deletedCount: 0,
               removedBytes: 0, privateBytes: 0, unmeasuredCount: 0)
+    }
+}
+
+extension FileEntry {
+    /// The app removes these items through its own review screen. Saved plans cannot include them.
+    var requiresAppReview: Bool {
+        gitWorktreeReview != nil || soundLibrary != nil || xcodeBuildCacheReview != nil || codexSession != nil
     }
 }
