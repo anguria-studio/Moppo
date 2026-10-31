@@ -15,6 +15,8 @@ The command-line tool is a link to the executable inside Moppo.app, so app updat
 The skill is a copy. After a Moppo update, the row shows **Update…** when the bundled skill changed.
 **Update…** and **Remove** move the earlier skill folder to Trash.
 Moppo never replaces a file that it did not create.
+For Claude Code and Codex, setup also lets `moppo` run outside the agent sandbox.
+[Agent sandboxes](#agent-sandboxes) describes the files that setup changes.
 
 ### Manual installation
 
@@ -28,6 +30,7 @@ The supported CLI has not yet shipped in a public release.
 Copy the complete `skills/moppo-cleanup` folder from this repository into one client skill directory.
 Do not overwrite an existing skill without reviewing it.
 The skill needs no executable helper, MCP server, or permanent shell permission.
+A manual installation does not add the sandbox rule. [Agent sandboxes](#agent-sandboxes) lists the rule for each client.
 
 | Client | Personal skill directory | Invocation |
 | --- | --- | --- |
@@ -52,6 +55,37 @@ cp -R skills/moppo-cleanup "$HOME/.claude/skills/moppo-cleanup"
 Before an update, compare the installed skill with the matching release copy.
 To uninstall, remove only the installed `moppo-cleanup` skill folder through Finder.
 This does not remove Moppo, its saved records, or cleanup targets.
+
+## Agent sandboxes
+
+Some clients run agent commands in a sandbox that limits writes to the project folder.
+Moppo saves its records in `~/Library/Application Support/Moppo`.
+Removal also moves items to Trash and changes the cleanup targets.
+Thus `moppo` must run outside the sandbox. A rule for single folders is not sufficient.
+
+Moppo setup adds a rule for each client when it installs the skill. **Remove** removes the rule again.
+
+| Client | Change that setup makes |
+| --- | --- |
+| Claude Code | Adds `"moppo *"` to `sandbox.excludedCommands` in `~/.claude/settings.json` |
+| Codex | Writes `~/.codex/rules/moppo.rules`. The rule asks the user before `moppo plan remove` |
+| Cursor | No change. Cursor keeps its command allowlist in its own settings |
+
+Claude Code merges `excludedCommands` with the sandbox settings of each project, so one entry applies to all projects.
+Permission rules and auto mode still review commands that run outside the sandbox.
+Moppo keeps the other values in `~/.claude/settings.json`. The file can show its keys in a different order.
+Moppo does not change a settings file that is not valid JSON or that is a symbolic link.
+For these files, the row tells you to add the entry yourself.
+Codex reads rules only when it starts, so restart Codex after setup.
+In Cursor, the agent asks to run each `moppo` command outside the sandbox, and you approve it.
+To skip these prompts, add `moppo` to the command allowlist in Cursor Settings.
+
+Clients keep a chained call in the sandbox when their rule does not match every command in it.
+The skill therefore runs each `moppo` command alone, without `echo $?` or other added commands.
+If a sandbox still blocks Moppo, `moppo scan` returns `storage_failure` with exit 74 before the scan starts.
+The skill then tells the agent to stop and ask you to complete setup. The agent does not bypass the sandbox.
+The [Claude Code sandbox documentation](https://code.claude.com/docs/en/sandboxing)
+and the [Codex rules documentation](https://learn.chatgpt.com/docs/agent-configuration/rules) describe these settings.
 
 ## User workflow
 
@@ -92,7 +126,8 @@ Skill instructions do not replace shared validation or authentication checks.
 
 | Result | Next step |
 | --- | --- |
-| `moppo` is absent | Use the embedded executable or install a release that includes it |
+| `moppo` is absent | In Moppo Settings > Advanced, install the command-line tool. Agent sandbox rules match only the `moppo` command name |
+| `moppo scan` returns `storage_failure` at once | In Moppo Settings > Advanced, select **Install** or **Allow** for the client. See [Agent sandboxes](#agent-sandboxes) |
 | The CLI lacks a command or uses another schema | Use matching CLI and skill versions. Do not substitute developer commands |
 | A scan is partial or unavailable | Preserve the status. Review terminal access before a new scan |
 | An item has protection or requires specialized review | Keep it outside the saved plan. Use the existing app flow |

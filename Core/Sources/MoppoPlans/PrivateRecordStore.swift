@@ -58,6 +58,17 @@ struct PrivateRecordStore<Record: PrivateRecord>: Sendable {
         }
     }
 
+    /// Creates and removes a temporary file, so a blocked folder fails before slow work starts.
+    func checkWritable() throws {
+        try withDirectory(create: true) { directoryFD in
+            let temporary = "." + UUID().uuidString
+            let fd = openat(directoryFD, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+            guard fd >= 0 else { throw StoreError.writeFailed }
+            close(fd)
+            unlinkat(directoryFD, temporary, 0)
+        }
+    }
+
     func load(_ id: String, now: Date = Date()) throws -> Record {
         try loadWithRevision(id, now: now).record
     }
