@@ -4,6 +4,11 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Cleanup
+
+- Keep dependency folders of recently changed projects out of **Safe to Remove**.
+- Keep dependency folders that Git does not ignore out of **Safe to Remove**.
+
 ### Command line and agents
 
 - Let `moppo` run outside the Claude Code and Codex sandboxes when Settings installs the agent skill. **Remove** removes the rule again.

@@ -41,6 +41,21 @@ public struct ScanReport: Codable, Sendable {
         public var name: String?
         public var path: String?
         public var detail: String?
+        /// Signs of work in the project around a dependency folder.
+        public var projectActivity: ProjectActivityReport?
+
+        public struct ProjectActivityReport: Codable, Sendable, Equatable {
+            public let lastActivityAt: Date?
+            public let gitIgnore: String
+            /// Why the item is not safe to remove. Nil when nothing holds it.
+            public let hold: String?
+
+            init(_ activity: ProjectActivity) {
+                lastActivityAt = activity.lastActivity
+                gitIgnore = activity.gitIgnore.rawValue
+                hold = activity.hold?.rawValue
+            }
+        }
 
         /// Keeps the reviewed identifier and classification with sizes from a fresh scan.
         /// `status` records the result of the fresh measurement of this item.
@@ -48,7 +63,8 @@ public struct ScanReport: Codable, Sendable {
             Item(evidence: fresh.evidence, id: id, parentId: parentId, category: category, kind: kind,
                  allocatedBytes: fresh.allocatedBytes, displayBytes: fresh.displayBytes,
                  measurementStatus: status, eligibility: eligibility, safeToRemove: safeToRemove,
-                 reason: reason, protection: protection, recovery: recovery, name: name, path: path, detail: detail)
+                 reason: reason, protection: protection, recovery: recovery, name: name, path: path, detail: detail,
+                 projectActivity: projectActivity)
         }
 
         public func disclosed(includePaths: Bool) -> Self {
@@ -99,8 +115,13 @@ public struct ScanReport: Codable, Sendable {
                 case "parent_review": reason = "Review this item with its parent."
                 case "app_review": reason = "This item requires an application removal review."
                 default:
-                    reason = safe ? "The scan identifies this item as safe to regenerate."
-                        : "Review this item before removal. You may need its contents."
+                    if safe {
+                        reason = "The scan identifies this item as safe to regenerate."
+                    } else if entry.isRegenerable, let explanation = entry.projectActivity?.explanation {
+                        reason = explanation
+                    } else {
+                        reason = "Review this item before removal. You may need its contents."
+                    }
                 }
                 let recovery: String
                 if entry.manualRemoval != nil { recovery = "external_tool" }
@@ -114,7 +135,8 @@ public struct ScanReport: Codable, Sendable {
                     reason: reason, protection: entry.protectionReason?.rawValue, recovery: recovery,
                     name: entry.displayName, path: entry.url.isFileURL ? entry.url.path : entry.url.absoluteString,
                     detail: entry.protectionExplanation ?? entry.toolCommand?.lockReason
-                        ?? entry.manualRemoval?.explanation ?? entry.safetyCaveat))
+                        ?? entry.manualRemoval?.explanation ?? entry.safetyCaveat,
+                    projectActivity: entry.projectActivity.map(Item.ProjectActivityReport.init)))
                 for child in entry.children {
                     append(child, parent: id, requiresParent: requiresParent || entry.removesAsUnit
                         || entry.removalAction != nil)

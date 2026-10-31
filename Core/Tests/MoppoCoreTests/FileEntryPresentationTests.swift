@@ -12,6 +12,14 @@ struct FileEntryPresentationTests {
         #expect(presentation.summary == "iOS project dependencies · Reader / ios · no lockfile")
         #expect(presentation.icon == .package)
         #expect(!entry.regeneratesSafely)
+
+        // A project activity reason is a badge on the row, so the description leaves it out.
+        let now = Date()
+        var held = FileEntry(url: URL(fileURLWithPath: "/Projects/Reader/ios/Pods"), kind: .cache,
+                             allocatedBytes: 100, isRegenerable: true)
+        held.projectActivity = ProjectActivity(gitIgnore: .ignored, lastActivity: now, now: now)
+        held.safetyCaveat = held.projectActivity?.caveat
+        #expect(FileEntryPresentation(entry: held).summary == "iOS project dependencies · Reader / ios")
     }
 
     @Test("Photo files use media descriptions while unknown folders stay generic")

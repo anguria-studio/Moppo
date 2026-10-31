@@ -45,14 +45,7 @@ struct GitWorktreeTests {
         }
 
         func git(_ arguments: [String]) throws {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            process.arguments = arguments
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-            process.waitUntilExit()
-            #expect(process.terminationStatus == 0)
+            try runGit(arguments)
         }
 
         func repository() throws -> URL {

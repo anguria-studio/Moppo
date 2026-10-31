@@ -156,6 +156,11 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// `BuildOutputDetector.reinstallEvidence(for:)`.
     public var safetyCaveat: String?
 
+    /// Signs of work in the project around a dependency store. Moppo does not count a
+    /// store as safe when its project is active or Git does not ignore it. See
+    /// `ProjectActivity`.
+    public var projectActivity: ProjectActivity?
+
     /// Git status at scan time. A failed check does not mean the worktree is clean.
     public enum GitWorktreeStatus: Sendable, Equatable {
         case clean, uncommittedChanges, unavailable
@@ -356,6 +361,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// the badge now ask the same question.
     public var regeneratesSafely: Bool {
         (gitWorktreeReview?.isSafeToRemove ?? isRegenerable) && !isRemovalLocked && inUseBy == nil
+            && projectActivity?.hold == nil
     }
 
     /// The size shown beside a top-level Scanner row. Applications show only their

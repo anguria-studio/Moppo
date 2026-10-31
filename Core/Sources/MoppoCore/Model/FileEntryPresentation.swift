@@ -133,7 +133,10 @@ public struct FileEntryPresentation: Sendable, Equatable {
         }
 
         var detail = type + location
-        if showsSafetyCaveat, let caveat = entry.safetyCaveat { detail += " · \(caveat)" }
+        // The row shows a project activity reason as a badge, so the subtitle does not repeat it.
+        if showsSafetyCaveat, let caveat = entry.safetyCaveat, caveat != entry.projectActivity?.caveat {
+            detail += " · \(caveat)"
+        }
         if type == "Folder", let count = entry.childCount {
             detail += " · \(count.formatted()) \(count == 1 ? "item" : "items")"
         }

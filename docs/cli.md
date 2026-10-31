@@ -344,12 +344,18 @@ Responses include the scan identifier, revision, timestamps, expiry, and scan st
 | `reason` | General explanation that omits file names and paths |
 | `protection` | Engine protection code, when present |
 | `recovery` | Trash, permanent removal, or an external tool |
+| `project_activity` | Project state for a dependency folder, when present |
 
 Eligibility values are `protected`, `parent_review`, `app_review`, and `review_required`.
 None authorizes removal.
 `app_review` items need a review screen in Moppo. Examples are applications, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
 A saved plan cannot include these items, and plan creation returns `unsupported_target`.
 Recovery values are `trash_if_supported`, `permanent`, and `external_tool`.
+
+`project_activity` contains `last_activity_at`, `git_ignore`, and `hold`.
+`git_ignore` values are `ignored`, `not_ignored`, `unknown`, and `outside_repository`.
+`hold` values are `recent_activity`, `not_ignored_by_git`, and `unknown`.
+An item with a `hold` value is not safe to remove.
 Removal commands must check Trash availability.
 
 Parent and child sizes can overlap.

@@ -761,6 +761,9 @@ private struct FileRow: View {
                         // category, which could only say "everything in here" and so
                         // said nothing at all once a single row needed review.
                         Badge(text: "safe to remove", style: .safe).fixedSize()
+                    } else if entry.isRegenerable, let caveat = entry.projectActivity?.caveat {
+                        // The same badge as a child row. The subtitle leaves the reason out.
+                        Badge(text: caveat).fixedSize()
                     }
                 }
 
@@ -877,6 +880,9 @@ private struct ChildRow: View {
                         // The badge follows the same safety rules as the filter.
                         if showsSafeToRemoveBadges && entry.regeneratesSafely {
                             Badge(text: "safe to remove", style: .safe).fixedSize()
+                        } else if let caveat = entry.projectActivity?.caveat {
+                            // The folder regenerates, but its project state keeps it out of Safe to Remove.
+                            Badge(text: caveat).fixedSize()
                         }
                     } else if presentation.badge == nil, let caveat = entry.safetyCaveat {
                         Badge(text: caveat).fixedSize()
@@ -972,6 +978,9 @@ private struct ChildRow: View {
         if let guidance = presentation.runningGuidance { return guidance }
         if entry.isRemovalLocked {
             return "Protected while the app is running."
+        }
+        if entry.isRegenerable, let explanation = entry.projectActivity?.explanation {
+            return explanation
         }
         if let caveat = entry.safetyCaveat {
             if caveat == "Git worktree" {
