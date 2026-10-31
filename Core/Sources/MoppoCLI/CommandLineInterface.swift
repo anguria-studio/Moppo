@@ -74,6 +74,13 @@ public struct CLIError: Error, Sendable {
     }
     static func usage(_ message: String) -> Self { Self(64, "invalid_arguments", message) }
 
+    /// Agent sandboxes often block the private record folder. The message names that folder and no user path.
+    static func storageFailure(_ record: String, then nextStep: String? = nil) -> Self {
+        let message = ["Moppo could not save a private \(record) in ~/Library/Application Support/Moppo.",
+                       "An agent sandbox can block writes to this folder.", nextStep]
+        return Self(74, "storage_failure", message.compactMap { $0 }.joined(separator: " "))
+    }
+
     /// Maps service errors to stable codes. Removal messages never claim that no files changed.
     static func from(_ error: any Error, removal: Bool) -> Self {
         switch error {
@@ -93,7 +100,8 @@ public struct CLIError: Error, Sendable {
             case .incompatibleSchema: return Self(65, "incompatible_schema", "This record uses an unsupported schema. Run a new scan.")
             case .changed: return Self(65, "plan_changed", "The plan changed. Inspect the plan again.")
             case .invalidReport, .invalidId, .tooLarge: return Self(65, "invalid_record", "The scan or plan is invalid. Run a new scan.")
-            case .writeFailed: return Self(74, "storage_failure", "Moppo could not save a private record. Inspect plan outcomes and Cleanup History before another attempt.")
+            case .writeFailed:
+                return storageFailure("record", then: "Inspect plan outcomes and Cleanup History before another attempt.")
             case .unavailable: return Self(66, "record_unavailable", "The scan or plan is missing or inaccessible.")
             }
         case is ScanConfiguration.ConfigurationError:
@@ -205,12 +213,13 @@ public enum CommandLineInterface {
                     }
                     settings.enabledCategories = [category]
                 }
+                do { try store.checkWritable() } catch { throw CLIError.storageFailure("scan report") }
                 let scanned = try await scanner(settings, progress)
                 try Task.checkCancellation()
                 report = ScanReport(results: scanned, configuration: settings)
                 revision = try RecordDigest.of(report)
                 do { try store.save(report, keeping: planStore.referencedScanIds()) }
-                catch { throw CLIError(74, "storage_failure", "Moppo could not save a private scan report.") }
+                catch { throw CLIError.storageFailure("scan report") }
             } else {
                 do { (report, revision) = try store.loadWithRevision(request.scanId!) }
                 catch RecordStoreError.incompatibleSchema {

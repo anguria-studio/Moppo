@@ -371,6 +371,27 @@ struct CLITests {
         #expect(!String(decoding: unavailable.output, as: UTF8.self).contains("secret"))
     }
 
+    @Test func blockedReportFolderFailsBeforeTheScan() async throws {
+        let root = try temporary()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
+            try? FileManager.default.removeItem(at: root)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: root.path)
+        let result = await CommandLineInterface.run(arguments: ["scan", "--json"],
+            store: ScanStore(directory: root.appendingPathComponent("reports")),
+            configuration: { ScanConfiguration() },
+            scanner: { _, _ in
+                Issue.record("The scan started without a writable report folder.")
+                return results()
+            })
+        #expect(result.exitCode == 74)
+        let error = try #require(try object(result)["error"] as? [String: Any])
+        #expect(error["code"] as? String == "storage_failure")
+        #expect((error["message"] as? String)?.contains("agent sandbox") == true)
+        #expect(!String(decoding: result.output, as: UTF8.self).contains(root.path))
+    }
+
     @Test func cancellationDoesNotSaveResults() async throws {
         let root = try temporary()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -389,7 +410,8 @@ struct CLITests {
         for await _ in started.stream { break }
         task.cancel()
         #expect(await task.value.exitCode == 130)
-        #expect(!FileManager.default.fileExists(atPath: directory.path))
+        let saved = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        #expect(!saved.contains { $0.hasSuffix(".json") })
     }
 
     @Test func privateStorageRejectsLinksAndUnsupportedSchemas() throws {

@@ -19,6 +19,10 @@ public struct ScanStore: Sendable {
         try PrivateRecordStore<ScanReport>(directory: directory).save(report, now: now, keeping: keeping)
     }
 
+    public func checkWritable() throws {
+        try PrivateRecordStore<ScanReport>(directory: directory).checkWritable()
+    }
+
     public func load(_ id: String, now: Date = Date()) throws -> ScanReport {
         try loadWithRevision(id, now: now).report
     }

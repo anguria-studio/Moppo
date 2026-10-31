@@ -4,6 +4,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Command line and agents
+
+- Let `moppo` run outside the Claude Code and Codex sandboxes when Settings installs the agent skill. **Remove** removes the rule again.
+- Show **Allow** in Settings when an installed skill lacks its sandbox rule.
+- Stop `moppo scan` before the scan starts when Moppo cannot save its report, and say that an agent sandbox can cause this.
+
 ## [0.5.0] - 2026-10-30
 
 Build 54.
