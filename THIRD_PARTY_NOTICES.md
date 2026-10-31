@@ -13,6 +13,10 @@ The names and icons belong to their respective owners.
 - LM Studio: LM Studio. The fallback icon comes from the [official website](https://lmstudio.ai/).
 - Antigravity: Google. The fallback icon comes from the [Antigravity press assets](https://antigravity.google/press).
 - Gemini CLI: Google. The fallback icon comes from the [Gemini CLI brand kit](https://geminicli.com/brand-kit/).
+- PyTorch: The Linux Foundation. The fallback icon comes from the [official repository](https://github.com/pytorch/pytorch).
+- Keras: The Keras team. The fallback icon comes from the [official website](https://keras.io/).
+- Whisper: OpenAI. The fallback icon is the OpenAI logo from the [OpenAI GitHub organization](https://github.com/openai). Moppo removed its white background.
+- GPT4All: Nomic AI. The fallback icon comes from the [official repository](https://github.com/nomic-ai/gpt4all).
 
 Installed application icons take priority over the bundled fallback icons.
 

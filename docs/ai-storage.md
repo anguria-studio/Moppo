@@ -26,6 +26,10 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Gemini CLI, Antigravity | `~/.gemini`, `~/Library/Application Support/Antigravity` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
 | Ollama | Default model store | Protected inventory. Moppo cannot verify complete model ownership or active models. |
 | Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
+| PyTorch Hub | `~/.cache/torch/hub/checkpoints`, `~/.cache/torch/hub/<owner>_<repository>_<ref>` | One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs. |
+| Whisper | `~/.cache/whisper/*.pt` | One row for each model file. |
+| Keras | `~/.keras/models`, `~/.keras/datasets` | One row for each model or dataset. Other folders in `~/.keras` stay in Hidden & System Data. Moppo never offers `keras.json`. |
+| GPT4All | `~/Library/Application Support/nomic.ai/GPT4All/*.gguf` | One row for each model file. Settings, chats, and LocalDocs databases stay outside removal targets. |
 
 Cleanup groups related storage under application headings.
 Codex and ChatGPT have separate headings because their displayed storage has different owners.
@@ -271,10 +275,11 @@ Moppo keeps their files protected during session cleanup.
 Ollama models remain protected inventory.
 Moppo cannot verify all current Ollama model references or active models.
 Use Ollama to manage these files.
-The Hugging Face and LM Studio readers target model files only.
+The local model readers target model files only.
 They do not offer session history removal.
+Model rows require review. Cleanup does not select them automatically.
 
-Moppo protects a Hugging Face or LM Studio model row in these conditions:
+Moppo protects a local model row in these conditions:
 
 - A process has a model file or a link target open. LM Studio loads models in this way.
 - A link in the LM Studio folders points to the Hugging Face files. The `lms import --symbolic-link` command makes these links.
@@ -285,7 +290,11 @@ Moppo protects a Hugging Face or LM Studio model row in these conditions:
 
 Moppo counts a hard-linked model file once across model rows.
 Plan creation and plan execution scan again, so these checks apply before removal.
-Moppo reads only the default LM Studio folders.
+Moppo reads only the default LM Studio, PyTorch Hub, Whisper, Keras, and GPT4All folders.
+GPT4All can use another download folder.
+Its `modelPath` setting changed its name in GPT4All 2.4.11, so Moppo does not read this setting.
+[Issue #66](https://github.com/anguria-studio/Moppo/issues/66) records this gap.
+Moppo does not read `TORCH_HOME`, `KERAS_HOME`, or `XDG_CACHE_HOME`. [Issue #44](https://github.com/anguria-studio/Moppo/issues/44) records moved model folders.
 Moppo also reads the folders that their directory links point to.
 Moppo does not check links from other folders.
 Ollama keys, LM Studio settings and conversations, and non-model Hugging Face files stay outside model removal targets.
@@ -361,6 +370,8 @@ The production scanner reads file metadata. It does not inspect VM filesystems.
 - [Ollama FAQ](https://docs.ollama.com/faq) documents `~/.ollama/models` and the `OLLAMA_MODELS` override.
 - [Hugging Face cache management](https://huggingface.co/docs/huggingface_hub/guides/manage-cache) describes model cache inspection and managed removal.
 - [LM Studio model downloads](https://lmstudio.ai/docs/app/basics/download-model) describes downloaded models and model management.
+- [PyTorch Hub](https://pytorch.org/docs/stable/hub.html) describes the `hub` folder, its repository folders, and `checkpoints`.
+- [GPT4All settings source](https://github.com/nomic-ai/gpt4all/blob/main/gpt4all-chat/src/mysettings.cpp) shows the default model folder and the `modelPath` setting.
 
 ## Further tools
 

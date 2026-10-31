@@ -265,16 +265,31 @@ public struct HiddenDataScanner: CategoryScanner {
 
             claimed.append(child.path)
             guard !context.isExcluded(child) else { continue }
-            let measurement = try await context.measurer.measure(child)
-            found.unreadableCount += measurement.unreadableCount
-            guard !measurement.containsProtectedPattern else { continue }
-            let entry = try await GitWorktreeDetector.addingWorktrees(to: FileEntry(
-                url: child, kind: .folder, allocatedBytes: measurement.allocatedBytes,
-                lastOpened: lastOpenedDate(for: child)
-            ), context: context)
-            if entry.displayBytes >= Threshold.hiddenDirectory || !entry.children.isEmpty {
-                found.entries.append(entry)
+            // AI Tools claims part of some folders, such as `~/.keras/models`. List the
+            // other folders inside. Loose files, such as `keras.json`, are settings.
+            let folders = LocalModelStores.unclaimedChildren(of: child, home: home).map { children in
+                children.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
             }
+            for folder in folders ?? [child] {
+                try await appendHiddenDirectory(folder, displayName: folders == nil ? nil : name + "/" + folder.lastPathComponent,
+                                                context: context, to: &found)
+            }
+        }
+    }
+
+    private func appendHiddenDirectory(
+        _ url: URL, displayName: String?, context: ScanContext, to found: inout Found
+    ) async throws {
+        guard !context.isExcluded(url) else { return }
+        let measurement = try await context.measurer.measure(url)
+        found.unreadableCount += measurement.unreadableCount
+        guard !measurement.containsProtectedPattern else { return }
+        let entry = try await GitWorktreeDetector.addingWorktrees(to: FileEntry(
+            url: url, displayName: displayName, kind: .folder, allocatedBytes: measurement.allocatedBytes,
+            lastOpened: lastOpenedDate(for: url)
+        ), context: context)
+        if entry.displayBytes >= Threshold.hiddenDirectory || !entry.children.isEmpty {
+            found.entries.append(entry)
         }
     }
 
