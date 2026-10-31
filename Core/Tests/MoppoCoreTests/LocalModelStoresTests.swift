@@ -148,6 +148,37 @@ struct LocalModelStoresTests {
         #expect(models.map(\.name) == ["TheBloke/Old-GGUF", "lmstudio-community/Qwen-GGUF"])
     }
 
+    @Test("PyTorch Hub, Whisper, Keras, and GPT4All show one row for each model and never their settings")
+    func plainFileStores() throws {
+        let sandbox = try Sandbox()
+        try sandbox.file(".cache/torch/hub/checkpoints/resnet50-0676ba61.pth", bytes: 2 * mb)
+        try sandbox.file(".cache/torch/hub/pytorch_vision_v0.10.0/hubconf.py")
+        try sandbox.file(".cache/torch/hub/snakers4_silero_vad_master/hubconf.py")
+        try sandbox.file(".cache/torch/hub/trusted_list", bytes: 64)
+        try sandbox.file(".cache/torch/kernels/cache.bin")
+        try sandbox.file(".cache/whisper/large-v3.pt", bytes: 3 * mb)
+        try sandbox.file(".cache/whisper/notes.txt")
+        try sandbox.file(".keras/models/vgg16_weights.h5", bytes: 2 * mb)
+        try sandbox.file(".keras/datasets/mnist.npz", bytes: mb)
+        try sandbox.file(".keras/datasets/cifar-10-batches-py/data_batch_1", bytes: mb)
+        try sandbox.file(".keras/keras.json", text: "{}")
+        let gpt4All = "Library/Application Support/nomic.ai/GPT4All/"
+        try sandbox.file(gpt4All + "Meta-Llama-3-8B-Instruct.Q4_0.gguf", bytes: 4 * mb)
+        try sandbox.file(gpt4All + "chats.sqlite3")
+        try sandbox.file(gpt4All + "localdocs_v3.db")
+        try sandbox.file(gpt4All + "test_write.txt", bytes: 0)
+
+        let models = LocalModelStores.all(home: sandbox.home)
+
+        #expect(models.map { "\($0.runtime): \($0.name)" } == [
+            "PyTorch: pytorch/vision", "PyTorch: resnet50-0676ba61.pth", "PyTorch: snakers4/silero_vad",
+            "Whisper: large-v3",
+            "Keras: dataset cifar-10-batches-py", "Keras: dataset mnist.npz", "Keras: vgg16_weights.h5",
+            "GPT4All: Meta-Llama-3-8B-Instruct.Q4_0.gguf"
+        ])
+        #expect(models.allSatisfy { $0.memberPaths == [$0.primary] && $0.exclusive.isEmpty })
+    }
+
     @Test("An excluded Hugging Face repository keeps shared files and its sibling available")
     func excludedHubRepositoryKeepsSharedBlobs() async throws {
         let sandbox = try Sandbox()
@@ -205,6 +236,51 @@ struct LocalModelStoresTests {
         #expect(ai.entries.contains { $0.url.lastPathComponent == "xet" })
         #expect(system.entries.map(\.url.lastPathComponent) == ["sometool"])
         #expect(ai.safeToRemoveBytes == 0)
+    }
+
+    @Test("Model files leave the rest of their folders to System Caches and Hidden Data, with each byte offered once")
+    func plainFileStoresInTheScan() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file(".cache/torch/hub/checkpoints/resnet50.pth", bytes: 2 * mb)
+        try sandbox.file(".cache/torch/hub/pytorch_vision_main/hubconf.py", bytes: mb)
+        try sandbox.file(".cache/torch/kernels/cache.bin", bytes: mb)
+        let whisper = try sandbox.file(".cache/whisper/base.pt", bytes: 3 * mb)
+        try sandbox.file(".keras/models/vgg16.h5", bytes: 2 * mb)
+        try sandbox.file(".keras/datasets/mnist.npz", bytes: mb)
+        try sandbox.file(".keras/tuner/trials.bin", bytes: 6 * mb)
+        let settings = try sandbox.file(".keras/keras.json", text: "{}")
+        try sandbox.file("Library/Application Support/nomic.ai/GPT4All/model.gguf", bytes: mb)
+        let context = ScanContext()
+
+        let ai = try await scanner(sandbox, open: [FileIdentity.of(whisper)!: ["python3"]]).scan(context: context)
+        let system = try await SystemCachesScanner(
+            cachesRoot: sandbox.home.appendingPathComponent("Library/Caches"),
+            logsRoot: sandbox.home.appendingPathComponent("Library/Logs"),
+            dotCacheRoot: sandbox.home.appendingPathComponent(".cache")
+        ).scan(context: context)
+        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        let results = ScanCoordinator.removingAIToolOverlaps(from: [ai, system, hidden])
+
+        let models = ai.entries.filter { !$0.localModelPaths.isEmpty }
+        #expect(Set(models.compactMap(\.aiStorageSection?.owner)) == [.pyTorch, .whisper, .keras, .gpt4All])
+        #expect(models.count == 6)
+        #expect(try modelRow(ai, "base").protectionReason == .running)
+        #expect(models.filter { $0.protectionReason != nil }.count == 1)
+        #expect(ai.safeToRemoveBytes == 0)
+        #expect(results[1].entries.map(\.displayName) == ["torch/kernels"])
+        #expect(results[2].entries.map(\.displayName) == [".keras/tuner"])
+
+        let offered = results.flatMap(\.entries)
+        for folder in [".cache/torch", ".cache/whisper", ".keras"] {
+            let url = sandbox.home.appendingPathComponent(folder)
+            // System Caches and Hidden Data resolve the `/var` link in the temporary folder path.
+            let rows = offered.filter {
+                $0.url.resolvingSymlinksInPath().path.hasPrefix(url.resolvingSymlinksInPath().path + "/")
+            }
+            let unoffered = folder == ".keras" ? try await context.measurer.measure(settings).allocatedBytes : 0
+            let measured = try await context.measurer.measure(url).allocatedBytes
+            #expect(rows.reduce(0) { $0 + $1.totalBytesIncludingChildren } + unoffered == measured, "\(folder)")
+        }
     }
 
     // MARK: - Shared ownership and runtime use
