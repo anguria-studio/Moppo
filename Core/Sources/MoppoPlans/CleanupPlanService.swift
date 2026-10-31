@@ -43,6 +43,11 @@ public struct CleanupPlanService: Sendable {
     public let plans: PlanStore
     private let configuration: Configuration
     private let scanner: Scanner
+    private let failure = FailedItem()
+
+    /// The selected item that failed the most recent validation, or nil when no single item failed.
+    /// Clients use it to name the item in an error. It does not change the thrown error.
+    public var lastFailedItemId: String? { failure.id }
 
     public init(scans: ScanStore = ScanStore(), plans: PlanStore = PlanStore(),
                 configuration: @escaping Configuration, scanner: @escaping Scanner) {
@@ -109,6 +114,7 @@ public struct CleanupPlanService: Sendable {
 
     private func validate(_ plan: CleanupPlan, now: Date) async throws -> PlanReview {
         let validationStarted = Date()
+        failure.id = nil
         try Task.checkCancellation()
         let (report, revision) = try scans.loadWithRevision(plan.scanId, now: now)
         guard revision == plan.scanRevision else { throw PlanValidationError.scanChanged }
@@ -116,10 +122,12 @@ public struct CleanupPlanService: Sendable {
         let settings = try configuration()
         guard try settings.exclusionsRevision == exclusionsRevision else { throw PlanValidationError.exclusionsChanged }
         let selected = try plan.itemIds.map { id in
-            guard let item = report.items.first(where: { $0.id == id }) else { throw PlanValidationError.unknownItem }
-            guard let category = CategoryID(rawValue: item.category), settings.enabledCategories.contains(category)
-            else { throw PlanValidationError.categoryDisabled }
-            return item
+            try failure.record(id) {
+                guard let item = report.items.first(where: { $0.id == id }) else { throw PlanValidationError.unknownItem }
+                guard let category = CategoryID(rawValue: item.category), settings.enabledCategories.contains(category)
+                else { throw PlanValidationError.categoryDisabled }
+                return item
+            }
         }
         let selectedIds = Set(plan.itemIds)
         for item in selected {
@@ -144,38 +152,40 @@ public struct CleanupPlanService: Sendable {
         func flatten(_ entry: FileEntry) -> [FileEntry] { [entry] + entry.children.flatMap(flatten) }
         var roots: [(owner: String, path: String, isRoot: Bool)] = []
         for item in selected {
-            let oldTree = subtree(item, in: report)
-            try eligible(oldTree, root: item, context: context)
-            let matches = fresh.items.filter { $0.category == item.category && $0.path == item.path }
-            guard !matches.isEmpty else { throw PlanValidationError.missingItem }
-            guard matches.count == 1, let current = matches.first else { throw PlanValidationError.changedTarget }
-            let newTree = subtree(current, in: fresh)
-            try eligible(newTree, root: current, context: context)
-            guard try fingerprint(oldTree) == fingerprint(newTree) else { throw PlanValidationError.changedTarget }
-            // Match by path in the same category. The path is unique there because exactly one item matched.
-            let candidates = results.categories.filter { $0.categoryID.rawValue == item.category }
-                .flatMap { $0.entries.flatMap(flatten) }.filter { $0.url.isFileURL && $0.url.path == current.path }
-            guard candidates.count == 1, let entry = candidates.first else { throw PlanValidationError.changedTarget }
-            entries.append(entry)
-            reviewedItems.append(item.withMeasurements(of: current, status: .complete))
-            targets.append(newTree)
-            for target in newTree {
-                guard let path = target.path, let identity = target.evidence?.identity else {
-                    throw PlanValidationError.unsupportedTarget
-                }
-                expectedIdentities[path] = identity
-                let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
-                // Separate selections must not remove nested paths through different scan groups.
-                let isRoot = target.id == current.id
-                for (owner, prior, priorIsRoot) in roots where owner != item.id {
-                    if (resolved == prior && (isRoot || priorIsRoot))
-                        || resolved.hasPrefix(prior + "/") || prior.hasPrefix(resolved + "/") {
-                        throw PlanValidationError.overlappingItems
+            try failure.record(item.id) {
+                let oldTree = subtree(item, in: report)
+                try eligible(oldTree, root: item, context: context)
+                let matches = fresh.items.filter { $0.category == item.category && $0.path == item.path }
+                guard !matches.isEmpty else { throw PlanValidationError.missingItem }
+                guard matches.count == 1, let current = matches.first else { throw PlanValidationError.changedTarget }
+                let newTree = subtree(current, in: fresh)
+                try eligible(newTree, root: current, context: context)
+                guard try fingerprint(oldTree) == fingerprint(newTree) else { throw PlanValidationError.changedTarget }
+                // Match by path in the same category. The path is unique there because exactly one item matched.
+                let candidates = results.categories.filter { $0.categoryID.rawValue == item.category }
+                    .flatMap { $0.entries.flatMap(flatten) }.filter { $0.url.isFileURL && $0.url.path == current.path }
+                guard candidates.count == 1, let entry = candidates.first else { throw PlanValidationError.changedTarget }
+                entries.append(entry)
+                reviewedItems.append(item.withMeasurements(of: current, status: .complete))
+                targets.append(newTree)
+                for target in newTree {
+                    guard let path = target.path, let identity = target.evidence?.identity else {
+                        throw PlanValidationError.unsupportedTarget
                     }
+                    expectedIdentities[path] = identity
+                    let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+                    // Separate selections must not remove nested paths through different scan groups.
+                    let isRoot = target.id == current.id
+                    for (owner, prior, priorIsRoot) in roots where owner != item.id {
+                        if (resolved == prior && (isRoot || priorIsRoot))
+                            || resolved.hasPrefix(prior + "/") || prior.hasPrefix(resolved + "/") {
+                            throw PlanValidationError.overlappingItems
+                        }
+                    }
+                    roots.append((item.id, resolved, isRoot))
+                    if target.evidence?.isDirectory == true { directoryIdentities.insert(identity) }
+                    contributions[identity] = max(contributions[identity] ?? 0, target.allocatedBytes)
                 }
-                roots.append((item.id, resolved, isRoot))
-                if target.evidence?.isDirectory == true { directoryIdentities.insert(identity) }
-                contributions[identity] = max(contributions[identity] ?? 0, target.allocatedBytes)
             }
         }
         // Directory totals can share files across roots. Omit an aggregate when that cannot be established.
@@ -188,17 +198,21 @@ public struct CleanupPlanService: Sendable {
         let measurer = AllocatedSizeMeasurer(followSymlinks: false, protectedPatterns: settings.excludedPatterns,
                                              detectCloudOnlyItems: true)
         var measured: Set<String> = []
-        let checkedItems = targets.flatMap { $0 }
-        for item in checkedItems {
+        // Each checked item with the selected item that contains it.
+        let checkedItems = zip(selected, targets).flatMap { owner, tree in tree.map { (owner: owner.id, item: $0) } }
+        for (owner, item) in checkedItems {
             guard let path = item.path, measured.insert(path).inserted else { continue }
             let measurement = try await measurer.measure(URL(fileURLWithPath: path))
-            guard !measurement.containsProtectedPattern else { throw PlanValidationError.excludedItem }
-            guard measurement.unreadableCount == 0, !measurement.containsCloudOnlyItem else {
-                throw PlanValidationError.incompleteScan
+            try failure.record(owner) {
+                guard !measurement.containsProtectedPattern else { throw PlanValidationError.excludedItem }
+                guard measurement.unreadableCount == 0, !measurement.containsCloudOnlyItem else {
+                    throw PlanValidationError.incompleteScan
+                }
             }
         }
-        for item in checkedItems {
+        for (owner, item) in checkedItems {
             guard let path = item.path, item.evidence?.matchesFile(at: URL(fileURLWithPath: path)) == true else {
+                failure.id = owner
                 throw PlanValidationError.changedTarget
             }
         }
@@ -277,5 +291,20 @@ public struct CleanupPlanService: Sendable {
                 safeToRemove: item.safeToRemove, protection: item.protection, recovery: item.recovery,
                 detail: item.detail, evidence: item.evidence?.reviewed))
         }.sorted()
+    }
+}
+
+/// Records the item whose check failed. Validation of one plan runs sequentially.
+private final class FailedItem: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: String?
+
+    var id: String? {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
+    }
+
+    func record<T>(_ itemId: String, _ check: () throws -> T) throws -> T {
+        do { return try check() } catch { id = itemId; throw error }
     }
 }

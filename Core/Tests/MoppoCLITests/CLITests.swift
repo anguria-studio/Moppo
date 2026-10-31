@@ -226,6 +226,10 @@ struct CLITests {
             #expect(!String(decoding: result.output, as: UTF8.self).contains("did not remove"))
         }
         #expect(result.exitCode == expected)
+        // Only an item that failed validation is named. A plan-level error names no item.
+        let failure = (try? object(result))?["error"] as? [String: Any]
+        #expect(failure?["item_id"] as? String == (scenario == "stale" ? review.plan.itemIds[0] : nil))
+        #expect((failure?["message"] as? String)?.contains(review.plan.itemIds[0]) ?? false == (scenario == "stale"))
         #expect(!String(decoding: result.output, as: UTF8.self).contains(root.path))
         #expect(!String(decoding: result.output, as: UTF8.self).contains("permanent_items"))
         #expect(FileManager.default.fileExists(atPath: target.path))

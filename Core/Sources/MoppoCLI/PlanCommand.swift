@@ -44,47 +44,52 @@ struct PlanCommand {
             scanner: { settings in try await scanner(settings, progress) })
         let response: Response
         var exitCode: Int32 = 0
-        switch command {
-        case "remove":
-            let outcome = try await PlanRemoval.run(planId: planId, revision: options.values["--revision"]!,
-                validation: service, outcomes: outcomes, authenticate: authenticate, execution: execution)
-            response = Response(command: "plan remove", status: outcome.status.rawValue, planId: planId, outcomes: [outcome])
-            exitCode = outcome.status == .completed ? 0 : outcome.status == .cancelled ? 130 : 3
-        case "review":
-            let plan = try plans.load(planId)
-            guard try scans.loadWithRevision(plan.scanId).revision == plan.scanRevision else { throw PlanValidationError.scanChanged }
-            let handoff = try PlanHandoff(planId: plan.planId, revision: RecordDigest.of(plan))
-            try await appLauncher(handoff)
-            response = Response(command: "plan review", status: "app_requested", planId: plan.planId, revision: handoff.revision)
-        case "outcomes":
-            let records = try outcomes.outcomes(planId: planId)
-            response = Response(command: "plan outcomes", status: records.isEmpty ? "no_outcome" : "outcomes_available",
-                                planId: planId, outcomes: records)
-        case "invalidate":
-            try plans.invalidate(planId, revision: options.values["--revision"]!)
-            response = Response(command: "plan invalidate", status: "invalidated", planId: planId)
-        default:
-            let review: PlanReview
-            if command == "create" {
-                let ids = options.values["--items"]!.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-                review = try await service.create(scanId: options.values["--scan"]!,
-                                                  scanRevision: options.values["--revision"]!, itemIds: ids)
-            } else {
-                review = try await service.inspect(planId)
+        // Name the selected item when one item fails validation.
+        do {
+            switch command {
+            case "remove":
+                let outcome = try await PlanRemoval.run(planId: planId, revision: options.values["--revision"]!,
+                    validation: service, outcomes: outcomes, authenticate: authenticate, execution: execution)
+                response = Response(command: "plan remove", status: outcome.status.rawValue, planId: planId, outcomes: [outcome])
+                exitCode = outcome.status == .completed ? 0 : outcome.status == .cancelled ? 130 : 3
+            case "review":
+                let plan = try plans.load(planId)
+                guard try scans.loadWithRevision(plan.scanId).revision == plan.scanRevision else { throw PlanValidationError.scanChanged }
+                let handoff = try PlanHandoff(planId: plan.planId, revision: RecordDigest.of(plan))
+                try await appLauncher(handoff)
+                response = Response(command: "plan review", status: "app_requested", planId: plan.planId, revision: handoff.revision)
+            case "outcomes":
+                let records = try outcomes.outcomes(planId: planId)
+                response = Response(command: "plan outcomes", status: records.isEmpty ? "no_outcome" : "outcomes_available",
+                                    planId: planId, outcomes: records)
+            case "invalidate":
+                try plans.invalidate(planId, revision: options.values["--revision"]!)
+                response = Response(command: "plan invalidate", status: "invalidated", planId: planId)
+            default:
+                let review: PlanReview
+                if command == "create" {
+                    let ids = options.values["--items"]!.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+                    review = try await service.create(scanId: options.values["--scan"]!,
+                                                      scanRevision: options.values["--revision"]!, itemIds: ids)
+                } else {
+                    review = try await service.inspect(planId)
+                }
+                let paths = options.flags.contains("--include-paths")
+                // Commands contain paths. The tool name alone does not.
+                let commands = zip(review.items, review.entries).compactMap { item, entry -> PermanentCommand? in
+                    guard item.recovery == "permanent", let tool = entry.toolCommand else { return nil }
+                    return PermanentCommand(itemId: item.id,
+                        tool: URL(fileURLWithPath: tool.executable ?? "").lastPathComponent,
+                        command: paths ? tool.command : nil)
+                }
+                response = Response(command: "plan " + command, status: "review_required", planId: review.plan.planId,
+                    revision: review.revision, scanId: review.plan.scanId, scanRevision: review.plan.scanRevision,
+                    expiresAt: review.plan.expiresAt, items: review.items.map { $0.disclosed(includePaths: paths) },
+                    permanentItems: review.permanentItemIds.sorted(), permanentCommands: commands,
+                    scanAllocatedBytes: review.scanAllocatedBytes, pathsDisclosed: paths)
             }
-            let paths = options.flags.contains("--include-paths")
-            // Commands contain paths. The tool name alone does not.
-            let commands = zip(review.items, review.entries).compactMap { item, entry -> PermanentCommand? in
-                guard item.recovery == "permanent", let tool = entry.toolCommand else { return nil }
-                return PermanentCommand(itemId: item.id,
-                    tool: URL(fileURLWithPath: tool.executable ?? "").lastPathComponent,
-                    command: paths ? tool.command : nil)
-            }
-            response = Response(command: "plan " + command, status: "review_required", planId: review.plan.planId,
-                revision: review.revision, scanId: review.plan.scanId, scanRevision: review.plan.scanRevision,
-                expiresAt: review.plan.expiresAt, items: review.items.map { $0.disclosed(includePaths: paths) },
-                permanentItems: review.permanentItemIds.sorted(), permanentCommands: commands,
-                scanAllocatedBytes: review.scanAllocatedBytes, pathsDisclosed: paths)
+        } catch let error as PlanValidationError {
+            throw CLIError.from(error, removal: command == "remove").naming(service.lastFailedItemId)
         }
         let data = options.flags.contains("--json") ? try ScanReport.encoder().encode(response) : Data(response.text.utf8)
         return CLIResult(output: data + Data([10]), exitCode: exitCode)
