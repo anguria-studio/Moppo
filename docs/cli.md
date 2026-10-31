@@ -386,6 +386,10 @@ Check the response status before using its measurements.
 Cancellation of scans or plan inspection does not remove cleanup targets.
 Cancellation before report storage does not save a partial report.
 
+A scan checks that it can save its report before it starts.
+If the report folder blocks writes, the scan returns exit 74 and `storage_failure` at once.
+Agent sandboxes often cause this. The [agent guide](agent-workflow.md#agent-sandboxes) explains the client setting.
+
 ## Privacy and retention
 
 Reports contain file names, paths, and scan explanations.
