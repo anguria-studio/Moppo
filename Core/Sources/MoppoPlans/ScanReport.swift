@@ -104,7 +104,9 @@ public struct ScanReport: Codable, Sendable {
                 let eligibility: String
                 if requiresParent { eligibility = "parent_review" }
                 else if entry.isRemovalLocked { eligibility = "protected" }
-                else if entry.kind == .appBundle || entry.removalAction != nil { eligibility = "app_review" }
+                else if entry.kind == .appBundle || entry.removalAction != nil || entry.requiresAppReview {
+                    eligibility = "app_review"
+                }
                 else { eligibility = "review_required" }
                 let safe = parent == nil ? category.isCountedSafe(entry) : entry.regeneratesSafely
                 let reason: String

@@ -242,7 +242,9 @@ public struct CleanupPlanService: Sendable {
             guard item.measurementStatus == .complete || item.measurementStatus == .partial else {
                 throw PlanValidationError.incompleteScan
             }
-            guard item.eligibility != "app_review", let path = item.path, path.hasPrefix("/"),
+            // Removal runs a tool command only for a selected item, never for an item inside it.
+            guard item.eligibility != "app_review", item.id == root.id || item.evidence?.command == nil,
+                  let path = item.path, path.hasPrefix("/"),
                   let evidence = item.evidence, evidence.identity != nil, evidence.version != nil
             else { throw PlanValidationError.unsupportedTarget }
             let url = URL(fileURLWithPath: path)

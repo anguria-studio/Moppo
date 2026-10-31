@@ -14,6 +14,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Let `moppo` run outside the Claude Code and Codex sandboxes when Settings installs the agent skill. **Remove** removes the rule again.
 - Show **Allow** in Settings when an installed skill lacks its sandbox rule.
 - Stop `moppo scan` before the scan starts when Moppo cannot save its report, and say that an agent sandbox can cause this.
+- Show `app_review` for Xcode build caches, Git worktrees, sound libraries, and Codex sessions in CLI results.
+- Reject these items when an agent creates a plan, so removal does not fail at the last step.
 
 ## [0.5.0] - 2026-10-30
 
