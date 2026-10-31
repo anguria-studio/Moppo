@@ -8,6 +8,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 - Keep dependency folders of recently changed projects out of **Safe to Remove**.
 - Keep dependency folders that Git does not ignore out of **Safe to Remove**.
+- Show the cause when the Git data of a worktree is missing, as when the Claude VM owns it.
 
 ### Command line and agents
 

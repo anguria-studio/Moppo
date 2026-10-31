@@ -44,18 +44,21 @@ enum GitWorktreeDetector {
 
     /// A linked worktree points to Git metadata under a `worktrees` folder.
     /// Missing metadata can remain after the main repository is removed.
-    static func isWorktree(_ directory: URL) -> Bool {
+    static func isWorktree(_ directory: URL) -> Bool { metadata(of: directory) != nil }
+
+    /// Returns the Git metadata folder that the `.git` file of a linked worktree points to.
+    static func metadata(of directory: URL) -> URL? {
         let marker = directory.appendingPathComponent(".git")
         guard let values = try? marker.resourceValues(forKeys: [
             .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey
         ]), values.isRegularFile == true, values.isSymbolicLink != true,
               (values.fileSize ?? 0) <= 16_384,
               let text = try? String(contentsOf: marker, encoding: .utf8),
-              text.hasPrefix("gitdir: ") else { return false }
+              text.hasPrefix("gitdir: ") else { return nil }
         let path = String(text.dropFirst(8)).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty, !path.contains("\n") else { return false }
+        guard !path.isEmpty, !path.contains("\n") else { return nil }
         let metadata = URL(fileURLWithPath: path, relativeTo: directory).standardizedFileURL
-        return metadata.deletingLastPathComponent().lastPathComponent == "worktrees"
+        return metadata.deletingLastPathComponent().lastPathComponent == "worktrees" ? metadata : nil
     }
 
     /// Stops at each worktree so nested files are counted once.

@@ -189,6 +189,10 @@ struct WorktreeReviewSheet: View {
             }
             return "All checks passed using saved remote data. Git and project tools can recreate these files."
         }
+        if let path = review.missingGitData {
+            return "Git cannot read this worktree because its Git data is missing at \(path). "
+                + "Someone removed the main repository, or a virtual machine, such as the Claude VM, owns this worktree."
+        }
         var findings: [String] = []
         if review.status == .uncommittedChanges || !review.localFiles.isEmpty {
             let count = review.localFiles.count
