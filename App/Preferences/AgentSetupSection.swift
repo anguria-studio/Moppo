@@ -114,8 +114,10 @@ struct AgentSetupSection: View {
         let description: String = switch state {
         case .notInstalled:
             ["Lets \(client.displayName) scan and clean up with moppo. Removal always needs your approval.",
-             Self.sandboxSentence(client, action: "Setup also")].compactMap { $0 }.joined(separator: " ")
-        case .installed where ruleMissing: Self.sandboxSentence(client, action: "Allow") ?? folder
+             rule == nil ? nil : Self.sandboxSentence(client, action: "Setup also"),
+             client == .cursor ? "In Cursor Settings, add moppo to the command allowlist." : nil]
+                .compactMap { $0 }.joined(separator: " ")
+        case .installed where ruleMissing: Self.sandboxSentence(client, action: "Allow")
         case .installed where rule == .blocked: Self.blockedRuleMessage(client)
         case .installed: folder
         case .different: "A different version is in \(folder)."
@@ -135,12 +137,13 @@ struct AgentSetupSection: View {
         }
     }
 
-    /// Says what setup changes outside the skill folder. Cursor keeps its allowlist in its own settings.
-    private static func sandboxSentence(_ client: AgentSetup.Client, action: String) -> String? {
+    /// Says what setup changes outside the skill folder.
+    /// The Cursor app keeps its own allowlist, so setup changes only the Cursor CLI.
+    private static func sandboxSentence(_ client: AgentSetup.Client, action: String) -> String {
         switch client {
         case .claudeCode: "\(action) lets moppo run outside the Claude Code sandbox."
         case .codex: "\(action) lets moppo run outside the Codex sandbox. Restart Codex after this change."
-        case .cursor: nil
+        case .cursor: "\(action) lets moppo run outside the Cursor CLI sandbox."
         }
     }
 
@@ -148,8 +151,10 @@ struct AgentSetupSection: View {
         switch client {
         case .claudeCode:
             #"Moppo cannot change ~/.claude/settings.json. Edit the "moppo *" entry in sandbox.excludedCommands yourself."#
-        case .codex, .cursor:
+        case .codex:
             "Another file uses ~/.codex/rules/moppo.rules. Moppo does not replace it."
+        case .cursor:
+            #"Moppo cannot change ~/.cursor/cli-config.json. Edit the "Shell(moppo)" entry in permissions.allow yourself."#
         }
     }
 
