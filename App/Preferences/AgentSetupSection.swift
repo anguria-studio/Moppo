@@ -108,23 +108,48 @@ struct AgentSetupSection: View {
 
     private func skillRow(_ client: AgentSetup.Client) -> some View {
         let state = setup.skillState(for: client)
+        let rule = setup.sandboxRuleState(for: client)
+        let ruleMissing = state == .installed && (rule == .notInstalled || rule == .different)
         let folder = (setup.skillFolder(for: client).path as NSString).abbreviatingWithTildeInPath
         let description: String = switch state {
-        case .notInstalled: "Lets \(client.displayName) scan and clean up with moppo. Removal always needs your approval."
+        case .notInstalled:
+            ["Lets \(client.displayName) scan and clean up with moppo. Removal always needs your approval.",
+             Self.sandboxSentence(client, action: "Setup also")].compactMap { $0 }.joined(separator: " ")
+        case .installed where ruleMissing: Self.sandboxSentence(client, action: "Allow") ?? folder
+        case .installed where rule == .blocked: Self.blockedRuleMessage(client)
         case .installed: folder
         case .different: "A different version is in \(folder)."
         case .blocked: "A file uses \(folder). Moppo does not replace it."
         }
         return PrefRow(title: "\(client.displayName) skill", description: description,
-                       descriptionIsPath: state == .installed) {
+                       descriptionIsPath: state == .installed && !ruleMissing && rule != .blocked) {
             switch state {
             case .notInstalled: button("Install") { try setup.installSkill(for: client) }
+            case .installed where ruleMissing: button("Allow") { try setup.installSandboxRule(for: client) }
             case .installed: button("Remove") { try setup.removeSkill(for: client) }
             case .different: button("Update…") { pendingReplacement = .skill(client) }
             case .blocked: button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([setup.skillFolder(for: client)])
             }
             }
+        }
+    }
+
+    /// Says what setup changes outside the skill folder. Cursor keeps its allowlist in its own settings.
+    private static func sandboxSentence(_ client: AgentSetup.Client, action: String) -> String? {
+        switch client {
+        case .claudeCode: "\(action) lets moppo run outside the Claude Code sandbox."
+        case .codex: "\(action) lets moppo run outside the Codex sandbox. Restart Codex after this change."
+        case .cursor: nil
+        }
+    }
+
+    private static func blockedRuleMessage(_ client: AgentSetup.Client) -> String {
+        switch client {
+        case .claudeCode:
+            #"Moppo cannot change ~/.claude/settings.json. Edit the "moppo *" entry in sandbox.excludedCommands yourself."#
+        case .codex, .cursor:
+            "Another file uses ~/.codex/rules/moppo.rules. Moppo does not replace it."
         }
     }
 
@@ -141,6 +166,8 @@ struct AgentSetupSection: View {
             message = nil
         } catch AgentSetup.SetupError.sourceMissing {
             message = "This copy of Moppo does not include the command-line tool or the skill."
+        } catch AgentSetup.SetupError.sandboxRuleBlocked(let client) {
+            message = Self.blockedRuleMessage(client)
         } catch {
             message = "Moppo could not change this item. " + error.localizedDescription
         }

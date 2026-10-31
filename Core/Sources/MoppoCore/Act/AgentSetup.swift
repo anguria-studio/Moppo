@@ -2,7 +2,7 @@ import Foundation
 
 /// Installs the command-line tool and the agent skill that ship inside Moppo.app.
 /// The tool is a symbolic link, so app updates also update the command.
-/// Replaced skill folders move to Trash.
+/// Replaced skill folders move to Trash. Each skill also gets the client's sandbox rule for `moppo`.
 public struct AgentSetup: Sendable {
     public enum Client: String, CaseIterable, Identifiable, Sendable {
         case claudeCode, codex, cursor
@@ -38,7 +38,11 @@ public struct AgentSetup: Sendable {
         case blocked
     }
 
-    public enum SetupError: Error, Equatable, Sendable { case sourceMissing, blocked, confirmationRequired }
+    public enum SetupError: Error, Equatable, Sendable {
+        case sourceMissing, blocked, confirmationRequired
+        /// Moppo cannot safely change the file that holds the client's sandbox rule.
+        case sandboxRuleBlocked(Client)
+    }
 
     public static let skillName = "moppo-cleanup"
     public static let pathLine = #"export PATH="$HOME/.local/bin:$PATH""#
@@ -46,7 +50,7 @@ public struct AgentSetup: Sendable {
     let home: URL
     let toolSource: URL
     let skillSource: URL
-    private let moveToTrash: @Sendable (URL) throws -> Void
+    let moveToTrash: @Sendable (URL) throws -> Void
 
     public init(home: URL = FileManager.default.homeDirectoryForCurrentUser, toolSource: URL, skillSource: URL,
                 moveToTrash: @escaping @Sendable (URL) throws -> Void = {
@@ -115,14 +119,15 @@ public struct AgentSetup: Sendable {
         return installed != nil && installed == source ? .installed : .different
     }
 
-    /// Copies the bundled skill. `replace` must be true to move a different version to Trash first.
+    /// Copies the bundled skill and adds the sandbox rule.
+    /// `replace` must be true to move a different skill version to Trash first.
     public func installSkill(for client: Client, replace: Bool = false) throws {
         guard FileManager.default.fileExists(atPath: skillSource.appendingPathComponent("SKILL.md").path) else {
             throw SetupError.sourceMissing
         }
         let folder = skillFolder(for: client)
         switch skillState(for: client) {
-        case .installed: return
+        case .installed: return try installSandboxRule(for: client)
         case .blocked: throw SetupError.blocked
         case .different:
             guard replace else { throw SetupError.confirmationRequired }
@@ -131,11 +136,13 @@ public struct AgentSetup: Sendable {
         }
         try FileManager.default.createDirectory(at: folder.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: skillSource, to: folder)
+        try installSandboxRule(for: client)
     }
 
-    /// Moves the installed skill folder to Trash.
+    /// Moves the installed skill folder to Trash and removes the sandbox rule.
     public func removeSkill(for client: Client) throws {
         guard skillState(for: client) == .installed || skillState(for: client) == .different else { return }
         try moveToTrash(skillFolder(for: client))
+        try removeSandboxRule(for: client)
     }
 }
