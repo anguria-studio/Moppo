@@ -70,6 +70,20 @@ Select **Check Again** to update the results.
 Moppo checks again before removal because files and running processes can change.
 If a check fails, Moppo keeps the worktree on disk.
 
+### Project dependencies
+
+Cleanup lists dependency folders, such as `node_modules`, `Pods`, and Python environments, under their project.
+A dependency folder counts as **Safe to Remove** only when all of these conditions are true:
+
+- A lockfile shows that the same dependencies can come back.
+- No changes occurred in the project for 14 days.
+- If the project uses Git, Git ignores the folder.
+
+Moppo finds changes from the last commit, checkout, or pull, the staged files, and the uncommitted files.
+Outside a Git repository, Moppo uses the dates of the files in the project folder.
+If a condition is false, the row shows the reason, such as **recent project changes**.
+You can still select the folder and remove it.
+
 ### Xcode build folders
 
 Temporary and release Xcode build folders show caches, logs, test results, and metadata separately.

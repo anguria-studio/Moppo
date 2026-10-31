@@ -50,16 +50,16 @@ Run the tests and writing checks from the repository root:
 ```sh
 python3 -m unittest discover -s scripts -p 'test_*.py'
 swift test --package-path Core --no-parallel \
-  --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ToolCommandRemovalTests'
+  --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ProjectActivityTests|ToolCommandRemovalTests'
 swift test --package-path Core \
-  --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ToolCommandRemovalTests'
+  --skip 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ProjectActivityTests|ToolCommandRemovalTests'
 xcodegen generate
 xcodebuild -project Moppo.xcodeproj -scheme MoppoAppTests -destination 'platform=macOS' test
 vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs
 ```
 
 Timing and process integration tests run separately to avoid interference from other test fixtures.
-These tests check worker limits, process deadlines, Git commands, and Codex deletion.
+These tests check worker limits, process deadlines, Git commands, project activity, and Codex deletion.
 The remaining core tests run in parallel.
 
 The app state tests use temporary files and a separate test process.

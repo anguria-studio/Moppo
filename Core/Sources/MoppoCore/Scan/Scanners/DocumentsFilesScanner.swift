@@ -21,9 +21,15 @@ public struct DocumentsFilesScanner: CategoryScanner {
 
     /// Injectable so a test can lay out a home of its own.
     private let home: URL
+    private let projectActivity: ProjectActivityReader
 
     public init(home: URL = URL(fileURLWithPath: NSHomeDirectory())) {
+        self.init(home: home, projectActivity: ProjectActivityReader())
+    }
+
+    init(home: URL, projectActivity: ProjectActivityReader) {
         self.home = home
+        self.projectActivity = projectActivity
     }
 
     // MARK: - Roots
@@ -165,10 +171,13 @@ public struct DocumentsFilesScanner: CategoryScanner {
                 // Keep dependency stores under their project. The parent shows its
                 // complete size. The child lets the user remove dependencies while
                 // the source stays in place.
-                let dependencyChildren = measured.carved.compactMap { carved -> FileEntry? in
-                    guard !carved.root.kind.isXcodeOutput,
-                          !carved.measurement.containsProtectedPattern
-                    else { return nil }
+                let dependencyStores = measured.carved.filter {
+                    !$0.root.kind.isXcodeOutput && !$0.measurement.containsProtectedPattern
+                }
+                let activities = try await projectActivity.activities(
+                    for: dependencyStores.map(\.root.url), within: root
+                )
+                let dependencyChildren = dependencyStores.map { carved -> FileEntry in
                     // Regenerable only on evidence, and the evidence is named.
                     // Without it the store is listed and removable like any other
                     // child, and is neither called safe nor ticked for the user —
@@ -176,7 +185,10 @@ public struct DocumentsFilesScanner: CategoryScanner {
                     let evidence = BuildOutputDetector.reinstallEvidence(
                         for: carved.root.url, within: candidate.url
                     )
-                    return FileEntry(
+                    // A lockfile shows that the store can come back. The project
+                    // state shows whether removal costs nothing now.
+                    let activity = activities[carved.root.url.standardizedFileURL.path]
+                    var entry = FileEntry(
                         url: carved.root.url,
                         parentDisplay: FileEntry.abbreviate(
                             carved.root.url.deletingLastPathComponent().path
@@ -186,11 +198,13 @@ public struct DocumentsFilesScanner: CategoryScanner {
                         allocatedBytes: carved.measurement.allocatedBytes,
                         lastOpened: lastOpenedDate(for: carved.root.url),
                         isRegenerable: evidence != nil,
-                        safetyCaveat: evidence == nil ? "no lockfile" : nil,
+                        safetyCaveat: evidence == nil ? "no lockfile" : activity?.caveat,
                         childCount: (try? FileManager.default.contentsOfDirectory(
                             atPath: carved.root.url.path
                         ))?.count
                     )
+                    entry.projectActivity = activity
+                    return entry
                 }
 
                 let minimum = candidate.isDirectory

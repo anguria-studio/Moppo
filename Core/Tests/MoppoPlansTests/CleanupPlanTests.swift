@@ -97,6 +97,29 @@ struct CleanupPlanTests {
         await #expect(throws: PlanValidationError.evidenceUnavailable) { try await f.create(legacy, using: service) }
     }
 
+    @Test("a held dependency store reports its project state and is not safe")
+    func projectActivityInReport() throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let project = try f.file("project/package-lock.json")
+        var store = try f.file("project/node_modules/blob")
+        store.isRegenerable = true
+        let lastActivity = Date(timeIntervalSince1970: 1_800_000_000)
+        store.projectActivity = ProjectActivity(gitIgnore: .ignored, lastActivity: lastActivity,
+                                                now: lastActivity.addingTimeInterval(60))
+        var parent = FileEntry(url: project.url.deletingLastPathComponent(), kind: .folder, allocatedBytes: 100)
+        parent.children = [store]
+
+        let report = ScanReport(results: f.results([parent]))
+        let row = try #require(report.items.first { $0.parentId != nil })
+        #expect(!row.safeToRemove)
+        #expect(row.reason == store.projectActivity?.explanation)
+        #expect(row.projectActivity == .init(store.projectActivity!))
+
+        let json = String(decoding: try ScanReport.encoder().encode(row), as: UTF8.self)
+        #expect(json.contains(#""project_activity":{"git_ignore":"ignored","hold":"recent_activity","last_activity_at":"2027-01-15T08:00:00Z"}"#))
+    }
+
     @Test(arguments: [FileEntry.ProtectionReason.userData, .running, .inventory, .folderRemainder])
     func protectedChildrenStayProtected(reason: FileEntry.ProtectionReason) async throws {
         let f = try Fixture()

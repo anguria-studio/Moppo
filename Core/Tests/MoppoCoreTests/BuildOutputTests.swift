@@ -182,7 +182,7 @@ struct BuildOutputTests {
         #expect(BuildOutputDetector.kind(of: bare) == nil)
         #expect(BuildOutputDetector.kind(of: forged) == nil)
 
-        let result = try await DocumentsFilesScanner(home: sandbox.home).scan(context: ScanContext())
+        let result = try await DocumentsFilesScanner.afterIdlePeriod(home: sandbox.home).scan(context: ScanContext())
         let project = try #require(result.entries.first { $0.url.lastPathComponent == "py" })
         let safe = project.children.filter(\.regeneratesSafely).map(\.url.lastPathComponent)
         #expect(safe == [".mypy_cache"])
@@ -256,7 +256,7 @@ struct BuildOutputTests {
         try sandbox.file("Documents/mono/packages/api/src/index.js", bytes: 2 * 1024 * 1024)
         try sandbox.file("Documents/mono/packages/api/node_modules/dep/blob", bytes: 12 * 1024 * 1024)
 
-        let result = try await DocumentsFilesScanner(home: sandbox.home).scan(context: ScanContext())
+        let result = try await DocumentsFilesScanner.afterIdlePeriod(home: sandbox.home).scan(context: ScanContext())
 
         let project = try #require(result.entries.first { $0.url.lastPathComponent == "mono" })
         let store = try #require(project.children.first)
@@ -310,7 +310,7 @@ struct BuildOutputTests {
         try sandbox.file("Documents/loose/src/index.js", bytes: 2 * 1024 * 1024)
         try sandbox.file("Documents/loose/node_modules/big/blob", bytes: 20 * 1024 * 1024)
 
-        let result = try await DocumentsFilesScanner(home: sandbox.home)
+        let result = try await DocumentsFilesScanner.afterIdlePeriod(home: sandbox.home)
             .scan(context: ScanContext())
 
         func modules(of project: String) throws -> FileEntry {

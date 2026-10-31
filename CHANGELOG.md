@@ -4,6 +4,11 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Cleanup
+
+- Keep dependency folders of recently changed projects out of **Safe to Remove**.
+- Keep dependency folders that Git does not ignore out of **Safe to Remove**.
+
 ## [0.5.0] - 2026-10-30
 
 Build 54.

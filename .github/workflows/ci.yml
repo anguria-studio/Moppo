@@ -16,7 +16,7 @@ concurrency:
 
 env:
   TEST_FILTER: >-
-    ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ToolCommandRemovalTests
+    ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ProjectActivityTests|ToolCommandRemovalTests
 
 jobs:
   changes:
