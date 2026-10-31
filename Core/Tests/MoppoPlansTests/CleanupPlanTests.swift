@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import MoppoCore
+@testable import MoppoCore
 @testable import MoppoPlans
 
 struct CleanupPlanTests {
@@ -532,13 +532,34 @@ struct CleanupPlanTests {
     }
 
 
-    @Test func specializedPermanentHistoryRequiresItsExistingAppReview() async throws {
+    /// Items with their own app review screen fail at plan creation. Removal applies the same rule.
+    @Test(arguments: ["xcodeBuildCache", "codexSession", "nestedToolCommand"])
+    func appReviewItemsCannotEnterAPlan(kind: String) async throws {
         let f = try Fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
-        var entry = try f.file("history")
-        entry.codexSession = CodexSessionReview(codexHome: f.root, threadID: "session", members: [])
-        let review = try await f.create(f.report([entry]), using: f.service([entry]))
-        #expect(throws: PlanValidationError.unsupportedTarget) { try PlanExecutionService.checkSupported(review) }
+        var entry = try f.file("selected")
+        switch kind {
+        case "xcodeBuildCache":
+            entry.xcodeBuildCacheReview = XcodeBuildCache.Review(url: entry.url, root: f.root, rootIdentity: "root",
+                cacheIdentity: "cache", workspacePath: "/Projects/App.xcworkspace")
+        case "codexSession":
+            entry.codexSession = CodexSessionReview(codexHome: f.root, threadID: "session", members: [])
+        default:
+            let folder = f.root.appendingPathComponent("caches")
+            let cache = folder.appendingPathComponent("go-modules")
+            try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+            let tool = try f.file("go")
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: tool.url.path)
+            let child = FileEntry(url: cache, kind: .cache, allocatedBytes: 100,
+                removalMethod: .toolCommand(.goModuleCache(at: cache, executable: tool.url.path)))
+            entry = FileEntry(url: folder, kind: .folder, allocatedBytes: 100, children: [child])
+        }
+        let report = try f.report([entry])
+        #expect((report.items[0].eligibility == "app_review") == (kind != "nestedToolCommand"))
+        await #expect(throws: PlanValidationError.unsupportedTarget) {
+            try await f.create(report, using: f.service([entry]))
+        }
+        #expect(!FileManager.default.fileExists(atPath: f.plans.directory.path))
     }
 
     @Test func directoryContentChangesKeepPlanAndShowFreshSizes() async throws {
