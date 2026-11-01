@@ -26,6 +26,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Let `moppo` run outside the Cursor CLI sandbox when Settings installs the Cursor skill.
 - Name the item that failed plan validation in `moppo plan` errors.
 - Tell agents to ask again before each later command that shows names and paths.
+- Let Codex run `moppo plan remove` after you approve the plan. Select **Allow** in Settings to update the Codex rule.
 
 ## [0.5.0] - 2026-10-30
 
