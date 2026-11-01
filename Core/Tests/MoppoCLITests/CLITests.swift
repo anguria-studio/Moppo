@@ -271,6 +271,13 @@ struct CLITests {
         #expect(try object(result)["error"] != nil)
     }
 
+    @Test func unsupportedTargetPointsToTheAppAndOtherErrorsToANewScan() {
+        let unsupported = CLIError.from(PlanValidationError.unsupportedTarget, removal: false)
+        #expect(unsupported.code == "unsupported_target" && unsupported.exitCode == 65)
+        #expect(unsupported.message.contains("Moppo app") && !unsupported.message.contains("new scan"))
+        #expect(CLIError.from(PlanValidationError.changedTarget, removal: false).message.contains("new scan"))
+    }
+
     @Test func textOutputReplacesControlCharacters() {
         #expect(TerminalText.field("a\n\u{1b}[31m\u{9b}\u{202e}b") == "a??[31m??b")
         #expect(TerminalText.lines("a\nb\u{1b}") == "a\nb?")

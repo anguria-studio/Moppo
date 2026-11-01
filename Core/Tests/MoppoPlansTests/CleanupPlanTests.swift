@@ -556,7 +556,7 @@ struct CleanupPlanTests {
 
 
     /// Items with their own app review screen fail at plan creation. Removal applies the same rule.
-    @Test(arguments: ["xcodeBuildCache", "codexSession", "nestedToolCommand"])
+    @Test(arguments: ["xcodeBuildCache", "codexSession", "dockerImage", "nestedToolCommand"])
     func appReviewItemsCannotEnterAPlan(kind: String) async throws {
         let f = try Fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
@@ -567,6 +567,9 @@ struct CleanupPlanTests {
                 cacheIdentity: "cache", workspacePath: "/Projects/App.xcworkspace")
         case "codexSession":
             entry.codexSession = CodexSessionReview(codexHome: f.root, threadID: "session", members: [])
+        case "dockerImage":
+            let image = try #require(URL(string: "docker://images/desktop-linux/sha256:" + String(repeating: "a", count: 64)))
+            entry = FileEntry(url: image, kind: .diskImage, allocatedBytes: 100)
         default:
             let folder = f.root.appendingPathComponent("caches")
             let cache = folder.appendingPathComponent("go-modules")

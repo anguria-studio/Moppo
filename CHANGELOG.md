@@ -27,6 +27,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Name the item that failed plan validation in `moppo plan` errors.
 - Tell agents to ask again before each later command that shows names and paths.
 - Open saved plans for review in Moppo. Versions 0.4.0 and 0.5.0 showed **Plan Unavailable** instead.
+- Show `app_review` for Docker images in CLI results, because a saved plan cannot include them.
+- Tell agents to remove `unsupported_target` items in the Moppo app instead of scanning again.
 
 ## [0.5.0] - 2026-10-30
 

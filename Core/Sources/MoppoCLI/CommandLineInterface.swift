@@ -101,6 +101,10 @@ public struct CLIError: Error, Sendable {
             return Self(130, "cancelled", removal
                 ? "The operation stopped. Inspect plan outcomes and Cleanup History before another attempt."
                 : "The operation stopped. Moppo did not remove cleanup targets.")
+        case PlanValidationError.unsupportedTarget:
+            // A new scan cannot change this result.
+            return Self(65, "unsupported_target",
+                        "The plan contains an item that needs review in the Moppo app. Create a plan without that item.")
         case let error as PlanValidationError:
             return Self(65, error.rawValue, "The plan cannot pass review (" + error.rawValue + "). Run a new scan and create a new plan.")
         case let error as RecordStoreError:
