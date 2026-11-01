@@ -132,7 +132,7 @@ struct HomebrewUninstallFlowTests {
             parent.contentView = nil
             parent.orderOut(nil)
         }
-        try await waitUntil { model.uninstaller.installedApplicationsMeasured }
+        try await waitUntil(timeout: .seconds(15)) { model.uninstaller.installedApplicationsMeasured }
         parent.contentView?.layoutSubtreeIfNeeded()
         let host = try #require(parent.contentView)
         let libraryScroll = try #require(scrollViews(in: host).first {
