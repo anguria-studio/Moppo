@@ -326,6 +326,7 @@ Dates use UTC ISO 8601 strings.
 Progress goes to standard error.
 Standard output contains one JSON document when `--json` is present.
 JSON errors include an error code and a message.
+A plan validation error also includes `item_id` when one selected item caused it.
 Text errors go to standard error.
 
 A scan response contains category totals and an item count.

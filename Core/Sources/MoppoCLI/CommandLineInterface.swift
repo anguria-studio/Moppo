@@ -67,10 +67,19 @@ public struct CLIError: Error, Sendable {
     public let exitCode: Int32
     public let code: String
     public let message: String
+    /// The selected item that caused a plan validation error, when one item caused it.
+    public private(set) var itemId: String?
     public init(_ exitCode: Int32, _ code: String, _ message: String) {
         self.exitCode = exitCode
         self.code = code
         self.message = message
+    }
+
+    func naming(_ itemId: String?) -> Self {
+        guard let itemId else { return self }
+        var copy = Self(exitCode, code, message + " Item: " + itemId + ".")
+        copy.itemId = itemId
+        return copy
     }
     static func usage(_ message: String) -> Self { Self(64, "invalid_arguments", message) }
 
@@ -267,8 +276,8 @@ public enum CommandLineInterface {
     private struct Failure: Encodable {
         let schemaVersion = ScanReport.schemaVersion
         let error: Detail
-        struct Detail: Encodable { let code: String; let message: String }
-        init(error: CLIError) { self.error = Detail(code: error.code, message: error.message) }
+        struct Detail: Encodable { let code: String; let message: String; let itemId: String? }
+        init(error: CLIError) { self.error = Detail(code: error.code, message: error.message, itemId: error.itemId) }
     }
 
     private struct ReportResponse: Encodable {

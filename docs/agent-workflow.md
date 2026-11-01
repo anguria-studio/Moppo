@@ -15,7 +15,7 @@ The command-line tool is a link to the executable inside Moppo.app, so app updat
 The skill is a copy. After a Moppo update, the row shows **Update…** when the bundled skill changed.
 **Update…** and **Remove** move the earlier skill folder to Trash.
 Moppo never replaces a file that it did not create.
-For Claude Code and Codex, setup also lets `moppo` run outside the agent sandbox.
+For Claude Code, Codex, and the Cursor CLI, setup also lets `moppo` run outside the agent sandbox.
 [Agent sandboxes](#agent-sandboxes) describes the files that setup changes.
 
 ### Manual installation
@@ -69,7 +69,8 @@ Moppo setup adds a rule for each client when it installs the skill. **Remove** r
 | --- | --- |
 | Claude Code | Adds `"moppo *"` to `sandbox.excludedCommands` in `~/.claude/settings.json` |
 | Codex | Writes `~/.codex/rules/moppo.rules`. The rule asks the user before `moppo plan remove` |
-| Cursor | No change. Cursor keeps its command allowlist in its own settings |
+| Cursor CLI | Adds `Shell(moppo)` to `permissions.allow` in `~/.cursor/cli-config.json`, if that file exists |
+| Cursor app | No change. The app keeps its own command allowlist |
 
 Claude Code merges `excludedCommands` with the sandbox settings of each project, so one entry applies to all projects.
 Permission rules and auto mode still review commands that run outside the sandbox.
@@ -77,8 +78,9 @@ Moppo keeps the other values in `~/.claude/settings.json`. The file can show its
 Moppo does not change a settings file that is not valid JSON or that is a symbolic link.
 For these files, the row tells you to add the entry yourself.
 Codex reads rules only when it starts, so restart Codex after setup.
-In Cursor, the agent asks to run each `moppo` command outside the sandbox, and you approve it.
+In the Cursor app, the agent asks to run each `moppo` command outside the sandbox, and you approve it.
 To skip these prompts, add `moppo` to the command allowlist in Cursor Settings.
+The Cursor app and the Cursor CLI use separate allowlists.
 
 Clients keep a chained call in the sandbox when their rule does not match every command in it.
 The skill therefore runs each `moppo` command alone, without `echo $?` or other added commands.
