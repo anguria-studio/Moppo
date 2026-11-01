@@ -4,6 +4,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-01
+
+Build 55.
+
 ### AI Tools
 
 - Show PyTorch Hub, Whisper, Keras, and GPT4All models in **AI Tools**, with one row for each model.
@@ -19,18 +23,21 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ### Command line and agents
 
-- Let `moppo` run outside the Claude Code and Codex sandboxes when Settings installs the agent skill. **Remove** removes the rule again.
-- Show **Allow** in Settings when an installed skill lacks its sandbox rule.
-- Stop `moppo scan` before the scan starts when Moppo cannot save its report, and say that an agent sandbox can cause this.
-- Show `app_review` for Xcode build caches, Git worktrees, sound libraries, and Codex sessions in CLI results.
-- Reject these items when an agent creates a plan, so removal does not fail at the last step.
-- Let `moppo` run outside the Cursor CLI sandbox when Settings installs the Cursor skill.
+- Let `moppo` run outside the Claude Code, Codex, and Cursor CLI sandboxes when Settings installs the agent skill.
+- **Remove** in Settings also removes the sandbox rule.
+- Show **Allow** in Settings when an installed skill lacks its sandbox rule or has an earlier rule.
+- Let Codex run `moppo plan remove` after you approve the plan. Select **Allow** to update the Codex rule.
+- Stop `moppo scan` before the scan starts when Moppo cannot save its report.
+- Show `app_review` in CLI results for items that a saved plan cannot include.
+- These items include Xcode build caches, Git worktrees, sound libraries, Codex sessions, and Docker images.
 - Name the item that failed plan validation in `moppo plan` errors.
 - Tell agents to ask again before each later command that shows names and paths.
-- Open saved plans for review in Moppo. Versions 0.4.0 and 0.5.0 showed **Plan Unavailable** instead.
-- Let Codex run `moppo plan remove` after you approve the plan. Select **Allow** in Settings to update the Codex rule.
-- Show `app_review` for Docker images in CLI results, because a saved plan cannot include them.
 - Tell agents to remove `unsupported_target` items in the Moppo app instead of scanning again.
+
+### Fixes
+
+- Open saved plans for review in Moppo. Versions 0.4.0 and 0.5.0 showed **Plan Unavailable** instead.
+- Reject items that need app review when an agent creates a plan. Removal no longer fails at the last step.
 
 ## [0.5.0] - 2026-10-30
 
@@ -148,7 +155,8 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.6.0
 [0.5.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.5.0
 [0.4.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.4.0
 [0.3.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.3.0
