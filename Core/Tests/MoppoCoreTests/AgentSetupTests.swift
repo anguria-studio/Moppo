@@ -143,13 +143,15 @@ struct AgentSetupTests {
         #expect(try Data(contentsOf: linked) == Data(#"{"model": "opus"}"#.utf8))
     }
 
-    @Test func codexRulesFileIsMoppoOwnedAndCursorHasNoRuleFile() throws {
+    @Test func codexRulesFileIsMoppoOwned() throws {
         let f = try Fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }
         let file = try #require(f.setup.sandboxRuleFile(for: .codex))
         #expect(file.path.hasSuffix(".codex/rules/moppo.rules"))
         try f.setup.installSkill(for: .codex)
         #expect(try String(contentsOf: file, encoding: .utf8) == AgentSetup.codexRules)
+        // Codex automatic approval review refuses `prompt` rules, which would block every plan removal.
+        #expect(!AgentSetup.codexRules.contains(#"decision = "prompt""#))
         #expect(f.setup.sandboxRuleState(for: .codex) == .installed)
 
         // A rules file from an earlier Moppo version moves to Trash.
@@ -167,11 +169,38 @@ struct AgentSetupTests {
         #expect(throws: AgentSetup.SetupError.sandboxRuleBlocked(.codex)) { try f.setup.installSkill(for: .codex) }
         try f.setup.removeSandboxRule(for: .codex)
         #expect(FileManager.default.fileExists(atPath: file.path))
+    }
 
-        #expect(f.setup.sandboxRuleFile(for: .cursor) == nil)
+    @Test func cursorRuleChangesOnlyAnExistingCLIConfig() throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let file = try #require(f.setup.sandboxRuleFile(for: .cursor))
+        #expect(file.path.hasSuffix(".cursor/cli-config.json"))
+
+        // Without the Cursor CLI, setup installs only the skill.
         #expect(f.setup.sandboxRuleState(for: .cursor) == nil)
         try f.setup.installSkill(for: .cursor)
         #expect(f.setup.skillState(for: .cursor) == .installed)
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+
+        try Data(#"{"version": 1, "permissions": {"allow": ["Shell(ls)"], "deny": []}, "editor": {"vimMode": false}}"#.utf8)
+            .write(to: file)
+        #expect(f.setup.sandboxRuleState(for: .cursor) == .notInstalled)
+        try f.setup.installSkill(for: .cursor)
+        #expect(f.setup.sandboxRuleState(for: .cursor) == .installed)
+        var saved = try settings(file)
+        #expect((saved["permissions"] as? [String: Any])?["allow"] as? [String] == ["Shell(ls)", "Shell(moppo)"])
+        #expect((saved["editor"] as? [String: Any])?["vimMode"] as? Bool == false)
+        #expect(saved["version"] as? Int == 1)
+
+        try f.setup.removeSkill(for: .cursor)
+        saved = try settings(file)
+        #expect((saved["permissions"] as? [String: Any])?["allow"] as? [String] == ["Shell(ls)"])
+
+        // The CLI writes this list itself, so an empty list stays.
+        try Data(#"{"permissions": {"allow": ["Shell(moppo)"], "deny": []}}"#.utf8).write(to: file)
+        try f.setup.removeSandboxRule(for: .cursor)
+        #expect((try settings(file)["permissions"] as? [String: Any])?["allow"] as? [String] == [])
     }
 
     @Test func appBundleLayoutProvidesBothSources() throws {

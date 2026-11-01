@@ -154,7 +154,7 @@ struct CLI {
     static func models() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let found = LocalModelStores.all(home: home)
-        if found.isEmpty { print("  no Ollama, Hugging Face or LM Studio models found") }
+        if found.isEmpty { print("  no Hugging Face, LM Studio, PyTorch, Whisper, Keras, or GPT4All models found") }
         func size(_ url: URL) -> Int64 {
             let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
             return Int64(values?.totalFileAllocatedSize ?? 0)

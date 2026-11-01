@@ -98,8 +98,7 @@ public struct AIToolsScanner: CategoryScanner {
             unreadableCount: found.unreadableCount
         )
         result.claimedStoragePaths = AIToolStorage.roots.map { home.appendingPathComponent($0.path).path }
-            + LocalModelStores.homeDotFolders.map { home.appendingPathComponent($0).path }
-            + LocalModelStores.dotCacheFolders.map { home.appendingPathComponent(".cache/" + $0).path }
+            + LocalModelStores.claimedPaths(home: home)
         return result
     }
 
@@ -233,12 +232,7 @@ public struct AIToolsScanner: CategoryScanner {
             row.protectionExplanation = explanation
             row.removesAsUnit = true
             row.localModelPaths = model.memberPaths
-            let owner: AIStorageSection.Owner? = switch model.runtime {
-            case "Hugging Face": .huggingFace
-            case "LM Studio": .lmStudio
-            default: nil
-            }
-            if let owner {
+            if let owner = AIStorageSection.Owner(rawValue: model.runtime) {
                 row.aiTool = owner.tool
                 row.aiStorageSection = .init(owner: owner, title: model.name, summary: qualifier)
             }

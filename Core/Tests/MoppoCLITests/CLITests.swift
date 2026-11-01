@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import Testing
 import MoppoPlans
-import MoppoCore
+@testable import MoppoCore
 import MoppoScan
 @testable import MoppoCLI
 
@@ -226,6 +226,10 @@ struct CLITests {
             #expect(!String(decoding: result.output, as: UTF8.self).contains("did not remove"))
         }
         #expect(result.exitCode == expected)
+        // Only an item that failed validation is named. A plan-level error names no item.
+        let failure = (try? object(result))?["error"] as? [String: Any]
+        #expect(failure?["item_id"] as? String == (scenario == "stale" ? review.plan.itemIds[0] : nil))
+        #expect((failure?["message"] as? String)?.contains(review.plan.itemIds[0]) ?? false == (scenario == "stale"))
         #expect(!String(decoding: result.output, as: UTF8.self).contains(root.path))
         #expect(!String(decoding: result.output, as: UTF8.self).contains("permanent_items"))
         #expect(FileManager.default.fileExists(atPath: target.path))
@@ -265,6 +269,13 @@ struct CLITests {
             scanner: { _, _ in Issue.record("Invalid arguments started a scan."); throw CancellationError() })
         #expect(result.exitCode == 64)
         #expect(try object(result)["error"] != nil)
+    }
+
+    @Test func unsupportedTargetPointsToTheAppAndOtherErrorsToANewScan() {
+        let unsupported = CLIError.from(PlanValidationError.unsupportedTarget, removal: false)
+        #expect(unsupported.code == "unsupported_target" && unsupported.exitCode == 65)
+        #expect(unsupported.message.contains("Moppo app") && !unsupported.message.contains("new scan"))
+        #expect(CLIError.from(PlanValidationError.changedTarget, removal: false).message.contains("new scan"))
     }
 
     @Test func textOutputReplacesControlCharacters() {
@@ -352,6 +363,10 @@ struct CLITests {
         defaults.removeObject(forKey: ScanConfiguration.categoriesKey)
         defaults.set(Data("invalid".utf8), forKey: ScanConfiguration.exclusionsKey)
         #expect(throws: (any Error).self) { try ScanConfiguration(defaults: defaults) }
+        // macOS returns nil for a suite named after the running app, so the app reads its own preferences.
+        #expect(ScanConfiguration.applicationDefaults(bundleIdentifier: ScanConfiguration.applicationDomain) === UserDefaults.standard)
+        let cli = ScanConfiguration.applicationDefaults(bundleIdentifier: ScanConfiguration.applicationDomain + ".CLI")
+        #expect(cli != nil && cli !== UserDefaults.standard)
     }
 
     @Test func configurationFailureAndUnavailableScan() async throws {

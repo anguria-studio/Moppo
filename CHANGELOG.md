@@ -4,6 +4,13 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### AI Tools
+
+- Show PyTorch Hub, Whisper, Keras, and GPT4All models in **AI Tools**, with one row for each model.
+- Show Keras datasets as rows in **AI Tools**.
+- Show the PyTorch, Whisper, Keras, and GPT4All icons. An installed GPT4All app supplies its own icon.
+- Show the other folders in `~/.cache/torch` and `~/.keras` in their current categories.
+
 ### Cleanup
 
 - Keep dependency folders of recently changed projects out of **Safe to Remove**.
@@ -17,6 +24,13 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Stop `moppo scan` before the scan starts when Moppo cannot save its report, and say that an agent sandbox can cause this.
 - Show `app_review` for Xcode build caches, Git worktrees, sound libraries, and Codex sessions in CLI results.
 - Reject these items when an agent creates a plan, so removal does not fail at the last step.
+- Let `moppo` run outside the Cursor CLI sandbox when Settings installs the Cursor skill.
+- Name the item that failed plan validation in `moppo plan` errors.
+- Tell agents to ask again before each later command that shows names and paths.
+- Open saved plans for review in Moppo. Versions 0.4.0 and 0.5.0 showed **Plan Unavailable** instead.
+- Let Codex run `moppo plan remove` after you approve the plan. Select **Allow** in Settings to update the Codex rule.
+- Show `app_review` for Docker images in CLI results, because a saved plan cannot include them.
+- Tell agents to remove `unsupported_target` items in the Moppo app instead of scanning again.
 
 ## [0.5.0] - 2026-10-30
 

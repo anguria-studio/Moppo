@@ -136,6 +136,24 @@ public struct SystemCachesScanner: CategoryScanner {
     /// with its binaries. So a child there is regenerable on its tool's own
     /// `CACHEDIR.TAG` — see `CacheDirectoryTag` — and is otherwise listed plainly,
     /// which in a safe category means Needs Review, unticked.
+    /// AI Tools claims part of some `~/.cache` folders, such as `torch/hub`.
+    /// Each such folder is replaced by its other children, so no row holds claimed models.
+    private func replacePartlyClaimedFolders(
+        in measured: inout [URL: SizeMeasurement], under root: URL, context: ScanContext
+    ) async throws {
+        let home = root.deletingLastPathComponent()
+        for folder in measured.keys {
+            guard let children = LocalModelStores.unclaimedChildren(of: folder, home: home) else { continue }
+            measured[folder] = nil
+            let inside = try await context.measurer.measureChildren(of: folder)
+            let byPath = Dictionary(inside.map { ($0.key.standardizedFileURL.path, $0.value) },
+                                    uniquingKeysWith: { first, _ in first })
+            for child in children {
+                if let measurement = byPath[child.standardizedFileURL.path] { measured[child] = measurement }
+            }
+        }
+    }
+
     private func isRegenerable(_ child: URL, under root: URL) -> Bool {
         root == dotCacheRoot ? CacheDirectoryTag.isPresent(in: child) : true
     }
@@ -179,7 +197,10 @@ public struct SystemCachesScanner: CategoryScanner {
             // One walk covers the whole root. Filtering happens after it rather than
             // before because the alternative — re-measuring the survivors one at a
             // time — is precisely the per-child pattern this port removes.
-            let measured = try await context.measurer.measureChildren(of: root)
+            var measured = try await context.measurer.measureChildren(of: root)
+            if root == dotCacheRoot {
+                try await replacePartlyClaimedFolders(in: &measured, under: root, context: context)
+            }
 
             for (url, measurement) in measured {
                 try Task.checkCancellation()
@@ -227,6 +248,9 @@ public struct SystemCachesScanner: CategoryScanner {
 
                 entries.append(FileEntry(
                     url: url,
+                    // A child of a partly claimed folder shows that folder, such as `torch/kernels`.
+                    displayName: url.deletingLastPathComponent().standardizedFileURL.path == root.standardizedFileURL.path
+                        ? nil : url.deletingLastPathComponent().lastPathComponent + "/" + url.lastPathComponent,
                     kind: .cache,
                     allocatedBytes: measurement.allocatedBytes,
                     lastOpened: lastOpened,
