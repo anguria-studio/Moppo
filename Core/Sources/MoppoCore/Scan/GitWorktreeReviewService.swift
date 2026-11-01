@@ -57,7 +57,7 @@ public struct GitWorktreeReviewService: Sendable {
                 "activity": "\(review.activity)", "locks": "\(review.locks)"
             ])
         }
-        guard GitWorktreeDetector.isWorktree(directory) else {
+        guard let metadata = GitWorktreeDetector.metadata(of: directory) else {
             review.filesIssue = "This folder is no longer a linked Git worktree."
             review.pushIssue = review.filesIssue
             return review
@@ -65,6 +65,14 @@ public struct GitWorktreeReviewService: Sendable {
         guard let git = try await gitExecutable() else {
             review.filesIssue = "Git is not installed."
             review.pushIssue = review.filesIssue
+            review.locks = .unknown(review.filesIssue)
+            return review
+        }
+        guard FileManager.default.fileExists(atPath: metadata.path) else {
+            review.missingGitData = metadata.path
+            review.filesIssue = "The Git data for this worktree is missing."
+            review.pushIssue = review.filesIssue
+            review.mergeIssue = review.filesIssue
             review.locks = .unknown(review.filesIssue)
             return review
         }

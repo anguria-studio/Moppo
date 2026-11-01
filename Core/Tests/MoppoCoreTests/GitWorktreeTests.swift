@@ -248,7 +248,11 @@ struct GitWorktreeTests {
         try sandbox.file("Worktrees/task/ignored-demo.bin", text: "Test data")
         #expect((try await GitWorktreeReviewService().review(tree)).status == .clean)
         try sandbox.file("Stale/.git", text: "gitdir: /missing/.git/worktrees/task\n")
-        #expect((try await GitWorktreeReviewService().review(sandbox.home.appendingPathComponent("Stale"))).status == .unavailable)
+        let stale = try await GitWorktreeReviewService().review(sandbox.home.appendingPathComponent("Stale"))
+        #expect(stale.status == .unavailable)
+        #expect(stale.missingGitData == "/missing/.git/worktrees/task")
+        #expect(stale.outcome == .couldNotVerify)
+        #expect((try await GitWorktreeReviewService().review(tree)).missingGitData == nil)
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return (try await GitWorktreeReviewService().review(tree)).status
