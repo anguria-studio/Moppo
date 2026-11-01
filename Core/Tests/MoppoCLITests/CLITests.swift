@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import Testing
 import MoppoPlans
-import MoppoCore
+@testable import MoppoCore
 import MoppoScan
 @testable import MoppoCLI
 
@@ -356,6 +356,10 @@ struct CLITests {
         defaults.removeObject(forKey: ScanConfiguration.categoriesKey)
         defaults.set(Data("invalid".utf8), forKey: ScanConfiguration.exclusionsKey)
         #expect(throws: (any Error).self) { try ScanConfiguration(defaults: defaults) }
+        // macOS returns nil for a suite named after the running app, so the app reads its own preferences.
+        #expect(ScanConfiguration.applicationDefaults(bundleIdentifier: ScanConfiguration.applicationDomain) === UserDefaults.standard)
+        let cli = ScanConfiguration.applicationDefaults(bundleIdentifier: ScanConfiguration.applicationDomain + ".CLI")
+        #expect(cli != nil && cli !== UserDefaults.standard)
     }
 
     @Test func configurationFailureAndUnavailableScan() async throws {

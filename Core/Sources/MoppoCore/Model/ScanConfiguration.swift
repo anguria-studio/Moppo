@@ -83,8 +83,14 @@ public struct ScanConfiguration: Sendable {
     }
 
     public static func current() throws -> Self {
-        guard let defaults = UserDefaults(suiteName: applicationDomain) else { throw ConfigurationError.invalidCategories }
+        guard let defaults = applicationDefaults() else { throw ConfigurationError.unavailable }
         return try Self(defaults: defaults)
+    }
+
+    /// The app's preferences. macOS returns nil for a suite named after the running app's own bundle
+    /// identifier, so the app itself uses `standard`. Other processes, such as the CLI, use the named suite.
+    static func applicationDefaults(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> UserDefaults? {
+        bundleIdentifier == applicationDomain ? .standard : UserDefaults(suiteName: applicationDomain)
     }
 
     public enum ConfigurationError: Error { case invalidCategories, invalidExclusions, unavailable }
@@ -104,7 +110,7 @@ public struct ScanConfiguration: Sendable {
 
     /// Writes to the app's preferences and tells a running app to reload its rules.
     public static func addExclusions(_ added: [ExclusionRule]) throws -> [ExclusionRule] {
-        guard let defaults = UserDefaults(suiteName: applicationDomain) else { throw ConfigurationError.unavailable }
+        guard let defaults = applicationDefaults() else { throw ConfigurationError.unavailable }
         let inserted = try addExclusions(added, to: defaults)
         if !inserted.isEmpty {
             defaults.synchronize()
