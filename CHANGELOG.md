@@ -27,6 +27,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Name the item that failed plan validation in `moppo plan` errors.
 - Tell agents to ask again before each later command that shows names and paths.
 - Open saved plans for review in Moppo. Versions 0.4.0 and 0.5.0 showed **Plan Unavailable** instead.
+- Let Codex run `moppo plan remove` after you approve the plan. Select **Allow** in Settings to update the Codex rule.
 
 ## [0.5.0] - 2026-10-30
 

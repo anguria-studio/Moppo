@@ -68,7 +68,7 @@ Moppo setup adds a rule for each client when it installs the skill. **Remove** r
 | Client | Change that setup makes |
 | --- | --- |
 | Claude Code | Adds `"moppo *"` to `sandbox.excludedCommands` in `~/.claude/settings.json` |
-| Codex | Writes `~/.codex/rules/moppo.rules`. The rule asks the user before `moppo plan remove` |
+| Codex | Writes `~/.codex/rules/moppo.rules` |
 | Cursor CLI | Adds `Shell(moppo)` to `permissions.allow` in `~/.cursor/cli-config.json`, if that file exists |
 | Cursor app | No change. The app keeps its own command allowlist |
 

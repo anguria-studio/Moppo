@@ -150,6 +150,8 @@ struct AgentSetupTests {
         #expect(file.path.hasSuffix(".codex/rules/moppo.rules"))
         try f.setup.installSkill(for: .codex)
         #expect(try String(contentsOf: file, encoding: .utf8) == AgentSetup.codexRules)
+        // Codex automatic approval review refuses `prompt` rules, which would block every plan removal.
+        #expect(!AgentSetup.codexRules.contains(#"decision = "prompt""#))
         #expect(f.setup.sandboxRuleState(for: .codex) == .installed)
 
         // A rules file from an earlier Moppo version moves to Trash.

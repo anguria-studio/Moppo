@@ -11,6 +11,9 @@ extension AgentSetup {
     public static let cursorAllowedCommand = "Shell(moppo)"
 
     static let codexRulesMarker = "# Moppo Settings > Advanced manages this file."
+    /// No `prompt` rule for `moppo plan remove`. Codex sessions that use automatic approval review refuse rule
+    /// prompts, so removal could never run. The skill requires approval of the exact plan in the conversation,
+    /// and permanent removals still need Touch ID or the login password.
     static let codexRules = """
     \(codexRulesMarker)
     # Moppo saves private records in ~/Library/Application Support/Moppo and moves approved items to Trash.
@@ -18,11 +21,6 @@ extension AgentSetup {
         pattern = ["moppo"],
         decision = "allow",
         justification = "Moppo saves its records and moves approved items to Trash outside the sandbox.",
-    )
-    prefix_rule(
-        pattern = ["moppo", "plan", "remove"],
-        decision = "prompt",
-        justification = "Removal changes files. Approve only the plan that you reviewed.",
     )
 
     """
