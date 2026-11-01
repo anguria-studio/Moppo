@@ -8,6 +8,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case codex = "Codex", chatGPT = "ChatGPT", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
         case t3Code = "T3Code"
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
+        case pyTorch = "PyTorch", whisper = "Whisper", keras = "Keras", gpt4All = "GPT4All"
         case gemini = "Gemini", antigravity = "Antigravity"
     }
 

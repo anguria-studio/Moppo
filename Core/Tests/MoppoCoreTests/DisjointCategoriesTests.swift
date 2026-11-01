@@ -113,6 +113,23 @@ struct DisjointCategoriesTests {
         )
     }
 
+    /// System Caches lists the children of `~/.cache`, and Hidden Data lists home dot-folders.
+    /// Each lists a partly claimed folder child by child, so the folder must be one of those
+    /// rows, and no whole claim may cover it.
+    @Test("a folder that AI Tools claims in part is a row that System Caches or Hidden Data splits")
+    func partlyClaimedModelFolders() {
+        let home = URL(fileURLWithPath: "/tmp/moppo-claims", isDirectory: true)
+        let whole = LocalModelStores.homeDotFolders.union(LocalModelStores.dotCacheFolders.map { ".cache/" + $0 })
+        for (folder, children) in LocalModelStores.partlyClaimedFolders {
+            let parts = folder.split(separator: "/")
+            #expect(parts.count == 1 ? folder.hasPrefix(".") : parts.count == 2 && parts[0] == ".cache", "\(folder)")
+            #expect(!HiddenDataScanner.dotDirectorySkipList.contains(folder), "Hidden Data would skip \(folder)")
+            #expect(!whole.contains { ApplicationsScanner.overlaps($0, folder) }, "\(folder) is also claimed whole")
+            let claimed = Set(LocalModelStores.claimedPaths(home: home))
+            #expect(children.allSatisfy { claimed.contains(home.appendingPathComponent(folder + "/" + $0).path) })
+        }
+    }
+
     @Test("application leftovers replace overlapping generic cleanup rows")
     func applicationLeftoversOwnTheirPaths() throws {
         let root = URL(fileURLWithPath: "/tmp/moppo-overlap", isDirectory: true)

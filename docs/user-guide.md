@@ -118,6 +118,10 @@ A Docker image rule applies to that image in its recorded Docker context.
 
 AI Tools groups storage under each application.
 Conversations, memories, credentials, and settings stay protected.
+AI Tools shows one row for each local model from Hugging Face, LM Studio, PyTorch Hub, Whisper, Keras, and GPT4All.
+Keras datasets also show as rows.
+Moppo reads only the default folder of each tool.
+If you remove a downloaded model, the tool must download it again.
 Moppo protects a local model when another application opens it, links to it, or shares its files.
 Hard-linked model files count once.
 Gemini CLI and Antigravity share `~/.gemini`. Moppo shows this folder once, under Gemini, and keeps it protected.

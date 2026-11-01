@@ -8,7 +8,8 @@ import MoppoCore
 struct AIStorageGroupTests {
     @Test("Repeated tool icon lookups keep the same image")
     func stableToolIcons() throws {
-        for tool in [FileEntry.AITool.codex, .claude, .chatGPT, .huggingFace, .cursor, .ollama, .lmStudio] {
+        for tool in [FileEntry.AITool.codex, .claude, .chatGPT, .huggingFace, .cursor, .ollama, .lmStudio,
+                     .pyTorch, .whisper, .keras, .gpt4All] {
             let first = try #require(ApplicationIcons.icon(for: tool))
             let next = try #require(ApplicationIcons.icon(for: tool))
             #expect(first.image === next.image, "\(tool.rawValue) creates a new image")

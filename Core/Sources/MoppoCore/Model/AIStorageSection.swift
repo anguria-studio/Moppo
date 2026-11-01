@@ -13,6 +13,10 @@ public struct AIStorageSection: Sendable, Equatable {
         case ollama = "Ollama"
         case huggingFace = "Hugging Face"
         case lmStudio = "LM Studio"
+        case pyTorch = "PyTorch"
+        case whisper = "Whisper"
+        case keras = "Keras"
+        case gpt4All = "GPT4All"
         case gemini = "Gemini"
         case antigravity = "Antigravity"
 
@@ -27,6 +31,10 @@ public struct AIStorageSection: Sendable, Equatable {
             case .ollama: .ollama
             case .huggingFace: .huggingFace
             case .lmStudio: .lmStudio
+            case .pyTorch: .pyTorch
+            case .whisper: .whisper
+            case .keras: .keras
+            case .gpt4All: .gpt4All
             case .gemini: .gemini
             case .antigravity: .antigravity
             }

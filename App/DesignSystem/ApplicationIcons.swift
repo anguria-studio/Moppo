@@ -18,8 +18,11 @@ enum ApplicationIcons {
         .claude: "com.anthropic.claudefordesktop",
         .cursor: "com.todesktop.230313mzl4w4u92",
         .grokBot: "com.anysphere.sand",
-        .antigravity: "com.google.antigravity"
+        .antigravity: "com.google.antigravity",
+        .gpt4All: "gpt4all"
     ]
+    /// Fallback icons that already include the padding of an application icon.
+    private static let paddedFallbacks: Set<FileEntry.AITool> = [.codex, .gpt4All]
 
     static func icon(for url: URL) -> NSImage {
         if let cached = cache.object(forKey: url.path as NSString) { return cached }
@@ -36,7 +39,7 @@ enum ApplicationIcons {
         }
         let key = "tool:\(tool.rawValue)" as NSString
         if let image = cache.object(forKey: key) {
-            return Icon(image: image, includesPadding: tool == .codex)
+            return Icon(image: image, includesPadding: paddedFallbacks.contains(tool))
         }
         let fallback = tool == .chatGPT
             ? NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
@@ -44,7 +47,7 @@ enum ApplicationIcons {
         guard let image = fallback else { return nil }
         // Keep the same image during animated row updates.
         cache.setObject(image, forKey: key)
-        return Icon(image: image, includesPadding: tool == .codex)
+        return Icon(image: image, includesPadding: paddedFallbacks.contains(tool))
     }
 
     static func icon(for identifier: String) -> Icon? {
