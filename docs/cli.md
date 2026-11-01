@@ -137,6 +137,7 @@ Invalidation does not change cleanup targets or the app's selection.
 | `protected_item` or `excluded_item` | Keep the protected item outside the proposal |
 | `missing_item` | Run a new scan because the current inventory lacks an item |
 | `changed_target` | Run a new scan because identity, file metadata, or group membership changed |
+| `unsupported_target` | Keep the item outside the proposal. Remove it in the Moppo app |
 | `incomplete_scan` | Resolve access or measurement limits before a new scan |
 | `scan_changed` or `plan_changed` | Discard the earlier review and inspect current data |
 | `evidence_unavailable` | Run a new scan with this CLI version |
@@ -349,8 +350,9 @@ Responses include the scan identifier, revision, timestamps, expiry, and scan st
 
 Eligibility values are `protected`, `parent_review`, `app_review`, and `review_required`.
 None authorizes removal.
-`app_review` items need a review screen in Moppo. Examples are applications, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
+`app_review` items need a review screen in Moppo. Examples are applications, Docker images, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
 A saved plan cannot include these items, and plan creation returns `unsupported_target`.
+A new scan does not change this result. Remove these items in the Moppo app.
 Recovery values are `trash_if_supported`, `permanent`, and `external_tool`.
 
 `project_activity` contains `last_activity_at`, `git_ignore`, and `hold`.

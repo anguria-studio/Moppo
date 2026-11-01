@@ -124,7 +124,9 @@ public struct PlanExecutionService: Sendable {
 
 extension FileEntry {
     /// The app removes these items through its own review screen. Saved plans cannot include them.
+    /// Plans contain only file paths, so items such as Docker images also stay in the app.
     var requiresAppReview: Bool {
-        gitWorktreeReview != nil || soundLibrary != nil || xcodeBuildCacheReview != nil || codexSession != nil
+        !url.isFileURL || gitWorktreeReview != nil || soundLibrary != nil || xcodeBuildCacheReview != nil
+            || codexSession != nil
     }
 }
