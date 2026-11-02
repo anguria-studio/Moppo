@@ -61,6 +61,9 @@ public enum BuildOutputDetector {
         public let url: URL
         public let kind: Kind
         public var xcodeBuildCacheReview: XcodeBuildCache.Review? = nil
+        /// Set for a `vendor` folder that passed the file checks. The caller must
+        /// still run the Git check. See `VendorFolder`.
+        public var vendorFolder: VendorFolder? = nil
     }
 
     /// Names that only ever hold build output, so a folder so named whose contents
@@ -69,7 +72,8 @@ public enum BuildOutputDetector {
 
     /// Trees that are never descended: version control and vendored code, which
     /// are deep and are not build output. (Dependency stores are recognised
-    /// *before* this list is consulted, so they are reported, not entered.)
+    /// *before* this list is consulted, so they are reported, not entered. A
+    /// `vendor` folder with the evidence of one tool is reported the same way.)
     private static let opaqueNames: Set<String> = [".git", ".svn", ".hg", "vendor"]
 
     /// Hidden names that are looked at anyway. Everything else starting with a
@@ -141,6 +145,10 @@ public enum BuildOutputDetector {
                 if name.hasPrefix("."), !visibleHiddenNames.contains(name) { continue }
                 if let kind = kind(of: child) {
                     found.append(Root(url: child, kind: kind))
+                    continue
+                }
+                if let vendor = VendorFolder.evidence(at: child) {
+                    found.append(Root(url: child, kind: .dependencyStore(vendor.tool.label), vendorFolder: vendor))
                     continue
                 }
                 if opaqueNames.contains(name) { continue }

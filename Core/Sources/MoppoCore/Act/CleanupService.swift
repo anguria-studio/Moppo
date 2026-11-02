@@ -136,6 +136,7 @@ public struct CleanupService: Sendable {
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
     private let reviewBuildCache: @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement?
+    private let reviewVendorFolder: @Sendable (VendorFolder) async throws -> Bool
     private let worktreeTrashDirectory: @Sendable (URL) throws -> URL
 
     public init(
@@ -163,6 +164,9 @@ public struct CleanupService: Sendable {
         reviewBuildCache: @escaping @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement? = {
             try await XcodeBuildCache.measureForRemoval($0, with: AllocatedSizeMeasurer())
         },
+        reviewVendorFolder: @escaping @Sendable (VendorFolder) async throws -> Bool = {
+            try await $0.isStillRemovable()
+        },
         worktreeTrashDirectory: @escaping @Sendable (URL) throws -> URL = {
             try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: $0, create: true)
         },
@@ -177,6 +181,7 @@ public struct CleanupService: Sendable {
         self.toolCommands = toolCommands
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
+        self.reviewVendorFolder = reviewVendorFolder
         self.worktreeTrashDirectory = worktreeTrashDirectory
         self.applicationRemovalFallback = applicationRemovalFallback
     }
@@ -395,6 +400,16 @@ public struct CleanupService: Sendable {
                     outcome.failed.append(target.url.path)
                     records.append(Self.failureRecord(for: target, bytes: measured))
                     continue
+                }
+
+                // The tool evidence, the lockfile, or the Git state can change after the scan.
+                // A selected project removes its vendor folder with the other project files.
+                if let vendor = target.vendorFolder, target.id == entry.id {
+                    guard vendor.url == target.url.standardizedFileURL, try await reviewVendorFolder(vendor) else {
+                        outcome.failed.append(target.url.path)
+                        records.append(Self.failureRecord(for: target, bytes: measured))
+                        continue
+                    }
                 }
 
                 let landed: URL?

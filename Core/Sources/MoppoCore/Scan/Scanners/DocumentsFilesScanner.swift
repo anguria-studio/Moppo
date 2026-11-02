@@ -22,14 +22,17 @@ public struct DocumentsFilesScanner: CategoryScanner {
     /// Injectable so a test can lay out a home of its own.
     private let home: URL
     private let projectActivity: ProjectActivityReader
+    private let gitTrackedFiles: GitTrackedFilesReader
 
     public init(home: URL = URL(fileURLWithPath: NSHomeDirectory())) {
         self.init(home: home, projectActivity: ProjectActivityReader())
     }
 
-    init(home: URL, projectActivity: ProjectActivityReader) {
+    init(home: URL, projectActivity: ProjectActivityReader,
+         gitTrackedFiles: GitTrackedFilesReader = GitTrackedFilesReader()) {
         self.home = home
         self.projectActivity = projectActivity
+        self.gitTrackedFiles = gitTrackedFiles
     }
 
     // MARK: - Roots
@@ -61,7 +64,8 @@ public struct DocumentsFilesScanner: CategoryScanner {
     ///
     /// `.git`, `.svn`, `.hg` and `vendor` are deliberately absent: deleting those
     /// destroys history or committed code, and labelling them regenerable would be a
-    /// lie with expensive consequences.
+    /// lie with expensive consequences. A verified `vendor` folder inside a project
+    /// becomes a removable child, but it is not regenerable either. See `VendorFolder`.
     private static let regenerableDirectoryNames: Set<String> = [
         "node_modules", "bower_components", "jspm_packages", "Pods",
         "__pycache__", ".venv", "venv", ".tox", ".gradle",
@@ -182,9 +186,11 @@ public struct DocumentsFilesScanner: CategoryScanner {
                     // Without it the store is listed and removable like any other
                     // child, and is neither called safe nor ticked for the user —
                     // see `BuildOutputDetector.reinstallEvidence(for:)`.
-                    let evidence = BuildOutputDetector.reinstallEvidence(
+                    // A vendor folder names its lockfile, but Moppo does not count it as safe.
+                    let vendor = carved.root.vendorFolder
+                    let evidence = vendor == nil ? BuildOutputDetector.reinstallEvidence(
                         for: carved.root.url, within: candidate.url
-                    )
+                    ) : nil
                     // A lockfile shows that the store can come back. The project
                     // state shows whether removal costs nothing now.
                     let activity = activities[carved.root.url.standardizedFileURL.path]
@@ -193,17 +199,18 @@ public struct DocumentsFilesScanner: CategoryScanner {
                         parentDisplay: FileEntry.abbreviate(
                             carved.root.url.deletingLastPathComponent().path
                         ) + " · " + carved.root.kind.label
-                            + " · " + (evidence ?? "no lockfile"),
+                            + " · " + (vendor?.lockfileDescription ?? evidence ?? "no lockfile"),
                         kind: .cache,
                         allocatedBytes: carved.measurement.allocatedBytes,
                         lastOpened: lastOpenedDate(for: carved.root.url),
                         isRegenerable: evidence != nil,
-                        safetyCaveat: evidence == nil ? "no lockfile" : activity?.caveat,
+                        safetyCaveat: vendor?.caveat ?? (evidence == nil ? "no lockfile" : activity?.caveat),
                         childCount: (try? FileManager.default.contentsOfDirectory(
                             atPath: carved.root.url.path
                         ))?.count
                     )
                     entry.projectActivity = activity
+                    entry.vendorFolder = vendor
                     return entry
                 }
 
@@ -312,13 +319,13 @@ public struct DocumentsFilesScanner: CategoryScanner {
             && listing.candidates.count <= Self.maximumChildrenToMeasureIndividually
             && !listing.candidates.isEmpty
         progress.report(force: true, "Finding build folders in \(folder)")
-        let outputs = (shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
+        let outputs = try await droppingUnverifiedVendorFolders((shouldCarve ? BuildOutputDetector.roots(under: candidate.url)
             : XcodeBuildCache.releaseCaches(under: candidate.url).map {
                 BuildOutputDetector.Root(url: $0.url, kind: .xcodeDerivedData, xcodeBuildCacheReview: $0)
             }).filter {
             $0.xcodeBuildCacheReview?.isWholeFolder == true
                 ? !context.isWithinExclusion($0.url) : !context.isExcluded($0.url)
-        }
+        })
         progress.report(force: true, "Finding worktrees in \(folder)")
         let roots = try GitWorktreeDetector.isWorktree(candidate.url)
             ? [candidate.url] : GitWorktreeDetector.roots(under: candidate.url, context: context)
@@ -352,6 +359,17 @@ public struct DocumentsFilesScanner: CategoryScanner {
             result.carved.append(Carved(root: output, measurement: carved))
         }
         return result
+    }
+
+    /// Keeps a vendor folder only when Git tracks no file in it. Each other vendor
+    /// folder stays in its project row, as before. Other build output stays in the list.
+    private func droppingUnverifiedVendorFolders(_ outputs: [BuildOutputDetector.Root]) async throws -> [BuildOutputDetector.Root] {
+        var kept: [BuildOutputDetector.Root] = []
+        for output in outputs {
+            if output.vendorFolder != nil, try await gitTrackedFiles.state(of: output.url) != .untracked { continue }
+            kept.append(output)
+        }
+        return kept
     }
 
     // MARK: - Entries
