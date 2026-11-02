@@ -4,15 +4,9 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
-### Cleanup
+## [0.6.0] - 2026-11-02
 
-- Show the device name and runtime for each simulator device in **Xcode & iOS Dev**.
-- Count only simulator devices without an installed runtime as **Safe to Remove**.
-- Keep other simulator devices in review, because removal deletes their apps and app data.
-
-## [0.6.0] - 2026-11-01
-
-Build 55.
+Build 56.
 
 ### AI Tools
 
@@ -26,6 +20,9 @@ Build 55.
 - Keep dependency folders of recently changed projects out of **Safe to Remove**.
 - Keep dependency folders that Git does not ignore out of **Safe to Remove**.
 - Show the cause when the Git data of a worktree is missing, as when the Claude VM owns it.
+- Show the device name and runtime for each simulator device in **Xcode & iOS Dev**.
+- Count only simulator devices without an installed runtime as **Safe to Remove**.
+- Keep other simulator devices in review, because removal deletes their apps and app data.
 
 ### Command line and agents
 
