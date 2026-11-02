@@ -4,6 +4,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Cleanup
+
+- Show the device name and runtime for each simulator device in **Xcode & iOS Dev**.
+- Count only simulator devices without an installed runtime as **Safe to Remove**.
+- Keep other simulator devices in review, because removal deletes their apps and app data.
+
 ## [0.6.0] - 2026-11-01
 
 Build 55.

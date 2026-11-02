@@ -107,10 +107,6 @@ public struct XcodeScanner: CategoryScanner {
             // renders. One blob, not per-project subdirectories.
             root("Xcode/UserData/Previews", expandsChildren: false),
 
-            // Per-device containers: installed apps, their data, logs. Ordinary
-            // user-owned directories, unlike the runtimes — see the note below.
-            root("CoreSimulator/Devices", expandsChildren: true),
-
             // Simulator dyld shared-cache staging. The one root the original did not
             // expand, and correctly so: its children are opaque cache buckets.
             root("CoreSimulator/Caches", expandsChildren: false)
@@ -128,7 +124,7 @@ public struct XcodeScanner: CategoryScanner {
     // MARK: - Deliberately not scanned
     //
     // Simulator runtimes use simctl for removal. Their mounted files never enter file cleanup.
-    // User-owned simulator device directories retain their separate cleanup rows.
+    // Simulator device folders get their own rows. See `simulatorDeviceEntry`.
     //
     // ### `/Library/Developer/PrivateFrameworks` and `/Library/Developer/CoreDevice`
     //
@@ -317,9 +313,9 @@ public struct XcodeScanner: CategoryScanner {
             }
         }
 
-        let runtimes = try await simulatorRuntimeEntries(context: context)
-        entries += runtimes.entries
-        unreadableCount += runtimes.unreadableCount
+        let simulators = try await simulatorEntries(context: context)
+        entries += simulators.entries
+        unreadableCount += simulators.unreadableCount
 
         guard !entries.isEmpty else {
             // Ordinary outcome, not an edge case: a machine with Xcode installed but
@@ -417,30 +413,63 @@ public struct XcodeScanner: CategoryScanner {
         return context.runningOwner(bundleIdentifier: "com.apple.iphonesimulator") ?? xcode
     }
 
+    /// A device folder holds installed test apps and their data, which do not come back.
+    /// Only a device that Xcode cannot start counts as safe. When Moppo cannot read the
+    /// device details or check the device, the row needs review.
+    private func simulatorDeviceEntry(url: URL, measurement: SizeMeasurement, context: ScanContext,
+                                      snapshot: SimulatorRuntimeService.Snapshot?) -> FileEntry? {
+        guard var entry = makeCacheEntry(url: url, measurement: measurement, context: context, isRegenerable: false)
+        else { return nil }
+        let record = SimulatorDevice.Record.read(folder: url)
+        let device = SimulatorDevice(runtime: record?.runtimeName,
+            availability: record.flatMap { snapshot?.availability(of: $0) } ?? .unknown)
+        entry.kind = .folder
+        entry.displayName = record?.name ?? url.lastPathComponent
+        entry.isRegenerable = device.isSafeToRemove
+        entry.safetyCaveat = device.status
+        entry.simulatorDevice = device
+        return entry
+    }
+
     private func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
     }
 
-    // MARK: - Simulator runtimes
+    // MARK: - Simulators
 
-    private func simulatorRuntimeEntries(context: ScanContext) async throws -> (entries: [FileEntry], unreadableCount: Int) {
+    /// Simulator devices and runtimes. Both use one simctl inventory, read once for each scan.
+    private func simulatorEntries(context: ScanContext) async throws -> (entries: [FileEntry], unreadableCount: Int) {
+        var unreadableCount = 0
+        var devices: [(url: URL, measurement: SizeMeasurement)] = []
+        let devicesRoot = developerRoot.appending(path: "CoreSimulator/Devices", directoryHint: .isDirectory)
+        if FileManager.default.fileExists(atPath: devicesRoot.path), !context.isWithinExclusion(devicesRoot) {
+            for (url, measurement) in try await context.measurer.measureChildren(of: devicesRoot) {
+                unreadableCount += measurement.unreadableCount
+                if isDirectory(url) { devices.append((url, measurement)) }
+            }
+        }
         let root = systemSimulatorRoot
         let scanInstalled = FileManager.default.fileExists(atPath: root.path) && !context.isWithinExclusion(root)
-        guard scanInstalled || !simulatorAssetRoots.isEmpty else { return ([], 0) }
-        context.onPhase?("Checking simulator runtimes")
+        guard scanInstalled || !devices.isEmpty || !simulatorAssetRoots.isEmpty else { return ([], unreadableCount) }
+        context.onPhase?("Checking simulators")
         var snapshot: SimulatorRuntimeService.Snapshot?
         var entries: [FileEntry] = []
         var measured: Set<String> = []
-        var unreadableCount = 0
-        if scanInstalled {
+        if scanInstalled || !devices.isEmpty {
             do { snapshot = try await simulatorRuntimes.snapshot() }
             catch is CancellationError { throw CancellationError() }
             catch {
-                entries.append(FileEntry(url: root, displayName: "Simulator runtime inventory unavailable", kind: .diskImage,
-                    allocatedBytes: 0, protectionReason: .inventory,
-                    protectionExplanation: "Runtime details could not be read. Open Xcode Components, then scan again."))
-                unreadableCount += 1
+                // Device rows show their own status. Only the runtime section needs this row.
+                if scanInstalled {
+                    entries.append(FileEntry(url: root, displayName: "Simulator runtime inventory unavailable", kind: .diskImage,
+                        allocatedBytes: 0, protectionReason: .inventory,
+                        protectionExplanation: "Runtime details could not be read. Open Xcode Components, then scan again."))
+                    unreadableCount += 1
+                }
             }
+        }
+        entries += devices.compactMap {
+            simulatorDeviceEntry(url: $0.url, measurement: $0.measurement, context: context, snapshot: snapshot)
         }
         for runtime in snapshot?.runtimes ?? [] {
             try Task.checkCancellation()

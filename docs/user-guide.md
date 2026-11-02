@@ -241,6 +241,27 @@ If Moppo cannot read the Xcode version, it shows conditional update guidance.
 Xcode Components can download a runtime again when it remains available from Apple.
 Moppo does not remove unavailable simulator devices through this command.
 
+### Simulator devices
+
+Cleanup lists each simulator device under **Xcode & iOS Dev**.
+Each row shows the device name and the runtime name from `device.plist`.
+A device folder contains the installed test apps and their data.
+That data does not come back after removal.
+
+Moppo counts a device as **Safe to Remove** only when no installed runtime matches it.
+Xcode cannot start that device. The row shows **Runtime not installed**.
+These devices need review and stay outside **Safe to Remove**:
+
+- Devices that an installed Xcode can start.
+- Devices that are not shut down.
+- Devices with a `device.plist` that Moppo cannot read. These rows show the device UUID.
+- Devices that Moppo cannot check with simctl.
+
+An open Simulator or Xcode also keeps the device rows outside **Safe to Remove**.
+Moppo moves a removed device folder to the Trash. Put Back can restore it.
+Xcode and `simctl` can continue to list a removed device until the CoreSimulator service starts again.
+A restart of the Mac starts this service again.
+
 ### Homebrew applications
 
 Put Back cannot restore applications that Homebrew removes.

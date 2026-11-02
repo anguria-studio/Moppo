@@ -348,6 +348,12 @@ Retained images stay visible as protected Simulator Runtime Download rows after 
 Download discovery validates Apple metadata in each `com_apple_MobileAsset_*SimulatorRuntime` asset folder.
 The asset identifier must match its folder name.
 A patchable download counts as one `AssetData` folder.
+Simulator device rows read the name and runtime from `device.plist` in each device folder.
+The runtime snapshot also keeps the device state from `simctl list devices --json` for each discovered Xcode.
+A device counts as safe only when each Xcode reports it as unavailable and shut down.
+Its runtime must also be absent from the runtime inventory.
+An unreadable `device.plist` or an incomplete check keeps the device row in review.
+Device folders move to the Trash.
 Images that an installed runtime already represents do not enter the total again.
 Unknown registration checks keep the download protected without claiming that its runtime is absent.
 The service measures the backing image again and reports verified space recovery only when available.

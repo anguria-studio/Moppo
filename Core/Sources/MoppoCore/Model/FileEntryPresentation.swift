@@ -4,7 +4,7 @@ import Foundation
 public struct FileEntryPresentation: Sendable, Equatable {
     public enum Icon: Sendable, Equatable {
         case node, react, code, photo, video, music, cache, log
-        case archive, diskImage, folder, document, application, package, backup
+        case archive, diskImage, folder, document, application, package, backup, simulator
     }
 
     public let summary: String
@@ -48,6 +48,11 @@ public struct FileEntryPresentation: Sendable, Equatable {
             }
             summary = "Docker image · " + usage
             icon = .package
+            return
+        } else if let device = entry.simulatorDevice {
+            summary = (["Simulator device", device.runtime] + (showsSafetyCaveat ? [entry.safetyCaveat] : []))
+                .compactMap { $0 }.joined(separator: " · ")
+            icon = .simulator
             return
         } else if entry.url.scheme == "docker" {
             summary = "Docker storage · Docker Desktop"
