@@ -1424,7 +1424,7 @@ struct FileEntryIcon: View {
         case .application:
             entry.orphanedApplicationBundleIdentifier == nil ? "app.dashed" : "folder.badge.gearshape"
         case .package: "shippingbox"
-        case .backup: "iphone"
+        case .backup, .simulator: "iphone"
         }
     }
 

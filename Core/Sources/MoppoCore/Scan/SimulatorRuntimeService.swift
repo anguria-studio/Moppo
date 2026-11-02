@@ -107,6 +107,8 @@ struct SimulatorRuntimeService: Sendable {
         let toolchains: [SimulatorRuntimeReview.Toolchain]
         let requiredBuilds: Set<String>
         let activeRuntimes: Set<String>
+        /// The state of each device by UDID. `nil` when Moppo could not check every Xcode toolchain.
+        let devices: [String: DeviceState]?
         let failureReason: String?
 
         func review(_ runtime: SimulatorRuntimeReview.Runtime) -> SimulatorRuntimeReview {
@@ -130,6 +132,23 @@ struct SimulatorRuntimeService: Sendable {
             return SimulatorRuntimeReview(runtime: runtime, developerDirectory: developerDirectory,
                 toolchains: toolchains, protectionExplanation: reason)
         }
+
+        /// A device is unavailable only when every toolchain reports it as unavailable and shut down,
+        /// and the runtime inventory does not contain its runtime.
+        func availability(of record: SimulatorDevice.Record) -> SimulatorDevice.Availability {
+            guard let state = devices?[record.udid.uppercased()] else { return .unknown }
+            if !state.isShutdown { return .running }
+            if state.isAvailable { return .available }
+            return runtimes.contains { $0.runtimeIdentifier == record.runtimeIdentifier } ? .available : .unavailable
+        }
+    }
+
+    /// The device state that all toolchains report together.
+    struct DeviceState: Sendable, Equatable {
+        /// At least one toolchain can start the device.
+        let isAvailable: Bool
+        /// Every toolchain reports the device as shut down.
+        let isShutdown: Bool
     }
 
     enum InventoryError: Error { case invalidInventory, invalidToolchain }
@@ -164,6 +183,7 @@ struct SimulatorRuntimeService: Sendable {
         var toolchains: [SimulatorRuntimeReview.Toolchain] = []
         var requiredBuilds: Set<String> = []
         var activeRuntimes: Set<String> = []
+        var devices: [String: DeviceState] = [:]
         for directory in directories {
             try Task.checkCancellation()
             do {
@@ -176,15 +196,26 @@ struct SimulatorRuntimeService: Sendable {
                 toolchains.append(.init(developerDirectory: directory.path, simctl: path, identity: identity))
                 let matches = try await run("/usr/bin/xcrun", ["simctl", "runtime", "match", "list", "--json"], environment, .seconds(10))
                 requiredBuilds.formUnion(try Self.requiredBuilds(matches))
-                let devices = try await run("/usr/bin/xcrun", ["simctl", "list", "devices", "--json"], environment, .seconds(10))
-                activeRuntimes.formUnion(try Self.activeRuntimes(devices))
+                let list = try JSONDecoder().decode(DeviceList.self,
+                    from: try await run("/usr/bin/xcrun", ["simctl", "list", "devices", "--json"], environment, .seconds(10)))
+                // Transitional and unknown states can still use a runtime.
+                activeRuntimes.formUnion(list.devices.filter { $0.value.contains { $0.state != "Shutdown" } }.keys)
+                for device in list.devices.values.joined() {
+                    guard let udid = device.udid?.uppercased() else { continue }
+                    // A missing availability value counts as available, which keeps the device out of Safe to Remove.
+                    let state = DeviceState(isAvailable: device.isAvailable != false, isShutdown: device.state == "Shutdown")
+                    let earlier = devices[udid] ?? state
+                    devices[udid] = DeviceState(isAvailable: earlier.isAvailable || state.isAvailable,
+                                                isShutdown: earlier.isShutdown && state.isShutdown)
+                }
             } catch is CancellationError { throw CancellationError() }
             catch { failureReason = "Xcode runtime use could not be verified. Scan again before removal." }
         }
         // Read the runtime identity after the toolchain and activity checks.
         let runtimes = try await inventory(environment: environment)
         return Snapshot(runtimes: runtimes, developerDirectory: selected, toolchains: toolchains,
-            requiredBuilds: requiredBuilds, activeRuntimes: activeRuntimes, failureReason: failureReason)
+            requiredBuilds: requiredBuilds, activeRuntimes: activeRuntimes,
+            devices: failureReason == nil ? devices : nil, failureReason: failureReason)
     }
 
     func inventory(environment: [String: String], timeout: Duration = .seconds(10)) async throws -> [SimulatorRuntimeReview.Runtime] {
@@ -352,12 +383,14 @@ struct SimulatorRuntimeService: Sendable {
         })
     }
 
-    private static func activeRuntimes(_ data: Data) throws -> Set<String> {
-        struct Device: Decodable { let state: String }
-        struct Devices: Decodable { let devices: [String: [Device]] }
-        let devices = try JSONDecoder().decode(Devices.self, from: data)
-        // Transitional and unknown states can still use a runtime.
-        return Set(devices.devices.filter { $0.value.contains { $0.state != "Shutdown" } }.keys)
+    /// The output of `simctl list devices --json`, grouped by runtime identifier.
+    private struct DeviceList: Decodable {
+        struct Device: Decodable {
+            let udid: String?
+            let state: String
+            let isAvailable: Bool?
+        }
+        let devices: [String: [Device]]
     }
 
     private static func developerDirectories() async throws -> [URL] {

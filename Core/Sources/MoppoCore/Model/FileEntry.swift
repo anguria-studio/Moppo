@@ -214,6 +214,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var aiTool: AITool?
     public var aiStorageSection: AIStorageSection?
     public var codexSession: CodexSessionReview?
+    public var simulatorDevice: SimulatorDevice?
 
     /// Child items that support separate removal after a user data review.
     public var unlockableChildren: [FileEntry] {
@@ -276,6 +277,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         aiTool: AITool? = nil,
         aiStorageSection: AIStorageSection? = nil,
         codexSession: CodexSessionReview? = nil,
+        simulatorDevice: SimulatorDevice? = nil,
         childCount: Int? = nil,
         children: [FileEntry] = []
     ) {
@@ -301,6 +303,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.aiTool = aiTool
         self.aiStorageSection = aiStorageSection
         self.codexSession = codexSession
+        self.simulatorDevice = simulatorDevice
         self.childCount = childCount
         self.children = children
     }
