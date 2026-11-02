@@ -119,6 +119,8 @@ public struct ScanReport: Codable, Sendable {
                         reason = "The scan identifies this item as safe to regenerate."
                     } else if entry.isRegenerable, let explanation = entry.projectActivity?.explanation {
                         reason = explanation
+                    } else if let vendor = entry.vendorFolder {
+                        reason = vendor.explanation
                     } else {
                         reason = "Review this item before removal. You may need its contents."
                     }

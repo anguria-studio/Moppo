@@ -71,6 +71,9 @@ public struct FileEntryPresentation: Sendable, Equatable {
         } else if entry.kind == .appBundle || entry.kind == .downloadedApp {
             type = entry.kind == .appBundle ? "Installed application" : "Downloaded application"
             symbol = .application
+        } else if let vendor = entry.vendorFolder {
+            type = "\(vendor.tool.label) · \(vendor.lockfileDescription)"
+            symbol = .package
         } else if name == "node_modules" {
             type = "Node.js dependencies"
             symbol = .node

@@ -982,6 +982,9 @@ private struct ChildRow: View {
         if entry.isRegenerable, let explanation = entry.projectActivity?.explanation {
             return explanation
         }
+        if let vendor = entry.vendorFolder {
+            return vendor.explanation
+        }
         if let caveat = entry.safetyCaveat {
             if caveat == "Git worktree" {
                 return "Review uncommitted files before removal."

@@ -4,6 +4,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Cleanup
+
+- Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.
+
 ## [0.6.0] - 2026-11-02
 
 Build 56.

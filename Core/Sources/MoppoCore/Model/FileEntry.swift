@@ -162,6 +162,10 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// `ProjectActivity`.
     public var projectActivity: ProjectActivity?
 
+    /// A `vendor` folder that passed its tool, lockfile, and Git checks during the scan.
+    /// Cleanup runs these checks again immediately before removal. See `VendorFolder`.
+    public var vendorFolder: VendorFolder?
+
     /// Git status at scan time. A failed check does not mean the worktree is clean.
     public enum GitWorktreeStatus: Sendable, Equatable {
         case clean, uncommittedChanges, unavailable

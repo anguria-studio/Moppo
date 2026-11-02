@@ -84,6 +84,23 @@ Outside a Git repository, Moppo uses the dates of the files in the project folde
 If a condition is false, the row shows the reason, such as **recent project changes**.
 You can still select the folder and remove it.
 
+### Vendor folders
+
+Composer, Bundler, and Go can install project dependencies in a `vendor` folder.
+Other `vendor` folders contain committed or changed source code, which can be the only copy.
+Cleanup lists a `vendor` folder under its project only when all of these conditions are true:
+
+- The folder contains the files of one tool: `composer/installed.json` for Composer, `bundle` for Bundler, or `modules.txt` for Go.
+- The lockfile of the tool is next to the folder: `composer.lock`, `Gemfile.lock`, or `go.mod` and `go.sum`.
+- Git tracks no file in the folder.
+
+A Bundler `vendor` folder must contain only the `bundle` folder.
+A Go `vendor` folder must not have a `go.work` file next to it.
+If a condition is false, or the Git check does not complete, the folder stays in its project row.
+The row shows the tool, the lockfile, and the command that restores the folder, such as `composer install`.
+**Safe to Remove** does not select `vendor` folders.
+Moppo checks the folder again before removal.
+
 ### Xcode build folders
 
 Temporary and release Xcode build folders show caches, logs, test results, and metadata separately.
