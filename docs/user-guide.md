@@ -350,7 +350,7 @@ Docker removes selected images permanently, including their listed tags. Put Bac
 Images used by containers remain locked. Image sizes include shared layers, so removal can recover less space.
 
 Each Docker volume appears as a separate row. Moppo does not select volumes for you.
-A volume can hold the only copy of its data, such as a database.
+A volume can hold the only copy of its data, such as a database, so volume rows show **Not regenerable**.
 
 Docker removes a volume and all its data permanently. Docker keeps no backup, and Put Back cannot restore the data.
 
