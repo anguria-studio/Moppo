@@ -300,6 +300,7 @@ struct OrphanedAppLeftoverPlannerTests {
         #expect(entry.orphanedApplicationBundleIdentifier == "com.vendor.old")
         #expect(Set(entry.children.map(\.url)) == [cache, state])
         #expect(entry.displayBytes == result.totalBytes)
+        #expect(entry.regenerationLabel == .notRegenerable(reason: ApplicationLeftoversScanner.notRegenerable.reason))
         // Whose removal is the user's to decide — see `CategoryID.isSafe`.
         #expect(result.safeToRemoveBytes == 0)
         #expect(result.needsReviewBytes == result.totalBytes)

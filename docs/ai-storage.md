@@ -21,9 +21,19 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Claude Code | `~/.claude` | Conversations, memories, attachments, file history, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
-| T3 Code | `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, and unknown files stay protected. |
+| T3 Code | `~/.t3`, `~/Library/Application Support/t3code-v2` | Application data, scratch projects, downloaded tools, caches, worktrees, desktop data, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
 | Gemini CLI, Antigravity | `~/.gemini`, `~/Library/Application Support/Antigravity` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
+| GitHub Copilot CLI | `~/.copilot` | Protected inventory. Sessions, plugins, logs, settings, and unknown files stay protected. |
+| OpenCode | `~/.local/share/opencode`, `~/.local/state/opencode`, `~/.config/opencode` | Protected inventory. The session database, snapshots, logs, and settings stay protected. |
+| Goose | `~/.local/share/goose`, `~/.local/state/goose`, `~/.config/goose` | Protected inventory. Sessions, the model catalog, request logs, sign-in data, and keys stay protected. |
+| OpenClaw | `~/.openclaw` | Protected inventory. Agent sessions, the workspace, state databases, and settings stay protected. |
+| Kiro | `~/.kiro`, `~/.kiro-shared` | Protected inventory. Sessions, logs, and shared state stay protected. |
+| Devin | `~/.codeium`, `~/.devin`, `~/.devin-shared`, `~/.local/share/devin`, `~/.config/devin` | Protected inventory. Memories, rules, conversations, CLI sessions, and settings stay protected. |
+| AnythingLLM | `~/Library/Application Support/anythingllm-desktop` | Protected inventory. Documents, vector data, models, engines, keys, and cache folders stay protected. |
+| Cherry Studio | `~/.cherrystudio`, `~/Library/Application Support/CherryStudio` | Protected inventory. Downloaded tools, the library, toolchains, credentials, and cache folders stay protected. |
+| Comfy Desktop | `~/ComfyUI-Installs`, `~/ComfyUI-Shared` | Protected inventory. Models, outputs, workflows, custom nodes, and Python environments stay protected. |
+| Stability Matrix | `/Applications/Data` | Protected inventory. Models, settings, and the database stay protected. |
 | Ollama | Default model store | Protected inventory. Moppo cannot verify complete model ownership or active models. |
 | Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
 | PyTorch Hub | `~/.cache/torch/hub/checkpoints`, `~/.cache/torch/hub/<owner>_<repository>_<ref>` | One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs. |
@@ -247,6 +257,78 @@ These results verify storage discovery and measurement. They do not establish sa
 The [Gemini CLI session management](https://geminicli.com/docs/cli/tutorials/session-management/) and [checkpointing](https://geminicli.com/docs/cli/checkpointing/) guides describe its conversations and checkpoints.
 The results and remaining checks are in [issue #216](https://github.com/anguria-studio/Moppo/issues/216).
 
+## Tools from the #216 inventory
+
+The #216 checks on 3 November 2026 found 13 AI tools without AI Tools rules.
+AI Tools now shows protected inventory rows for 11 of these tools.
+Jan desktop data keeps its existing protection under Applications.
+Draw Things models stay in their container. The Draw Things paragraph below gives the reason.
+
+Each row shows its measured storage and counts each byte once.
+Child rows show observed folders. Unknown files stay in the protected parent remainder.
+Folder names do not establish safe removal. Moppo does not offer logs, caches, or temporary folders from these tools.
+Hidden & System Data, System Caches, and Applications do not list these paths again.
+Plans for a root or its children fail with `protected_item`.
+Generic Git worktree review does not run inside this storage.
+No storage from these tools contributes to Safe to Remove.
+User-data overrides cannot unlock these inventory rows.
+
+Some folder names are not specific to one tool. For these folders, Moppo also requires files from the observed layout:
+
+| Folder | Required layout |
+| --- | --- |
+| `~/ComfyUI-Installs` | An installation with `.launcher` and `ComfyUI/main.py` |
+| `~/ComfyUI-Shared` | `models/checkpoints`, `models/loras`, and `output` |
+| `/Applications/Data` | The Stability Matrix portable marker `.sm-portable` and `StabilityMatrix.db` |
+
+If the layout does not match, AI Tools does not show or claim the folder.
+Stability Matrix in portable mode keeps `Data` next to the application.
+
+AI Tools claims `~/.config/opencode`, `~/.config/goose`, and `~/.config/devin`.
+Hidden & System Data lists the other folders in `~/.config` as separate rows.
+It does not list loose files in `~/.config` because they are settings.
+Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`, so Moppo shows one shared row under Devin.
+
+T3 Code, AnythingLLM, and Cherry Studio use support folder names that do not match their applications.
+Applications and Application Leftovers do not find these folders, so the AI Tools rows show them.
+OpenCode, Goose, Kiro, Devin, and Comfy Desktop keep their support folders with their applications.
+These folders keep their existing Applications protection.
+
+The rented Mac supplied these bundle identifiers. Headings use them to show the application icon:
+
+| Tool | Bundle identifier |
+| --- | --- |
+| T3 Code (Beta) 0.1.6 | `com.t3tools.t3code` |
+| OpenCode 2.2.5 | `ai.opencode.desktop` |
+| Goose 1.57.0 | `com.electron.goose` |
+| Kiro 1.4.86 | `dev.kiro.desktop` |
+| Devin 3.11.238 | `com.exafunction.windsurf` |
+| AnythingLLM 1.19.0 | `com.anythingllm` |
+| Cherry Studio 2.1.10 | `com.kangfenmao.CherryStudio` |
+| Comfy Desktop 1.1.8 | `com.todesktop.241012ess7yxs0e` |
+| Stability Matrix 2.16.5 | `ai.lykos.stabilitymatrix` |
+
+If an application is absent, the heading uses the icon that the #216 checks took from its signed application.
+GitHub Copilot CLI and OpenClaw have no desktop application, so their headings use a generic icon.
+
+Moppo does not change these cache rows. The layouts do not show user data in them:
+
+- `~/Library/Caches/copilot` holds a downloaded Copilot CLI package, managed settings, and marketplace data.
+- `~/.cache/devin` holds downloaded CLI configuration files.
+- `~/.cache/lemonade` was empty. No AnythingLLM task ran.
+
+Draw Things keeps its models in `~/Library/Containers/com.liuliu.draw-things/Data/Documents/Models`.
+An AI Tools claim on this folder removes the complete container from the Draw Things Applications row.
+The models therefore stay protected in the container, and AI Tools does not show them.
+
+The rented Mac used macOS 27.2 on Apple silicon.
+The manifests recorded file names, types, sizes, and links. They did not record file contents.
+Each tool completed a real task, except AnythingLLM and Cherry Studio.
+These results verify discovery and measurement. They do not establish safe session, cache, or uninstall removal.
+The [GitHub Copilot CLI configuration directory](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) describes `~/.copilot`.
+The [Devin Desktop memories guide](https://docs.devin.ai/desktop/cascade/memories) describes `~/.codeium/windsurf/memories`.
+The evidence is in [issue #216](https://github.com/anguria-studio/Moppo/issues/216) and [issue #66](https://github.com/anguria-studio/Moppo/issues/66).
+
 ## Preserved data and other tools
 
 Grok Bot desktop uses bundle identifier `com.anysphere.sand`.
@@ -375,13 +457,7 @@ The production scanner reads file metadata. It does not inspect VM filesystems.
 
 ## Further tools
 
-These sources support further research. They do not establish safe Moppo removal rules.
-Documented paths can supply fixtures without application installation.
-
-| Tool | Source | Protected storage to verify |
-| --- | --- | --- |
-| GitHub Copilot CLI | [Configuration directory](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-config-dir-reference) | `~/.copilot` sessions, plans, checkpoints, plugins, settings, and credentials. |
-| Windsurf and Devin Desktop | [Cascade memories](https://docs.devin.ai/desktop/cascade/memories) | Legacy `~/.codeium/windsurf/memories` and workspace rules. Current documentation uses Devin Desktop. |
-
+Kimi, OpenRouter, Midjourney, and other media tools have no native storage evidence.
+Draw Things default desktop paths and cleanup remain unverified.
 Custom paths and further tools remain in [issue #66](https://github.com/anguria-studio/Moppo/issues/66).
 The retention review in [issue #67](https://github.com/anguria-studio/Moppo/issues/67) keeps unverified session deletion locked.

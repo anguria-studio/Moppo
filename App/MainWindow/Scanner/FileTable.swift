@@ -540,7 +540,7 @@ private struct FileRow: View {
 
             nameBlock
 
-            RegenerableTag(isRegenerable: entry.isRegenerable)
+            RegenerableTag(label: entry.regenerationLabel)
 
             Text(lastOpenedDisplay)
                 .font(.mcRowValue)
@@ -908,7 +908,7 @@ private struct ChildRow: View {
             .help("\(childHelp)\n\(entry.url.path)")
             }
 
-            RegenerableTag(isRegenerable: entry.isRegenerable)
+            RegenerableTag(label: entry.regenerationLabel)
             Color.clear.frame(width: Metrics.lastOpened, height: 0)
 
             Text(ByteFormatting.string(entry.allocatedBytes))
@@ -1365,18 +1365,27 @@ private struct FileRowMenu: View {
 
 // MARK: - Shared parts
 
+/// Shows "Regenerable" or "Not regenerable". A row that Moppo did not classify shows nothing.
 private struct RegenerableTag: View {
-    let isRegenerable: Bool
+    let label: FileEntry.RegenerationLabel?
 
     var body: some View {
         ZStack(alignment: .trailing) {
             Color.clear
-            if isRegenerable {
-                Badge(text: "Regenerable")
+            if let label {
+                Badge(text: label.text)
                     .fixedSize()
+                    .help(reason ?? "")
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(label.accessibilityText)
             }
         }
         .frame(width: Metrics.regenerable, height: 18)
+    }
+
+    private var reason: String? {
+        guard case .notRegenerable(let reason) = label else { return nil }
+        return reason
     }
 }
 
@@ -1463,7 +1472,8 @@ private enum Metrics {
     /// Fixed, so the dates and sizes line up down the column while the name flexes
     /// with the window.
     static let lastOpened: CGFloat = 104
-    static let regenerable: CGFloat = 88
+    /// Fits the "Not regenerable" badge.
+    static let regenerable: CGFloat = 96
     static let size: CGFloat = 82
     /// Apple recommends a 28×28 pt default macOS control target. Both row action
     /// buttons use this directly while their SF Symbols remain visually compact.

@@ -67,6 +67,8 @@ final class DashboardModel {
     private(set) var trashNotice: TrashNotice?
     private(set) var hasCompletedInitialDashboardLoad = false
     var isDashboardLoading: Bool { !hasCompletedInitialDashboardLoad || isLoadingBreakdown }
+    /// Space that macOS can free on its own, such as local snapshots and caches.
+    private(set) var purgeableBytes: Int64?
     var snapshotsExpanded = false
     var boot: SnapshotInfo? { snapshots.first(where: \.isBootSnapshot) }
     var removableSnapshots: [SnapshotInfo] { snapshots.filter { !$0.isBootSnapshot } }
@@ -187,7 +189,7 @@ final class DashboardModel {
                     breakdown = cached.breakdown
                     measuredAt = cached.measuredAt
                 }
-                snapshots = (try? await DashboardDiagnostics.phase("snapshot_list") { try await service.snapshots() }) ?? []
+                await refreshSnapshots()
                 let revision = historyRevision
                 await DashboardDiagnostics.phase("history_clear_wait") { await historyClearTask?.value }
                 let history = await DashboardDiagnostics.phase("history_read") { await persistence.loadHistory() }
@@ -245,6 +247,8 @@ final class DashboardModel {
         let automatic = trigger == .launch || trigger == .scheduled || trigger == .removal
         guard canMeasure(automatic) else {
             finishCleanup(cleanupID, state: .requiresAccess)
+            // Snapshot listing needs no Full Disk Access.
+            if trigger == .manual { await refreshSnapshots() }
             outcome = "requires_access"
             return outcome
         }
@@ -339,6 +343,7 @@ final class DashboardModel {
         let revision = historyRevision
         let presentation = OperationPresentationDuration()
         startCloudLoad()
+        await refreshSnapshots()
         await DashboardDiagnostics.phase("initial_volume_refresh") { await refreshVolumeInfo() }
         guard !Task.isCancelled else { return false }
         let measured: StorageMeasurement
@@ -481,6 +486,22 @@ final class DashboardModel {
         }
         volumeTask = task
         await task.value
+    }
+
+    /// Read the snapshot list and the purgeable space estimate again.
+    func refreshSnapshots() async {
+        snapshots = (try? await DashboardDiagnostics.phase("snapshot_list") { try await service.snapshots() }) ?? []
+        purgeableBytes = await service.purgeableBytes()
+    }
+
+    /// Delete the Time Machine local snapshots, then read the snapshots and free space again.
+    /// A failure can come after some deletions, so the reads run in each case.
+    func deleteTimeMachineSnapshots() async throws {
+        var failure: (any Error)?
+        do { try await service.deleteTimeMachineSnapshots(removableSnapshots) } catch { failure = error }
+        await refreshSnapshots()
+        await refreshVolumeInfo()
+        if let failure { throw failure }
     }
 
     func rebuildSizeIndex() async {

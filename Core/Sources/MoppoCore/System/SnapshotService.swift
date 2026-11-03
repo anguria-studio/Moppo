@@ -22,6 +22,27 @@ public struct SnapshotInfo: Sendable, Equatable, Identifiable {
 
     public var id: String { uuid }
 
+    /// The date stamp in a Time Machine local snapshot name, such as `2026-11-03-150015`.
+    ///
+    /// `tmutil deletelocalsnapshots` takes this stamp. Other snapshots have no stamp.
+    public var timeMachineStamp: String? { timeMachineName.map { String($0.1) } }
+
+    /// The local time that Time Machine wrote in the snapshot name.
+    public var timeMachineDate: Date? {
+        guard let match = timeMachineName else { return nil }
+        return Calendar.current.date(from: DateComponents(
+            year: Int(match.2), month: Int(match.3), day: Int(match.4),
+            hour: Int(match.5), minute: Int(match.6), second: Int(match.7)
+        ))
+    }
+
+    private var timeMachineName: Regex<(Substring, Substring, Substring, Substring, Substring, Substring, Substring, Substring)>.Match? {
+        guard !isBootSnapshot else { return nil }
+        return name.wholeMatch(
+            of: #/com\.apple\.TimeMachine\.((\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2}))\.local/#
+        )
+    }
+
     /// Creates snapshot information for views and previews.
     public init(
         uuid: String,
@@ -74,6 +95,22 @@ public struct SnapshotService: Sendable {
             ))
         }
         return results
+    }
+
+    // MARK: - Removal
+
+    /// Deletes Time Machine local snapshots by their date stamps.
+    ///
+    /// Other snapshots and the boot snapshot have no stamp, so this skips them.
+    /// Returns the number of deleted snapshots.
+    @discardableResult
+    public func deleteTimeMachineSnapshots(_ snapshots: [SnapshotInfo]) async throws -> Int {
+        var deleted = 0
+        for stamp in snapshots.compactMap(\.timeMachineStamp) {
+            try await runner.run(SystemExecutable.tmutil, ["deletelocalsnapshots", stamp], allowsInput: false)
+            deleted += 1
+        }
+        return deleted
     }
 
     // MARK: - Internals

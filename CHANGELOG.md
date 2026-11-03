@@ -4,11 +4,32 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Dashboard
+
+- Show local Time Machine snapshots with their dates and an estimate of purgeable space.
+- Add **Delete Snapshots…** to delete Time Machine local snapshots after confirmation.
+- Read the snapshots again when you select **Refresh Dashboard**.
+
 ### Cleanup
 
 - Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.
 - Show each Docker volume as a separate row, with its size, container use, and Docker Compose project.
 - Remove selected Docker volumes that no container uses. Moppo always asks before it removes a volume.
+- Show **Not regenerable** on rows whose contents do not come back, such as Xcode Archives and application leftovers.
+- Show the reason for **Not regenerable** in the label tooltip and to VoiceOver.
+- Show the number of selected **Not regenerable** items in the removal confirmation.
+- Show protected AI Tools rows for GitHub Copilot CLI, OpenCode, Goose, OpenClaw, and Kiro.
+- Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
+- Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
+- Show the other folders in `~/.config` as separate Hidden & System Data rows.
+
+### Command line and agents
+
+- Add `regeneration` and `regeneration_reason` to the items in the scan report.
+
+### Fixes
+
+- Show the T3 Code icon in **AI Tools**. Earlier versions showed an empty square.
 
 ## [0.6.0] - 2026-11-02
 

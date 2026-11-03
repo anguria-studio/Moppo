@@ -249,7 +249,8 @@ struct DockerTests {
         #expect(project.allocatedBytes == 170_100_000)
         #expect(project.id == "docker://volumes/fixture-context/project_db_data")
         #expect(!project.isRemovalLocked)
-        #expect(!project.isRegenerable)
+        #expect(project.regenerationLabel == .notRegenerable(
+            reason: "This volume can hold the only copy of its data, such as a database."))
         #expect(FileEntryPresentation(entry: project).summary == "Docker volume · Compose project project · Unused")
         let anonymous = try #require(volumes.first { $0.dockerVolume?.isAnonymous == true })
         #expect(anonymous.displayName == "Anonymous volume dddddddddddd")

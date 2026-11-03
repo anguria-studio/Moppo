@@ -73,7 +73,9 @@ public struct XcodeScanner: CategoryScanner {
         /// root, not inferred from emitted paths: Archives emits one row per *date
         /// directory*, so a per-path `.xcarchive` test never fired and irreplaceable
         /// archives sailed through as "safe". The root knows what it holds.
-        var regenerable: Bool = true
+        /// `nil` when the contents come back on the next build.
+        var notRegenerable: FileEntry.NotRegenerable?
+        var regenerable: Bool { notRegenerable == nil }
     }
 
     /// The original hardcoded `iOS DeviceSupport`, so symbol copies from a Watch or
@@ -81,13 +83,24 @@ public struct XcodeScanner: CategoryScanner {
     /// invisible and accumulated forever.
     private static let deviceSupportPlatforms = ["iOS", "watchOS", "tvOS", "visionOS"]
 
+    /// An archive holds the only debug symbols for a build that has shipped.
+    static let archives = FileEntry.NotRegenerable(
+        reason: "Only copy of the debug symbols for these builds."
+    )
+
+    /// The apps and app data in a simulator that runs or that Xcode can start.
+    static let simulatorAppData = FileEntry.NotRegenerable(
+        reason: "The apps and app data in this simulator do not come back."
+    )
+
     private static func roots(developer: URL) -> [Root] {
 
-        func root(_ relative: String, expandsChildren: Bool, regenerable: Bool = true) -> Root {
+        func root(_ relative: String, expandsChildren: Bool,
+                  notRegenerable: FileEntry.NotRegenerable? = nil) -> Root {
             Root(
                 url: developer.appending(path: relative, directoryHint: .isDirectory),
                 expandsChildren: expandsChildren,
-                regenerable: regenerable
+                notRegenerable: notRegenerable
             )
         }
 
@@ -101,7 +114,7 @@ public struct XcodeScanner: CategoryScanner {
             // it is gone crash reports from that build can never be symbolicated.
             // Stale archives stay listed — they really are the biggest win here —
             // but under "Needs review", never as "removal loses nothing".
-            root("Xcode/Archives", expandsChildren: true, regenerable: false),
+            root("Xcode/Archives", expandsChildren: true, notRegenerable: Self.archives),
 
             // SwiftUI preview build products, regenerated the next time a preview
             // renders. One blob, not per-project subdirectories.
@@ -175,10 +188,11 @@ public struct XcodeScanner: CategoryScanner {
                     // `.DS_Store` is a 6 KB row of pure noise in a removal list.
                     guard isDirectory(childURL) else { continue }
 
-                    if let entry = makeCacheEntry(
+                    if var entry = makeCacheEntry(
                         url: childURL, measurement: measurement, context: context,
                         isRegenerable: root.regenerable
                     ) {
+                        entry.notRegenerable = root.notRegenerable
                         entries.append(entry)
                     }
                 }
@@ -186,10 +200,11 @@ public struct XcodeScanner: CategoryScanner {
                 let measurement = try await context.measurer.measure(root.url)
                 unreadableCount += measurement.unreadableCount
 
-                if let entry = makeCacheEntry(
+                if var entry = makeCacheEntry(
                     url: root.url, measurement: measurement, context: context,
                     isRegenerable: root.regenerable
                 ) {
+                    entry.notRegenerable = root.notRegenerable
                     entries.append(entry)
                 }
             }
@@ -426,6 +441,7 @@ public struct XcodeScanner: CategoryScanner {
         entry.kind = .folder
         entry.displayName = record?.name ?? url.lastPathComponent
         entry.isRegenerable = device.isSafeToRemove
+        entry.notRegenerable = device.holdsAppData ? Self.simulatorAppData : nil
         entry.safetyCaveat = device.status
         entry.simulatorDevice = device
         return entry

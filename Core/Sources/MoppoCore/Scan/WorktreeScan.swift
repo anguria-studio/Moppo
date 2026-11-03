@@ -189,8 +189,10 @@ final class WorktreeActivity: @unchecked Sendable {
                 return
             }
             guard type == "REG" || type == "DIR" || type == "LINK" else {
-                let otherTypes: Set<String> = ["CHR", "BLK", "FIFO", "PIPE", "unix", "IPv4", "IPv6", "KQUEUE",
-                                               "NPOLICY", "NEXUS", "systm", "CHAN", "PSXSEM", "PSXSHM", "FSEVENT"]
+                // Sockets such as routing (`rte`) and kernel control (`systm`) sockets cannot be worktree files.
+                let otherTypes: Set<String> = ["CHR", "BLK", "FIFO", "PIPE", "unix", "IPv4", "IPv6", "rte", "ndrv",
+                                               "key", "ppp", "sock", "KQUEUE", "NPOLICY", "NEXUS", "systm", "CHAN",
+                                               "PSXSEM", "PSXSHM", "FSEVENT"]
                 if !otherTypes.contains(type) {
                     incompleteFiles += 1
                     recordIssue(type.isEmpty ? "missing_file_type" : "unsupported_file_type",

@@ -593,6 +593,7 @@ clears it.
 ## AI storage
 
 AI Tools shows default Codex, Claude, Cursor, Grok Bot, T3 Code, Gemini CLI, and Antigravity data paths.
+It also shows protected inventory for GitHub Copilot CLI, OpenCode, Goose, OpenClaw, Kiro, Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
 Tool rows use application icons. Child rows keep their file or folder icons.
 Bundled vendor icons identify tools when their desktop applications are absent.
 It also includes the existing Ollama, Hugging Face, and LM Studio model rows.
@@ -621,6 +622,14 @@ A folder name or file age does not make these files disposable.
 
 Read the [AI storage sources and limits](ai-storage.md) before you add storage rules.
 Read the [Codex session recovery research](codex-session-recovery.md) before you add session recovery.
+
+## Developer tool storage
+
+The [developer tool storage catalog](tool-catalog.md) lists storage from language tools, version managers, container tools, and databases.
+Each row gives the storage type, the recognition evidence, the removal method, and the restore command.
+Read the catalog before you add a scanner rule or a protection rule for developer tools.
+Add a rule only from a row with a `Verified` status.
+The AI storage document has priority for AI tool paths.
 
 ## Scanner rows and Git worktrees
 
@@ -776,9 +785,11 @@ operating system. The predecessor rewrote its volume identifier (`disk3s1s1` →
 `disk3s1`) specifically to make it a valid delete target. Only SIP prevented
 disaster.
 
-`SnapshotService` lists snapshots as information in the Dashboard.
-Moppo does not delete snapshots.
-The boot snapshot remains identified as part of macOS.
+`SnapshotService` lists snapshots for the Dashboard.
+It deletes only Time Machine local snapshots, with `tmutil deletelocalsnapshots` and the date in the snapshot name.
+The user must confirm each deletion on the Dashboard.
+Moppo does not delete other snapshots.
+The boot snapshot remains identified as part of macOS, and the Dashboard does not list it.
 
 ## Deliberate limitations
 

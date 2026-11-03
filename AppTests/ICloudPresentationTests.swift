@@ -50,6 +50,8 @@ struct ICloudPresentationTests {
 private struct UnavailableICloudMeasurements: DashboardMeasuring {
     func volumeInfo() async throws -> VolumeInfo { throw CocoaError(.fileReadUnknown) }
     func snapshots() async throws -> [SnapshotInfo] { [] }
+    func purgeableBytes() async -> Int64? { nil }
+    func deleteTimeMachineSnapshots(_ snapshots: [SnapshotInfo]) async throws {}
     func measure() async throws -> StorageMeasurement { throw CocoaError(.fileReadUnknown) }
     func iCloudStorage(planBytes: Int64?) async throws -> ICloudStorage { throw CocoaError(.fileReadUnknown) }
 }

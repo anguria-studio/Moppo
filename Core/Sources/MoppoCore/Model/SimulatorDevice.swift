@@ -28,6 +28,10 @@ public struct SimulatorDevice: Sendable, Equatable {
     /// Only an unavailable device counts as safe.
     public var isSafeToRemove: Bool { availability == .unavailable }
 
+    /// The device runs now, or Xcode can start it. Its apps and app data are still in use.
+    /// Moppo does not classify a device with unknown availability.
+    public var holdsAppData: Bool { availability == .available || availability == .running }
+
     /// The status text for the row and for the scan report.
     public var status: String {
         switch availability {

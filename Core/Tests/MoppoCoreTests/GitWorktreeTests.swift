@@ -1104,6 +1104,9 @@ struct GitWorktreeTests {
         #expect(revoked.complete)
         #expect(revoked.revokedFiles == 1)
         #expect(revoked.processes == parsed.processes)
+        let sockets = WorktreeActivity.parse(output + Data("f4\0trte\0n\0\nf5\0tndrv\0\nf6\0tsock\0\n".utf8))
+        #expect(sockets.complete)
+        #expect(sockets.processes == parsed.processes)
         for record in ["f4\0\n", "f4\0nPermission denied\0\n", "f4\0tREG\0n(revoked)\0\n", "f4\0tLINK\0\n"] {
             let result = WorktreeActivity.parse(output + Data(record.utf8))
             #expect(!result.complete)

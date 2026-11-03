@@ -172,11 +172,17 @@ public struct DockerService: Sendable {
                 parentDisplay: "Docker",
                 kind: .diskImage,
                 allocatedBytes: bytes,
+                notRegenerable: Self.volumeData,
                 docker: .volume(volume)
             ))
         }
         return (entries, unreadable)
     }
+
+    /// Docker cannot download a volume again, as it can for an image.
+    static let volumeData = FileEntry.NotRegenerable(
+        reason: "This volume can hold the only copy of its data, such as a database."
+    )
 
     /// The row identity, such as `docker://volumes/<context>/<name>`. It is never a file path.
     private static func itemURL(kind: String, context: String, name: String) throws -> URL {

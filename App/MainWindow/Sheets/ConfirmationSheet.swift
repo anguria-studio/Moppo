@@ -48,6 +48,8 @@ struct ConfirmationSheet: View {
     var runningOwnerNames: [String] = []
     var includesSoundLibrary = false
     var worktreeWarning: String? = nil
+    /// Selected items that show the "Not regenerable" label in Cleanup.
+    var notRegenerableCount = 0
     var dockerImageCount = 0
     var dockerVolumeCount = 0
     var dockerBytes: Int64 = 0
@@ -85,6 +87,19 @@ struct ConfirmationSheet: View {
                     .foregroundStyle(Token.textColor(.orange))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 14)
+            }
+
+            if let notRegenerableNote {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Badge(text: FileEntry.RegenerationLabel.notRegenerable(reason: nil).text)
+                        .fixedSize()
+                    Text(notRegenerableNote)
+                        .font(.mcSubtitle)
+                        .foregroundStyle(Token.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+                .padding(.top, 14)
             }
 
             if let codexSessionWarning {
@@ -167,6 +182,14 @@ struct ConfirmationSheet: View {
             + "may misbehave until relaunched. \u{201C}Quit and Clean\u{201D} asks "
             + "\(plural ? "them" : "it") to quit first; nothing is removed unless "
             + "\(plural ? "they do" : "it does")."
+    }
+
+    /// Says how many selected items cannot come back, with the same label as the rows.
+    var notRegenerableNote: String? {
+        guard notRegenerableCount > 0 else { return nil }
+        return notRegenerableCount == 1
+            ? "1 selected item does not regenerate. If you empty the Trash, you lose its contents."
+            : "\(notRegenerableCount) selected items do not regenerate. If you empty the Trash, you lose their contents."
     }
 
     private var isDestructive: Bool {

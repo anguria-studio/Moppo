@@ -186,7 +186,7 @@ struct ReviewFindingsTests {
 
     // MARK: - Xcode archives, on a real layout
 
-    @Test("an archive date directory is never classified regenerable")
+    @Test("an archive date directory is known not to regenerate")
     func archiveLayoutNeedsReview() async throws {
         let developer = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("mc-dev-\(UUID().uuidString)")
@@ -208,9 +208,9 @@ struct ReviewFindingsTests {
 
         let archiveRow = try #require(result.entries.first { $0.url.path.contains("Archives") })
         let derivedRow = try #require(result.entries.first { $0.url.path.contains("DerivedData") })
-        #expect(!archiveRow.isRegenerable,
+        #expect(archiveRow.regenerationLabel == .notRegenerable(reason: XcodeScanner.archives.reason),
                 "the emitted row is the date directory, and it holds the only dSYMs")
-        #expect(derivedRow.isRegenerable)
+        #expect(derivedRow.regenerationLabel == .regenerable)
         #expect(result.safeToRemoveBytes < result.totalBytes)
     }
 

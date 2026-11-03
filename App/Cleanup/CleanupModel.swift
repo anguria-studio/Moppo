@@ -496,6 +496,8 @@ final class CleanupModel {
         let orphanedApplicationBundleIdentifiers: Set<String>
         let orphanedApplicationItemPaths: Set<String>
         var runningOwners: [FileEntry.RunningOwner] = []
+        /// Selected items whose contents do not come back after removal.
+        var notRegenerableCount = 0
 
         var freed: PrivateSizeMeasurement?
         var confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
@@ -594,7 +596,13 @@ final class CleanupModel {
             orphanedApplicationItemPaths: orphanedItemPaths,
             runningOwners: applications.stillRunning(
                 entries.flatMap(Self.plannedTargets).compactMap(\.inUseBy)
-            )
+            ),
+            // The note describes items in the Trash. The Docker warning covers permanent Docker removal.
+            notRegenerableCount: Set((entries.flatMap(Self.plannedTargets) + orphanedEntries)
+                .filter { entry in
+                    guard entry.docker == nil, case .notRegenerable = entry.regenerationLabel else { return false }
+                    return true
+                }.map(\.id)).count
         )
         pendingCleanUp = plan
 

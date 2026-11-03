@@ -588,6 +588,38 @@ struct CleanupModelTests {
         #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
     }
 
+    @Test("Cleanup and its confirmation label the selected rows that do not regenerate")
+    func notRegenerableLabel() async throws {
+        var archive = cleanupEntry("archive")
+        archive.isRegenerable = false
+        archive.notRegenerable = .init(reason: "Only copy of the debug symbols for these builds.")
+        var locked = archive
+        locked.url = URL(fileURLWithPath: "/cleanup-fixture/locked")
+        locked.protectionReason = .userData
+        var unclassified = cleanupEntry("unclassified")
+        unclassified.isRegenerable = false
+        let rows = [archive, locked, unclassified, cleanupEntry("cache")]
+        let cleanup = CleanupModel(operations: OperationCoordinator(),
+            preferences: { .init(confirmBeforeCleanup: true) }, measureSaving: { _ in nil })
+        cleanup.scanResults = cleanupResults(rows)
+        cleanup.scannerSelection = Set(rows.map(\.id)).subtracting([locked.id])
+        cleanup.requestCleanUp(in: .all)
+        #expect(cleanup.pendingCleanUp?.notRegenerableCount == 1)
+        cleanup.cancelCleanUp()
+
+        let sheet = ConfirmationSheet(variant: .cleanUp(itemCount: 3, totalBytes: 300, protectedDataCount: 0, saving: nil),
+            notRegenerableCount: 1, onConfirm: {}, onCancel: {})
+        #expect(sheet.notRegenerableNote == "1 selected item does not regenerate. If you empty the Trash, you lose its contents.")
+        for dark in [false, true] {
+            let name = dark ? "dark" : "light"
+            _ = try await renderTestView(sheet.background(Token.chrome), width: 404, dark: dark,
+                output: URL(fileURLWithPath: "/tmp/moppo-315-confirmation-\(name).png"))
+            let table = FileTable(entries: rows, selection: .constant([]), userDataRemovalOverrides: .constant([]))
+            _ = try await renderTestView(table, width: 788, dark: dark,
+                output: URL(fileURLWithPath: "/tmp/moppo-315-rows-\(name).png"))
+        }
+    }
+
     @Test("Worktrees seed only safe rows and warn before explicit unsafe selection")
     func worktreeSelectionAndReview() {
         var safe = safeWorktreeReview()
@@ -1893,6 +1925,7 @@ struct CleanupModelTests {
             ? FileEntry(
                 url: URL(string: "docker://volumes/fixture/project_db_data")!,
                 displayName: "project_db_data", kind: .diskImage, allocatedBytes: 200,
+                notRegenerable: FileEntry.NotRegenerable(reason: nil),
                 docker: .volume(DockerVolume(name: "project_db_data", context: "fixture", containerCount: 0)))
             : FileEntry(
                 url: URL(string: "docker://images/fixture/\(metadata.imageID)")!,
@@ -1935,6 +1968,8 @@ struct CleanupModelTests {
             let plan = try #require(cleanup.pendingCleanUp)
             #expect(plan.dockerImageCount == (volume ? 0 : 1))
             #expect(plan.dockerVolumeCount == (volume ? 1 : 0))
+            // The Trash note does not apply to Docker items, which Docker removes permanently.
+            #expect(plan.notRegenerableCount == 0)
             #expect(plan.dockerBytes == 200)
             let sheet = ConfirmationSheet(
                 variant: .cleanUp(itemCount: plan.itemCount, totalBytes: plan.totalBytes, protectedDataCount: 0, saving: nil),

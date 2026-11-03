@@ -58,12 +58,15 @@ public enum LocalModelStores {
     }
 
     /// The children of a partly claimed folder that its claim leaves to other categories.
+    /// AI Tools storage rules can also claim part of a folder, such as `~/.config/goose`.
     /// Returns nil when no reader claims part of `folder`.
     public static func unclaimedChildren(of folder: URL, home: URL) -> [URL]? {
         let base = home.standardizedFileURL.path + "/"
         let path = folder.standardizedFileURL.path
+        let relative = String(path.dropFirst(base.count))
         guard path.hasPrefix(base),
-              let claimed = partlyClaimedFolders[String(path.dropFirst(base.count))] else { return nil }
+              let claimed = partlyClaimedFolders[relative] ?? AIToolStorage.partlyClaimedFolders[relative]
+        else { return nil }
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         return names.filter { !claimed.contains($0) }.sorted().map { folder.appendingPathComponent($0) }
     }

@@ -286,6 +286,7 @@ struct MainWindow: View {
                 runningOwnerNames: model.cleanup.pendingCleanUp?.runningOwners.map(\.name) ?? [],
                 includesSoundLibrary: model.cleanup.pendingCleanUp?.includesSoundLibrary ?? false,
                 worktreeWarning: model.cleanup.pendingCleanUp?.worktreeWarning,
+                notRegenerableCount: model.cleanup.pendingCleanUp?.notRegenerableCount ?? 0,
                 dockerImageCount: model.cleanup.pendingCleanUp?.dockerImageCount ?? 0,
                 dockerVolumeCount: model.cleanup.pendingCleanUp?.dockerVolumeCount ?? 0,
                 dockerBytes: model.cleanup.pendingCleanUp?.dockerBytes ?? 0,
