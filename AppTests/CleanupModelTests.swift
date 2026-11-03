@@ -191,7 +191,7 @@ struct CleanupModelTests {
         let fixture = try RemovalSettingsFixture(confirm: true)
         let imageID = "sha256:" + String(repeating: "a", count: 64)
         let item = FileEntry(url: URL(string: "docker://images/first/\(imageID)")!, kind: .diskImage,
-            allocatedBytes: 100, dockerImage: DockerImage(imageID: imageID, context: "first", tags: [], containerCount: 0))
+            allocatedBytes: 100, docker: .image(DockerImage(imageID: imageID, context: "first", tags: [], containerCount: 0)))
         #expect(fixture.settings.exclude(item))
         let context = ScanContext(excludedPaths: fixture.settings.excludedPaths)
         #expect(context.isExcluded(item.url))
@@ -557,7 +557,7 @@ struct CleanupModelTests {
         archive.isRegenerable = false
         let image = FileEntry(
             url: URL(string: "docker://images/fixture")!, kind: .diskImage, allocatedBytes: 200,
-            dockerImage: DockerImage(imageID: "fixture", context: "fixture", tags: ["fixture:latest"], containerCount: 0)
+            docker: .image(DockerImage(imageID: "fixture", context: "fixture", tags: ["fixture:latest"], containerCount: 0))
         )
         let app = AppModel()
         app.view = .scanner
@@ -1914,16 +1914,23 @@ struct CleanupModelTests {
         }
     }
 
-    @Test("Docker removal follows the confirmation setting and updates storage", arguments: RemovalConfirmationChoice.allCases)
-    func dockerImages(choice: RemovalConfirmationChoice) async throws {
+    @Test("Docker image removal follows the confirmation setting, volume removal always asks, and storage updates",
+          arguments: RemovalConfirmationChoice.allCases, [false, true])
+    func dockerRemoval(choice: RemovalConfirmationChoice, volume: Bool) async throws {
         let metadata = DockerImage(
             imageID: "sha256:" + String(repeating: "a", count: 64), context: "fixture",
             tags: ["fixture:latest", "fixture:stable"], containerCount: 0
         )
-        let image = FileEntry(
-            url: URL(string: "docker://images/fixture/\(metadata.imageID)")!,
-            displayName: "fixture:latest, fixture:stable", kind: .diskImage, allocatedBytes: 200, dockerImage: metadata
-        )
+        let image = volume
+            ? FileEntry(
+                url: URL(string: "docker://volumes/fixture/project_db_data")!,
+                displayName: "project_db_data", kind: .diskImage, allocatedBytes: 200,
+                notRegenerable: FileEntry.NotRegenerable(reason: nil),
+                docker: .volume(DockerVolume(name: "project_db_data", context: "fixture", containerCount: 0)))
+            : FileEntry(
+                url: URL(string: "docker://images/fixture/\(metadata.imageID)")!,
+                displayName: "fixture:latest, fixture:stable", kind: .diskImage, allocatedBytes: 200, docker: .image(metadata)
+            )
         let fixture = try CleanupFixture()
         var file = try fixture.entry("file")
         file.allocatedBytes = 100
@@ -1942,8 +1949,11 @@ struct CleanupModelTests {
             measureSaving: { urls in
                 Issue.record("A mixed Docker plan must not report filesystem savings: \(urls)")
                 return nil
-            }
+            },
+            dockerSpaceDelays: [.milliseconds(1), .milliseconds(1)]
         )
+        var volumeReads = 0
+        cleanup.refreshVolume = { volumeReads += 1 }
         cleanup.scanFilter = .all
         cleanup.scanResults = ScanResults(categories: [
             ScanCategoryResult(categoryID: .docker, totalBytes: 200, entries: [image]),
@@ -1953,11 +1963,22 @@ struct CleanupModelTests {
         var confirmed = false
         cleanup.onEvent = { if case .confirmationRequested = $0 { confirmed = true } }
         cleanup.requestCleanUp(in: .all)
-        #expect(confirmed == choice.isEnabled)
-        if choice.isEnabled {
+        #expect(confirmed == (choice.isEnabled || volume))
+        if confirmed {
             let plan = try #require(cleanup.pendingCleanUp)
-            #expect(plan.dockerImageCount == 1)
-            #expect(plan.dockerImageBytes == 200)
+            #expect(plan.dockerImageCount == (volume ? 0 : 1))
+            #expect(plan.dockerVolumeCount == (volume ? 1 : 0))
+            // The Trash note does not apply to Docker items, which Docker removes permanently.
+            #expect(plan.notRegenerableCount == 0)
+            #expect(plan.dockerBytes == 200)
+            let sheet = ConfirmationSheet(
+                variant: .cleanUp(itemCount: plan.itemCount, totalBytes: plan.totalBytes, protectedDataCount: 0, saving: nil),
+                dockerImageCount: plan.dockerImageCount, dockerVolumeCount: plan.dockerVolumeCount,
+                dockerBytes: plan.dockerBytes, onConfirm: {}, onCancel: {})
+            #expect(sheet.message.contains(volume
+                ? "Docker permanently removes 1 selected volume and all the data in it. Docker keeps no backup"
+                : "Docker permanently removes 1 selected image."))
+            #expect(sheet.message.contains("Other selected items move to the Trash"))
             #expect(plan.itemCount == 2)
             #expect(plan.totalBytes == 300)
             #expect(plan.freed == nil)
@@ -1980,6 +2001,9 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.categories.last?.entries == [untouched])
         #expect(cleanup.scannerSelection.isEmpty)
         #expect(cleanup.scanFilter == .all)
+        // Docker frees its disk space after removal, so free space is read again later.
+        try await waitUntil { volumeReads == 2 }
+        #expect(volumeReads == 2)
     }
 
     @Test("A failed Docker removal updates dependencies and clears a locked selection")
@@ -1988,16 +2012,19 @@ struct CleanupModelTests {
         let image = FileEntry(
             url: URL(string: "docker://images/fixture/\(imageID)")!,
             displayName: "fixture:latest", kind: .diskImage, allocatedBytes: 200,
-            dockerImage: DockerImage(imageID: imageID, context: "fixture", tags: ["fixture:latest"], containerCount: 0)
+            docker: .image(DockerImage(imageID: imageID, context: "fixture", tags: ["fixture:latest"], containerCount: 0))
         )
         var used = image
-        used.dockerImage = DockerImage(imageID: imageID, context: "fixture", tags: ["fixture:latest"], containerCount: 1)
+        used.docker = .image(DockerImage(imageID: imageID, context: "fixture", tags: ["fixture:latest"], containerCount: 1))
         let removal = HeldCleanupRemoval()
         let cleanup = CleanupModel(
             operations: OperationCoordinator(), remover: removal,
             preferences: { CleanupModel.Preferences(confirmBeforeCleanup: false) },
-            scanDocker: { _ in ScanCategoryResult(categoryID: .docker, totalBytes: 200, entries: [used]) }
+            scanDocker: { _ in ScanCategoryResult(categoryID: .docker, totalBytes: 200, entries: [used]) },
+            dockerSpaceDelays: [.milliseconds(1)]
         )
+        var volumeReads = 0
+        cleanup.refreshVolume = { volumeReads += 1 }
         cleanup.scanResults = ScanResults(categories: [
             ScanCategoryResult(categoryID: .docker, totalBytes: 200, entries: [image])
         ], startedAt: .now, finishedAt: .now)
@@ -2010,6 +2037,8 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.totalBytes == 200)
         #expect(cleanup.scannerSelection.isEmpty)
         #expect(cleanup.cleanupOutcome?.failed == [image.id])
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(volumeReads == 0)
     }
 
     @Test("Cleanup without confirmation captures the selection before its task starts")

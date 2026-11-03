@@ -1,11 +1,11 @@
 import Foundation
 
-/// Reports individual images and other reclaimable Docker storage.
+/// Reports individual images and volumes, and other reclaimable Docker storage.
 public struct DockerScanner: CategoryScanner {
 
     public let id: CategoryID = .docker
 
-    private let images: DockerImageService
+    private let docker: DockerService
     private let resolveExecutable: @Sendable () -> String?
     private let resolveDesktopApplication: @Sendable () -> URL?
 
@@ -20,15 +20,15 @@ public struct DockerScanner: CategoryScanner {
         resolveExecutable: @escaping @Sendable () -> String? = { SystemExecutable.resolveDocker() },
         resolveDesktopApplication: @escaping @Sendable () -> URL? = { SystemExecutable.dockerDesktopApplicationURL() }
     ) {
-        self.images = DockerImageService(runner: runner, timeout: timeout, resolveExecutable: resolveExecutable)
+        self.docker = DockerService(runner: runner, timeout: timeout, resolveExecutable: resolveExecutable)
         self.resolveExecutable = resolveExecutable
         self.resolveDesktopApplication = resolveDesktopApplication
     }
 
-    init(images: DockerImageService, resolveDesktopApplication: @escaping @Sendable () -> URL? = {
+    init(docker: DockerService, resolveDesktopApplication: @escaping @Sendable () -> URL? = {
         URL(fileURLWithPath: "/Applications/Docker.app")
     }) {
-        self.images = images
+        self.docker = docker
         self.resolveExecutable = { "/docker-fixture" }
         self.resolveDesktopApplication = resolveDesktopApplication
     }
@@ -73,19 +73,19 @@ public struct DockerScanner: CategoryScanner {
         }
 
         let output: Data
-        let inventory: (entries: [FileEntry], unreadableCount: Int)
+        let inventory: DockerInventory
         do {
-            let dockerContext = try await images.currentContext()
-            output = try await images.diskUsage(context: dockerContext)
-            inventory = try await images.images(context: dockerContext)
+            let dockerContext = try await docker.currentContext()
+            output = try await docker.diskUsage(context: dockerContext)
+            inventory = try await docker.inventory(context: dockerContext)
         } catch let cancellation as CancellationError {
             throw cancellation
         } catch let error as ProcessError {
             return unavailable(Self.reason(for: error))
-        } catch DockerImageError.emptyContext {
+        } catch DockerError.emptyContext {
             return unavailable("Docker did not return its current context. Try scanning again.")
         } catch {
-            return unavailable("Docker image information is unavailable. Try scanning again.")
+            return unavailable("Docker storage information is unavailable. Try scanning again.")
         }
 
         try Task.checkCancellation()
@@ -94,8 +94,10 @@ public struct DockerScanner: CategoryScanner {
         var unreadableCount = usage.unreadableLines + inventory.unreadableCount
         var entries = inventory.entries
 
+        // Separate rows replace the image total, and the volume total when Docker lists volumes.
+        let listedTypes = inventory.listsVolumes ? ["Images", "Local Volumes"] : ["Images"]
         for row in usage.rows where row.reclaimableBytes > 0
-            && row.type.caseInsensitiveCompare("Images") != .orderedSame {
+            && !listedTypes.contains(where: { row.type.caseInsensitiveCompare($0) == .orderedSame }) {
             if let entry = Self.entry(for: row) {
                 entries.append(entry)
             } else {
@@ -126,7 +128,7 @@ public struct DockerScanner: CategoryScanner {
         case .timedOut:
             return "Docker did not finish the scan in time. Try scanning again."
         case .failed:
-            if DockerImageService.isConnectionFailure(error) { return connectionReason }
+            if DockerService.isConnectionFailure(error) { return connectionReason }
             return "Docker could not read its storage information. Try scanning again."
         }
     }
@@ -172,7 +174,8 @@ public struct DockerScanner: CategoryScanner {
         if lowered.contains("build") { return "docker builder prune" }
         if lowered.contains("image") { return "docker image prune -a" }
         if lowered.contains("container") { return "docker container prune" }
-        if lowered.contains("volume") { return "docker volume prune" }
+        // Since Docker 23, `prune` without `--all` keeps named volumes.
+        if lowered.contains("volume") { return "docker volume prune --all" }
         return "docker system prune"
     }
 

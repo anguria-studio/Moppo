@@ -51,7 +51,8 @@ struct ConfirmationSheet: View {
     /// Selected items that show the "Not regenerable" label in Cleanup.
     var notRegenerableCount = 0
     var dockerImageCount = 0
-    var dockerImageBytes: Int64 = 0
+    var dockerVolumeCount = 0
+    var dockerBytes: Int64 = 0
     var codexSessionCount = 0
     var codexSessionWarning: String? = nil
     var toolCommandEntry: FileEntry? = nil
@@ -195,11 +196,30 @@ struct ConfirmationSheet: View {
         if toolCommandEntry != nil { return true }
         if codexSessionCount > 0 { return true }
         return switch variant {
-        case .cleanUp(_, _, let protected, _): protected > 0 || dockerImageCount > 0
+        case .cleanUp(_, _, let protected, _): protected > 0 || dockerCount > 0
         case .emptyTrash, .permanentApplication: true
         case .soundLibrary: false
         case .photos: false
         }
+    }
+
+    private var dockerCount: Int { dockerImageCount + dockerVolumeCount }
+
+    /// Docker objects do not move to the Trash. Volume data also has no other copy.
+    private var dockerWarning: String {
+        var sentences: [String] = []
+        if dockerImageCount > 0 {
+            sentences.append("Docker permanently removes \(dockerImageCount) selected \(dockerImageCount == 1 ? "image" : "images"). "
+                + "These images do not move to the Trash. "
+                + "Image sizes include shared layers, so removal can recover less space.")
+        }
+        if dockerVolumeCount > 0 {
+            let one = dockerVolumeCount == 1
+            sentences.append("Docker permanently removes \(dockerVolumeCount) selected \(one ? "volume" : "volumes") "
+                + "and all the data in \(one ? "it" : "them"). "
+                + "Docker keeps no backup, so you cannot restore this data.")
+        }
+        return sentences.joined(separator: " ")
     }
 
     private var title: String {
@@ -213,10 +233,12 @@ struct ConfirmationSheet: View {
             if protected > 0 {
                 return "Remove \(count) \(noun), including protected data?"
             }
-            if dockerImageCount == count {
-                return "Permanently remove \(count) Docker \(count == 1 ? "image" : "images")?"
+            if dockerCount == count {
+                let dockerNoun = dockerVolumeCount == 0 ? (count == 1 ? "image" : "images")
+                    : dockerImageCount == 0 ? (count == 1 ? "volume" : "volumes") : "items"
+                return "Permanently remove \(count) Docker \(dockerNoun)?"
             }
-            if dockerImageCount > 0 { return "Remove \(count) \(noun)?" }
+            if dockerCount > 0 { return "Remove \(count) \(noun)?" }
             return "Move \(count) \(noun) to the Trash?"
         case .permanentApplication(let name):
             return "Permanently delete \(name)?"
@@ -244,15 +266,14 @@ struct ConfirmationSheet: View {
             if count > toolCommandCount {
                 message += " Other files move to the Trash."
             }
-            if dockerImageCount > 0 { message += " Docker removes the selected images permanently." }
+            if dockerCount > 0 { message += " " + dockerWarning }
             if protected > 0 { message += " Protected data removal can erase profiles, history, or settings." }
             return message
         }
         if codexSessionCount > 0 {
             let sessions = "Codex permanently deletes \(codexSessionCount) \(codexSessionCount == 1 ? "session" : "sessions") and related session files. "
-            let images = dockerImageCount > 0
-                ? "Docker permanently removes \(dockerImageCount) selected \(dockerImageCount == 1 ? "image" : "images"). " : ""
-            return sessions + images + "Other selected files move to the Trash."
+            let docker = dockerCount > 0 ? dockerWarning + " " : ""
+            return sessions + docker + "Other selected files move to the Trash."
         }
         switch variant {
         case .cleanUp(_, let bytes, let protected, let saving):
@@ -265,15 +286,11 @@ struct ConfirmationSheet: View {
             } else {
                 warning = ""
             }
-            if dockerImageCount > 0 {
-                let noun = dockerImageCount == 1 ? "image" : "images"
-                let permanent = "Docker permanently removes \(dockerImageCount) selected \(noun). "
-                    + "These images do not move to the Trash. "
-                    + "Image sizes include shared layers, so removal can recover less space."
-                let fileBytes = max(0, bytes - dockerImageBytes)
+            if dockerCount > 0 {
+                let fileBytes = max(0, bytes - dockerBytes)
                 let files = fileBytes > 0
                     ? " Other selected items move to the Trash (\(ByteFormatting.string(fileBytes)))." : ""
-                return permanent + files + warning
+                return dockerWarning + files + warning
             }
             let sharing = Self.sharedStorageClause(selected: bytes, saving: saving)
             return "\(ByteFormatting.string(bytes)) will be moved to the Trash. "
@@ -338,7 +355,7 @@ struct ConfirmationSheet: View {
         if codexSessionCount > 0 { return "Delete Sessions and Clean Up" }
         switch variant {
         case .cleanUp(_, _, let protected, _):
-            return protected > 0 ? "Remove Anyway" : dockerImageCount > 0 ? "Remove" : "Move to Trash"
+            return protected > 0 ? "Remove Anyway" : dockerCount > 0 ? "Remove" : "Move to Trash"
         case .emptyTrash:   return "Erase"
         case .permanentApplication: return "Delete Permanently"
         case .soundLibrary: return "Move to Trash"

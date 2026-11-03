@@ -181,7 +181,7 @@ struct FileTable: View {
             // modification date — and a folder's own date only changes when its
             // direct children do, not its contents.
             .help(entries.contains { $0.url.scheme == "docker" }
-                ? "Docker does not report when these images were last used."
+                ? "Docker does not report when these images and volumes were last used."
                 : "Spotlight's last-opened date when it exists; otherwise the last "
                     + "modification date. Treat it as an approximation, not a promise.")
 
@@ -644,14 +644,23 @@ private struct FileRow: View {
             return entry.protectionExplanation
                 ?? "Moppo cannot remove this whole folder. Review its child items separately."
         }
-        if let image = entry.dockerImage {
-            if let count = image.containerCount, count > 0 {
-                return "\(count) \(count == 1 ? "container uses" : "containers use") this image. Remove those containers first."
+        if let item = entry.docker {
+            let object = entry.dockerVolume == nil ? "image" : "volume"
+            if let count = item.containerCount, count > 0 {
+                return "\(count) \(count == 1 ? "container uses" : "containers use") this \(object). "
+                    + "Remove \(count == 1 ? "that container" : "those containers") first, including stopped containers."
             }
-            if image.containerCount == nil { return "Container use is unavailable. Try scanning again." }
-            return "Docker permanently removes this image and all its listed tags. It does not move to the Trash. "
-                + "Image sizes include shared layers, so removal can recover less space. "
-                + "Docker context: \(image.context). " + entry.displayName
+            if item.containerCount == nil { return "Container use is unavailable. Try scanning again." }
+            switch item {
+            case .image(let image):
+                return "Docker permanently removes this image and all its listed tags. It does not move to the Trash. "
+                    + "Image sizes include shared layers, so removal can recover less space. "
+                    + "Docker context: \(image.context). " + entry.displayName
+            case .volume(let volume):
+                return "Docker permanently removes this volume and all the data in it. "
+                    + "Docker keeps no backup, so you cannot restore this data. "
+                    + "Docker context: \(volume.context). Volume: \(volume.name)"
+            }
         }
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning
@@ -736,8 +745,8 @@ private struct FileRow: View {
                             ManualRemovalPopover(manual: manual)
                                 .presentationBackground(Token.chrome)
                         }
-                    } else if let image = entry.dockerImage {
-                        Badge(text: image.containerCount == nil ? "unavailable" : image.isRemovalLocked ? "in use" : "permanent removal").fixedSize()
+                    } else if let item = entry.docker {
+                        Badge(text: item.containerCount == nil ? "unavailable" : item.isRemovalLocked ? "in use" : "permanent removal").fixedSize()
                     } else if entry.aiTool == .codex && entry.codexSession == nil
                         && entry.children.contains(where: { $0.codexSession != nil }) {
                         Badge(text: "conversation history").fixedSize()
@@ -1064,8 +1073,9 @@ struct ProtectedSelectionControl: View {
 
     private var tooltipTitle: String {
         if onUnlockChildren != nil { return "Protected child items" }
-        if let image = entry.dockerImage {
-            return image.containerCount == nil ? "Container use unavailable" : "Image used by containers"
+        if let item = entry.docker {
+            if item.containerCount == nil { return "Container use unavailable" }
+            return entry.dockerVolume == nil ? "Image used by containers" : "Volume used by containers"
         }
         if entry.codexSession != nil {
             return entry.protectionReason == .inventory ? "Session is in use" : "Conversation history"
@@ -1085,7 +1095,7 @@ struct ProtectedSelectionControl: View {
 
     private var tooltipMessage: String {
         if onUnlockChildren != nil { return help }
-        if entry.dockerImage != nil { return help }
+        if entry.docker != nil { return help }
         if let session = entry.codexSession {
             return entry.protectionExplanation ?? session.warning
         }

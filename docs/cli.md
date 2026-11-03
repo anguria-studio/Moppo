@@ -100,7 +100,7 @@ They also check selected trees for protected patterns and unreadable items.
 The checks do not remove files or run removal commands.
 
 Plans currently support ordinary file targets, file groups, local model groups, and available fixed tool targets.
-Application removal reviews, virtual targets such as Docker images, and symbolic link targets return `unsupported_target`.
+Application removal reviews, virtual targets such as Docker images and volumes, and symbolic link targets return `unsupported_target`.
 Protected rows and protected children remain excluded, regardless of earlier app overrides.
 Children of a model group require their parent selection.
 Selecting both a parent and its child fails validation.
@@ -276,7 +276,7 @@ moppo exclude --scan scan_ID --item item_ID --json
 This command saves the same rules as **Never Offer This Again** in the app.
 It scans the item's category again to find the current identities.
 Local model rules identify manifests or repository folders, so shared blobs stay protected.
-Docker rules include the image context.
+Docker rules include the image or volume context.
 
 | Status | Meaning |
 | --- | --- |
@@ -292,7 +292,7 @@ To remove a rule, open Moppo and go to **Settings > Exclusions**. Removal takes 
 ## Settings and access
 
 The CLI reads enabled categories and exclusions from the Moppo preferences domain.
-Exclusions can identify folders, files, tool items such as Docker images, and filename patterns.
+Exclusions can identify folders, files, tool items such as Docker images and volumes, and filename patterns.
 Only `moppo exclude` changes these settings. It adds exclusions and never removes them.
 Without saved settings, the CLI enables all categories and applies built-in exclusions.
 The `--category` option restricts a scan to an enabled category.
@@ -352,7 +352,7 @@ Responses include the scan identifier, revision, timestamps, expiry, and scan st
 
 Eligibility values are `protected`, `parent_review`, `app_review`, and `review_required`.
 None authorizes removal.
-`app_review` items need a review screen in Moppo. Examples are applications, Docker images, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
+`app_review` items need a review screen in Moppo. Examples are applications, Docker images, Docker volumes, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
 A saved plan cannot include these items, and plan creation returns `unsupported_target`.
 A new scan does not change this result. Remove these items in the Moppo app.
 Recovery values are `trash_if_supported`, `permanent`, and `external_tool`.

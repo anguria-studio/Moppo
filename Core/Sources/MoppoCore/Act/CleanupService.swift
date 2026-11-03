@@ -131,7 +131,7 @@ public struct CleanupService: Sendable {
     /// would have cost on every whole-disk walk.
     private let privateMeasurer = PrivateSizeMeasurer()
     private let log: RemovalLog
-    private let dockerImages: DockerImageService
+    private let docker: DockerService
     private let toolCommands: ToolCommandRemovalService
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
@@ -142,12 +142,12 @@ public struct CleanupService: Sendable {
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),
         log: RemovalLog = RemovalLog(),
-        dockerImages: DockerImageService = DockerImageService(),
+        docker: DockerService = DockerService(),
         applicationRemovalFallback: ApplicationRemovalFallback? = nil,
         administratorTrash: (@Sendable (AppleSoundLibrary.Inventory) async throws -> URL)? = nil
     ) {
         self.init(measureSize: { try await measurer.measure($0) }, log: log,
-                  registeredApplications: AppleSoundLibrary.registeredOwners, dockerImages: dockerImages,
+                  registeredApplications: AppleSoundLibrary.registeredOwners, docker: docker,
                   reviewBuildCache: { try await XcodeBuildCache.measureForRemoval($0, with: measurer) },
                   applicationRemovalFallback: applicationRemovalFallback, administratorTrash: administratorTrash)
     }
@@ -156,7 +156,7 @@ public struct CleanupService: Sendable {
         measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
         log: RemovalLog,
         registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] },
-        dockerImages: DockerImageService = DockerImageService(),
+        docker: DockerService = DockerService(),
         toolCommands: ToolCommandRemovalService = ToolCommandRemovalService(),
         deleteCodexSession: @escaping @Sendable (CodexSessionReview) async throws -> Void = {
             try await CodexSessions(home: $0.codexHome).remove($0)
@@ -177,7 +177,7 @@ public struct CleanupService: Sendable {
         self.measureSize = measureSize
         self.log = log
         self.registeredApplications = registeredApplications
-        self.dockerImages = dockerImages
+        self.docker = docker
         self.toolCommands = toolCommands
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
@@ -275,11 +275,14 @@ public struct CleanupService: Sendable {
                 continue
             }
 
-            if let image = entry.dockerImage {
+            if let item = entry.docker {
                 var bytes = entry.allocatedBytes
                 var disposition: RemovalDisposition = .failed
                 do {
-                    bytes = try await dockerImages.remove(image)
+                    switch item {
+                    case .image(let image): bytes = try await docker.remove(image)
+                    case .volume(let volume): try await docker.remove(volume)
+                    }
                     outcome.removedBytes += bytes
                     outcome.removedCount += 1
                     outcome.deletedCount += 1
@@ -766,7 +769,7 @@ public struct CleanupService: Sendable {
     ) -> RemovalRecord {
         RemovalRecord(
             timestamp: Date(),
-            originalPath: entry.dockerImage != nil ? Self.dockerReceiptPath(for: entry) : entry.url.path,
+            originalPath: entry.docker != nil ? Self.dockerReceiptPath(for: entry) : entry.url.path,
             bytes: max(0, bytes ?? entry.allocatedBytes),
             disposition: .failed
         )
@@ -824,7 +827,7 @@ public struct CleanupService: Sendable {
         userDataRemovalOverrides: Set<FileEntry.ID>
     ) -> Bool {
         if entry.manualRemoval != nil || entry.protectionReason == .running || entry.protectionReason == .folderRemainder
-            || entry.protectionReason == .inventory || entry.dockerImage?.isRemovalLocked == true
+            || entry.protectionReason == .inventory || entry.docker?.isRemovalLocked == true
             || entry.toolCommand?.lockReason != nil
             || (entry.kind != .appBundle && entry.children.contains { $0.toolCommand != nil })
             || !entry.unlockableChildren.isEmpty { return false }
