@@ -130,10 +130,11 @@ public struct SystemCachesScanner: CategoryScanner {
 
     /// Whether a child is called regenerable.
     ///
-    /// `~/Library/Caches` and `~/Library/Logs` are the system's own cache and log
-    /// folders: what an app puts there it has been told may be purged. `~/.cache` is
-    /// a convention with nobody enforcing it, and this Mac's held a Codex runtime
-    /// with its binaries. So a child there is regenerable on its tool's own
+    /// `~/Library/Caches` is the system's own cache folder: what an app puts there it
+    /// has been told may be purged. `~/Library/Logs` is not regenerable. A tool writes
+    /// new logs, but the old records are lost, so its children need review.
+    /// `~/.cache` is a convention with nobody enforcing it, and this Mac's held a Codex
+    /// runtime with its binaries. So a child there is regenerable on its tool's own
     /// `CACHEDIR.TAG` — see `CacheDirectoryTag` — and is otherwise listed plainly,
     /// which in a safe category means Needs Review, unticked.
     /// AI Tools claims part of some `~/.cache` folders, such as `torch/hub`.
@@ -155,7 +156,15 @@ public struct SystemCachesScanner: CategoryScanner {
     }
 
     private func isRegenerable(_ child: URL, under root: URL) -> Bool {
-        root == dotCacheRoot ? CacheDirectoryTag.isPresent(in: child) : true
+        if root == logsRoot { return false }
+        return root == dotCacheRoot ? CacheDirectoryTag.isPresent(in: child) : true
+    }
+
+    /// A log folder or file is not a cache, so its row does not say "Cached files".
+    private func kind(of child: URL, under root: URL) -> FileEntry.Kind {
+        guard root == logsRoot else { return .cache }
+        let isDirectory = (try? child.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        return isDirectory ? .folder : .file
     }
 
     /// The ported threshold: the original emitted any child whose measured size was
@@ -238,8 +247,9 @@ public struct SystemCachesScanner: CategoryScanner {
                 // written every time its app runs, so "touched in the last 30 days"
                 // describes every cache worth showing — a recency filter hid exactly
                 // the largest ones (Chrome's, an active IDE's) and left only the stale
-                // caches of abandoned apps. The cost of removal here is regeneration,
-                // not loss, which is what the category's `safe` badge tells the user.
+                // caches of abandoned apps. For a cache, the cost of removal is
+                // regeneration, not loss, which is what the category's `safe` badge
+                // tells the user. A log is a loss, so its row needs review.
                 guard !context.isExcluded(url) else { continue }
                 // Detected by the measurer during the walk above: a tree holding a
                 // protected bundle or keychain is never offered, because removing
@@ -251,13 +261,14 @@ public struct SystemCachesScanner: CategoryScanner {
                     // A child of a partly claimed folder shows that folder, such as `torch/kernels`.
                     displayName: url.deletingLastPathComponent().standardizedFileURL.path == root.standardizedFileURL.path
                         ? nil : url.deletingLastPathComponent().lastPathComponent + "/" + url.lastPathComponent,
-                    kind: .cache,
+                    kind: kind(of: url, under: root),
                     allocatedBytes: measurement.allocatedBytes,
                     lastOpened: lastOpened,
-                    // The two Library roots hold nothing but artifacts rebuilt on
-                    // demand, which is what earns the category its green `safe` badge
-                    // and its place in "Safe to remove". `~/.cache` has to show a tag.
+                    // `~/Library/Caches` holds artifacts rebuilt on demand, which is what
+                    // earns the category its green `safe` badge and its place in "Safe to
+                    // remove". `~/.cache` has to show a tag. Logs need review.
                     isRegenerable: isRegenerable(url, under: root),
+                    notRegenerable: root == logsRoot ? .logs : nil,
                     // Still regenerable, no longer *safe* while its owner runs —
                     // see `FileEntry.inUseBy`.
                     inUseBy: context.runningOwner(ofCacheNamed: url.lastPathComponent),

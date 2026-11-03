@@ -136,6 +136,7 @@ public struct ApplicationsScanner: CategoryScanner {
                         allocatedBytes: size.allocatedBytes,
                         lastOpened: childOpened,
                         isRegenerable: candidate.isRegenerable,
+                        notRegenerable: candidate.notRegenerable,
                         childCount: Self.itemCount(of: candidate.url)
                     ))
                 }
@@ -187,9 +188,9 @@ public struct ApplicationsScanner: CategoryScanner {
                 // whether or not the user ever opens it. The app's *usage traces* are
                 // stronger — caches and saved window state are only written by
                 // actually running it — so last activity is the newest date across
-                // the bundle and its regenerable leftovers.
+                // the bundle and its usage traces: caches, saved state, and logs.
                 let lastActivity = ([lastOpenedDate(for: appURL)]
-                    + children.filter(\.isRegenerable).map(\.lastOpened))
+                    + children.filter(Self.isUsageTrace).map(\.lastOpened))
                     .compactMap { $0 }
                     .max()
 
@@ -204,7 +205,9 @@ public struct ApplicationsScanner: CategoryScanner {
                 // A preference, container or support folder is user data whether
                 // the app ran today or four years ago. No date decides whether
                 // deleting a child alone gets a destructive warning.
-                for index in children.indices where !children[index].isRegenerable && children[index].soundLibrary == nil {
+                // Logs are not user data. They stay removable after review.
+                for index in children.indices
+                where !Self.isUsageTrace(children[index]) && children[index].soundLibrary == nil {
                     children[index].protectionReason = .userData
                 }
 
@@ -219,7 +222,7 @@ public struct ApplicationsScanner: CategoryScanner {
                             name: baseName, bundleIdentifier: bundleID,
                             bundlePath: appURL.path
                         )
-                    for index in children.indices where children[index].isRegenerable {
+                    for index in children.indices where Self.isUsageTrace(children[index]) {
                         children[index].inUseBy = owner
                     }
                 }
@@ -755,11 +758,19 @@ public struct ApplicationsScanner: CategoryScanner {
     private struct Candidate {
         let url: URL
         let kind: FileEntry.Kind
+        /// Set for the app's logs. Old log records do not come back after removal.
+        var notRegenerable: FileEntry.NotRegenerable?
 
         /// Caches, saved window state and web storage all come back on next launch, so
         /// they carry the `· regenerable` qualifier. Containers, Application Support
         /// and preferences hold the user's actual data and do not.
         var isRegenerable: Bool { kind == .cache }
+    }
+
+    /// Files that the app writes when it runs: its caches, saved state, and logs.
+    /// They date the app's last activity. Only caches regenerate.
+    private static func isUsageTrace(_ entry: FileEntry) -> Bool {
+        entry.isRegenerable || entry.notRegenerable == .logs
     }
 
     /// Every support-file location the original checked, in the same order: the
@@ -780,10 +791,10 @@ public struct ApplicationsScanner: CategoryScanner {
                 .appendingPathComponent(name)
         }
 
-        func add(_ url: URL, _ kind: FileEntry.Kind) {
+        func add(_ url: URL, _ kind: FileEntry.Kind, notRegenerable: FileEntry.NotRegenerable? = nil) {
             let path = url.standardizedFileURL.path
             guard fileManager.fileExists(atPath: path), seen.insert(path).inserted else { return }
-            candidates.append(Candidate(url: url, kind: kind))
+            candidates.append(Candidate(url: url, kind: kind, notRegenerable: notRegenerable))
         }
 
         // An empty identifier would make the `contains` test below true for every
@@ -826,7 +837,11 @@ public struct ApplicationsScanner: CategoryScanner {
 
         add(inLibrary("Application Support", baseName), .folder)
         add(inLibrary("Caches", baseName), .cache)
-        add(inLibrary("Logs", baseName), .cache)
+        let logs = inLibrary("Logs", baseName)
+        var logsIsDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: logs.path, isDirectory: &logsIsDirectory) {
+            add(logs, logsIsDirectory.boolValue ? .folder : .file, notRegenerable: .logs)
+        }
 
         return candidates
     }

@@ -133,12 +133,13 @@ struct ApplicationsScanTests {
         #expect(result.totalBytes == row.totalBytesIncludingChildren)
     }
 
-    @Test("a cache regenerates; support and preferences are the user's own data")
+    @Test("a cache regenerates; logs need review; support and preferences are the user's own data")
     func leftoversCarryTheRightDisposition() async throws {
         let sandbox = try Sandbox()
         try sandbox.app("Fixture", bundleID: "com.example.fixture")
         try sandbox.file("Library/Application Support/com.example.fixture/data.bin")
         try sandbox.file("Library/Caches/com.example.fixture/cache.bin")
+        try sandbox.file("Library/Logs/Fixture/today.log")
 
         let result = try await sandbox.scanner().scan(context: context())
         let row = try #require(result.entries.first)
@@ -153,6 +154,11 @@ struct ApplicationsScanTests {
         // so deleting the child on its own has to warn even when the app row does not.
         #expect(support.protectionReason == .userData)
         #expect(cache.protectionReason == nil)
+        // Old log records do not come back, but logs are not user data.
+        let logs = try #require(row.children.first { $0.url.path.contains("/Logs/") })
+        #expect(logs.kind == .folder)
+        #expect(logs.regenerationLabel == .notRegenerable(reason: FileEntry.NotRegenerable.logs.reason))
+        #expect(logs.protectionReason == nil)
     }
 
     // MARK: - Rules that keep an application off the list
