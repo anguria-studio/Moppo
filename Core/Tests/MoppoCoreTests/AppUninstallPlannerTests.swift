@@ -199,6 +199,8 @@ struct AppUninstallPlannerTests {
             "Library/Group Containers/group.com.vendor.editor/shared.db"
         ).deletingLastPathComponent()
         let launchAgent = try sandbox.write("Library/LaunchAgents/com.vendor.editor.plist")
+        let logs = try sandbox.write("Library/Logs/com.vendor.editor/today.log")
+            .deletingLastPathComponent()
 
         let plan = try await sandbox.planner().plan(applicationURL: app)
         let paths = Set(plan.items.map(\.id))
@@ -211,6 +213,12 @@ struct AppUninstallPlannerTests {
         #expect(!paths.contains { $0.contains("editor.helper.plist") })
         #expect(!paths.contains { $0.contains("Group Containers") })
         #expect(plan.preservedPaths.contains(sharedGroup))
+        // Old log records do not come back, but logs are not user data.
+        let logItem = try #require(plan.items.first { $0.id == logs.standardizedFileURL.path })
+        #expect(logItem.content == .logs)
+        #expect(!logItem.isProtectedUserData)
+        #expect(logItem.fileEntry.kind == .folder)
+        #expect(logItem.fileEntry.regenerationLabel == .notRegenerable(reason: FileEntry.NotRegenerable.logs.reason))
     }
 
     @Test("another installed copy keeps every shared bundle-owned path")

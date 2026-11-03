@@ -762,6 +762,8 @@ struct UninstallerItemRow: View {
                         Badge(text: "user data").fixedSize()
                     } else if item.content == .regenerable {
                         Badge(text: "regenerable", style: .safe).fixedSize()
+                    } else if item.content == .logs {
+                        Badge(text: "not regenerable").fixedSize()
                     } else if item.content == .appComponent {
                         Badge(text: "app component").fixedSize()
                     }
