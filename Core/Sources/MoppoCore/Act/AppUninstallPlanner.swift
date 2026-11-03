@@ -126,6 +126,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
     let candidateBundleIdentifiers: Set<String>
     let applicationRoots: [URL]
     let allowedRelatedRoots: [URL]
+    /// Named data folders outside `allowedRelatedRoots`. See `ApplicationDataFolders`.
+    let allowedRelatedFolders: [URL]
 
     public var applicationItem: Item { items[0] }
     /// No related file could be attributed: there is no identifier to match on, or
@@ -163,7 +165,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         preservedPaths: [URL],
         candidateBundleIdentifiers: Set<String>,
         applicationRoots: [URL],
-        allowedRelatedRoots: [URL]
+        allowedRelatedRoots: [URL],
+        allowedRelatedFolders: [URL] = []
     ) {
         precondition(items.first?.content == .application)
         self.applicationURL = applicationURL.standardizedFileURL
@@ -175,6 +178,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         self.candidateBundleIdentifiers = candidateBundleIdentifiers
         self.applicationRoots = applicationRoots.map(\.standardizedFileURL)
         self.allowedRelatedRoots = allowedRelatedRoots.map(\.standardizedFileURL)
+        self.allowedRelatedFolders = allowedRelatedFolders.map(\.standardizedFileURL)
     }
 }
 
@@ -434,7 +438,8 @@ public struct AppUninstallPlanner: Sendable {
                 preservedPaths: [],
                 candidateBundleIdentifiers: [],
                 applicationRoots: applicationRoots,
-                allowedRelatedRoots: allowedRelatedRoots
+                allowedRelatedRoots: allowedRelatedRoots,
+                allowedRelatedFolders: allowedRelatedFolders
             )
         }
 
@@ -553,7 +558,8 @@ public struct AppUninstallPlanner: Sendable {
             preservedPaths: Self.deduplicated(preserved),
             candidateBundleIdentifiers: candidateIDs,
             applicationRoots: applicationRoots,
-            allowedRelatedRoots: allowedRelatedRoots
+            allowedRelatedRoots: allowedRelatedRoots,
+            allowedRelatedFolders: allowedRelatedFolders
         )
     }
 
@@ -599,6 +605,12 @@ public struct AppUninstallPlanner: Sendable {
             append(systemLibrary, "Caches/\(id)", .caches, .regenerable, owner: id)
             append(systemLibrary, "Preferences/\(id).plist", .preferences, .userData, owner: id)
             append(systemLibrary, "PrivilegedHelperTools/\(id)", .helpers, .appComponent, owner: id)
+
+            for folder in ApplicationDataFolders.folders(for: id, home: home) {
+                result.append(Candidate(
+                    url: folder, category: .support, content: .userData, ownerBundleIdentifier: id
+                ))
+            }
 
             append(home, ".config/\(id)", .support, .userData, owner: id)
             append(home, ".cache/\(id)", .caches, .regenerable, owner: id)
@@ -897,9 +909,9 @@ public struct AppUninstallPlanner: Sendable {
         }
         guard let owner = item.ownerBundleIdentifier,
               exclusiveBundleIdentifiers.contains(owner),
-              let root = plan.allowedRelatedRoots.first(where: {
-                  Self.isInside(item.url, root: $0)
-              }),
+              let root = Self.relatedRoot(
+                  of: item.url, roots: plan.allowedRelatedRoots, folders: plan.allowedRelatedFolders
+              ),
               !Self.isSymbolicLink(item.url)
         else { return false }
         return !Self.hasSymbolicLinkInParents(of: item.url, through: root)
@@ -915,11 +927,25 @@ public struct AppUninstallPlanner: Sendable {
         ] + [darwinCache, darwinTemp].compactMap { $0 }
     }
 
+    var allowedRelatedFolders: [URL] {
+        ApplicationDataFolders.foldersOutsideLibrary(home: home)
+    }
+
     func candidateIsSafe(_ url: URL) -> Bool {
-        guard let root = allowedRelatedRoots.first(where: { Self.isInside(url, root: $0) }),
+        guard let root = Self.relatedRoot(of: url, roots: allowedRelatedRoots, folders: allowedRelatedFolders),
               !Self.isSymbolicLink(url)
         else { return false }
         return !Self.hasSymbolicLinkInParents(of: url, through: root)
+    }
+
+    /// The folder through which the symbolic link check runs, or nil when `url` is outside the allowed locations.
+    /// A path in a root is allowed. A named folder is allowed as the complete folder or a path in it.
+    /// Its parent is not an allowed location.
+    static func relatedRoot(of url: URL, roots: [URL], folders: [URL]) -> URL? {
+        if let root = roots.first(where: { isInside(url, root: $0) }) { return root }
+        let path = url.standardizedFileURL.path
+        return folders.first { $0.standardizedFileURL.path == path || isInside(url, root: $0) }?
+            .deletingLastPathComponent()
     }
 
     static func installedApplications(

@@ -23,6 +23,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
 - Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
 - Show the other folders in `~/.config` as separate Hidden & System Data rows.
+- Connect data folders that use another name to AnythingLLM, Cherry Studio, Stability Matrix, VoiceInk, T3 Code, DBeaver, and Superwhisper.
+- Show these folders as user data with their application, in App Uninstaller, and in Application Leftovers after an uninstall.
 
 ### Command line and agents
 

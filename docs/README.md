@@ -879,7 +879,11 @@ App Uninstaller review. The Finder action never removes files.
 
 **Application Leftovers uses strict ownership rules.** The Scanner finds exact
 bundle-identifier paths and roots from curated app rules. It ignores loose name
-matches and shared containers. It keeps exclusions, keychains, ambiguous paths,
+matches and shared containers.
+`ApplicationDataFolders` lists verified data folders that use another name, such as
+`~/Library/DBeaverData` and `~/superwhisper`. Each folder is user data for its bundle identifier.
+A folder in the home folder must also contain its recorded layout files.
+Removal accepts such a folder only as the complete folder or a path in it. It keeps exclusions, keychains, ambiguous paths,
 and files for installed applications protected. All includes each verified application group.
 Moppo checks the owner and the file identity again before removal.
 
