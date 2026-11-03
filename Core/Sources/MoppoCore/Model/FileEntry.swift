@@ -4,7 +4,7 @@ import Foundation
 public struct FileEntry: Sendable, Equatable, Identifiable {
 
     /// Identifies the tool icon without changing storage ownership or removal rules.
-    public enum AITool: String, Sendable {
+    public enum AITool: String, Sendable, CaseIterable {
         case codex = "Codex", chatGPT = "ChatGPT", claude = "Claude", cursor = "Cursor", grokBot = "GrokBot"
         case t3Code = "T3Code"
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
