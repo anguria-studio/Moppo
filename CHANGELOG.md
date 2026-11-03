@@ -23,6 +23,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
 - Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
 - Show the other folders in `~/.config` as separate Hidden & System Data rows.
+- Show Homebrew database data folders as protected Hidden & System Data rows with their sizes.
+- This applies to PostgreSQL, MySQL, MongoDB, Redis, OpenSearch, and Elasticsearch.
+- Show `~/Library/DBeaverData` as a protected Hidden & System Data row.
+- Show the sizes of the protected Postgres.app and DBngin data folders under their applications.
+- Keep the Postgres.app and DBngin data folders in App Uninstaller and Application Leftovers.
+- Moppo never offers database data, MySQL binary logs, or the data folder of an older PostgreSQL version.
 
 ### Command line and agents
 

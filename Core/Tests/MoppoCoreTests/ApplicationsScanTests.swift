@@ -161,6 +161,31 @@ struct ApplicationsScanTests {
         #expect(logs.protectionReason == nil)
     }
 
+    @Test("Postgres.app and DBngin database folders stay with their applications and show their size")
+    func databaseFoldersAreInventory() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.app("Postgres", bundleID: "com.postgresapp.Postgres2")
+        try sandbox.app("DBngin", bundleID: "com.tinyapp.DBngin")
+        try sandbox.file("Library/Application Support/Postgres/var-18/PG_VERSION")
+        let engine = "Library/Application Support/com.tinyapp.DBngin/Engines/mysql/C94F9644-8FA5-49B1-83E5-D4DB221527E9"
+        try sandbox.file(engine + "/ibdata1")
+        try sandbox.file("Library/Application Support/com.tinyapp.DBngin/Data/DBEngines.plist")
+        try sandbox.file("Library/Caches/com.tinyapp.DBngin/Cache.db")
+
+        let result = try await sandbox.scanner().scan(context: context())
+
+        let data = result.entries.flatMap(\.children).filter { $0.url.path.contains("/Application Support/") }
+        #expect(data.map(\.url.lastPathComponent).sorted() == ["Postgres", "com.tinyapp.DBngin"])
+        for folder in data {
+            #expect(folder.protectionReason == .inventory)
+            #expect(folder.protectionExplanation?.contains("Moppo never removes database data") == true)
+            #expect(folder.displayBytes == folder.allocatedBytes && folder.allocatedBytes > 0)
+        }
+        // The cache is not database data. It stays available for review.
+        let cache = try #require(result.entries.flatMap(\.children).first { $0.url.path.contains("/Caches/") })
+        #expect(cache.protectionReason == nil)
+    }
+
     // MARK: - Rules that keep an application off the list
 
     @Test("an excluded application is not walked, listed or counted")

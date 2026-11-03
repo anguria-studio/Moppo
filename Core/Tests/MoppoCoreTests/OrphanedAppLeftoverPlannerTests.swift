@@ -408,6 +408,20 @@ struct OrphanedAppLeftoverPlannerTests {
         #expect(Set(plan.preservedPaths) == [cache, state, support])
     }
 
+    @Test("database files of a removed application stay on disk")
+    func databaseDataStaysOnDisk() async throws {
+        let sandbox = try Sandbox()
+        let state = try sandbox.evidence(for: "com.tinyapp.DBngin")
+        let support = try sandbox.write("Library/Application Support/com.tinyapp.DBngin/Engines/mysql/A1/mysql/db.opt")
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+
+        let plan = try await sandbox.planner().plan()
+
+        #expect(plan.groups.flatMap(\.items).map(\.url) == [state])
+        #expect(plan.preservedPaths == [support])
+    }
+
     /// The regression behind the rule: `/Library/Preferences/org.cups.printers.plist`
     /// is the user's printer configuration, shaped exactly like a bundle identifier,
     /// and an earlier planner offered it as "safe to delete".

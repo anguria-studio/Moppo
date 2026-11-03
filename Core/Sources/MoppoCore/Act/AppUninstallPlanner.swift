@@ -459,6 +459,7 @@ public struct AppUninstallPlanner: Sendable {
 
         var items: [AppUninstallPlan.Item] = [applicationItem]
         var preserved: [URL] = []
+        let databaseFolders = DatabaseStorage.locations(home: home)
         var claimedPaths = Set(items.map(\.id))
 
         // Group containers are allowed to be shared by several applications and
@@ -506,7 +507,9 @@ public struct AppUninstallPlanner: Sendable {
                 continue
             }
             guard fm.fileExists(atPath: candidate.url.path) else { continue }
-            guard candidateIsSafe(candidate.url) else {
+            guard candidateIsSafe(candidate.url),
+                  DatabaseStorage.location(overlapping: candidate.url, in: databaseFolders) == nil
+            else {
                 preserved.append(candidate.url)
                 continue
             }

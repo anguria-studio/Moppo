@@ -9,7 +9,8 @@ struct CleanupPlanTests {
         let scans: ScanStore
         let plans: PlanStore
         let history: RemovalLog
-        let configuration = ScanConfiguration(enabledCategories: [.aiTools], excludedPatterns: ["*.keychain-db"])
+        let configuration = ScanConfiguration(enabledCategories: [.aiTools, .hiddenSystemData],
+                                              excludedPatterns: ["*.keychain-db"])
 
         init() throws {
             root = FileManager.default.temporaryDirectory.appendingPathComponent("moppo-plans-" + UUID().uuidString)
@@ -215,9 +216,10 @@ struct CleanupPlanTests {
         }
     }
 
-    /// Scans `f.root` with the AI Tools scanner and checks that a plan for `name` is refused.
-    private func expectProtectedScannerRow(_ f: Fixture, named name: String) async throws -> ScanReport.Item {
-        let scanner = AIToolsScanner(home: f.root, applications: f.root.appendingPathComponent("Applications"))
+    /// Scans `f.root` with the AI Tools scanner, or with `scanner`, and checks that a plan for `name` is refused.
+    private func expectProtectedScannerRow(_ f: Fixture, named name: String,
+                                           scanner: (any CategoryScanner)? = nil) async throws -> ScanReport.Item {
+        let scanner = scanner ?? AIToolsScanner(home: f.root, applications: f.root.appendingPathComponent("Applications"))
         let scan: CleanupPlanService.Scanner = { _ in
             let category = try await scanner.scan(context: ScanContext())
             return ScanResults(categories: [category], startedAt: Date(), finishedAt: Date())
@@ -267,6 +269,17 @@ struct CleanupPlanTests {
                          "Applications/Data/.sm-portable", "Applications/Data/StabilityMatrix.db"]
             .map { try f.file($0) }
         _ = try await expectProtectedScannerRow(f, named: name)
+        #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
+    }
+
+    @Test func databaseDataRefusesPlansFromActualScannerOutput() async throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let files = try ["homebrew/var/mysql/ibdata1", "homebrew/var/mysql/binlog.000001", "homebrew/var/mysql/binlog.index"]
+            .map { try f.file($0) }
+        let scanner = HiddenDataScanner(home: f.root, homebrewPrefixes: [f.root.appendingPathComponent("homebrew")])
+        let row = try await expectProtectedScannerRow(f, named: "MySQL data", scanner: scanner)
+        #expect(row.detail?.contains("MySQL database files") == true)
         #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
     }
 

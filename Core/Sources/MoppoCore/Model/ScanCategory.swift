@@ -279,7 +279,8 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
                 if case .simulatorRuntimeAbsent = command.expectedResult { return true }
                 if command.isHomebrewVersion { return true }
             }
-            if categoryID == .xcode, entry.protectionReason == .inventory { return true }
+            // Protected inventory, such as a small Redis data folder, stays visible.
+            if [.xcode, .hiddenSystemData].contains(categoryID), entry.protectionReason == .inventory { return true }
             return entry.totalBytesIncludingChildren >= floor || entry.worktreeCount > 0 || !entry.localModelPaths.isEmpty
         }
         copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
