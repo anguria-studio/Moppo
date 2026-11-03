@@ -225,7 +225,7 @@ Core/                         Swift package
     Measure/                 AllocatedSizeMeasurer, MeasurementReader, BulkMeasurementReader, ByteFormatting
     System/                  Disk information, snapshots, process execution, scan and Dashboard diagnostics
     Scan/                    Category scanners, Codex session review, and scan coordination
-    Act/                     Cleanup, Docker images, app uninstall, sound libraries, Trash, history
+    Act/                     Cleanup, Docker images and volumes, app uninstall, sound libraries, Trash, history
     Resources/               Homebrew formula version adapter
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
@@ -306,6 +306,7 @@ All feature scans, removal reviews, removal tasks, and recovery operations use t
 Presentation state does not determine whether an operation is active.
 
 **Confirm before every clean-up** controls the Cleanup review, including permanent Docker image removal.
+Docker volume removal always shows the review, because volume data has no other copy.
 This includes Cleanup, application data, sound libraries, Storage Explorer, duplicate files, and duplicate photos.
 With the setting off, ordinary batch uninstalls start after planning without a review step.
 Homebrew batches always require review because their packages cannot move to the Trash.
@@ -366,14 +367,21 @@ The adapter checks the version path and installation receipt again under Homebre
 Unreadable or unsupported inventories report incomplete checks and do not create removal rows for affected formulae.
 Download cache rows remain separate and enter the total once.
 Docker images appear once per image identifier, with their tags grouped together.
+Each Docker volume appears as a separate row with its name, size, and container use.
+Docker Compose volumes also show their project name.
 When this Mac has Docker Desktop but it is unavailable, Cleanup shows its setup card in All results.
 When Docker Desktop is absent, Cleanup hides the empty Docker card.
-Docker removes selected images in the scanned context without forced removal.
-Before removal, Moppo checks the image identifier, tags, and container use again.
+Docker removes selected images and volumes in the scanned context without forced removal.
+Before image removal, Moppo checks the image identifier, tags, and container use again.
+Before volume removal, Moppo checks the volume name, its labels, and container use again.
+Stopped containers also lock a volume.
+Moppo removes each volume by name and never uses `docker volume prune`.
 After removal, Moppo updates the Docker category.
-Docker image removal does not use the Trash or support Put Back.
+Docker returns removed space to macOS about 10 seconds after removal.
+Moppo reads the free disk space again 15 and 30 seconds after a Docker removal.
+Docker image and volume removal does not use the Trash or support Put Back.
 Image sizes include shared layers, so removal can recover less space.
-Container, volume, and build cache cleanup still uses manual commands.
+Container and build cache cleanup still uses manual commands.
 Empty Trash always requires confirmation because it permanently erases items.
 Photos can show its own system confirmation after Moppo starts the deletion request.
 Confirmation captures the selection and preferences before the user makes a decision.

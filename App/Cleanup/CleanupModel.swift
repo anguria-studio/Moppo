@@ -53,6 +53,8 @@ final class CleanupModel {
     @ObservationIgnored var canScan: (Bool) -> Bool = { _ in true }
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
     @ObservationIgnored var refreshAfterRemoval: () async -> Void = {}
+    @ObservationIgnored var refreshVolume: () async -> Void = {}
+    @ObservationIgnored private let dockerSpaceDelays: [Duration]
     @ObservationIgnored var beforeScan: () async -> Void = {}
     @ObservationIgnored var refreshLeftovers: (Set<String>) async -> Void = { _ in }
 
@@ -76,7 +78,8 @@ final class CleanupModel {
         },
         measureSaving: @escaping ([URL]) async throws -> PrivateSizeMeasurement? = {
             try await PrivateSizeMeasurer().measure($0)
-        }
+        },
+        dockerSpaceDelays: [Duration] = [.seconds(15), .seconds(15)]
     ) {
         self.operations = operations
         self.scanner = scanner
@@ -90,6 +93,7 @@ final class CleanupModel {
         self.measureSaving = measureSaving
         self.scanDocker = scanDocker
         self.reviewWorktrees = reviewWorktrees
+        self.dockerSpaceDelays = dockerSpaceDelays
         lastScanFinishedAt = defaults.object(forKey: "lastScanFinishedAt") as? Date
         isRunningAppsNoticeDismissed = defaults.bool(forKey: Self.runningAppsNoticeHiddenKey)
     }
@@ -230,11 +234,11 @@ final class CleanupModel {
         }
     }
 
-    /// True when the visible selection has a Docker image, a tool command, or a Codex session.
+    /// True when the visible selection has a Docker object, a tool command, or a Codex session.
     var hasSelectedPermanentItems: Bool {
         let selected = cleanupSelection(in: scanFilter)
         return selectedEntries.contains {
-            selected.contains($0.id) && ($0.dockerImage != nil || $0.toolCommand != nil || $0.codexSession != nil)
+            selected.contains($0.id) && ($0.docker != nil || $0.toolCommand != nil || $0.codexSession != nil)
         }
     }
 
@@ -549,9 +553,11 @@ final class CleanupModel {
             let ordinary = entries.reduce(0) { $0 + CleanupModel.plannedBytes(for: $1) }
             return ordinary + orphanedApplicationItems.reduce(0) { $0 + $1.allocatedBytes }
         }
+        var includesDocker: Bool { entries.contains { $0.docker != nil } }
         var dockerImageCount: Int { entries.filter { $0.dockerImage != nil }.count }
-        var dockerImageBytes: Int64 {
-            entries.filter { $0.dockerImage != nil }.reduce(0) { $0 + $1.allocatedBytes }
+        var dockerVolumeCount: Int { entries.filter { $0.dockerVolume != nil }.count }
+        var dockerBytes: Int64 {
+            entries.filter { $0.docker != nil }.reduce(0) { $0 + $1.allocatedBytes }
         }
         var protectedDataCount: Int {
             var protectedIDs: Set<FileEntry.ID> = []
@@ -592,8 +598,9 @@ final class CleanupModel {
         )
         pendingCleanUp = plan
 
+        // Volume data has no other copy, so volume removal always asks first.
         if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil || plan.codexSessionCount > 0
-            || !plan.toolCommandEntries.isEmpty {
+            || plan.dockerVolumeCount > 0 || !plan.toolCommandEntries.isEmpty {
             onEvent(.confirmationRequested)
             measureCleanUpSaving(for: plan)
         } else {
@@ -604,8 +611,8 @@ final class CleanupModel {
     var confirmBeforeCleanup: Bool { preferences().confirmBeforeCleanup }
 
     private func measureCleanUpSaving(for plan: CleanupPlan) {
-        // Filesystem measurements cannot measure Docker image layers.
-        guard plan.dockerImageCount == 0, plan.toolCommandEntries.isEmpty else { return }
+        // Filesystem measurements cannot measure storage inside Docker.
+        guard !plan.includesDocker, plan.toolCommandEntries.isEmpty else { return }
         let urls = plan.entries.flatMap(Self.plannedTargets).map(\.url)
             + plan.orphanedApplicationItems.map(\.url)
         guard !urls.isEmpty else { return }
@@ -803,9 +810,26 @@ final class CleanupModel {
             removalTask = nil
             operations.finish(operation)
             if attempted { await refreshAfterRemoval() }
+            if attempted, let outcome = cleanupOutcome,
+               plan.entries.contains(where: { $0.docker != nil && !outcome.failed.contains($0.id) }) {
+                refreshVolumeAfterDocker()
+            }
         }
         removalTask = task
         return task
+    }
+
+    /// Docker returns removed space to macOS about 10 seconds after removal,
+    /// so the free-space reading after the cleanup can be too early.
+    private func refreshVolumeAfterDocker() {
+        let delays = dockerSpaceDelays
+        Task { [weak self] in
+            for delay in delays {
+                do { try await Task.sleep(for: delay) } catch { return }
+                guard let self else { return }
+                await self.refreshVolume()
+            }
+        }
     }
 
     private func execute(_ capturedPlan: CleanupPlan, quittingOwners: Bool) async -> Bool {
@@ -925,7 +949,7 @@ final class CleanupModel {
             scanResults = results
         }
         pruneVanishedEntries()
-        if plan.dockerImageCount > 0, var results = scanResults {
+        if plan.includesDocker, var results = scanResults {
             let category: ScanCategoryResult
             do {
                 category = try await scanDocker(preferences())
@@ -934,8 +958,8 @@ final class CleanupModel {
             }
             results.categories = results.categories.map { $0.categoryID == .docker ? category : $0 }
             scanResults = results
-            let imageIDs = Set(category.entries.filter { !$0.isRemovalLocked }.map(\.id))
-            scannerSelection.subtract(Set(plan.entries.filter { $0.dockerImage != nil }.map(\.id)).subtracting(imageIDs))
+            let selectableIDs = Set(category.entries.filter { !$0.isRemovalLocked }.map(\.id))
+            scannerSelection.subtract(Set(plan.entries.filter { $0.docker != nil }.map(\.id)).subtracting(selectableIDs))
         }
         await refreshLeftovers(plan.orphanedApplicationBundleIdentifiers)
         try? await presentation.wait()

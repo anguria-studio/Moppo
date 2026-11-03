@@ -127,7 +127,7 @@ public struct ScanReport: Codable, Sendable {
                 }
                 let recovery: String
                 if entry.manualRemoval != nil { recovery = "external_tool" }
-                else if entry.toolCommand != nil || entry.dockerImage != nil || entry.codexSession != nil {
+                else if entry.toolCommand != nil || entry.docker != nil || entry.codexSession != nil {
                     recovery = "permanent"
                 } else { recovery = "trash_if_supported" }
                 items.append(Item(evidence: configuration == nil ? nil : PlanEvidence(entry), id: id, parentId: parent, category: summary.id, kind: entry.kind.rawValue,
