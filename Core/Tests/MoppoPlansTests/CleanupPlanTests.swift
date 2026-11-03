@@ -120,6 +120,25 @@ struct CleanupPlanTests {
         #expect(json.contains(#""project_activity":{"git_ignore":"ignored","hold":"recent_activity","last_activity_at":"2027-01-15T08:00:00Z"}"#))
     }
 
+    @Test("the report names the regeneration label and leaves it out for unclassified items")
+    func regenerationInReport() throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        var cache = try f.file("cache/blob")
+        cache.isRegenerable = true
+        var archive = try f.file("archive/blob")
+        archive.notRegenerable = .init(reason: "Only copy of the debug symbols for these builds.")
+        let unclassified = try f.file("folder/blob")
+
+        let report = ScanReport(results: f.results([cache, archive, unclassified]))
+        let json = try report.items.map { String(decoding: try ScanReport.encoder().encode($0), as: UTF8.self) }
+        #expect(json[0].contains(#""regeneration":"regenerable""#))
+        #expect(!json[0].contains("regeneration_reason"))
+        #expect(json[1].contains(
+            #""regeneration":"not_regenerable","regeneration_reason":"Only copy of the debug symbols for these builds.""#))
+        #expect(!json[2].contains("regeneration"))
+    }
+
     @Test(arguments: [FileEntry.ProtectionReason.userData, .running, .inventory, .folderRemainder])
     func protectedChildrenStayProtected(reason: FileEntry.ProtectionReason) async throws {
         let f = try Fixture()

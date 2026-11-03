@@ -347,6 +347,8 @@ Responses include the scan identifier, revision, timestamps, expiry, and scan st
 | `protection` | Engine protection code, when present |
 | `recovery` | Trash, permanent removal, or an external tool |
 | `project_activity` | Project state for a dependency folder, when present |
+| `regeneration` | `regenerable` or `not_regenerable`, when the engine classified the item |
+| `regeneration_reason` | Why a `not_regenerable` item does not come back, when the engine knows |
 
 Eligibility values are `protected`, `parent_review`, `app_review`, and `review_required`.
 None authorizes removal.
@@ -359,6 +361,8 @@ Recovery values are `trash_if_supported`, `permanent`, and `external_tool`.
 `git_ignore` values are `ignored`, `not_ignored`, `unknown`, and `outside_repository`.
 `hold` values are `recent_activity`, `not_ignored_by_git`, and `unknown`.
 An item with a `hold` value is not safe to remove.
+The engine did not classify an item without `regeneration`.
+Do not treat a missing value as `regenerable`.
 Removal commands must check Trash availability.
 
 Parent and child sizes can overlap.
