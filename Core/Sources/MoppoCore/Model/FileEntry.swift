@@ -84,6 +84,9 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         public init(reason: String?) {
             self.reason = reason
         }
+
+        /// Logs in `~/Library/Logs`. A tool writes new logs, but the old records are lost.
+        public static let logs = NotRegenerable(reason: "Old diagnostic records do not come back.")
     }
 
     /// Set only for rows that Moppo classified. A `nil` value does not mean that the

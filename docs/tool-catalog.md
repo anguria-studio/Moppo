@@ -155,12 +155,12 @@ In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/
 | `~/Library/Caches/pypoetry/virtualenvs` | Installed | Poetry layout | Trash after review | `poetry install` with `poetry.lock` | No | Verified 2026-11-02, Poetry 2.5.1, macOS 27.2 |
 | `~/Library/Application Support/pipx/venvs` | Installed | `pipx list` | `pipx uninstall <package>` | `pipx install <package>` | No | Verified 2026-11-02, pipx 1.18.11, macOS 27.2 |
 | `~/.cache/pre-commit` | Cache | Folder location | `pre-commit clean` | Next hook run. A network connection is necessary. | Caches | Verified 2026-11-02, pre-commit 4.7.0, macOS 27.2 |
-| `~/Library/Logs/pipx` | Logs | Folder location | Trash after review | Not possible | Caches | Verified 2026-11-03, pipx 1.18.11, macOS 27.2 |
+| `~/Library/Logs/pipx` | Logs | Folder location | Trash after review | Not possible | Caches, review required | Verified 2026-11-03, pipx 1.18.11, macOS 27.2 |
 
 pipx 1.18 uses `~/Library/Application Support/pipx` on macOS. The path `~/.local/pipx` is from older pipx versions.
 pipx creates `~/Library/Logs/pipx` again at the next command. The old logs do not come back.
-Moppo 0.6.0 offers `~/Library/Logs/pipx` as safe, because it treats `~/Library/Logs` as a cache folder.
-That treatment does not agree with the Logs type in this catalog.
+Moppo 0.6.0 offered `~/Library/Logs/pipx` as safe, because it treated `~/Library/Logs` as a cache folder.
+Since #336, Moppo shows each item in `~/Library/Logs` as **Not regenerable**. **Safe to Remove** does not select these items.
 `conda clean --all` did not damage existing environments.
 pyenv can build Python 3.12 only with OpenSSL 3. When Homebrew has OpenSSL 4, set `PYTHON_BUILD_HOMEBREW_OPENSSL_FORMULA=openssl@3`.
 
