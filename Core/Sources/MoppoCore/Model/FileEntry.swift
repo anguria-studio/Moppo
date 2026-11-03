@@ -10,6 +10,9 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         case ollama = "Ollama", huggingFace = "HuggingFace", lmStudio = "LMStudio"
         case pyTorch = "PyTorch", whisper = "Whisper", keras = "Keras", gpt4All = "GPT4All"
         case gemini = "Gemini", antigravity = "Antigravity"
+        case copilot = "Copilot", openCode = "OpenCode", goose = "Goose", openClaw = "OpenClaw"
+        case kiro = "Kiro", devin = "Devin", anythingLLM = "AnythingLLM", cherryStudio = "CherryStudio"
+        case comfy = "Comfy", stabilityMatrix = "StabilityMatrix"
     }
 
     /// A removal workflow that needs more checks than ordinary file cleanup.

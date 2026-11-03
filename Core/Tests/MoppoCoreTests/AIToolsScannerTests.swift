@@ -174,6 +174,99 @@ struct AIToolsScannerTests {
         #expect(!hidden.entries.contains { $0.url.lastPathComponent == ".gemini" })
     }
 
+    /// File and folder names come from the #216 layouts on 3 November 2026. Contents are placeholders.
+    private static let inventoryLayout: [(root: String, owner: AIStorageSection.Owner, files: [String], children: [String])] = [
+        (".copilot", .copilot, ["session-state/8758cd1f/events.jsonl", "installed-plugins/plugin/plugin.json",
+            "logs/process-1.log", "session-store.db", "config.json"], ["Copilot sessions", "Copilot plugins", "Copilot logs"]),
+        (".local/share/opencode", .openCode, ["opencode.db", "snapshot/global/aec7d851/HEAD", "log/opencode.log"],
+            ["OpenCode snapshots", "OpenCode logs"]),
+        (".local/state/opencode", .openCode, ["service.json"], []),
+        (".config/opencode", .openCode, ["service.json"], []),
+        (".local/share/goose", .goose, ["sessions/sessions.db", "model_catalog/models_dev_api.json", "apps/clock.html"],
+            ["Goose sessions", "Goose model catalog"]),
+        (".local/state/goose", .goose, ["logs/llm_request.0.jsonl"], []),
+        (".config/goose", .goose, ["config.yaml", "tls/server.pem"], []),
+        (".openclaw", .openClaw, ["agents/main/sessions/session.jsonl", "workspace/AGENTS.md", "state/openclaw.sqlite",
+            "openclaw.json"], ["OpenClaw agent sessions", "OpenClaw workspace", "OpenClaw state"]),
+        (".kiro", .kiro, ["sessions/9f68821c/sess_62cb7786/state.json", "logs/20261103T125504357/kiro.log", "argv.json"],
+            ["Kiro sessions", "Kiro logs"]),
+        (".kiro-shared", .kiro, ["sharedStorage/state.vscdb"], []),
+        (".codeium", .devin, ["windsurf/memories/global_rules.md", "windsurf/cascade/conversation.pb", "windsurf/installation_id"],
+            ["Devin memories and rules", "Cascade conversations"]),
+        (".devin", .devin, ["argv.json", "extensions/extensions.json"], []),
+        (".devin-shared", .devin, ["sharedStorage/state.vscdb"], []),
+        (".local/share/devin", .devin, ["cli/sessions.db", "cli/logs/devin.log"], ["Devin CLI logs"]),
+        (".config/devin", .devin, ["config.json"], []),
+        ("Library/Application Support/t3code-v2", .t3Code, ["Cache/Cache_Data/data_0", "Local Storage/leveldb/000003.log"], []),
+        ("Library/Application Support/anythingllm-desktop", .anythingLLM, ["storage/anythingllm.db",
+            "storage/documents/custom-documents/file.json", "storage/lancedb/workspace.lance/data", "storage/models/context-windows/data.json",
+            "storage/engines/ffmpeg/ffmpeg", "GPUCache/data_0"],
+            ["AnythingLLM documents", "AnythingLLM vector database", "AnythingLLM models", "AnythingLLM downloaded engines"]),
+        (".cherrystudio", .cherryStudio, ["bin/uv"], ["Cherry Studio installed tools"]),
+        ("Library/Application Support/CherryStudio", .cherryStudio, ["Data/cherrystudio.sqlite", "Toolchain/mise/bin/mise",
+            "Runtime/models/model.json", "Cache/Cache_Data/data_0"],
+            ["Cherry Studio library", "Cherry Studio toolchain", "Cherry Studio runtime data"]),
+        ("ComfyUI-Installs", .comfy, ["ComfyUI/.launcher/snapshots/snapshot.json", "ComfyUI/ComfyUI/main.py",
+            "ComfyUI/ComfyUI/models/checkpoints/model.safetensors", "ComfyUI/ComfyUI/output/image.png",
+            "ComfyUI/ComfyUI/user/default/workflows/workflow.json", "ComfyUI/ComfyUI/custom_nodes/node/__init__.py",
+            "ComfyUI/ComfyUI/.venv/lib/site.py", "ComfyUI/standalone-env/bin/python3"],
+            ["ComfyUI models", "ComfyUI outputs", "ComfyUI workflows and settings", "ComfyUI custom nodes",
+             "ComfyUI Python packages", "ComfyUI Python runtime"]),
+        ("ComfyUI-Shared", .comfy, ["models/checkpoints/model.safetensors", "models/loras/lora.safetensors",
+            "input/image.png", "output/image.png"], ["ComfyUI shared models", "ComfyUI shared input files", "ComfyUI shared outputs"]),
+        ("Applications/Data", .stabilityMatrix, [".sm-portable", "StabilityMatrix.db", "settings.json",
+            "Models/StableDiffusion/model.safetensors"], ["Stability Matrix models"])
+    ]
+
+    @Test("Tools from the #216 inventory show protected rows, and other categories do not list their paths again")
+    func inventoryOnlyTools() async throws {
+        let sandbox = try Sandbox()
+        let applications = sandbox.home.appendingPathComponent("Applications")
+        for tool in Self.inventoryLayout {
+            for file in tool.files { try sandbox.file(tool.root + "/" + file, bytes: 8192) }
+        }
+        // Large folders that Hidden & System Data would list if AI Tools did not claim them.
+        for path in [".copilot/logs/process-2.log", ".cherrystudio/bin/bun", ".config/goose/tls/server.key"] {
+            try sandbox.file(path, bytes: 6 * 1024 * 1024)
+        }
+        try sandbox.file(".config/gh/hosts.bin", bytes: 6 * 1024 * 1024)
+        let context = ScanContext()
+        let ai = try await AIToolsScanner(home: sandbox.home, applications: applications).scan(context: context)
+        #expect(ai.entries.count == Self.inventoryLayout.count)
+        for tool in Self.inventoryLayout {
+            let url = sandbox.home.appendingPathComponent(tool.root)
+            let row = try #require(ai.entries.first { $0.url == url }, "\(tool.root)")
+            #expect(row.aiStorageSection?.owner == tool.owner)
+            #expect(row.aiTool == tool.owner.tool)
+            #expect(row.children.map(\.displayName) == tool.children, "\(tool.root)")
+            #expect(row.displayBytes == (try await context.measurer.measure(url)).allocatedBytes)
+            for entry in [row] + row.children {
+                #expect(entry.protectionReason == .inventory)
+                #expect(entry.protectionExplanation?.isEmpty == false)
+                #expect(!entry.regeneratesSafely)
+                #expect(!CleanupService.removalAllowed(entry, userDataRemovalOverrides: [entry.id]))
+            }
+            #expect(ai.claimedStoragePaths.contains(url.path))
+        }
+        #expect(ai.totalBytes == ai.entries.reduce(0) { $0 + $1.displayBytes })
+        #expect(ai.safeToRemoveBytes == 0)
+        let hidden = try await HiddenDataScanner(home: sandbox.home).scan(context: context)
+        #expect(hidden.entries.map(\.displayName) == [".config/gh"])
+    }
+
+    @Test("Folder names alone do not identify Comfy Desktop or Stability Matrix storage")
+    func unidentifiedToolFolders() async throws {
+        let sandbox = try Sandbox()
+        let applications = sandbox.home.appendingPathComponent("Applications")
+        for path in ["Applications/Data/StabilityMatrix.db", "ComfyUI-Installs/ComfyUI/ComfyUI/main.py",
+                     "ComfyUI-Shared/models/checkpoints/model.safetensors", "ComfyUI-Shared/output/image.png"] {
+            try sandbox.file(path, bytes: 8192)
+        }
+        let ai = try await AIToolsScanner(home: sandbox.home, applications: applications).scan(context: ScanContext())
+        #expect(ai.entries.isEmpty)
+        #expect(!ai.claimedStoragePaths.contains { $0.hasPrefix(sandbox.home.path + "/ComfyUI") || $0.hasPrefix(applications.path) })
+    }
+
     @Test("AI attachments cannot enter the archive sweep when AI Tools is disabled",
           arguments: [".cursor/chats/workspace/session", ".t3/userdata"])
     func sessionArchives(path: String) async throws {
