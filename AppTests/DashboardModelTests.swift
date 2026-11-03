@@ -102,6 +102,27 @@ struct DashboardModelTests {
         #expect(await persistence.records.isEmpty)
     }
 
+    @Test("Refresh Dashboard reads snapshots again, and deletion removes Time Machine snapshots")
+    func snapshotRefresh() async throws {
+        let service = HeldDashboardMeasurements()
+        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
+        let stamp = "2026-11-03-150015"
+        await service.setSnapshots([SnapshotInfo(
+            uuid: "tm", name: "com.apple.TimeMachine.\(stamp).local", purgeable: true,
+            limitingContainerShrink: false, isBootSnapshot: false, volumeDisk: "disk-fixture"
+        )])
+        let refresh = Task { await model.measureStorage() }
+        try await waitUntil { await service.measurementCount == 1 }
+        #expect(model.removableSnapshots.map(\.timeMachineStamp) == [stamp])
+        #expect(model.purgeableBytes == 50)
+        await service.finishMeasurement(0, dashboardMeasurement())
+        await refresh.value
+        try await model.deleteTimeMachineSnapshots()
+        #expect(await service.deletedStamps == [stamp])
+        #expect(model.removableSnapshots.isEmpty)
+        #expect(model.purgeableBytes == nil)
+    }
+
     @Test("Launch refresh owns its task across navigation and caller cancellation")
     func launchLifetime() async throws {
         let service = HeldDashboardMeasurements()
@@ -1025,12 +1046,19 @@ private actor HeldDashboardMeasurements: DashboardMeasuring {
         if holdVolume { return await withCheckedContinuation { volumes[index] = $0 } }
         return volume
     }
-    func snapshots() async throws -> [SnapshotInfo] {
-        ["boot", "data"].map {
-            SnapshotInfo(uuid: $0, name: $0, purgeable: $0 != "boot", limitingContainerShrink: false,
-                         isBootSnapshot: $0 == "boot", volumeDisk: "disk-fixture")
-        }
+    private var snapshotList = ["boot", "data"].map {
+        SnapshotInfo(uuid: $0, name: $0, purgeable: $0 != "boot", limitingContainerShrink: false,
+                     isBootSnapshot: $0 == "boot", volumeDisk: "disk-fixture")
     }
+    private(set) var deletedStamps: [String] = []
+    func snapshots() async throws -> [SnapshotInfo] { snapshotList }
+    func purgeableBytes() async -> Int64? { snapshotList.contains { $0.timeMachineStamp != nil } ? 50 : nil }
+    func deleteTimeMachineSnapshots(_ snapshots: [SnapshotInfo]) async throws {
+        let stamps = snapshots.compactMap(\.timeMachineStamp)
+        deletedStamps += stamps
+        snapshotList.removeAll { $0.timeMachineStamp.map(stamps.contains) ?? false }
+    }
+    func setSnapshots(_ snapshots: [SnapshotInfo]) { snapshotList = snapshots }
     func measure() async throws -> StorageMeasurement {
         let index = measurementCount
         measurementCount += 1
