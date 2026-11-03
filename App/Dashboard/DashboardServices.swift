@@ -4,6 +4,8 @@ import MoppoCore
 protocol DashboardMeasuring: Sendable {
     func volumeInfo() async throws -> VolumeInfo
     func snapshots() async throws -> [SnapshotInfo]
+    func purgeableBytes() async -> Int64?
+    func deleteTimeMachineSnapshots(_ snapshots: [SnapshotInfo]) async throws
     func measure() async throws -> StorageMeasurement
     func iCloudStorage(planBytes: Int64?) async throws -> ICloudStorage
 }
@@ -11,6 +13,10 @@ protocol DashboardMeasuring: Sendable {
 struct DashboardMeasurementService: DashboardMeasuring {
     func volumeInfo() async throws -> VolumeInfo { try await DiskInfoService().volumeInfo() }
     func snapshots() async throws -> [SnapshotInfo] { try await SnapshotService().listAll() }
+    func purgeableBytes() async -> Int64? { DiskInfoService().purgeableBytes() }
+    func deleteTimeMachineSnapshots(_ snapshots: [SnapshotInfo]) async throws {
+        try await SnapshotService().deleteTimeMachineSnapshots(snapshots)
+    }
     func measure() async throws -> StorageMeasurement { try await StorageBreakdownService().measure() }
     func iCloudStorage(planBytes: Int64?) async throws -> ICloudStorage {
         try await ICloudStorageService().storage(planBytes: planBytes)

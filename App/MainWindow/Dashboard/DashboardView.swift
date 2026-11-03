@@ -75,9 +75,11 @@ struct DashboardView: View {
                 }
 
                 if !model.removableSnapshots.isEmpty {
-                    SnapshotsDisclosureRow(
-                        snapshots: model.snapshots,
-                        isExpanded: $model.snapshotsExpanded
+                    TimeMachineSnapshotsCard(
+                        snapshots: model.removableSnapshots,
+                        purgeableBytes: model.purgeableBytes,
+                        isExpanded: $model.snapshotsExpanded,
+                        onDelete: { try await model.deleteTimeMachineSnapshots() }
                     )
                 }
             }

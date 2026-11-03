@@ -91,6 +91,25 @@ public struct DiskInfoService: Sendable {
         try await info(for: Self.dataVolumeMountPoint).capacityInUse ?? 0
     }
 
+    /// Space that macOS can free when it needs it, such as local snapshots and caches.
+    ///
+    /// macOS does not report this space for each snapshot. The value is the difference
+    /// between the capacity for important use and the capacity that is free now.
+    public func purgeableBytes() -> Int64? {
+        let values = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [
+            .volumeAvailableCapacityKey, .volumeAvailableCapacityForImportantUsageKey
+        ])
+        return Self.purgeableBytes(
+            importantUsage: values?.volumeAvailableCapacityForImportantUsage,
+            available: values?.volumeAvailableCapacity.map(Int64.init)
+        )
+    }
+
+    static func purgeableBytes(importantUsage: Int64?, available: Int64?) -> Int64? {
+        guard let importantUsage, let available, importantUsage > available else { return nil }
+        return importantUsage - available
+    }
+
     /// Identifies the sealed snapshot macOS is currently booted from.
     public func bootSnapshot() async throws -> BootSnapshotIdentity? {
         Self.bootSnapshot(from: try await info(for: "/"))
