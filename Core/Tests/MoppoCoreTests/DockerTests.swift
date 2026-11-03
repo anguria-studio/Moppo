@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import MoppoCore
 
-@Suite("Docker images")
-struct DockerImageTests {
+@Suite("Docker images and volumes")
+struct DockerTests {
     @Test("Empty Docker categories follow Desktop installation", arguments: [false, true])
     func desktopPresence(installed: Bool) async throws {
         let scanner = DockerScanner(resolveExecutable: { nil }, resolveDesktopApplication: {
@@ -14,12 +14,12 @@ struct DockerImageTests {
             ? .unavailable(reason: "Open Docker Desktop to finish setup, then scan again.") : .notInstalled))
         #expect(result.entries.isEmpty)
         #expect(result.totalBytes == 0)
-        let emptyImages = DockerImageService(run: { arguments in
+        let emptyImages = DockerService(run: { arguments in
             if arguments == ["context", "show"] { return Data("fixture-context\n".utf8) }
             if arguments.contains("--verbose") { return Data("{\"Images\":[]}".utf8) }
             return Data()
         })
-        let empty = try await DockerScanner(images: emptyImages, resolveDesktopApplication: {
+        let empty = try await DockerScanner(docker: emptyImages, resolveDesktopApplication: {
             installed ? URL(fileURLWithPath: "/Applications/Docker.app") : nil
         }).scan(context: ScanContext())
         #expect(empty.availability == (installed ? .empty : .notInstalled))
@@ -29,7 +29,7 @@ struct DockerImageTests {
     func commandOnly(unreachable: Bool) async throws {
         let fixture = DockerFixture(readFailure: unreachable ? Self.temporaryReadFailures[1] : nil,
             repeatedReadFailure: unreachable)
-        let scanner = DockerScanner(images: DockerImageService(run: { try await fixture.run($0) }),
+        let scanner = DockerScanner(docker: DockerService(run: { try await fixture.run($0) }),
             resolveDesktopApplication: { nil })
         let result = try await scanner.scan(context: ScanContext())
         #expect(result.availability == (unreachable ? .notInstalled : .available))
@@ -39,7 +39,7 @@ struct DockerImageTests {
     @Test("An empty Docker context gets one retry", arguments: [1, 2])
     func emptyContext(emptyResponses: Int) async throws {
         let fixture = DockerFixture(emptyContexts: emptyResponses)
-        let scanner = DockerScanner(images: DockerImageService(run: { try await fixture.run($0) }))
+        let scanner = DockerScanner(docker: DockerService(run: { try await fixture.run($0) }))
         let result = try await scanner.scan(context: ScanContext())
         #expect(await fixture.calls.filter { $0 == ["context", "show"] }.count == 2)
         if emptyResponses == 1 {
@@ -59,7 +59,7 @@ struct DockerImageTests {
     @Test("The scan recovers from one temporary storage failure", arguments: temporaryReadFailures, [false, true])
     func firstReadFailure(error: ProcessError, verbose: Bool) async throws {
         let fixture = DockerFixture(readFailure: error, verboseReadFailure: verbose)
-        let scanner = DockerScanner(images: DockerImageService(run: { try await fixture.run($0) }))
+        let scanner = DockerScanner(docker: DockerService(run: { try await fixture.run($0) }))
         let result = try await scanner.scan(context: ScanContext())
         #expect(result.availability == .available)
         #expect(result.entries.filter { $0.dockerImage != nil }.count == 3)
@@ -71,7 +71,7 @@ struct DockerImageTests {
     ])
     func repeatedReadFailure(error: ProcessError) async throws {
         let fixture = DockerFixture(readFailure: error, repeatedReadFailure: true)
-        let result = try await DockerScanner(images: DockerImageService(run: { try await fixture.run($0) }))
+        let result = try await DockerScanner(docker: DockerService(run: { try await fixture.run($0) }))
             .scan(context: ScanContext())
         let reason: String
         switch error {
@@ -116,7 +116,7 @@ struct DockerImageTests {
     @Test("The scanner lists each image once and preserves manual storage rows")
     func imageInventory() async throws {
         let fixture = DockerFixture()
-        let result = try await DockerScanner(images: DockerImageService(run: { try await fixture.run($0) })).scan(context: ScanContext())
+        let result = try await DockerScanner(docker: DockerService(run: { try await fixture.run($0) })).scan(context: ScanContext())
         let images = result.entries.filter { $0.dockerImage != nil }
         #expect(images.count == 3)
         let unused = try #require(images.first { $0.dockerImage?.imageID == DockerFixture.firstID })
@@ -137,6 +137,8 @@ struct DockerImageTests {
         #expect(unknown.isRemovalLocked)
         #expect(result.unreadableCount == 1)
         #expect(result.entries.filter { $0.manualRemoval != nil }.map(\.displayName) == ["Local Volumes"])
+        // Without `--all`, Docker 23 and later keep named volumes.
+        #expect(result.entries.first { $0.manualRemoval != nil }?.manualRemoval?.command == "docker volume prune --all")
         #expect(result.totalBytes == 604)
         #expect(result.safeToRemoveBytes == 0)
         #expect(result.needsReviewBytes == result.totalBytes)
@@ -146,8 +148,8 @@ struct DockerImageTests {
     @Test("Docker removal bypasses files and records a permanent result", arguments: [false, true])
     func imageRemoval(keepReceipt: Bool) async throws {
         let fixture = DockerFixture()
-        let service = DockerImageService(run: { try await fixture.run($0) })
-        let inventory = try await service.images(context: "fixture-context")
+        let service = DockerService(run: { try await fixture.run($0) })
+        let inventory = try await service.inventory(context: "fixture-context")
         let image = try #require(inventory.entries.first { $0.dockerImage?.imageID == DockerFixture.firstID })
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("moppo-docker-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -155,7 +157,7 @@ struct DockerImageTests {
         let cleanup = CleanupService(measureSize: { _ in
             Issue.record("Docker removal must not measure a filesystem path.")
             return SizeMeasurement(allocatedBytes: 0)
-        }, log: log, dockerImages: service)
+        }, log: log, docker: service)
         let result = try await cleanup.remove(entries: [image], trashFirst: true, keepReceipt: keepReceipt)
         #expect(result.removedCount == 1)
         #expect(result.deletedCount == 1)
@@ -186,18 +188,18 @@ struct DockerImageTests {
         let image = FileEntry(
             url: URL(string: "docker://images/fixture-context/\(DockerFixture.firstID)")!,
             kind: .diskImage, allocatedBytes: 200,
-            dockerImage: DockerImage(
+            docker: .image(DockerImage(
                 imageID: DockerFixture.firstID, context: "fixture-context",
                 tags: ["fixture:latest", "fixture:stable"], containerCount: 0
-            )
+            ))
         )
-        let result = try await CleanupService(dockerImages: DockerImageService(run: { try await fixture.run($0) }))
+        let result = try await CleanupService(docker: DockerService(run: { try await fixture.run($0) }))
             .remove(entries: [image], trashFirst: true, keepReceipt: false)
         #expect(result.failed == [image.id])
         #expect(result.removedCount == 0)
         #expect(result.deletedCount == 0)
         let commands = await fixture.calls
-        if failure == .containerAppeared || failure == .tagsChanged {
+        if failure == .containerAppeared || failure == .identityChanged {
             #expect(!commands.contains { $0.contains("rm") })
         }
         if failure == .daemonFailure {
@@ -210,34 +212,117 @@ struct DockerImageTests {
     func untaggedImage() async throws {
         let fixture = DockerFixture(untagged: true)
         let metadata = DockerImage(imageID: DockerFixture.firstID, context: "fixture-context", tags: [], containerCount: 0)
-        _ = try await DockerImageService(run: { try await fixture.run($0) }).remove(metadata)
+        _ = try await DockerService(run: { try await fixture.run($0) }).remove(metadata)
         #expect(await fixture.calls.contains([
             "--context", "fixture-context", "image", "rm", "--no-prune", "--", DockerFixture.firstID
         ]))
     }
 
-    @Test("Images with known or unknown container use cannot bypass the service gate", arguments: [2, nil] as [Int?])
-    func lockedImages(containerCount: Int?) async throws {
+    static let lockedDockerItems: [DockerItem] = [
+        .image(DockerImage(imageID: DockerFixture.firstID, context: "fixture-context", tags: [], containerCount: 2)),
+        .image(DockerImage(imageID: DockerFixture.firstID, context: "fixture-context", tags: [], containerCount: nil)),
+        .volume(DockerVolume(name: "project_db_data", context: "fixture-context", containerCount: 1)),
+        .volume(DockerVolume(name: "project_db_data", context: "fixture-context", containerCount: nil))
+    ]
+
+    @Test("Images and volumes with known or unknown container use cannot bypass the service gate", arguments: lockedDockerItems)
+    func lockedItems(item: DockerItem) async throws {
         let fixture = DockerFixture()
         let entry = FileEntry(
-            url: URL(string: "docker://images/fixture-context/\(DockerFixture.firstID)")!,
-            kind: .diskImage, allocatedBytes: 200,
-            dockerImage: DockerImage(imageID: DockerFixture.firstID, context: "fixture-context", tags: [], containerCount: containerCount)
+            url: URL(string: "docker://items/fixture-context/locked")!,
+            kind: .diskImage, allocatedBytes: 200, docker: item
         )
-        let result = try await CleanupService(dockerImages: DockerImageService(run: { try await fixture.run($0) }))
+        let result = try await CleanupService(docker: DockerService(run: { try await fixture.run($0) }))
             .remove(entries: [entry], trashFirst: true, keepReceipt: false, userDataRemovalOverrides: [entry.id])
         #expect(result.failed == [entry.id])
         #expect(await fixture.calls.isEmpty)
     }
+
+    @Test("The scanner lists each volume and replaces the volume total")
+    func volumeInventory() async throws {
+        let fixture = DockerFixture(volumes: true)
+        let result = try await DockerScanner(docker: DockerService(run: { try await fixture.run($0) })).scan(context: ScanContext())
+        let volumes = result.entries.filter { $0.dockerVolume != nil }
+        #expect(Set(volumes.map(\.dockerVolume?.name)) == ["project_db_data", DockerFixture.anonymousVolume, "shared-data", "unknown-use"])
+        #expect(!result.entries.contains { $0.displayName == "Local Volumes" })
+        let project = try #require(volumes.first { $0.dockerVolume?.name == "project_db_data" })
+        #expect(project.allocatedBytes == 170_100_000)
+        #expect(project.id == "docker://volumes/fixture-context/project_db_data")
+        #expect(!project.isRemovalLocked)
+        #expect(project.regenerationLabel == .notRegenerable(
+            reason: "This volume can hold the only copy of its data, such as a database."))
+        #expect(FileEntryPresentation(entry: project).summary == "Docker volume · Compose project project · Unused")
+        let anonymous = try #require(volumes.first { $0.dockerVolume?.isAnonymous == true })
+        #expect(anonymous.displayName == "Anonymous volume dddddddddddd")
+        let shared = try #require(volumes.first { $0.dockerVolume?.name == "shared-data" })
+        #expect(shared.isRemovalLocked)
+        #expect(FileEntryPresentation(entry: shared).summary == "Docker volume · Used by 1 container")
+        #expect(try #require(volumes.first { $0.dockerVolume?.name == "unknown-use" }).isRemovalLocked)
+        // One image has no container count, one volume has none, and one volume name is invalid.
+        #expect(result.unreadableCount == 3)
+        #expect(result.safeToRemoveBytes == 0)
+    }
+
+    @Test("Volume removal uses the volume name and records a permanent result")
+    func volumeRemoval() async throws {
+        let fixture = DockerFixture(volumes: true)
+        let service = DockerService(run: { try await fixture.run($0) })
+        let volume = try #require(try await service.inventory(context: "fixture-context").entries
+            .first { $0.dockerVolume?.name == "project_db_data" })
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("moppo-docker-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let log = RemovalLog(directory: folder)
+        let result = try await CleanupService(measureSize: { _ in
+            Issue.record("Docker removal must not measure a filesystem path.")
+            return SizeMeasurement(allocatedBytes: 0)
+        }, log: log, docker: service).remove(entries: [volume], trashFirst: true, keepReceipt: true)
+        #expect(result.removedCount == 1)
+        #expect(result.deletedCount == 1)
+        #expect(result.removedBytes == volume.allocatedBytes)
+        #expect(result.failed.isEmpty)
+        let removal = try #require(await fixture.calls.first { $0.contains("rm") })
+        #expect(removal == ["--context", "fixture-context", "volume", "rm", "--", "project_db_data"])
+        let history = CleanupHistoryService(log: log).summary()
+        #expect(history.items.first?.name == "project_db_data")
+        #expect(history.items.first?.state == .removedPermanently)
+    }
+
+    @Test("Volume removal rechecks use and identity and reports Docker failures", arguments: DockerFixture.Failure.allCases)
+    fileprivate func failedVolumeRemoval(failure: DockerFixture.Failure) async throws {
+        let fixture = DockerFixture(failure: failure, volumes: true)
+        let volume = FileEntry(
+            url: URL(string: "docker://volumes/fixture-context/project_db_data")!,
+            kind: .diskImage, allocatedBytes: 200,
+            docker: .volume(DockerVolume(name: "project_db_data", context: "fixture-context",
+                containerCount: 0, composeProject: "project"))
+        )
+        let result = try await CleanupService(docker: DockerService(run: { try await fixture.run($0) }))
+            .remove(entries: [volume], trashFirst: true, keepReceipt: false)
+        #expect(result.failed == [volume.id])
+        #expect(result.removedCount == 0)
+        let commands = await fixture.calls
+        #expect(commands.filter { $0.contains("rm") }.count == (failure == .containerAppeared || failure == .identityChanged ? 0 : 1))
+        #expect(!commands.contains { $0.contains("--force") || $0.contains("prune") })
+    }
 }
 
 private actor DockerFixture {
-    enum Failure: CaseIterable { case containerAppeared, tagsChanged, daemonFailure, imageStillPresent }
+    enum Failure: CaseIterable { case containerAppeared, identityChanged, daemonFailure, stillPresent }
+    static let volumeRows: [[String: String]] = [
+        ["Name": "project_db_data", "Links": "0", "Size": "170.1MB",
+         "Labels": "com.docker.compose.project=project,com.docker.compose.volume=db_data"],
+        ["Name": anonymousVolume, "Links": "0", "Size": "59.74MB", "Labels": "com.docker.volume.anonymous="],
+        ["Name": "shared-data", "Links": "1", "Size": "2kB", "Labels": ""],
+        ["Name": "unknown-use", "Links": "N/A", "Size": "1kB", "Labels": ""],
+        ["Name": "-invalid", "Links": "0", "Size": "1kB", "Labels": ""]
+    ]
+    static let anonymousVolume = String(repeating: "d", count: 64)
     static let firstID = "sha256:" + String(repeating: "a", count: 64)
     static let secondID = "sha256:" + String(repeating: "b", count: 64)
     static let thirdID = "sha256:" + String(repeating: "c", count: 64)
     private let failure: Failure?
     private let untagged: Bool
+    private let volumes: Bool
     private let readFailure: ProcessError?
     private let repeatedReadFailure: Bool
     private let verboseReadFailure: Bool
@@ -247,11 +332,12 @@ private actor DockerFixture {
     private(set) var readAttempts = 0
 
     init(
-        failure: Failure? = nil, untagged: Bool = false, readFailure: ProcessError? = nil,
+        failure: Failure? = nil, untagged: Bool = false, volumes: Bool = false, readFailure: ProcessError? = nil,
         repeatedReadFailure: Bool = false, verboseReadFailure: Bool = false, emptyContexts: Int = 0
     ) {
         self.failure = failure
         self.untagged = untagged
+        self.volumes = volumes
         self.readFailure = readFailure
         self.repeatedReadFailure = repeatedReadFailure
         self.verboseReadFailure = verboseReadFailure
@@ -272,9 +358,11 @@ private actor DockerFixture {
                 if readAttempts == 1 || repeatedReadFailure { throw readFailure }
             }
             if command.contains("--verbose") {
-                return try JSONSerialization.data(withJSONObject: ["Images": [
+                var usage: [String: Any] = ["Images": [
                     ["ID": Self.firstID, "Containers": "0"], ["ID": Self.secondID, "Containers": "2"]
-                ]])
+                ]]
+                if volumes { usage["Volumes"] = Self.volumeRows }
+                return try JSONSerialization.data(withJSONObject: usage)
             }
             return Data("{\"Type\":\"Images\",\"Reclaimable\":\"999GB\"}\n{\"Type\":\"Local Volumes\",\"Reclaimable\":\"100B\"}\n".utf8)
         }
@@ -285,7 +373,7 @@ private actor DockerFixture {
         if command.starts(with: ["image", "inspect"]) {
             let ids = command.drop { $0 != "--" }.dropFirst()
             let rows = try ids.map { id in
-                let tags = id == Self.firstID ? (untagged ? [] : failure == .tagsChanged
+                let tags = id == Self.firstID ? (untagged ? [] : failure == .identityChanged
                     ? ["changed:latest"] : ["fixture:stable", "fixture:latest"]) : []
                 return String(decoding: try JSONSerialization.data(withJSONObject: [
                     "Id": id, "RepoTags": tags, "Size": id == Self.firstID ? 200 : id == Self.secondID ? 300 : 4
@@ -294,17 +382,32 @@ private actor DockerFixture {
             return Data(rows.joined(separator: "\n").utf8)
         }
         if command.starts(with: ["container", "ls"]) {
-            #expect(command.last == "ancestor=\(Self.firstID)")
+            #expect(command.last == "ancestor=\(Self.firstID)" || command.last == "volume=project_db_data")
             return Data((failure == .containerAppeared ? "new-container\n" : "").utf8)
+        }
+        if command.starts(with: ["volume", "inspect"]) {
+            #expect(Array(command.suffix(2)) == ["--", "project_db_data"])
+            let project = failure == .identityChanged ? "other" : "project"
+            return Data(#"{"Name":"project_db_data","Labels":{"com.docker.compose.project":"\#(project)"}}"#.utf8)
+        }
+        if command.starts(with: ["volume", "rm"]) {
+            if failure == .daemonFailure {
+                throw ProcessError.failed(command: "docker", status: 1, stderr: "volume is in use")
+            }
+            if failure != .stillPresent { removed = true }
+            return Data()
+        }
+        if command.starts(with: ["volume", "ls"]) {
+            return Data(((removed ? [] : ["project_db_data"]) + ["shared-data"]).joined(separator: "\n").utf8)
         }
         if command.starts(with: ["image", "rm"]) {
             if failure == .daemonFailure {
                 throw ProcessError.failed(command: "docker", status: 1, stderr: "Docker stopped")
             }
-            if failure != .imageStillPresent { removed = true }
+            if failure != .stillPresent { removed = true }
             return Data()
         }
         Issue.record("Unexpected Docker command: \(arguments)")
-        throw DockerImageError.invalidInventory
+        throw DockerError.invalidInventory
     }
 }

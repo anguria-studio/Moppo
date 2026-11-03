@@ -13,6 +13,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 ### Cleanup
 
 - Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.
+- Show each Docker volume as a separate row, with its size, container use, and Docker Compose project.
+- Remove selected Docker volumes that no container uses. Moppo always asks before it removes a volume.
 - Show **Not regenerable** on rows whose contents do not come back, such as Xcode Archives and application leftovers.
 - Show the reason for **Not regenerable** in the label tooltip and to VoiceOver.
 - Show the number of selected **Not regenerable** items in the removal confirmation.

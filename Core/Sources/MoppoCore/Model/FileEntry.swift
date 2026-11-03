@@ -56,9 +56,9 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         }
     }
 
-    /// The file path, application group identifier, or Docker image URL.
+    /// The file path, application group identifier, or Docker object URL.
     public var id: String {
-        if dockerImage != nil { return url.absoluteString }
+        if docker != nil { return url.absoluteString }
         if let runtime = toolCommand?.simulatorRuntime { return "simulator-runtime:\(runtime.runtime.identifier)" }
         return switch removalAction {
         case .orphanedApplication(let identifier):
@@ -74,7 +74,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var parentDisplay: String
     public var kind: Kind
     public var allocatedBytes: Int64
-    /// A known usage date. Docker images show "Unknown" when this value is absent.
+    /// A known usage date. Docker objects show "Unknown" when this value is absent.
     public var lastOpened: Date?
     /// Regenerates on demand; shown as `· regenerable` after the path.
     public var isRegenerable: Bool
@@ -166,8 +166,18 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         if case .toolCommand(let command) = removalMethod { return command }
         return nil
     }
-    /// Docker handles permanent removal of this image.
-    public var dockerImage: DockerImage?
+    /// Docker handles permanent removal of this image or volume.
+    public var docker: DockerItem?
+
+    public var dockerImage: DockerImage? {
+        if case .image(let image) = docker { return image }
+        return nil
+    }
+
+    public var dockerVolume: DockerVolume? {
+        if case .volume(let volume) = docker { return volume }
+        return nil
+    }
 
     /// The running application that has this row's files open.
     ///
@@ -272,7 +282,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         guard kind != .appBundle, removalAction == nil, !removesAsUnit, manualRemoval == nil else { return [] }
         return children.filter {
             $0.protectionReason == .userData && $0.manualRemoval == nil
-                && $0.dockerImage?.isRemovalLocked != true && $0.kind != .appBundle
+                && $0.docker?.isRemovalLocked != true && $0.kind != .appBundle
         }
     }
 
@@ -298,7 +308,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var isRemovalLocked: Bool {
         protectionReason != nil
             || manualRemoval != nil || toolCommand?.lockReason != nil
-            || dockerImage?.isRemovalLocked == true || !unlockableChildren.isEmpty
+            || docker?.isRemovalLocked == true || !unlockableChildren.isEmpty
     }
     /// Item count for folders, shown as `· 1,204 items`.
     public var childCount: Int?
@@ -319,7 +329,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         protectionExplanation: String? = nil,
         manualRemoval: ManualRemoval? = nil,
         removalMethod: RemovalMethod = .trash,
-        dockerImage: DockerImage? = nil,
+        docker: DockerItem? = nil,
         inUseBy: RunningOwner? = nil,
         xcodeBuildCacheReview: XcodeBuildCache.Review? = nil,
         safetyCaveat: String? = nil,
@@ -346,7 +356,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.protectionExplanation = protectionExplanation
         self.manualRemoval = manualRemoval
         self.removalMethod = removalMethod
-        self.dockerImage = dockerImage
+        self.docker = docker
         self.inUseBy = inUseBy
         self.xcodeBuildCacheReview = xcodeBuildCacheReview
         self.safetyCaveat = safetyCaveat
@@ -384,7 +394,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// Storage shown in the row and category totals, including protected tool storage.
     /// Removal estimates use `reclaimableBytes` separately.
     public var displayBytes: Int64 {
-        if dockerImage != nil || toolCommand != nil { return allocatedBytes }
+        if docker != nil || toolCommand != nil { return allocatedBytes }
         if removalAction != nil { return reclaimableBytes }
         return manualRemoval != nil || protectionReason == .inventory || protectionReason == .folderRemainder
             || codexSession != nil || !unlockableChildren.isEmpty

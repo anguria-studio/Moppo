@@ -50,7 +50,7 @@ brew install --cask anguria-studio/tap/moppo
 | AI Tools | Review AI tool storage, Codex sessions, worktrees, and local models. Models in use stay protected. |
 | Duplicates | Compare file contents or find identical and similar photos. |
 | App Uninstaller | Review applications and related files. Remove Homebrew packages through Homebrew. |
-| Docker images | Review unused images and remove them through Docker. |
+| Docker images and volumes | Review unused images and volumes and remove them through Docker. |
 | History and Put Back | Review removal results and restore eligible items from the Trash. |
 | Everyday controls | Set exclusions, scan schedules, low-space alerts, and menu bar mode. |
 | Command line | Scan, save cleanup plans, and remove items from Terminal or an AI agent. |
@@ -77,7 +77,7 @@ Moppo checks for updates automatically. You can turn off automatic checks in **S
 | --- | --- |
 | Reported sizes | Shared storage can reduce the space that removal recovers. |
 | Put Back | Recovery requires a saved receipt and the item still in the Trash. |
-| Permanent removal | Put Back cannot restore Homebrew packages, Docker images, tool command removals, or permanently deleted items. |
+| Permanent removal | Put Back cannot restore Homebrew packages, Docker images, Docker volumes, tool command removals, or permanently deleted items. |
 | Photos | With iCloud Photos enabled, deletion affects the linked library and its other devices. |
 
 Read the [removal and Put Back guide](docs/user-guide.md#removal-and-put-back) for confirmation, permission, and recovery details.

@@ -151,7 +151,7 @@ A model rule identifies its manifest or repository folder.
 For a grouped model row, the action excludes every model named in that row.
 Shared blobs stay protected while an excluded model uses them.
 Other models remain available, with shared bytes excluded from their removal size.
-A Docker image rule applies to that image in its recorded Docker context.
+A Docker image or volume rule applies to that item in its recorded Docker context.
 
 ### AI tool storage
 
@@ -226,6 +226,7 @@ Moppo deletes Time Machine local snapshots only from the Dashboard, after confir
 | Empty Trash | Moppo always requires confirmation because this operation permanently erases items. |
 | Permanent application deletion | Moppo always requires confirmation, including when routine cleanup confirmations are off. |
 | Docker image removal | **Confirm before every clean-up** controls the review. |
+| Docker volume removal | Moppo always requires review, because volume data has no other copy. |
 | Tool command removal | Moppo requires confirmation for each command, including when routine confirmations are off. |
 
 With **Confirm before every clean-up** off, removals that support recovery start without a Moppo confirmation.
@@ -347,10 +348,17 @@ Moppo checks the content again and moves eligible folders to the Trash.
 The retry requires **Keep Put Back receipts** to be on.
 Put Back can request administrator approval to restore these folders.
 
-### Docker images
+### Docker images and volumes
 
 Docker removes selected images permanently, including their listed tags. Put Back cannot restore them.
 Images used by containers remain locked. Image sizes include shared layers, so removal can recover less space.
+
+Each Docker volume appears as a separate row. Moppo does not select volumes for you.
+A volume can hold the only copy of its data, such as a database, so volume rows show **Not regenerable**.
+
+Docker removes a volume and all its data permanently. Docker keeps no backup, and Put Back cannot restore the data.
+
+Volumes used by containers remain locked, including volumes of stopped containers.
 The [development notes](README.md#deliberate-limitations) explain the current limits.
 
 ## Your data

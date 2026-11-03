@@ -38,16 +38,23 @@ public struct FileEntryPresentation: Sendable, Equatable {
             summary = entry.safetyCaveat ?? ""
             icon = .cache
             return
-        } else if let image = entry.dockerImage {
+        } else if let item = entry.docker {
             let usage: String
-            if let count = image.containerCount {
+            if let count = item.containerCount {
                 usage = count == 0 ? "Unused"
                     : "Used by \(count) \(count == 1 ? "container" : "containers")"
             } else {
                 usage = "Container use unavailable"
             }
-            summary = "Docker image · " + usage
-            icon = .package
+            switch item {
+            case .image:
+                summary = "Docker image · " + usage
+                icon = .package
+            case .volume(let volume):
+                summary = (["Docker volume", volume.composeProject.map { "Compose project \($0)" }, usage])
+                    .compactMap { $0 }.joined(separator: " · ")
+                icon = .diskImage
+            }
             return
         } else if let device = entry.simulatorDevice {
             summary = (["Simulator device", device.runtime] + (showsSafetyCaveat ? [entry.safetyCaveat] : []))

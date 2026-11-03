@@ -169,6 +169,7 @@ final class AppModel {
         cleanup.refreshAfterRemoval = { [weak self] in
             await self?.refreshAfterRemoval(invalidateCleanup: false)
         }
+        cleanup.refreshVolume = { [weak self] in await self?.dashboard.refreshVolumeInfo() }
         cleanup.refreshLeftovers = { [weak self] identifiers in
             await self?.uninstaller.refreshLeftovers(afterRemoving: identifiers)
         }
