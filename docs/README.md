@@ -615,6 +615,14 @@ A folder name or file age does not make these files disposable.
 Read the [AI storage sources and limits](ai-storage.md) before you add storage rules.
 Read the [Codex session recovery research](codex-session-recovery.md) before you add session recovery.
 
+## Developer tool storage
+
+The [developer tool storage catalog](tool-catalog.md) lists storage from language tools, version managers, container tools, and databases.
+Each row gives the storage type, the recognition evidence, the removal method, and the restore command.
+Read the catalog before you add a scanner rule or a protection rule for developer tools.
+Add a rule only from a row with a `Verified` status.
+The AI storage document has priority for AI tool paths.
+
 ## Scanner rows and Git worktrees
 
 Cleanup has two tabs: All and Safe to Remove.
