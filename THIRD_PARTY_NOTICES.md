@@ -18,6 +18,16 @@ The names and icons belong to their respective owners.
 - Keras: The Keras team. The fallback icon comes from the [official website](https://keras.io/).
 - Whisper: OpenAI. The fallback icon is the OpenAI logo from the [OpenAI GitHub organization](https://github.com/openai). Moppo removed its white background.
 - GPT4All: Nomic AI. The fallback icon comes from the [official repository](https://github.com/nomic-ai/gpt4all).
+- OpenCode: OpenCode. The fallback icon comes from the official OpenCode desktop application, version 2.2.5.
+- Goose: LF Open Source, LLC. The fallback icon comes from the official Goose desktop application, version 1.57.0.
+- Kiro: Amazon.com, Inc. The fallback icon comes from the official Kiro desktop application, version 1.4.86.
+- Devin: Exafunction. The fallback icon comes from the official Devin desktop application, version 3.11.238.
+- AnythingLLM: Mintplex Labs Inc. The fallback icon comes from the official AnythingLLM desktop application, version 1.19.0.
+- Cherry Studio: Shanghai Qianhui Technology Co., Ltd. The fallback icon comes from Cherry Studio 2.1.10.
+- Comfy Desktop: Drip Artificial Inc. The fallback icon comes from the official Comfy Desktop application, version 1.1.8.
+- Stability Matrix: Lykos LLC. The fallback icon comes from the official Stability Matrix application, version 2.16.5.
+
+For icons from the #216 checks, the owner names come from the application copyright or Developer ID signature.
 
 Installed application icons take priority over the bundled fallback icons.
 

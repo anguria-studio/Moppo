@@ -19,6 +19,16 @@ public struct AIStorageSection: Sendable, Equatable {
         case gpt4All = "GPT4All"
         case gemini = "Gemini"
         case antigravity = "Antigravity"
+        case copilot = "GitHub Copilot"
+        case openCode = "OpenCode"
+        case goose = "Goose"
+        case openClaw = "OpenClaw"
+        case kiro = "Kiro"
+        case devin = "Devin"
+        case anythingLLM = "AnythingLLM"
+        case cherryStudio = "Cherry Studio"
+        case comfy = "Comfy Desktop"
+        case stabilityMatrix = "Stability Matrix"
 
         public var tool: FileEntry.AITool {
             switch self {
@@ -37,6 +47,16 @@ public struct AIStorageSection: Sendable, Equatable {
             case .gpt4All: .gpt4All
             case .gemini: .gemini
             case .antigravity: .antigravity
+            case .copilot: .copilot
+            case .openCode: .openCode
+            case .goose: .goose
+            case .openClaw: .openClaw
+            case .kiro: .kiro
+            case .devin: .devin
+            case .anythingLLM: .anythingLLM
+            case .cherryStudio: .cherryStudio
+            case .comfy: .comfy
+            case .stabilityMatrix: .stabilityMatrix
             }
         }
     }

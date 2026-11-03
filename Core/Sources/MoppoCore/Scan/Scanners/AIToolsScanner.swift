@@ -4,19 +4,24 @@ import Foundation
 public struct AIToolsScanner: CategoryScanner {
     public let id: CategoryID = .aiTools
     private let home: URL
+    /// The folder that holds applications and portable tool data.
+    private let applications: URL
     private let codexExecutable: String?
     /// Reads open model files. Tests replace the process check.
     var captureModelActivity: @Sendable ([URL]) async throws -> WorktreeActivity = {
         try await WorktreeActivity.capture(roots: $0)
     }
 
-    public init(home: URL = URL(fileURLWithPath: NSHomeDirectory())) {
+    public init(home: URL = URL(fileURLWithPath: NSHomeDirectory()),
+                applications: URL = URL(fileURLWithPath: "/Applications", isDirectory: true)) {
         self.home = home
+        self.applications = applications
         self.codexExecutable = nil
     }
 
     init(home: URL, codexExecutable: String) {
         self.home = home
+        self.applications = AIToolStorage.defaultApplications
         self.codexExecutable = codexExecutable
     }
 
@@ -24,8 +29,9 @@ public struct AIToolsScanner: CategoryScanner {
         var found = Found()
         for root in AIToolStorage.roots {
             try Task.checkCancellation()
-            let url = home.appendingPathComponent(root.path)
-            guard !context.isWithinExclusion(url), isOwnedPath(url),
+            guard let url = AIToolStorage.location(of: root, home: home, applications: applications) else { continue }
+            let base = root.base == .home ? home : applications
+            guard !context.isWithinExclusion(url), isOwnedPath(url, under: base),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
             let parts = root.parts.map { (part: $0, paths: ApplicationsScanner.expand($0.path, under: url)) }
             let roots: [URL]
@@ -53,7 +59,7 @@ public struct AIToolsScanner: CategoryScanner {
                home.appendingPathComponent(curation.root).standardizedFileURL == url.standardizedFileURL {
                 for pattern in curation.regenerable {
                     for cache in ApplicationsScanner.expand(pattern, under: url) {
-                        guard let child = try await measuredPart(cache, context: context) else { continue }
+                        guard let child = try await measuredPart(cache, under: base, context: context) else { continue }
                         var row = child
                         row.kind = .cache
                         row.isRegenerable = true
@@ -74,7 +80,7 @@ public struct AIToolsScanner: CategoryScanner {
             for (part, paths) in parts {
                 if sessionGroups.contains(where: { $0.url == url.appendingPathComponent(part.path) }) { continue }
                 for path in paths {
-                    guard var child = try await measuredPart(path, context: context,
+                    guard var child = try await measuredPart(path, under: base, context: context,
                         measurement: measured.measurements[path.standardizedFileURL] ?? .zero) else { continue }
                     child.displayName = part.name
                     child.protectionReason = .inventory
@@ -97,17 +103,19 @@ public struct AIToolsScanner: CategoryScanner {
                 : .available,
             unreadableCount: found.unreadableCount
         )
-        result.claimedStoragePaths = AIToolStorage.roots.map { home.appendingPathComponent($0.path).path }
+        result.claimedStoragePaths = AIToolStorage.claimedPaths(home: home, applications: applications)
             + LocalModelStores.claimedPaths(home: home)
         return result
     }
 
     /// Rejects symlinks in each component, including a parent of an expanded cache path.
-    private func isOwnedPath(_ url: URL) -> Bool {
-        let root = home.standardizedFileURL.path
+    private func isOwnedPath(_ url: URL) -> Bool { isOwnedPath(url, under: home) }
+
+    private func isOwnedPath(_ url: URL, under base: URL) -> Bool {
+        let root = base.standardizedFileURL.path
         let path = url.standardizedFileURL.path
         guard path.hasPrefix(root + "/") else { return false }
-        var componentURL = home
+        var componentURL = base
         for component in path.dropFirst(root.count + 1).split(separator: "/") {
             componentURL.appendPathComponent(String(component))
             guard let values = try? componentURL.resourceValues(forKeys: [.isSymbolicLinkKey]),
@@ -116,10 +124,10 @@ public struct AIToolsScanner: CategoryScanner {
         return true
     }
 
-    private func measuredPart(_ url: URL, context: ScanContext,
+    private func measuredPart(_ url: URL, under base: URL, context: ScanContext,
                               measurement: SizeMeasurement? = nil) async throws -> FileEntry? {
         try Task.checkCancellation()
-        guard !context.isExcluded(url), isOwnedPath(url) else { return nil }
+        guard !context.isExcluded(url), isOwnedPath(url, under: base) else { return nil }
         let size: SizeMeasurement
         if let measurement { size = measurement }
         else { size = try await context.measurer.measure(url) }

@@ -141,7 +141,7 @@ public struct HiddenDataScanner: CategoryScanner {
         claimed.append(url(Root.dotCache).path)
 
         // AI Tools owns these roots, including their archives and VM images.
-        claimed += AIToolStorage.roots.map { home.appendingPathComponent($0.path).path }
+        claimed += AIToolStorage.claimedPaths(home: home)
         claimed += LocalModelStores.homeDotFolders.map { home.appendingPathComponent($0).path }
 
         // Reserve cloud paths before archive discovery starts. Cloud measurements run alongside the remaining local work.
