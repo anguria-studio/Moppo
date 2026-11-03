@@ -40,6 +40,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             case application
             /// Scratch data the app recreates.
             case regenerable
+            /// Diagnostic records that the app writes. Old records do not come back.
+            case logs
             /// Launch items and privileged helpers that exist only for the app.
             case appComponent
             /// Profiles, preferences, documents, sessions, and other user state.
@@ -82,7 +84,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         public var fileEntry: FileEntry {
             let kind: FileEntry.Kind = switch category {
             case .application: .appBundle
-            case .caches, .logs, .state: .cache
+            case .caches, .state: .cache
+            case .logs: (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true ? .folder : .file
             case .preferences: .file
             case .support, .containers, .helpers: .folder
             }
@@ -92,6 +95,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
                 kind: kind,
                 allocatedBytes: allocatedBytes,
                 isRegenerable: content == .regenerable,
+                notRegenerable: content == .logs ? .logs : nil,
                 protectionReason: content == .userData ? .userData : nil,
                 soundLibrary: soundLibrary
             )
@@ -589,7 +593,7 @@ public struct AppUninstallPlanner: Sendable {
             append(userLibrary, "WebKit/\(id)", .caches, .regenerable, owner: id)
             append(userLibrary, "Application Scripts/\(id)", .containers, .userData, owner: id)
             append(userLibrary, "Cookies/\(id).binarycookies", .preferences, .userData, owner: id)
-            append(userLibrary, "Logs/\(id)", .logs, .regenerable, owner: id)
+            append(userLibrary, "Logs/\(id)", .logs, .logs, owner: id)
 
             append(systemLibrary, "Application Support/\(id)", .support, .appComponent, owner: id)
             append(systemLibrary, "Caches/\(id)", .caches, .regenerable, owner: id)

@@ -72,6 +72,7 @@ These rows show **Not regenerable**:
 - Logs in `~/Library/Logs`. A tool writes new logs, but the old records do not come back.
 
 **Safe to Remove** does not select these logs.
+App Uninstaller also marks the logs of an application as **not regenerable**.
 
 Hold the pointer on the label to see the reason. VoiceOver reads the label and the reason.
 Moppo did not classify a row without a label. Examine its contents before you remove it.
