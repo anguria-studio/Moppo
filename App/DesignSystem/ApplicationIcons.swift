@@ -18,11 +18,12 @@ enum ApplicationIcons {
         .claude: "com.anthropic.claudefordesktop",
         .cursor: "com.todesktop.230313mzl4w4u92",
         .grokBot: "com.anysphere.sand",
+        .t3Code: "com.t3tools.t3code",
         .antigravity: "com.google.antigravity",
         .gpt4All: "gpt4all"
     ]
     /// Fallback icons that already include the padding of an application icon.
-    private static let paddedFallbacks: Set<FileEntry.AITool> = [.codex, .gpt4All]
+    private static let paddedFallbacks: Set<FileEntry.AITool> = [.codex, .t3Code, .gpt4All]
 
     static func icon(for url: URL) -> NSImage {
         if let cached = cache.object(forKey: url.path as NSString) { return cached }

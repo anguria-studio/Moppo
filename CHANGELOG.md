@@ -21,6 +21,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 - Add `regeneration` and `regeneration_reason` to the items in the scan report.
 
+### Fixes
+
+- Show the T3 Code icon in **AI Tools**. Earlier versions showed an empty square.
+
 ## [0.6.0] - 2026-11-02
 
 Build 56.

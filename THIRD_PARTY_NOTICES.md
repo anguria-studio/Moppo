@@ -6,6 +6,7 @@ Moppo uses vendor icons to identify stored application data and models.
 The names and icons belong to their respective owners.
 
 - Codex: OpenAI. The fallback icon comes from the official ChatGPT desktop application, version 26.1007.30912.
+- T3 Code: T3 Tools. The fallback icon comes from the official T3 Code desktop application, version 0.1.6.
 - Claude: Anthropic. The fallback icon comes from [Claude](https://claude.com/).
 - Cursor: Anysphere. The fallback icons come from the [Cursor brand assets](https://cursor.com/brand).
 - Ollama: Ollama. The fallback icon comes from the [official repository](https://github.com/ollama/ollama).
