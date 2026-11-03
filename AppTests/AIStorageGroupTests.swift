@@ -9,7 +9,8 @@ struct AIStorageGroupTests {
     @Test("Each AI tool has an icon, and repeated lookups keep the same image")
     func stableToolIcons() throws {
         // Grok Bot has no bundled fallback icon, so its icon needs the installed app.
-        for tool in FileEntry.AITool.allCases where tool != .grokBot {
+        // GitHub Copilot CLI and OpenClaw have no application icon, so their headings use a generic symbol.
+        for tool in FileEntry.AITool.allCases where ![.grokBot, .copilot, .openClaw].contains(tool) {
             let first = try #require(ApplicationIcons.icon(for: tool))
             let next = try #require(ApplicationIcons.icon(for: tool))
             #expect(first.image === next.image, "\(tool.rawValue) creates a new image")

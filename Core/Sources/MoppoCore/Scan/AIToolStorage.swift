@@ -9,18 +9,49 @@ enum AIToolStorage {
     }
 
     struct Root: Sendable {
+        /// The folder that holds `path`.
+        enum Base: Sendable { case home, applications }
+
         let path: String
         let name: String
         let section: AIStorageSection
         var tool: FileEntry.AITool { section.owner.tool }
+        var base: Base = .home
         var explanation: String = "Credentials, settings, memories, history, and installed files remain protected. Use the owning tool to manage them."
         var curationIdentifier: String? = nil
         var reviewsWorktrees: Bool = true
+        /// Paths in the root that identify the tool when the folder name is not specific.
+        /// Each path must exist. A glob component matches any child.
+        var identifiedBy: [String] = []
         var parts: [Part] = []
     }
 
-    static let homeDotFolders: Set<String> = [".codex", ".claude", ".grokbot", ".t3", ".gemini"]
+    static let defaultApplications = URL(fileURLWithPath: "/Applications", isDirectory: true)
+
+    /// Home dot folders that AI Tools claims whole. Hidden & System Data does not list them.
+    static let homeDotFolders: Set<String> = Set(roots.filter {
+        $0.base == .home && $0.identifiedBy.isEmpty && $0.path.hasPrefix(".") && !$0.path.contains("/")
+    }.map(\.path))
     static let dotCacheFolders: Set<String> = ["codex-runtimes"]
+
+    /// `~/.config` holds settings for many tools. Other categories list its other children.
+    static let partlyClaimedFolders: [String: Set<String>] = [
+        ".config": Set(roots.compactMap { $0.path.hasPrefix(".config/") ? String($0.path.dropFirst(8)) : nil })
+    ]
+
+    /// The root folder, or nil when the layout does not identify the tool.
+    static func location(of root: Root, home: URL, applications: URL = defaultApplications) -> URL? {
+        let url = (root.base == .home ? home : applications).appendingPathComponent(root.path)
+        let identified = root.identifiedBy.allSatisfy { marker in
+            ApplicationsScanner.expand(marker, under: url).contains { FileManager.default.fileExists(atPath: $0.path) }
+        }
+        return identified ? url : nil
+    }
+
+    /// The root paths that AI Tools claims. Other categories do not list these paths.
+    static func claimedPaths(home: URL, applications: URL = defaultApplications) -> [String] {
+        roots.compactMap { location(of: $0, home: home, applications: applications)?.path }
+    }
 
     static let roots: [Root] = [
         Root(path: ".codex", name: "Codex task data",
@@ -117,6 +148,167 @@ enum AIToolStorage {
              section: .init(owner: .antigravity, title: "Desktop data",
                  summary: "Desktop profile, settings, credentials, and caches."),
              explanation: "Moppo has not verified which Antigravity desktop files are safe to remove. All files remain protected, including cache folders.",
-             reviewsWorktrees: false)
+             reviewsWorktrees: false),
+        // The #216 inventory on 3 November 2026 found the roots below. They are inventory only.
+        Root(path: "Library/Application Support/t3code-v2", name: "T3 Code desktop data",
+             section: .init(owner: .t3Code, title: "Desktop data",
+                 summary: "Desktop profile, settings, and caches."),
+             explanation: "Moppo has not verified which T3 Code desktop files are safe to remove. All files remain protected, including cache folders.",
+             reviewsWorktrees: false),
+        Root(path: ".copilot", name: "GitHub Copilot CLI data",
+             section: .init(owner: .copilot, title: "CLI data",
+                 summary: "Sessions, settings, plugins, and logs."),
+             explanation: "Copilot CLI keeps sessions, settings, and plugins here. Moppo keeps all files protected, including unknown files.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "session-state", name: "Copilot sessions", explanation: "Saved sessions, checkpoints, and file snapshots. Use Copilot CLI to manage them."),
+            Part(path: "installed-plugins", name: "Copilot plugins", explanation: "Installed plugins and their files. Use Copilot CLI to manage plugins."),
+            Part(path: "logs", name: "Copilot logs", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected.")
+        ]),
+        Root(path: ".local/share/opencode", name: "OpenCode data",
+             section: .init(owner: .openCode, title: "Local data",
+                 summary: "Session database, snapshots, and logs."),
+             explanation: "OpenCode keeps its session database and other data here. Moppo keeps all files protected, including unknown files.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "snapshot", name: "OpenCode snapshots", explanation: "OpenCode can use snapshots to undo file changes. Moppo keeps them protected."),
+            Part(path: "log", name: "OpenCode logs", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected.")
+        ]),
+        Root(path: ".local/state/opencode", name: "OpenCode state",
+             section: .init(owner: .openCode, title: "State",
+                 summary: "Files that OpenCode uses while it runs."),
+             explanation: "OpenCode uses these files while it runs. Moppo keeps them protected.",
+             reviewsWorktrees: false),
+        Root(path: ".config/opencode", name: "OpenCode settings",
+             section: .init(owner: .openCode, title: "Settings",
+                 summary: "Settings and service files."),
+             explanation: "Settings can contain provider keys. Moppo keeps these files protected.",
+             reviewsWorktrees: false),
+        Root(path: ".local/share/goose", name: "Goose data",
+             section: .init(owner: .goose, title: "Local data",
+                 summary: "Sessions, apps, and the model catalog."),
+             explanation: "Goose keeps sessions and other data here. Moppo keeps all files protected, including unknown files.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "sessions", name: "Goose sessions", explanation: "Saved sessions and task history. Use Goose to manage them."),
+            Part(path: "model_catalog", name: "Goose model catalog", explanation: "Goose downloads this list of models. The evidence does not show that removal is safe.")
+        ]),
+        Root(path: ".local/state/goose", name: "Goose logs",
+             section: .init(owner: .goose, title: "Logs",
+                 summary: "Logs, including requests to models."),
+             explanation: "Logs can contain requests to models. Moppo keeps these files protected.",
+             reviewsWorktrees: false),
+        Root(path: ".config/goose", name: "Goose settings",
+             section: .init(owner: .goose, title: "Settings",
+                 summary: "Settings, sign-in data, and local keys."),
+             explanation: "Settings, sign-in data, and local keys remain protected. Use Goose to manage them.",
+             reviewsWorktrees: false),
+        Root(path: ".openclaw", name: "OpenClaw data",
+             section: .init(owner: .openClaw, title: "Local data",
+                 summary: "Agent sessions, workspace files, state, and settings."),
+             explanation: "OpenClaw keeps agent data and settings here. Moppo keeps all files protected, including unknown files.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "agents", name: "OpenClaw agent sessions", explanation: "Agent settings and saved sessions. Use OpenClaw to manage them."),
+            Part(path: "workspace", name: "OpenClaw workspace", explanation: "Workspace files and their Git history can be the only copies. Moppo keeps them protected."),
+            Part(path: "state", name: "OpenClaw state", explanation: "OpenClaw uses these databases while it runs. Moppo keeps them protected.")
+        ]),
+        Root(path: ".kiro", name: "Kiro data",
+             section: .init(owner: .kiro, title: "Local data",
+                 summary: "Sessions, extensions, powers, and logs."),
+             explanation: "Kiro keeps sessions and settings here. Moppo keeps all files protected, including unknown files.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "sessions", name: "Kiro sessions", explanation: "Saved sessions and task history. Use Kiro to manage them."),
+            Part(path: "logs", name: "Kiro logs", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected.")
+        ]),
+        Root(path: ".kiro-shared", name: "Kiro shared state",
+             section: .init(owner: .kiro, title: "Shared state",
+                 summary: "State that Kiro windows share."),
+             explanation: "Kiro uses this state database. Moppo keeps it protected.",
+             reviewsWorktrees: false),
+        // Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`.
+        Root(path: ".codeium", name: "Devin and Windsurf shared data",
+             section: .init(owner: .devin, title: "Shared data",
+                 summary: "Memories, rules, and agent data for Devin Desktop and Windsurf."),
+             explanation: "Devin Desktop, Windsurf, and Codeium tools can share this folder. Moppo keeps all files protected, including memories and rules.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "windsurf/memories", name: "Devin memories and rules", explanation: "Memories and global rules remain protected. Use Devin Desktop to manage them."),
+            Part(path: "windsurf/cascade", name: "Cascade conversations", explanation: "Saved conversations can be the only local copies. Moppo keeps them protected.")
+        ]),
+        Root(path: ".devin", name: "Devin editor data",
+             section: .init(owner: .devin, title: "Editor data",
+                 summary: "Extensions and startup settings."),
+             explanation: "Devin Desktop keeps extensions and settings here. Moppo keeps them protected.",
+             reviewsWorktrees: false),
+        Root(path: ".devin-shared", name: "Devin shared state",
+             section: .init(owner: .devin, title: "Shared state",
+                 summary: "State that Devin Desktop windows share."),
+             explanation: "Devin Desktop uses this state database. Moppo keeps it protected.",
+             reviewsWorktrees: false),
+        Root(path: ".local/share/devin", name: "Devin CLI data",
+             section: .init(owner: .devin, title: "CLI data",
+                 summary: "CLI sessions, plugins, and logs."),
+             explanation: "Devin CLI keeps its session database and plugins here. Moppo keeps all files protected.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "cli/logs", name: "Devin CLI logs", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected.")
+        ]),
+        Root(path: ".config/devin", name: "Devin CLI settings",
+             section: .init(owner: .devin, title: "CLI settings",
+                 summary: "Devin CLI settings."),
+             explanation: "Settings remain protected. Use Devin CLI to manage them.",
+             reviewsWorktrees: false),
+        Root(path: "Library/Application Support/anythingllm-desktop", name: "AnythingLLM desktop data",
+             section: .init(owner: .anythingLLM, title: "Desktop data",
+                 summary: "Workspaces, documents, vector data, downloaded engines, and caches."),
+             explanation: "Moppo has not verified which AnythingLLM files are safe to remove. All files remain protected, including keys and cache folders.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "storage/documents", name: "AnythingLLM documents", explanation: "Documents added to workspaces can be the only local copies."),
+            Part(path: "storage/lancedb", name: "AnythingLLM vector database", explanation: "Workspace search data. Moppo keeps it protected."),
+            Part(path: "storage/models", name: "AnythingLLM models", explanation: "Downloaded models and model data. Use AnythingLLM to manage them."),
+            Part(path: "storage/engines", name: "AnythingLLM downloaded engines", explanation: "AnythingLLM can require these downloaded tools. Moppo keeps them protected.")
+        ]),
+        Root(path: ".cherrystudio", name: "Cherry Studio data",
+             section: .init(owner: .cherryStudio, title: "Local data",
+                 summary: "Downloaded tools and settings."),
+             explanation: "Cherry Studio keeps downloaded tools and settings here. Moppo keeps all files protected.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "bin", name: "Cherry Studio installed tools", explanation: "Cherry Studio can require these tools. Moppo keeps them protected.")
+        ]),
+        Root(path: "Library/Application Support/CherryStudio", name: "Cherry Studio desktop data",
+             section: .init(owner: .cherryStudio, title: "Desktop data",
+                 summary: "Notes, agents, toolchains, credentials, and caches."),
+             explanation: "Moppo has not verified which Cherry Studio files are safe to remove. All files remain protected, including credentials and cache folders.",
+             reviewsWorktrees: false, parts: [
+            Part(path: "Data", name: "Cherry Studio library", explanation: "Notes, agents, skills, and the main database can be the only local copies."),
+            Part(path: "Toolchain", name: "Cherry Studio toolchain", explanation: "Cherry Studio can require these downloaded tools. Moppo keeps them protected."),
+            Part(path: "Runtime", name: "Cherry Studio runtime data", explanation: "Cherry Studio uses this model and provider data. Moppo keeps it protected.")
+        ]),
+        // Comfy Desktop 1.1.8 made these folders. Its launcher folder and ComfyUI identify an installation.
+        Root(path: "ComfyUI-Installs", name: "ComfyUI installations",
+             section: .init(owner: .comfy, title: "Installations",
+                 summary: "ComfyUI, its Python environment, models, outputs, and custom nodes."),
+             explanation: "Comfy Desktop installs ComfyUI here. Moppo keeps all files protected, including models and outputs.",
+             reviewsWorktrees: false, identifiedBy: ["*/.launcher", "*/ComfyUI/main.py"], parts: [
+            Part(path: "*/ComfyUI/models", name: "ComfyUI models", explanation: "Downloaded and added models. Use Comfy Desktop to manage them."),
+            Part(path: "*/ComfyUI/output", name: "ComfyUI outputs", explanation: "Generated images and other outputs can be the only copies."),
+            Part(path: "*/ComfyUI/user", name: "ComfyUI workflows and settings", explanation: "Saved workflows and settings can be the only copies."),
+            Part(path: "*/ComfyUI/custom_nodes", name: "ComfyUI custom nodes", explanation: "Installed custom nodes and their files. Use Comfy Desktop to manage them."),
+            Part(path: "*/ComfyUI/.venv", name: "ComfyUI Python packages", explanation: "ComfyUI needs these installed packages to run. Moppo keeps them protected."),
+            Part(path: "*/standalone-env", name: "ComfyUI Python runtime", explanation: "ComfyUI needs this Python runtime to run. Moppo keeps it protected.")
+        ]),
+        Root(path: "ComfyUI-Shared", name: "ComfyUI shared files",
+             section: .init(owner: .comfy, title: "Shared files",
+                 summary: "Models, input files, and outputs that installations share."),
+             explanation: "Comfy Desktop installations share these files. Moppo keeps all files protected.",
+             reviewsWorktrees: false, identifiedBy: ["models/checkpoints", "models/loras", "output"], parts: [
+            Part(path: "models", name: "ComfyUI shared models", explanation: "Models that installations share. Use Comfy Desktop to manage them."),
+            Part(path: "input", name: "ComfyUI shared input files", explanation: "Input files can be the only copies. Moppo keeps them protected."),
+            Part(path: "output", name: "ComfyUI shared outputs", explanation: "Generated images and other outputs can be the only copies.")
+        ]),
+        // Stability Matrix 2.16.5 in portable mode keeps `Data` next to the application.
+        Root(path: "Data", name: "Stability Matrix data",
+             section: .init(owner: .stabilityMatrix, title: "Portable data",
+                 summary: "Models, settings, and the Stability Matrix database."),
+             base: .applications,
+             explanation: "Stability Matrix keeps its portable data next to the application. Moppo keeps all files protected.",
+             reviewsWorktrees: false, identifiedBy: [".sm-portable", "StabilityMatrix.db"], parts: [
+            Part(path: "Models", name: "Stability Matrix models", explanation: "Models that the installed packages share. Use Stability Matrix to manage them.")
+        ])
     ]
 }

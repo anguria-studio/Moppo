@@ -17,6 +17,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show the reason for **Not regenerable** in the label tooltip and to VoiceOver.
 - Show the number of selected **Not regenerable** items in the removal confirmation.
 - Show logs in `~/Library/Logs` as **Not regenerable**. **Safe to Remove** no longer selects them.
+- Show protected AI Tools rows for GitHub Copilot CLI, OpenCode, Goose, OpenClaw, and Kiro.
+- Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
+- Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
+- Show the other folders in `~/.config` as separate Hidden & System Data rows.
 
 ### Command line and agents
 
