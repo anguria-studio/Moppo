@@ -75,6 +75,47 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var lastOpened: Date?
     /// Regenerates on demand; shown as `· regenerable` after the path.
     public var isRegenerable: Bool
+
+    /// Moppo knows that the contents of this row do not come back after removal.
+    public struct NotRegenerable: Sendable, Equatable {
+        /// A short reason for the user, or `nil` when Moppo has no specific reason.
+        public let reason: String?
+
+        public init(reason: String?) {
+            self.reason = reason
+        }
+    }
+
+    /// Set only for rows that Moppo classified. A `nil` value does not mean that the
+    /// contents regenerate. It can also mean that Moppo did not classify the row.
+    public var notRegenerable: NotRegenerable?
+
+    /// The label in the regeneration column of each row.
+    public enum RegenerationLabel: Sendable, Equatable {
+        case regenerable
+        case notRegenerable(reason: String?)
+
+        public var text: String {
+            switch self {
+            case .regenerable: "Regenerable"
+            case .notRegenerable: "Not regenerable"
+            }
+        }
+
+        /// The text that VoiceOver reads. It includes the reason when Moppo knows it.
+        public var accessibilityText: String {
+            switch self {
+            case .regenerable: text
+            case .notRegenerable(let reason): reason.map { "\(text). \($0)" } ?? text
+            }
+        }
+    }
+
+    /// `nil` when Moppo did not classify the row. Such a row shows no label.
+    public var regenerationLabel: RegenerationLabel? {
+        if isRegenerable { return .regenerable }
+        return notRegenerable.map { .notRegenerable(reason: $0.reason) }
+    }
     /// Why this entry is listed for information but refused for removal.
     ///
     /// Protection is shown, never silent: hiding these rows hid the useful fact
@@ -267,6 +308,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         allocatedBytes: Int64,
         lastOpened: Date? = nil,
         isRegenerable: Bool = false,
+        notRegenerable: NotRegenerable? = nil,
         protectionReason: ProtectionReason? = nil,
         protectionExplanation: String? = nil,
         manualRemoval: ManualRemoval? = nil,
@@ -293,6 +335,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.allocatedBytes = allocatedBytes
         self.lastOpened = lastOpened
         self.isRegenerable = isRegenerable
+        self.notRegenerable = notRegenerable
         self.protectionReason = protectionReason
         self.protectionExplanation = protectionExplanation
         self.manualRemoval = manualRemoval

@@ -100,20 +100,22 @@ struct SimulatorDeviceTests {
         func row(_ udid: String) throws -> FileEntry {
             try #require(result.entries.first { $0.url.lastPathComponent == udid })
         }
-        let expected: [(udid: String, name: String, summary: String, safe: Bool)] = [
+        let appData = FileEntry.RegenerationLabel.notRegenerable(reason: XcodeScanner.simulatorAppData.reason)
+        let expected: [(udid: String, name: String, summary: String, safe: Bool, label: FileEntry.RegenerationLabel?)] = [
             (available, "iPhone 16",
-             "Simulator device · iOS 18.1 · Removal deletes the apps and app data in this simulator", false),
-            (unavailable, "Apple TV 4K", "Simulator device · tvOS 17.0 · Runtime not installed", true),
-            (booted, "Apple Watch", "Simulator device · watchOS 10.0 · Simulator is running", false),
-            (unreadable, unreadable, "Simulator device · Availability could not be checked", false),
+             "Simulator device · iOS 18.1 · Removal deletes the apps and app data in this simulator", false, appData),
+            (unavailable, "Apple TV 4K", "Simulator device · tvOS 17.0 · Runtime not installed", true, .regenerable),
+            (booted, "Apple Watch", "Simulator device · watchOS 10.0 · Simulator is running", false, appData),
+            (unreadable, unreadable, "Simulator device · Availability could not be checked", false, nil),
             (installedRuntime, "iPad Air",
-             "Simulator device · iOS 18.1 · Removal deletes the apps and app data in this simulator", false),
+             "Simulator device · iOS 18.1 · Removal deletes the apps and app data in this simulator", false, appData),
         ]
         for item in expected {
             let entry = try row(item.udid)
             #expect(entry.displayName == item.name)
             #expect(FileEntryPresentation(entry: entry).summary == item.summary)
             #expect(result.isCountedSafe(entry) == item.safe, "\(item.name)")
+            #expect(entry.regenerationLabel == item.label, "\(item.name)")
         }
         #expect(result.safeToRemoveBytes == (try row(unavailable)).allocatedBytes)
     }

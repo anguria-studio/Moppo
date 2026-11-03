@@ -57,6 +57,24 @@ To show them, turn on **Settings > General > Scanning > Show items smaller than 
 The change applies after the next scan.
 Empty items stay hidden because they do not free disk space.
 
+### Regeneration labels
+
+Some Cleanup rows show a label before the **Last opened** column:
+
+- **Regenerable**: The contents come back on demand, for example after the next build.
+- **Not regenerable**: Moppo knows that the contents do not come back after removal.
+
+These rows show **Not regenerable**:
+
+- Xcode Archives. An archive contains the only copy of the debug symbols for its builds.
+- Application leftovers. They can contain settings, saved state, and licenses of the removed app.
+- Simulator devices that are running or that Xcode can start.
+
+Hold the pointer on the label to see the reason. VoiceOver reads the label and the reason.
+Moppo did not classify a row without a label. Examine its contents before you remove it.
+The removal confirmation shows the number of selected items that do not regenerate.
+If you empty the Trash, you lose the contents of these items.
+
 ### Worktrees and grouped folders
 
 Detected worktrees appear separately from grouped folders. Moppo counts each byte once.

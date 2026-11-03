@@ -43,6 +43,10 @@ public struct ScanReport: Codable, Sendable {
         public var detail: String?
         /// Signs of work in the project around a dependency folder.
         public var projectActivity: ProjectActivityReport?
+        /// `regenerable` or `not_regenerable`. Nil when the engine did not classify the item.
+        public var regeneration: String?
+        /// Why the item does not regenerate, when the engine knows the reason.
+        public var regenerationReason: String?
 
         public struct ProjectActivityReport: Codable, Sendable, Equatable {
             public let lastActivityAt: Date?
@@ -64,7 +68,7 @@ public struct ScanReport: Codable, Sendable {
                  allocatedBytes: fresh.allocatedBytes, displayBytes: fresh.displayBytes,
                  measurementStatus: status, eligibility: eligibility, safeToRemove: safeToRemove,
                  reason: reason, protection: protection, recovery: recovery, name: name, path: path, detail: detail,
-                 projectActivity: projectActivity)
+                 projectActivity: projectActivity, regeneration: regeneration, regenerationReason: regenerationReason)
         }
 
         public func disclosed(includePaths: Bool) -> Self {
@@ -125,6 +129,13 @@ public struct ScanReport: Codable, Sendable {
                         reason = "Review this item before removal. You may need its contents."
                     }
                 }
+                let regeneration: String?
+                let regenerationReason: String?
+                switch entry.regenerationLabel {
+                case .regenerable: regeneration = "regenerable"; regenerationReason = nil
+                case .notRegenerable(let reason): regeneration = "not_regenerable"; regenerationReason = reason
+                case nil: regeneration = nil; regenerationReason = nil
+                }
                 let recovery: String
                 if entry.manualRemoval != nil { recovery = "external_tool" }
                 else if entry.toolCommand != nil || entry.dockerImage != nil || entry.codexSession != nil {
@@ -138,7 +149,8 @@ public struct ScanReport: Codable, Sendable {
                     name: entry.displayName, path: entry.url.isFileURL ? entry.url.path : entry.url.absoluteString,
                     detail: entry.protectionExplanation ?? entry.toolCommand?.lockReason
                         ?? entry.manualRemoval?.explanation ?? entry.safetyCaveat,
-                    projectActivity: entry.projectActivity.map(Item.ProjectActivityReport.init)))
+                    projectActivity: entry.projectActivity.map(Item.ProjectActivityReport.init),
+                    regeneration: regeneration, regenerationReason: regenerationReason))
                 for child in entry.children {
                     append(child, parent: id, requiresParent: requiresParent || entry.removesAsUnit
                         || entry.removalAction != nil)

@@ -492,6 +492,8 @@ final class CleanupModel {
         let orphanedApplicationBundleIdentifiers: Set<String>
         let orphanedApplicationItemPaths: Set<String>
         var runningOwners: [FileEntry.RunningOwner] = []
+        /// Selected items whose contents do not come back after removal.
+        var notRegenerableCount = 0
 
         var freed: PrivateSizeMeasurement?
         var confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
@@ -588,7 +590,9 @@ final class CleanupModel {
             orphanedApplicationItemPaths: orphanedItemPaths,
             runningOwners: applications.stillRunning(
                 entries.flatMap(Self.plannedTargets).compactMap(\.inUseBy)
-            )
+            ),
+            notRegenerableCount: Set((entries.flatMap(Self.plannedTargets) + orphanedEntries)
+                .filter { if case .notRegenerable = $0.regenerationLabel { true } else { false } }.map(\.id)).count
         )
         pendingCleanUp = plan
 

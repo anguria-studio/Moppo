@@ -14,6 +14,12 @@ public struct ApplicationLeftoversScanner: CategoryScanner {
         self.planner = planner
     }
 
+    /// Nothing regenerates the settings, saved state, or licenses of a removed
+    /// application. See `CategoryID.isSafe`.
+    static let notRegenerable = FileEntry.NotRegenerable(
+        reason: "Can contain settings, saved state, and licenses of the removed app."
+    )
+
     public func scan(context: ScanContext) async throws -> ScanCategoryResult {
         let plan = try await planner.plan(
             context: context,
@@ -37,6 +43,7 @@ public struct ApplicationLeftoversScanner: CategoryScanner {
                     : "\(group.bundleIdentifier) · No installed application owner",
                 kind: .folder,
                 allocatedBytes: 0,
+                notRegenerable: Self.notRegenerable,
                 removalAction: .orphanedApplication(
                     bundleIdentifier: group.bundleIdentifier
                 ),

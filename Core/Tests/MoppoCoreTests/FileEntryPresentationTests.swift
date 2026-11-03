@@ -22,6 +22,16 @@ struct FileEntryPresentationTests {
         #expect(FileEntryPresentation(entry: held).summary == "iOS project dependencies · Reader / ios")
     }
 
+    @Test("A row that Moppo did not classify has no regeneration label")
+    func unclassifiedRowHasNoLabel() {
+        var entry = FileEntry(url: URL(fileURLWithPath: "/Documents/Notes"), kind: .folder, allocatedBytes: 100)
+        #expect(entry.regenerationLabel == nil)
+
+        entry.notRegenerable = .init(reason: "Reason.")
+        #expect(entry.regenerationLabel?.text == "Not regenerable")
+        #expect(entry.regenerationLabel?.accessibilityText == "Not regenerable. Reason.")
+    }
+
     @Test("Photo files use media descriptions while unknown folders stay generic")
     func mediaAndUnknownFolders() {
         let photo = FileEntry(url: URL(fileURLWithPath: "/Pictures/Holiday.HEIC"),
