@@ -4,6 +4,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Dashboard
+
+- Show local Time Machine snapshots with their dates and an estimate of purgeable space.
+- Add **Delete Snapshots…** to delete Time Machine local snapshots after confirmation.
+- Read the snapshots again when you select **Refresh Dashboard**.
+
 ### Cleanup
 
 - Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.

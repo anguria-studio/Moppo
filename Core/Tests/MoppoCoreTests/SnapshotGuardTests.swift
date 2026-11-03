@@ -90,4 +90,36 @@ struct SnapshotGuardTests {
 
         #expect(entry.volumeDisk == boot.systemVolumeDisk)
     }
+
+    @Test("a Time Machine name gives its date stamp and local time")
+    func timeMachineName() throws {
+        let snapshot = SnapshotInfo(
+            uuid: "tm", name: "com.apple.TimeMachine.2026-11-03-150015.local", purgeable: true,
+            limitingContainerShrink: false, isBootSnapshot: false, volumeDisk: "disk3s5"
+        )
+        #expect(snapshot.timeMachineStamp == "2026-11-03-150015")
+        let parts = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second], from: try #require(snapshot.timeMachineDate)
+        )
+        #expect([parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second] == [2026, 11, 3, 15, 0, 15])
+    }
+
+    @Test("other snapshots and the boot snapshot give no Time Machine stamp")
+    func otherSnapshotNames() throws {
+        let boot = try bootIdentity()
+        let names = [(boot.name, true), ("com.bombich.ccc.2026-11-03-150015", false),
+                     ("com.apple.TimeMachine.2026-11-03-150015.local", true)]
+        for (name, isBoot) in names {
+            let snapshot = SnapshotInfo(uuid: name, name: name, purgeable: false,
+                limitingContainerShrink: false, isBootSnapshot: isBoot, volumeDisk: "disk3s5")
+            #expect(snapshot.timeMachineStamp == nil)
+        }
+    }
+
+    @Test("the purgeable estimate is the extra capacity for important use")
+    func purgeableEstimate() {
+        #expect(DiskInfoService.purgeableBytes(importantUsage: 852, available: 849) == 3)
+        #expect(DiskInfoService.purgeableBytes(importantUsage: 849, available: 849) == nil)
+        #expect(DiskInfoService.purgeableBytes(importantUsage: nil, available: 849) == nil)
+    }
 }

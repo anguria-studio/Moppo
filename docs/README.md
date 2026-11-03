@@ -768,9 +768,11 @@ operating system. The predecessor rewrote its volume identifier (`disk3s1s1` →
 `disk3s1`) specifically to make it a valid delete target. Only SIP prevented
 disaster.
 
-`SnapshotService` lists snapshots as information in the Dashboard.
-Moppo does not delete snapshots.
-The boot snapshot remains identified as part of macOS.
+`SnapshotService` lists snapshots for the Dashboard.
+It deletes only Time Machine local snapshots, with `tmutil deletelocalsnapshots` and the date in the snapshot name.
+The user must confirm each deletion on the Dashboard.
+Moppo does not delete other snapshots.
+The boot snapshot remains identified as part of macOS, and the Dashboard does not list it.
 
 ## Deliberate limitations
 

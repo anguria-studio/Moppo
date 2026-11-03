@@ -180,6 +180,19 @@ Storage changes compares the latest measurement with an earlier one.
 **Last 7 days** shows its real start until seven days of measurements exist.
 After a cleanup, choose **Continue** to return to the remaining results without a new scan.
 
+### Time Machine snapshots
+
+When your backup disk is not available, Time Machine keeps local snapshots on the startup disk.
+macOS deletes these snapshots automatically when it needs space.
+When local snapshots exist, the Dashboard shows the **Time Machine snapshots** card.
+The card shows the date of each snapshot and an estimate of purgeable space.
+The estimate includes the snapshots and some system caches.
+
+Local snapshots can be your only recent backup.
+To delete them sooner, select **Delete Snapshots…**, then confirm.
+Put Back cannot restore a deleted snapshot.
+Moppo does not show snapshots in **Safe to Remove**.
+
 ## Appearance and iCloud
 
 Choose **System**, **Light**, or **Dark** in **Settings > General > Appearance**.
@@ -198,7 +211,7 @@ If a measurement fails, select **Try Again** or open the setup guide.
 
 APFS clones can share storage. Reported cleanup sizes are upper bounds, not promises of recovered space.
 Put Back needs a saved receipt and an item still in the Trash.
-Moppo does not delete APFS snapshots.
+Moppo deletes Time Machine local snapshots only from the Dashboard, after confirmation. Moppo does not delete other APFS snapshots.
 
 ### Confirmation
 
