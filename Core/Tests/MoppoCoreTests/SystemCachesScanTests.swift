@@ -119,6 +119,33 @@ struct SystemCachesScanTests {
         #expect(result.safeToRemoveBytes + result.needsReviewBytes == result.totalBytes)
     }
 
+    /// A tool writes new logs after removal, but the old records are lost.
+    @Test("a log in ~/Library/Logs needs review and is not regenerable; a cache stays safe")
+    func logsNeedReview() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file("Library/Logs/pipx/cmd.log")
+        try sandbox.file("Library/Logs/loose.log")
+        try sandbox.file("Library/Caches/com.example.app/blob")
+
+        let result = try await sandbox.scanner().scan(context: ScanContext())
+        func row(_ name: String) throws -> FileEntry {
+            try #require(result.entries.first { $0.url.lastPathComponent == name })
+        }
+
+        for (name, kind) in [("pipx", FileEntry.Kind.folder), ("loose.log", .file)] {
+            let log = try row(name)
+            #expect(log.kind == kind)
+            #expect(log.regenerationLabel == .notRegenerable(reason: FileEntry.NotRegenerable.logs.reason))
+            #expect(!log.isRemovalLocked)
+            #expect(FileEntryPresentation(entry: log).summary.hasPrefix("Activity log"))
+        }
+        #expect(try row("com.example.app").regenerationLabel == .regenerable)
+
+        let safe = result.tileRows(safeToRemove: true).map(\.url.lastPathComponent)
+        #expect(safe == ["com.example.app"])
+        #expect(result.safeToRemoveBytes == (try row("com.example.app")).allocatedBytes)
+    }
+
     @Test("a cache that Package Manager Caches claims is left to it")
     func packageManagerCachesAreSkipped() async throws {
         let sandbox = try Sandbox()

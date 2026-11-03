@@ -69,6 +69,9 @@ These rows show **Not regenerable**:
 - Xcode Archives. An archive contains the only copy of the debug symbols for its builds.
 - Application leftovers. They can contain settings, saved state, and licenses of the removed app.
 - Simulator devices that are running or that Xcode can start.
+- Logs in `~/Library/Logs`. A tool writes new logs, but the old records do not come back.
+
+**Safe to Remove** does not select these logs.
 
 Hold the pointer on the label to see the reason. VoiceOver reads the label and the reason.
 Moppo did not classify a row without a label. Examine its contents before you remove it.
