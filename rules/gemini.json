@@ -1,0 +1,95 @@
+{
+  "id": "gemini",
+  "name": "Gemini",
+  "documentName": "Gemini CLI",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "gemini",
+    "rawValue": "Gemini"
+  },
+  "owner": {
+    "case": "gemini",
+    "name": "Gemini"
+  },
+  "removalRules": "Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected.",
+  "note": "Gemini CLI and Antigravity share `~/.gemini`. One root counts each byte once.",
+  "storage": [
+    {
+      "path": "~/.gemini",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Gemini and Antigravity shared data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Shared data",
+        "summary": "Gemini CLI and Antigravity settings, history, and installed tools."
+      },
+      "explanation": "Gemini CLI and Antigravity share this folder. Moppo keeps all files protected, including credentials, settings, and unknown files."
+    },
+    {
+      "path": "~/.gemini/antigravity",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Antigravity data",
+      "explanation": "Antigravity task data and settings. Use Antigravity to manage these files."
+    },
+    {
+      "path": "~/.gemini/antigravity-cli",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Antigravity CLI data",
+      "explanation": "Antigravity command-line data and settings. Use Antigravity to manage these files."
+    },
+    {
+      "path": "~/.gemini/antigravity-ide",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Antigravity editor data",
+      "explanation": "Antigravity editor data and settings. Use Antigravity to manage these files."
+    },
+    {
+      "path": "~/.gemini/history",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Shared history",
+      "explanation": "Saved history can contain task content. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.gemini/bin",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Shared installed tools",
+      "explanation": "Gemini CLI or Antigravity can require these tools. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.gemini/logs",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Shared logs",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.gemini/tmp",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Shared temporary files",
+      "explanation": "These files can belong to active tasks. Moppo keeps them protected."
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{
+  "id": "claude-desktop",
+  "name": "Claude",
+  "documentName": "Claude desktop",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "claude",
+    "rawValue": "Claude"
+  },
+  "owner": {
+    "case": "claude",
+    "name": "Claude"
+  },
+  "bundleIdentifiers": [
+    "com.anthropic.claudefordesktop"
+  ],
+  "removalRules": "Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Claude/Partitions/*/Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Claude/Partitions/*/Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Claude",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude desktop data",
+      "curated": true,
+      "remainderName": "Claude settings and data",
+      "electronCaches": true,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Desktop profiles, caches, virtual machines, and local tasks."
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Claude/vm_bundles/*/rootfs.img",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude VM system disk",
+      "explanation": "Linux system and installed tools. This disk can also contain task files. Use Claude to manage it."
+    },
+    {
+      "path": "~/Library/Application Support/Claude/vm_bundles/*/rootfs.img.zst",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude compressed VM download",
+      "explanation": "Compressed Linux runtime download. Moppo keeps it protected because Claude manages the VM installation."
+    },
+    {
+      "path": "~/Library/Application Support/Claude/vm_bundles/*/sessiondata.img",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude VM session disk",
+      "explanation": "This disk can contain local task files. Its allocated size can be smaller than its virtual capacity."
+    },
+    {
+      "path": "~/Library/Application Support/Claude/claude-code-vm",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude VM files",
+      "explanation": "Virtual machine runtime and task files. Use Claude to manage these files."
+    },
+    {
+      "path": "~/Library/Application Support/Claude/claude-code",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude downloaded tools",
+      "explanation": "Installed command-line tools. Use Claude to manage these files."
+    },
+    {
+      "path": "~/Library/Application Support/Claude/claude-code-sessions",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude desktop coding sessions",
+      "explanation": "Saved coding tasks and their files. Use Claude to manage these files."
+    },
+    {
+      "path": "~/Library/Application Support/Claude/local-agent-mode-sessions",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude local agent sessions",
+      "explanation": "Task history, uploaded files, and outputs share this folder with persistent memories and plugins. Moppo keeps the whole folder protected."
+    }
+  ]
+}

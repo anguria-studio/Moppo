@@ -1,0 +1,57 @@
+{
+  "id": "ferdium",
+  "name": "Ferdium",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "org.ferdium.ferdium-app"
+  ],
+  "note": "Ferdium has normal Electron caches at the root and a Chromium partition for each configured messaging service. Recipes, configuration, cookies, and sessions remain protected.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Ferdium",
+      "type": "userData",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Ferdium accounts and settings",
+      "electronCaches": true,
+      "recognition": "Bundle identifier `org.ferdium.ferdium-app`",
+      "removal": "Never offer whole. Moppo offers the caches below it.",
+      "restore": "Not possible",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Ferdium/Partitions/*/Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Ferdium layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Ferdium/Partitions/*/Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Ferdium layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Ferdium/Partitions/*/GPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Ferdium layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

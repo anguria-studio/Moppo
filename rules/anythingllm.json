@@ -1,14 +1,41 @@
 {
   "id": "anythingllm",
   "name": "AnythingLLM",
-  "section": "application-data",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "anythingLLM",
+    "rawValue": "AnythingLLM",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "anythingLLM",
+    "name": "AnythingLLM"
+  },
+  "bundleIdentifiers": [
+    "com.anythingllm"
+  ],
+  "removalRules": "Protected inventory. Documents, vector data, models, engines, keys, and cache folders stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "AnythingLLM 1.19.0",
+    "macos": "27.2"
+  },
+  "note": "AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.",
   "storage": [
     {
       "path": "~/Library/Application Support/anythingllm-desktop",
       "type": "userData",
-      "table": "applicationDataFolders",
-      "owner": "applications",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
       "treatment": "protect",
+      "name": "AnythingLLM desktop data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Workspaces, documents, vector data, downloaded engines, and caches."
+      },
+      "explanation": "Moppo has not verified which AnythingLLM files are safe to remove. All files remain protected, including keys and cache folders.",
       "recognition": "Folder name",
       "removal": "App Uninstaller or Application Leftovers, after review",
       "restore": "Not possible",
@@ -18,11 +45,44 @@
         "tool": "AnythingLLM 1.19.0",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
+      "applicationData": true
+    },
+    {
+      "path": "~/Library/Application Support/anythingllm-desktop/storage/documents",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "AnythingLLM documents",
+      "explanation": "Documents added to workspaces can be the only local copies."
+    },
+    {
+      "path": "~/Library/Application Support/anythingllm-desktop/storage/lancedb",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "AnythingLLM vector database",
+      "explanation": "Workspace search data. Moppo keeps it protected."
+    },
+    {
+      "path": "~/Library/Application Support/anythingllm-desktop/storage/models",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "AnythingLLM models",
+      "explanation": "Downloaded models and model data. Use AnythingLLM to manage them."
+    },
+    {
+      "path": "~/Library/Application Support/anythingllm-desktop/storage/engines",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "AnythingLLM downloaded engines",
+      "explanation": "AnythingLLM can require these downloaded tools. Moppo keeps them protected."
     }
-  ],
-  "bundleIdentifiers": [
-    "com.anythingllm"
-  ],
-  "note": "AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`."
+  ]
 }

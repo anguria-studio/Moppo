@@ -1,0 +1,101 @@
+{
+  "id": "claude-code",
+  "name": "Claude Code",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "claude",
+    "rawValue": "Claude"
+  },
+  "owner": {
+    "case": "claudeCode",
+    "name": "Claude Code"
+  },
+  "removalRules": "Conversations, memories, attachments, file history, installed versions, and other files stay protected. Linked Git worktrees use the existing review controls.",
+  "note": "The native installers keep each installed version in `versions`. `~/.local/bin` links to the active one.",
+  "storage": [
+    {
+      "path": "~/.claude",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code data",
+      "section": {
+        "title": "Task data",
+        "summary": "Conversations, memories, attachments, and recovery files."
+      },
+      "explanation": "Credentials, settings, memories, and session files remain protected. Claude Code purge also deletes memories."
+    },
+    {
+      "path": "~/.claude/projects",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code sessions and memories",
+      "explanation": "Conversations, child sessions, tool results, and persistent memories share this folder. Moppo keeps the whole folder protected."
+    },
+    {
+      "path": "~/.claude/agent-memory",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code agent memories",
+      "explanation": "Persistent agent memories remain protected. These files can be shared across sessions."
+    },
+    {
+      "path": "~/.claude/file-history",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code file history",
+      "explanation": "Saved file versions support checkpoint recovery. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.claude/paste-cache",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code pasted text",
+      "explanation": "Saved pasted text can contain session content. The cache name does not make it disposable."
+    },
+    {
+      "path": "~/.claude/image-cache",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code saved images",
+      "explanation": "Earlier Claude Code versions stored attached images here. These files can be the only local copies."
+    },
+    {
+      "path": "~/.claude/uploads",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code uploaded files",
+      "explanation": "Files and photos attached to local sessions. These files can be the only local copies."
+    },
+    {
+      "path": "~/.local/share/claude",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Claude Code versions",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Installed versions",
+        "summary": "Versions from the native installer."
+      },
+      "identifiedBy": [
+        "versions"
+      ],
+      "explanation": "The native installer keeps the installed Claude Code versions here. Moppo keeps them protected."
+    }
+  ]
+}

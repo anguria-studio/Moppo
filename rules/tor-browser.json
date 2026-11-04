@@ -1,0 +1,34 @@
+{
+  "id": "tor-browser",
+  "name": "Tor Browser",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "org.torproject.torbrowser"
+  ],
+  "note": "Tor Browser separates disposable browser caches from the profile and the Tor keys. The whole profile root is never a cache.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/TorBrowser-Data",
+      "type": "userData",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Tor Browser profile and settings",
+      "recognition": "Bundle identifier `org.torproject.torbrowser`",
+      "removal": "Never offer whole. Moppo offers the caches below it.",
+      "restore": "Not possible",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/TorBrowser-Data/Browser/Caches",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Tor Browser layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

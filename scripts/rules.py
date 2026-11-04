@@ -30,7 +30,11 @@ OWNERS = {
     "applications", "applicationLeftovers", "documentsAndFiles",
 }
 TREATMENTS = {"offer", "review", "protect"}
-TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders"}
+TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders",
+          "aiToolStorage", "curations"}
+FORMATS = {"catalog", "aiCoverage", "bundleIdentifiers"}
+AI_COVERAGE_HEADER = "| Tool | Default paths | Removal rules |\n| --- | --- | --- |"
+BUNDLE_HEADER = "| Tool | Bundle identifier |\n| --- | --- |"
 CHECKS = {"goModuleCache": "packageManagerCaches"}
 HOME_TABLES = {"toolHomeFolders", "toolHomeLocations"}
 COVERAGE = {
@@ -79,9 +83,16 @@ def validate(sections, tools):
         for key in ("title", "document", "tools"):
             if key not in section:
                 raise RuleError(f"sections.json: section {section_id!r} needs {key!r}")
+        if section.get("format", "catalog") not in FORMATS:
+            raise RuleError(f"sections.json: section {section_id!r} format must be one of {', '.join(sorted(FORMATS))}")
         for tool_id in section["tools"]:
             if tool_id not in tools:
                 raise RuleError(f"sections.json: section {section_id!r} names {tool_id!r}, which has no file")
+            if section.get("format") == "aiCoverage" and not tools[tool_id].get("removalRules"):
+                raise RuleError(f"{tool_id}.json: an AI coverage row needs removalRules")
+            if section.get("format") == "bundleIdentifiers":
+                if not tools[tool_id].get("bundleIdentifiers") or not tools[tool_id].get("verified", {}).get("tool"):
+                    raise RuleError(f"{tool_id}.json: a bundle identifier row needs bundleIdentifiers and verified.tool")
     listed = {tool_id for section in sections.values() for tool_id in section["tools"]}
     for tool in tools.values():
         validate_tool(tool, sections, listed)
@@ -102,13 +113,26 @@ def validate_tool(tool, sections, listed):
     identifiers = tool.get("bundleIdentifiers", [])
     if not isinstance(identifiers, list) or not all(isinstance(value, str) and value for value in identifiers):
         raise RuleError(f"{name}: bundleIdentifiers must be a list of strings")
+    for key in ("aiTool", "owner"):
+        if key in tool and not (isinstance(tool[key], dict) and tool[key].get("case") and tool[key].get("rawValue" if key == "aiTool" else "name")):
+            raise RuleError(f"{name}: {key} needs case and {'rawValue' if key == 'aiTool' else 'name'}")
+    if ("aiTool" in tool) != ("owner" in tool):
+        raise RuleError(f"{name}: aiTool and owner come together")
+    catalog = sections[tool["section"]].get("format", "catalog") == "catalog"
     for storage in tool["storage"]:
-        validate_storage(name, storage)
+        validate_storage(name, storage, catalog)
         if (storage.get("table") == "applicationDataFolders" or storage.get("applicationData")) and not identifiers:
             raise RuleError(f"{name}: an application data folder needs the tool's bundleIdentifiers")
+        if storage.get("table") == "aiToolStorage" and "owner" not in tool:
+            raise RuleError(f"{name}: an AI tool root needs the tool's owner and aiTool")
+        if storage.get("curated") and not identifiers:
+            raise RuleError(f"{name}: a curated root needs the tool's bundleIdentifiers")
+        if storage.get("table") == "curations" and storage["treatment"] == "protect" and not identifiers:
+            raise RuleError(f"{name}: a curation needs the tool's bundleIdentifiers")
 
 
-def validate_storage(name, storage):
+def validate_storage(name, storage, catalog=True):
+    """`catalog` is false for a tool in an AI document section, which has no catalog cells."""
     paths = storage_paths(storage)
     if not paths:
         raise RuleError(f"{name}: each storage entry needs path or paths")
@@ -119,7 +143,7 @@ def validate_storage(name, storage):
     if storage.get("type") not in TYPES:
         raise RuleError(f"{where}: type must be one of {', '.join(sorted(TYPES))}")
     for key in ("recognition", "removal", "restore"):
-        if not isinstance(storage.get(key), str) or not storage[key]:
+        if catalog and (not isinstance(storage.get(key), str) or not storage[key]):
             raise RuleError(f"{where}: needs {key!r}")
     has_rule = "table" in storage
     if has_rule:
@@ -146,6 +170,21 @@ def validate_storage(name, storage):
                 raise RuleError(f"{where}: a cache that needs review needs a caveat")
         if table == "applicationDataFolders" and treatment != "protect":
             raise RuleError(f"{where}: an application data folder is protected")
+        if table == "aiToolStorage":
+            if treatment != "protect":
+                raise RuleError(f"{where}: an AI tool root or part is protected")
+            if not storage.get("name"):
+                raise RuleError(f"{where}: an AI tool root or part needs the row name")
+            section = storage.get("section")
+            if section is not None and not (isinstance(section, dict) and section.get("title") and section.get("summary")):
+                raise RuleError(f"{where}: section needs title and summary")
+            if storage.get("curated") and not storage.get("remainderName"):
+                raise RuleError(f"{where}: a curated root needs remainderName")
+        if table == "curations":
+            if treatment == "protect" and not storage.get("name"):
+                raise RuleError(f"{where}: a curation needs the name of its locked remainder")
+            if treatment == "review":
+                raise RuleError(f"{where}: a curation cache is offered, not reviewed")
         if table == "packageManagerCaches" and not storage.get("name"):
             raise RuleError(f"{where}: a package cache needs the row name")
         if "check" in storage and CHECKS.get(storage["check"]) != table:
@@ -153,11 +192,11 @@ def validate_storage(name, storage):
         if storage["type"] == "userData" and treatment != "protect":
             raise RuleError(f"{where}: user data is never offered")
         if treatment != "protect":
-            # A package cache is offered by its path. The scanner does not read a marker in it.
+            # A package cache or a curation cache is offered by its path. The scanner does not read a marker in it.
             if not storage.get("identifiedBy") and not storage.get("check") \
-                    and table not in HOME_TABLES and table != "packageManagerCaches":
+                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations"):
                 raise RuleError(f"{where}: an offered path needs identifiedBy or check")
-            if "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
+            if catalog and "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
                 raise RuleError(f"{where}: an offered path needs a verified record, or a status that starts with Not verified")
     else:
         coverage = storage.get("coverage")
@@ -176,18 +215,22 @@ def validate_storage(name, storage):
             raise RuleError(f"{where}: verified.date must be YYYY-MM-DD")
         if verified.get("kind", "verified") not in ("verified", "found"):
             raise RuleError(f"{where}: verified.kind is verified or found")
-    elif not storage.get("status"):
+    elif catalog and not storage.get("status"):
         raise RuleError(f"{where}: needs verified or status")
 
 
 def validate_overlaps(entries):
     """One owner for each path. An offered path never holds protected data."""
     seen = {}
+    ai_roots = {(tool["id"], tuple(components(path))) for tool, storage in entries
+                if storage.get("table") == "aiToolStorage" for path in storage_paths(storage)}
     for tool, storage in entries:
         for path in storage_paths(storage):
             if path.startswith("<project>/"):
                 continue   # Several tools document the same project folder, such as `vendor`.
             key = tuple(components(path))
+            if storage.get("table") == "curations" and storage["treatment"] == "protect" and (tool["id"], key) in ai_roots:
+                continue   # A curation of a desktop application can share the path of the tool's AI root.
             if key in seen:
                 raise RuleError(f"{tool['id']}.json: {path} is also in {seen[key]}.json")
             seen[key] = tool["id"]
@@ -200,18 +243,45 @@ def validate_overlaps(entries):
             if other["treatment"] == "protect" and covers(path, other_path):
                 raise RuleError(
                     f"{tool['id']}.json: {path} is offered, but {other_path} in {other_tool['id']}.json is protected")
-        if storage["table"] in HOME_TABLES:
+        if storage["table"] in HOME_TABLES or storage["table"] == "curations":
             folder_of(storage, path, rules)
+    for tool, storage, path in rules:
+        if storage["treatment"] == "protect" and storage["table"] == "aiToolStorage" and is_part(storage, path, rules):
+            if not storage.get("explanation"):
+                raise RuleError(f"{path}: an AI tool part needs an explanation")
+            if storage.get("section") or storage.get("curated") or storage.get("identifiedBy"):
+                raise RuleError(f"{path}: an AI tool part has no section, curation, or identifiedBy")
+        elif storage["treatment"] == "protect" and storage["table"] == "aiToolStorage" and not storage.get("section"):
+            raise RuleError(f"{path}: an AI tool root needs a section")
+
+
+def holds_cache(folder, folder_table, cache_table):
+    """A folder of the same table holds a cache. A curated AI root also holds curation caches."""
+    if folder_table == cache_table:
+        return True
+    return cache_table == "curations" and folder_table == "aiToolStorage" and folder.get("curated")
 
 
 def folder_of(cache, path, rules):
-    """The protected folder of the same table that holds a cache. Exactly one must exist."""
+    """The protected folder that holds a cache. Exactly one must exist."""
     folders = [(folder, folder_path) for _, folder, folder_path in rules
-               if folder["table"] == cache["table"] and folder["treatment"] == "protect"
+               if folder["treatment"] == "protect" and holds_cache(folder, folder["table"], cache["table"])
                and covers(folder_path, path) and folder_path != path]
     if len(folders) != 1:
         raise RuleError(f"{path}: a {cache['table']} cache needs one protected folder above it, found {len(folders)}")
     return folders[0]
+
+
+def is_part(storage, path, rules):
+    """An AI tool entry below another AI tool root is a part of that root."""
+    return any(other["table"] == "aiToolStorage" and other_path != path and covers(other_path, path)
+               for _, other, other_path in rules if "table" in other)
+
+
+def ai_root_of(part_path, roots):
+    """The nearest AI root above a part path."""
+    above = [root_path for root_path in roots if covers(root_path, part_path) and root_path != part_path]
+    return max(above, key=lambda root_path: len(components(root_path)))
 
 
 def storage_paths(storage):
@@ -235,9 +305,13 @@ def covers(parent, child):
 
 
 def rows(sections, tools):
-    """Each storage entry with its tool and its section, in document order."""
+    """Each storage entry with its tool and its section, in document order. A tool in two sections comes once."""
+    seen = set()
     for section_id, section in sections.items():
         for tool_id in section["tools"]:
+            if tool_id in seen:
+                continue
+            seen.add(tool_id)
             tool = tools[tool_id]
             for storage in tool["storage"]:
                 yield section_id, tool, storage
@@ -271,16 +345,41 @@ def status_text(storage):
 # MARK: - Documents
 
 
-def render_section(section_id, sections, tools):
-    """The table and the notes between the markers of one section."""
-    lines = [BEGIN.format(section_id), TABLE_HEADER]
-    notes = []
-    for tool_id in sections[section_id]["tools"]:
-        tool = tools[tool_id]
-        notes.extend(storage["note"] for storage in tool["storage"] if storage.get("note"))
-        if tool.get("note"):
-            notes.append(tool["note"])
-    for _, tool, storage in rows({section_id: sections[section_id]}, tools):
+def rule_paths(tool, sections, tools):
+    """The paths of a tool that its document row lists: roots and rows, not parts."""
+    all_rules = [(other, storage, path) for _, other, storage in rows(sections, tools) if "table" in storage
+                 for path in storage_paths(storage)]
+    paths = []
+    for storage in tool["storage"]:
+        for path in storage_paths(storage):
+            if storage.get("table") == "aiToolStorage" and is_part(storage, path, all_rules):
+                continue
+            if storage.get("table") == "curations" and storage["treatment"] != "protect":
+                continue
+            if path not in paths:
+                paths.append(path)
+    return paths
+
+
+def render_rows(section_id, sections, tools):
+    """The header and the rows of one section, in its format."""
+    section = sections[section_id]
+    fmt = section.get("format", "catalog")
+    if fmt == "aiCoverage":
+        lines = [AI_COVERAGE_HEADER]
+        for tool_id in section["tools"]:
+            tool = tools[tool_id]
+            paths = ", ".join(f"`{path}`" for path in rule_paths(tool, sections, tools))
+            lines.append(f"| {tool.get('documentName', tool['name'])} | {paths} | {tool['removalRules']} |")
+        return lines
+    if fmt == "bundleIdentifiers":
+        lines = [BUNDLE_HEADER]
+        for tool_id in section["tools"]:
+            tool = tools[tool_id]
+            lines.append(f"| {tool['verified']['tool']} | `{tool['bundleIdentifiers'][0]}` |")
+        return lines
+    lines = [TABLE_HEADER]
+    for _, tool, storage in rows({section_id: section}, tools):
         cells = [
             ", ".join(f"`{path}`" for path in storage_paths(storage)),
             TYPES[storage["type"]],
@@ -291,6 +390,18 @@ def render_section(section_id, sections, tools):
             status_text(storage),
         ]
         lines.append("| " + " | ".join(cells) + " |")
+    return lines
+
+
+def render_section(section_id, sections, tools):
+    """The table and the notes between the markers of one section."""
+    lines = [BEGIN.format(section_id)] + render_rows(section_id, sections, tools)
+    notes = []
+    for tool_id in sections[section_id]["tools"]:
+        tool = tools[tool_id]
+        notes.extend(storage["note"] for storage in tool["storage"] if storage.get("note"))
+        if tool.get("note"):
+            notes.append(tool["note"])
     if notes:
         lines.append("")
         lines.extend(notes)
@@ -478,6 +589,161 @@ def render_application_data_folders(sections, tools):
     return "\n".join(lines)
 
 
+def swift_bool(value):
+    return "true" if value else "false"
+
+
+def ai_rules(sections, tools):
+    return [(tool, storage, path) for _, tool, storage in rows(sections, tools)
+            if storage.get("table") == "aiToolStorage" for path in storage_paths(storage)]
+
+
+def render_ai_roots(sections, tools):
+    entries = ai_rules(sections, tools)
+    root_paths = [path for _, storage, path in entries if not is_part(storage, path, [(t, s, p) for t, s, p in entries])]
+    lines = []
+    for tool, storage, path in entries:
+        if path not in root_paths:
+            continue
+        base, relative = swift_base(path)
+        parts = []
+        for _, part, part_path in entries:
+            if part_path in root_paths or ai_root_of(part_path, root_paths) != path:
+                continue
+            _, part_relative = swift_base(part_path)
+            part_relative = part_relative[len(relative) + 1:]
+            parts.append(f"Part(path: {swift_string(part_relative)}, name: {swift_string(part['name'])}, "
+                         f"explanation: {swift_string(part['explanation'])})")
+        if storage.get("note"):
+            lines.append(f"        // {storage['note']}")
+        arguments = [f"path: {swift_string(relative)}", f"name: {swift_string(storage['name'])}",
+                     f"section: .init(owner: .{tool['owner']['case']}, title: {swift_string(storage['section']['title'])}, "
+                     f"summary: {swift_string(storage['section']['summary'])})"]
+        if base != ".home":
+            arguments.append(f"base: {base}")
+        if storage.get("explanation"):
+            arguments.append(f"explanation: {swift_string(storage['explanation'])}")
+        if storage.get("curated"):
+            arguments.append(f"curationIdentifier: {swift_string(tool['bundleIdentifiers'][0])}")
+        if storage.get("reviewsWorktrees") is False:
+            arguments.append("reviewsWorktrees: false")
+        if storage.get("identifiedBy"):
+            arguments.append(f"identifiedBy: {swift_list(storage['identifiedBy'])}")
+        if parts:
+            arguments.append("parts: [\n            " + ",\n            ".join(parts) + "\n        ]")
+        lines.append("        Root(" + ", ".join(arguments) + "),")
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
+def render_curations(sections, tools):
+    lines = []
+    all_rules = [(tool, storage, path) for _, tool, storage in rows(sections, tools) if "table" in storage
+                 for path in storage_paths(storage)]
+    for tool, storage, path in all_rules:
+        is_root = (storage["table"] == "curations" and storage["treatment"] == "protect") \
+            or (storage["table"] == "aiToolStorage" and storage.get("curated"))
+        if not is_root:
+            continue
+        _, relative = swift_base(path)
+        caches = []
+        for _, cache, cache_path in all_rules:
+            if cache["table"] == "curations" and cache["treatment"] == "offer" and covers(path, cache_path) and cache_path != path:
+                _, cache_relative = swift_base(cache_path)
+                caches.append(cache_relative[len(relative) + 1:])
+        regenerable = swift_list(caches)
+        if storage.get("electronCaches"):
+            regenerable = "electronRegenerable + " + regenerable if caches else "electronRegenerable"
+        remainder = storage["remainderName"] if storage["table"] == "aiToolStorage" else storage["name"]
+        if storage.get("note") and storage["table"] == "curations":
+            lines.append(f"        // {storage['note']}")
+        lines.append(f"        {swift_string(tool['bundleIdentifiers'][0])}: AppDataCuration(root: {swift_string(relative)}, "
+                     f"regenerable: {regenerable}, remainderName: {swift_string(remainder)}),")
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
+def ai_tools(sections, tools):
+    """Each AI tool case once, in section order, with its raw value and icon padding."""
+    seen = {}
+    for _, tool, _ in rows(sections, tools):
+        if "aiTool" in tool:
+            case = tool["aiTool"]["case"]
+            entry = (tool["aiTool"]["rawValue"], bool(tool["aiTool"].get("paddedIcon")))
+            if seen.setdefault(case, entry) != entry:
+                raise RuleError(f"{tool['id']}.json: aiTool {case!r} differs from another file")
+    return seen
+
+
+def owners(sections, tools):
+    """Each owner once, in section order."""
+    seen = {}
+    for _, tool, _ in rows(sections, tools):
+        if "owner" in tool:
+            case = tool["owner"]["case"]
+            entry = (tool["owner"]["name"], tool["aiTool"]["case"])
+            if seen.setdefault(case, entry) != entry:
+                raise RuleError(f"{tool['id']}.json: owner {case!r} differs from another file")
+    return seen
+
+
+def icon_identifiers(sections, tools):
+    """The first bundle identifier of each AI tool, from the first tool file that has one."""
+    identifiers = {}
+    for _, tool, _ in rows(sections, tools):
+        if "aiTool" in tool and tool.get("bundleIdentifiers"):
+            identifiers.setdefault(tool["aiTool"]["case"], tool["bundleIdentifiers"][0])
+    return identifiers
+
+
+def render_enums(sections, tools):
+    cases = ai_tools(sections, tools)
+    owner_cases = owners(sections, tools)
+    if not cases:
+        return ""
+    tool_lines = "\n".join(f"        case {case} = {swift_string(raw)}" for case, (raw, _) in cases.items())
+    owner_lines = "\n".join(f"        case {case} = {swift_string(name)}" for case, (name, _) in owner_cases.items())
+    switch_lines = "\n".join(f"            case .{case}: .{tool}" for case, (_, tool) in owner_cases.items())
+    identifiers = icon_identifiers(sections, tools)
+    identifier_lines = "\n".join(f"        .{case}: {swift_string(identifier)}," for case, identifier in identifiers.items()).rstrip(",")
+    padded = ", ".join(f".{case}" for case, (_, is_padded) in cases.items() if is_padded)
+    return f"""
+extension FileEntry {{
+    /// Identifies the tool icon without changing storage ownership or removal rules.
+    /// Each case comes from the `aiTool` of a tool file.
+    public enum AITool: String, Sendable, CaseIterable {{
+{tool_lines}
+    }}
+}}
+
+extension AIStorageSection {{
+    /// The heading that groups the storage of one tool. Each case comes from the `owner` of a tool file.
+    public enum Owner: String, Sendable {{
+{owner_lines}
+
+        public var tool: FileEntry.AITool {{
+            switch self {{
+{switch_lines}
+            }}
+        }}
+    }}
+}}
+
+/// The desktop application of each AI tool, for its icon.
+public enum ToolIcons {{
+    /// The first bundle identifier of the first tool file with the tool.
+    public static let bundleIdentifiers: [FileEntry.AITool: String] = [
+{identifier_lines}
+    ]
+
+    /// Tools whose bundled fallback icon already includes the padding of an application icon.
+    public static let paddedFallbacks: Set<FileEntry.AITool> = [{padded}]
+}}
+"""
+
+
 def render_swift(sections, tools):
     return f"""// Generated by scripts/rules.py from rules/*.json. Do not edit this file.
 // Change a rule in rules/<tool>.json, then run `python3 scripts/rules.py generate`.
@@ -517,7 +783,22 @@ extension ApplicationDataFolders {{
 {render_application_data_folders(sections, tools)}
     ]
 }}
-"""
+
+extension AIToolStorage {{
+    /// AI tool storage. Each root comes from a rule with `"table": "aiToolStorage"`. A rule below a root is one of its parts.
+    static let roots: [Root] = [
+{render_ai_roots(sections, tools)}
+    ]
+}}
+
+extension ApplicationsScanner {{
+    /// Apps whose layout the Electron rule does not describe. Each curation comes from a rule with
+    /// `"table": "curations"`, or from a curated AI tool root. The caches below it are the regenerable paths.
+    static let curations: [String: AppDataCuration] = [
+{render_curations(sections, tools)}
+    ]
+}}
+{render_enums(sections, tools)}"""
 
 
 # MARK: - Commands

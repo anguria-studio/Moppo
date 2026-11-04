@@ -1,0 +1,56 @@
+{
+  "id": "chatgpt",
+  "name": "ChatGPT",
+  "documentName": "ChatGPT desktop",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "chatGPT",
+    "rawValue": "ChatGPT"
+  },
+  "owner": {
+    "case": "chatGPT",
+    "name": "ChatGPT"
+  },
+  "bundleIdentifiers": [
+    "com.openai.codex"
+  ],
+  "removalRules": "Verified Chromium caches are selectable. Profiles and other files stay protected.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Codex/Default/Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Codex/Default/Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Codex/Default/GPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Codex",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "ChatGPT desktop data",
+      "curated": true,
+      "remainderName": "ChatGPT profiles and settings",
+      "electronCaches": true,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Desktop profiles, settings, and caches."
+      }
+    }
+  ]
+}

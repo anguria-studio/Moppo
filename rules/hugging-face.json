@@ -1,0 +1,21 @@
+{
+  "id": "hugging-face",
+  "name": "Hugging Face",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "huggingFace",
+    "rawValue": "HuggingFace"
+  },
+  "owner": {
+    "case": "huggingFace",
+    "name": "Hugging Face"
+  },
+  "removalRules": "Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected.",
+  "storage": [
+    {
+      "path": "~/.cache/huggingface",
+      "type": "download",
+      "coverage": "protected"
+    }
+  ]
+}

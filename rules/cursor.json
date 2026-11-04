@@ -1,0 +1,98 @@
+{
+  "id": "cursor",
+  "name": "Cursor",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "cursor",
+    "rawValue": "Cursor"
+  },
+  "owner": {
+    "case": "cursor",
+    "name": "Cursor"
+  },
+  "bundleIdentifiers": [
+    "com.todesktop.230313mzl4w4u92"
+  ],
+  "removalRules": "CLI conversations, CLI versions, and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls.",
+  "storage": [
+    {
+      "path": "~/.cursor/projects",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cursor project data",
+      "section": {
+        "title": "Project data",
+        "summary": "Project history and task files."
+      },
+      "explanation": "Project history and task files can be the only local copies. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.cursor/chats",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cursor CLI sessions",
+      "section": {
+        "title": "CLI sessions",
+        "summary": "Saved command-line conversations."
+      },
+      "explanation": "Local conversations have no cloud backup. Moppo cannot verify inactive sessions and keeps this folder protected."
+    },
+    {
+      "path": "~/.cursor/worktrees",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cursor worktrees",
+      "section": {
+        "title": "Worktrees",
+        "summary": "Separate Git checkouts for tasks."
+      }
+    },
+    {
+      "path": "~/.local/share/cursor-agent",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cursor CLI versions",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "CLI versions",
+        "summary": "Versions from the Cursor CLI installer."
+      },
+      "identifiedBy": [
+        "versions"
+      ],
+      "explanation": "The Cursor CLI installer keeps the installed versions here. Moppo keeps them protected."
+    },
+    {
+      "path": "~/Library/Application Support/Cursor",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cursor desktop data",
+      "curated": true,
+      "remainderName": "Cursor settings and data",
+      "electronCaches": true,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Desktop settings, workspace state, and caches."
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Cursor/User",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cursor settings and workspace state",
+      "explanation": "Chat history, checkpoints, settings, and unsaved files remain protected. Delete individual chats in Cursor."
+    }
+  ]
+}

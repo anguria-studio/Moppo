@@ -1,0 +1,124 @@
+{
+  "id": "devin",
+  "name": "Devin",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "devin",
+    "rawValue": "Devin",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "devin",
+    "name": "Devin"
+  },
+  "bundleIdentifiers": [
+    "com.exafunction.windsurf"
+  ],
+  "removalRules": "Protected inventory. Memories, rules, conversations, CLI sessions, and settings stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "Devin 3.11.238",
+    "macos": "27.2"
+  },
+  "note": "Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`.",
+  "storage": [
+    {
+      "path": "~/.codeium",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin and Windsurf shared data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Shared data",
+        "summary": "Memories, rules, and agent data for Devin Desktop and Windsurf."
+      },
+      "explanation": "Devin Desktop, Windsurf, and Codeium tools can share this folder. Moppo keeps all files protected, including memories and rules."
+    },
+    {
+      "path": "~/.codeium/windsurf/memories",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin memories and rules",
+      "explanation": "Memories and global rules remain protected. Use Devin Desktop to manage them."
+    },
+    {
+      "path": "~/.codeium/windsurf/cascade",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cascade conversations",
+      "explanation": "Saved conversations can be the only local copies. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.devin",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin editor data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Editor data",
+        "summary": "Extensions and startup settings."
+      },
+      "explanation": "Devin Desktop keeps extensions and settings here. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.devin-shared",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin shared state",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Shared state",
+        "summary": "State that Devin Desktop windows share."
+      },
+      "explanation": "Devin Desktop uses this state database. Moppo keeps it protected."
+    },
+    {
+      "path": "~/.local/share/devin",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin CLI data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "CLI data",
+        "summary": "CLI sessions, plugins, and logs."
+      },
+      "explanation": "Devin CLI keeps its session database and plugins here. Moppo keeps all files protected."
+    },
+    {
+      "path": "~/.local/share/devin/cli/logs",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin CLI logs",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.config/devin",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Devin CLI settings",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "CLI settings",
+        "summary": "Devin CLI settings."
+      },
+      "explanation": "Settings remain protected. Use Devin CLI to manage them."
+    }
+  ]
+}

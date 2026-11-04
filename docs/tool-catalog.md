@@ -494,6 +494,56 @@ Moppo offers the Homebrew download cache by its path. Old formula versions are s
 | `~/Library/Caches/Homebrew` | Download | Folder name | Trash | Next `brew install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 <!-- rules:end homebrew -->
 
+## Desktop application caches
+
+These applications keep caches in a support folder with user data beside them.
+Moppo offers only the listed cache paths. Moppo locks the rest of the folder as one row.
+Every Electron application also gets its Chromium caches offered. The rules here cover layouts that the Electron rule does not describe.
+
+<!-- rules:begin application-caches -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Application Support/Google/Chrome` | User data | Bundle identifier `com.google.Chrome` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/OptGuideOnDeviceModel` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/OptGuideOnDeviceClassifierModel` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/optimization_guide_model_store` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/component_crx_cache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/SODA` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/SODALanguagePacks` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/screen_ai` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/WasmTtsEngine` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/GrShaderCache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/ShaderCache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/Crashpad` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/Default/Code Cache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/Default/GPUCache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/Profile */Code Cache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Google/Chrome/Profile */GPUCache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code` | User data | Bundle identifier `com.microsoft.VSCode` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedData` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedExtensions` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedExtensionVSIXs` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedProfilesData` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedConfigurations` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Figma` | User data | Bundle identifier `com.figma.Desktop` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Figma/DesktopProfile/*/Cache` | Cache | Figma layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Figma/DesktopProfile/*/Code Cache` | Cache | Figma layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Figma/DesktopProfile/*/GPUCache` | Cache | Figma layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Figma/DesktopProfile/*/Crashpad` | Cache | Figma layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Ferdium` | User data | Bundle identifier `org.ferdium.ferdium-app` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Ferdium/Partitions/*/Cache` | Cache | Ferdium layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Ferdium/Partitions/*/Code Cache` | Cache | Ferdium layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Ferdium/Partitions/*/GPUCache` | Cache | Ferdium layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/TorBrowser-Data` | User data | Bundle identifier `org.torproject.torbrowser` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/TorBrowser-Data/Browser/Caches` | Cache | Tor Browser layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+
+Nothing under `Service Worker` is a row. `Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. Removal of the caches with a live registration leaves Chrome pointing at resources that are gone. `Shared Dictionary` is withheld too. A running Chrome holds its index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.
+VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder.
+Figma keeps one Chromium profile for each desktop engine version. Old engine caches often hold most of the folder. The files beside them and the bundled agents are installation and user state.
+Ferdium has normal Electron caches at the root and a Chromium partition for each configured messaging service. Recipes, configuration, cookies, and sessions remain protected.
+Tor Browser separates disposable browser caches from the profile and the Tor keys. The whole profile root is never a cache.
+<!-- rules:end application-caches -->
+
 ## Application data folders with other names
 
 These applications keep data in folders that do not match their name or bundle identifier.
@@ -502,20 +552,11 @@ Moppo shows each folder with its application as user data, in App Uninstaller, a
 <!-- rules:begin application-data -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/Library/Application Support/anythingllm-desktop` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, AnythingLLM 1.19.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
-| `~/Library/Application Support/CherryStudio` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Cherry Studio 2.1.10, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
-| `~/.cherrystudio` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Cherry Studio 2.1.10, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
-| `~/Library/Application Support/StabilityMatrix` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Stability Matrix 2.16.5, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
 | `~/Library/Application Support/VoiceInk` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, VoiceInk 2.21, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
-| `~/Library/Application Support/t3code-v2` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, T3 Code 0.1.6, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
 | `~/Library/Application Support/superwhisper` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Superwhisper 3.1.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
 | `~/superwhisper` | User data | `settings/settings.json` and `modes` | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Superwhisper 3.1.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
 
-AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.
-Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.
-Stability Matrix 2.16.5, team 78LBV9V26G. The folder holds `global.json` and the logs.
 VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder.
-T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.
 Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings.
 <!-- rules:end application-data -->
 

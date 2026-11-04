@@ -1,0 +1,26 @@
+{
+  "id": "keras",
+  "name": "Keras",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "keras",
+    "rawValue": "Keras"
+  },
+  "owner": {
+    "case": "keras",
+    "name": "Keras"
+  },
+  "removalRules": "One row for each model or dataset. Other folders in `~/.keras` stay in Hidden & System Data. Moppo never offers `keras.json`.",
+  "storage": [
+    {
+      "path": "~/.keras/models",
+      "type": "download",
+      "coverage": "protected"
+    },
+    {
+      "path": "~/.keras/datasets",
+      "type": "download",
+      "coverage": "protected"
+    }
+  ]
+}

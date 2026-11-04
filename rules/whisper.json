@@ -1,0 +1,21 @@
+{
+  "id": "whisper",
+  "name": "Whisper",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "whisper",
+    "rawValue": "Whisper"
+  },
+  "owner": {
+    "case": "whisper",
+    "name": "Whisper"
+  },
+  "removalRules": "One row for each model file.",
+  "storage": [
+    {
+      "path": "~/.cache/whisper/*.pt",
+      "type": "download",
+      "coverage": "protected"
+    }
+  ]
+}

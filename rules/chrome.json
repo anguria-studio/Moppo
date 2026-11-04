@@ -1,0 +1,188 @@
+{
+  "id": "chrome",
+  "name": "Google Chrome",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "com.google.Chrome"
+  ],
+  "note": "Nothing under `Service Worker` is a row. `Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. Removal of the caches with a live registration leaves Chrome pointing at resources that are gone. `Shared Dictionary` is withheld too. A running Chrome holds its index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Google/Chrome",
+      "type": "userData",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Chrome profiles and settings",
+      "recognition": "Bundle identifier `com.google.Chrome`",
+      "removal": "Never offer whole. Moppo offers the caches below it.",
+      "restore": "Not possible",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/OptGuideOnDeviceModel",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/OptGuideOnDeviceClassifierModel",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/optimization_guide_model_store",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/component_crx_cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/SODA",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/SODALanguagePacks",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/screen_ai",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/WasmTtsEngine",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/GrShaderCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/ShaderCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Crashpad",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Default/Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Default/GPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Profile */Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Profile */GPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}
