@@ -443,6 +443,9 @@ public struct AppUninstallPlanner: Sendable {
             )
         }
 
+        let bundleIDs = scope == .exactIdentifier
+            ? [bundleIdentifier]
+            : ownership?[applicationURL.path] ?? Self.allBundleIdentifiers(in: applicationURL, fileManager: fm)
         // Under an Apple identifier only the application's own name is matched.
         // The prefix rule below is sound for a vendor, who owns everything under
         // their reverse-DNS name; nobody but the system owns `com.apple.`, and what
@@ -451,16 +454,19 @@ public struct AppUninstallPlanner: Sendable {
             ? [bundleIdentifier]
             : Self.ownedBundleIdentifiers(
                 in: applicationURL, primary: bundleIdentifier, fileManager: fm,
-                knownIdentifiers: ownership?[applicationURL.path]
+                knownIdentifiers: bundleIDs
             )
-        let exclusiveIDs = try Self.exclusiveBundleIdentifiers(
-            candidates: candidateIDs,
+        // A launch file can name any bundle in the application, such as an updater
+        // that does not use the application identifier. See `LaunchItemFile`.
+        let exclusiveBundleIDs = try Self.exclusiveBundleIdentifiers(
+            candidates: candidateIDs.union(bundleIDs),
             selectedApplication: applicationURL,
             applicationRoots: applicationRoots,
             fileManager: fm,
             ownership: ownership,
             checkCancellation: Task.checkCancellation
         )
+        let exclusiveIDs = exclusiveBundleIDs.intersection(candidateIDs)
 
         var items: [AppUninstallPlan.Item] = [applicationItem]
         var preserved: [URL] = []
@@ -504,7 +510,11 @@ public struct AppUninstallPlanner: Sendable {
             }
         }
 
-        for candidate in candidates(for: exclusiveIDs) {
+        let launchItems = launchItemCandidates(
+            applicationURL: applicationURL, primary: bundleIdentifier,
+            exclusiveIdentifiers: exclusiveBundleIDs
+        )
+        for candidate in candidates(for: exclusiveIDs) + launchItems {
             try Task.checkCancellation()
             if let curatedRoot,
                ApplicationsScanner.overlaps(candidate.url.standardizedFileURL.path,
@@ -629,11 +639,7 @@ public struct AppUninstallPlanner: Sendable {
             for entry in Self.directoryNames(byHost) where Self.matchesByHostPreference(entry, id: id) {
                 append(byHost, entry, .preferences, .userData, owner: id)
             }
-            for directory in [
-                userLibrary.appendingPathComponent("LaunchAgents", isDirectory: true),
-                systemLibrary.appendingPathComponent("LaunchAgents", isDirectory: true),
-                systemLibrary.appendingPathComponent("LaunchDaemons", isDirectory: true),
-            ] {
+            for directory in launchItemDirectories {
                 let filename = "\(id).plist"
                 if Self.directoryNames(directory).contains(filename) {
                     append(directory, filename, .helpers, .appComponent, owner: id)
@@ -641,6 +647,41 @@ public struct AppUninstallPlanner: Sendable {
             }
         }
         return result
+    }
+
+    var launchItemDirectories: [URL] {
+        [
+            userLibrary.appendingPathComponent("LaunchAgents", isDirectory: true),
+            systemLibrary.appendingPathComponent("LaunchAgents", isDirectory: true),
+            systemLibrary.appendingPathComponent("LaunchDaemons", isDirectory: true),
+        ]
+    }
+
+    /// Launch files whose name does not match a bundle identifier. See `LaunchItemFile`.
+    ///
+    /// A file belongs to the application when its program is in the application bundle.
+    /// It also belongs to the application when each identifier in `AssociatedBundleIdentifiers`
+    /// is a bundle in this application and in no other installed application.
+    /// A program in another installed application keeps the file with that application.
+    func launchItemCandidates(
+        applicationURL: URL, primary: String, exclusiveIdentifiers: Set<String>
+    ) -> [Candidate] {
+        LaunchItemFile.files(in: launchItemDirectories).compactMap { file in
+            let owner: String
+            if let program = file.program, Self.isInside(program, root: applicationURL) {
+                owner = primary
+            } else if file.installedApplication(in: applicationRoots) != nil {
+                return nil
+            } else if !file.associatedBundleIdentifiers.isEmpty,
+                      file.associatedBundleIdentifiers.isSubset(of: exclusiveIdentifiers) {
+                owner = file.associatedBundleIdentifiers.contains(primary)
+                    ? primary : file.associatedBundleIdentifiers.sorted()[0]
+            } else {
+                return nil
+            }
+            guard exclusiveIdentifiers.contains(owner) else { return nil }
+            return Candidate(url: file.url, category: .helpers, content: .appComponent, ownerBundleIdentifier: owner)
+        }
     }
 
     private func sharedGroupContainers(for bundleIdentifiers: Set<String>) -> [URL] {

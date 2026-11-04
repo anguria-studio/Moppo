@@ -28,8 +28,8 @@ struct OrphanedAppLeftoverPlannerTests {
         deinit { try? FileManager.default.removeItem(at: root) }
 
         @discardableResult
-        func application(_ name: String, identifier: String) throws -> URL {
-            let url = applications.appendingPathComponent("\(name).app", isDirectory: true)
+        func application(_ name: String, identifier: String, under root: URL? = nil) throws -> URL {
+            let url = (root ?? applications).appendingPathComponent("\(name).app", isDirectory: true)
             let contents = url.appendingPathComponent("Contents", isDirectory: true)
             try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
             let plist: [String: Any] = [
@@ -456,6 +456,64 @@ struct OrphanedAppLeftoverPlannerTests {
         let group = try #require(after.groups.first { $0.id == "com.vendor.gone" })
         #expect(Set(group.items.map(\.url)) == [preference, state],
                 "once established, its preferences are collected too")
+    }
+
+    /// The RustDesk layout from the rented Mac for #56, 3 November 2026, after RustDesk is removed.
+    @Test("an associated identifier in a launch file is evidence of a removed application")
+    func launchFilesOfRemovedApplication() async throws {
+        let sandbox = try Sandbox()
+        let perplexity = try sandbox.application("Perplexity", identifier: "ai.perplexity.macv3")
+        let program = perplexity.appendingPathComponent("Contents/MacOS/perplexityd")
+        try sandbox.writeAbsolute(program)
+        let agents = sandbox.systemLibrary.appendingPathComponent("LaunchAgents")
+        let server = try writeLaunchItem(
+            at: agents.appendingPathComponent("com.carriez.RustDesk_server.plist"),
+            program: sandbox.applications.appendingPathComponent("RustDesk.app/Contents/MacOS/RustDesk").path,
+            associated: "com.carriez.rustdesk"
+        )
+        let service = try writeLaunchItem(
+            at: sandbox.systemLibrary.appendingPathComponent("LaunchDaemons/com.carriez.RustDesk_service.plist"),
+            program: "/bin/sh", associated: "com.carriez.rustdesk"
+        )
+        // Each of these has an installed owner.
+        try writeLaunchItem(
+            at: agents.appendingPathComponent("ai.perplexity.helper.plist"), program: "/bin/sh",
+            associated: "ai.perplexity.macv3"
+        )
+        try writeLaunchItem(
+            at: agents.appendingPathComponent("com.vendor.gone.agent.plist"), program: program.path,
+            associated: "com.vendor.gone"
+        )
+
+        let plan = try await sandbox.planner().plan()
+
+        #expect(plan.groups.map(\.bundleIdentifier) == ["com.carriez.rustdesk"])
+        #expect(Set(plan.groups.flatMap(\.items).map(\.url)) == [server, service])
+        #expect(plan.groups.flatMap(\.items).allSatisfy { $0.content == .appComponent })
+    }
+
+    /// The Comet layout from the rented Mac for #56, 3 November 2026.
+    @Test("a launch file stays while the application with the bundle that it names is installed")
+    func launchFileOfInstalledUpdater() async throws {
+        let sandbox = try Sandbox()
+        let comet = try sandbox.application("Comet", identifier: "ai.perplexity.comet")
+        try sandbox.application(
+            "CometUpdater", identifier: "ai.perplexity.CometUpdater",
+            under: comet.appendingPathComponent("Contents/Frameworks/Comet Framework.framework/Versions/156.0.8078.130/Helpers")
+        )
+        let wake = try writeLaunchItem(
+            at: sandbox.home.appendingPathComponent("Library/LaunchAgents/ai.perplexity.CometUpdater.wake.plist"),
+            program: sandbox.home.appendingPathComponent(
+                "Library/Application Support/Perplexity/CometUpdater/Current/CometUpdater.app/Contents/MacOS/CometUpdater"
+            ).path,
+            associated: ["ai.perplexity.CometUpdater"]
+        )
+        #expect(try await sandbox.planner().plan().groups.isEmpty)
+
+        try FileManager.default.removeItem(at: comet)
+        let plan = try await sandbox.planner().plan()
+        #expect(plan.groups.map(\.bundleIdentifier) == ["ai.perplexity.CometUpdater"])
+        #expect(plan.groups.flatMap(\.items).map(\.url) == [wake])
     }
 
     @Test("the owner walk credits a helper to its installed parent")
