@@ -1,0 +1,21 @@
+{
+  "id": "ollama",
+  "name": "Ollama",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "ollama",
+    "rawValue": "Ollama"
+  },
+  "owner": {
+    "case": "ollama",
+    "name": "Ollama"
+  },
+  "removalRules": "Protected inventory. Moppo cannot verify complete model ownership or active models.",
+  "storage": [
+    {
+      "path": "~/.ollama",
+      "type": "download",
+      "coverage": "protected"
+    }
+  ]
+}

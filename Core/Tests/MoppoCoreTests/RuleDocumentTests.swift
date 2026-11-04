@@ -119,6 +119,10 @@ struct RuleDocumentTests {
         }
         for curation in ApplicationsScanner.curations.values {
             rules.append(Rule(path: "~/" + curation.root, treatment: .protect, table: "ApplicationsScanner.curations"))
+            for subpath in curation.regenerable {
+                rules.append(Rule(path: "~/" + curation.root + "/" + subpath, treatment: .offer,
+                                  table: "ApplicationsScanner.curations.regenerable"))
+            }
         }
         for cache in SystemCachesScanner.applicationSupportCaches {
             rules.append(Rule(path: "~/Library/Application Support/" + cache.components.joined(separator: "/"),
@@ -269,12 +273,11 @@ struct RuleDocumentTests {
 
     // MARK: - AI storage
 
-    @Test("each AI Tools default path is an AI storage root or a model store")
+    @Test("each AI Tools default path is an AI storage root, a model store, or an application data folder")
     func aiStoragePathsHaveRules() throws {
+        let tables: Set<String> = ["AIToolStorage.roots", "LocalModelStores", "ApplicationDataFolders.byBundleIdentifier"]
         for entry in try Self.aiStoragePaths() {
-            let covered = Self.rules(covering: entry.path).filter {
-                $0.table == "AIToolStorage.roots" || $0.table == "LocalModelStores"
-            }
+            let covered = Self.rules(covering: entry.path).filter { tables.contains($0.table) }
             #expect(!covered.isEmpty, "line \(entry.line): \(entry.tool) names \(entry.path), which no root claims")
         }
     }

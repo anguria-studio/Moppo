@@ -1,0 +1,86 @@
+{
+  "id": "opencode",
+  "name": "OpenCode",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "openCode",
+    "rawValue": "OpenCode",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "openCode",
+    "name": "OpenCode"
+  },
+  "bundleIdentifiers": [
+    "ai.opencode.desktop"
+  ],
+  "removalRules": "Protected inventory. The session database, snapshots, logs, and settings stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "OpenCode 2.2.5",
+    "macos": "27.2"
+  },
+  "storage": [
+    {
+      "path": "~/.local/share/opencode",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenCode data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Local data",
+        "summary": "Session database, snapshots, and logs."
+      },
+      "explanation": "OpenCode keeps its session database and other data here. Moppo keeps all files protected, including unknown files."
+    },
+    {
+      "path": "~/.local/share/opencode/snapshot",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenCode snapshots",
+      "explanation": "OpenCode can use snapshots to undo file changes. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.local/share/opencode/log",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenCode logs",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.local/state/opencode",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenCode state",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "State",
+        "summary": "Files that OpenCode uses while it runs."
+      },
+      "explanation": "OpenCode uses these files while it runs. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.config/opencode",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenCode settings",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Settings",
+        "summary": "Settings and service files."
+      },
+      "explanation": "Settings can contain provider keys. Moppo keeps these files protected."
+    }
+  ]
+}

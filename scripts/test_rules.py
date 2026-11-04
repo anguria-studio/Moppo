@@ -137,6 +137,89 @@ class TableTests(unittest.TestCase):
             RULES.validate(sections, {"dbeaver": {**app, "storage": [storage(table=None, owner=None, treatment=None, coverage="no", applicationData=True)]}})
 
 
+class AITableTests(unittest.TestCase):
+    SECTIONS = {
+        "ai-tools": {"title": "Current coverage", "document": "docs/ai-storage.md", "format": "aiCoverage", "tools": ["claude-desktop", "claude-code"]},
+        "ai-identifiers": {"title": "Identifiers", "document": "docs/ai-storage.md", "format": "bundleIdentifiers", "tools": ["claude-desktop"]},
+    }
+
+    def tools(self):
+        root = {"path": "~/Library/Application Support/Claude", "type": "userData", "table": "aiToolStorage", "owner": "aiTools",
+                "treatment": "protect", "name": "Claude desktop data", "curated": True, "remainderName": "Claude settings and data",
+                "electronCaches": True, "section": {"title": "Desktop data", "summary": "Desktop profiles and caches."}}
+        part = {"path": "~/Library/Application Support/Claude/vm_bundles/*/rootfs.img", "type": "userData", "table": "aiToolStorage",
+                "owner": "aiTools", "treatment": "protect", "name": "Claude VM system disk", "explanation": "Linux and tools."}
+        cache = {"path": "~/Library/Application Support/Claude/Partitions/*/Cache", "type": "cache", "table": "curations",
+                 "owner": "applications", "treatment": "offer"}
+        code = {"path": "~/.claude", "type": "userData", "table": "aiToolStorage", "owner": "aiTools", "treatment": "protect",
+                "name": "Claude Code data", "reviewsWorktrees": False, "explanation": "Protected.",
+                "section": {"title": "Task data", "summary": "Conversations."}}
+        return {
+            "claude-desktop": {"id": "claude-desktop", "name": "Claude", "documentName": "Claude desktop", "section": "ai-tools",
+                               "aiTool": {"case": "claude", "rawValue": "Claude"}, "owner": {"case": "claude", "name": "Claude"},
+                               "bundleIdentifiers": ["com.anthropic.claudefordesktop"], "removalRules": "Caches are selectable.",
+                               "verified": {"date": "2026-11-03", "kind": "found", "tool": "Claude 2.31", "macos": "27.2"},
+                               "storage": [root, part, cache]},
+            "claude-code": {"id": "claude-code", "name": "Claude Code", "section": "ai-tools",
+                            "aiTool": {"case": "claude", "rawValue": "Claude"}, "owner": {"case": "claudeCode", "name": "Claude Code"},
+                            "removalRules": "Everything stays protected.", "storage": [code]},
+        }
+
+    def test_roots_parts_curations_and_enums(self):
+        tools = self.tools()
+        RULES.validate(self.SECTIONS, tools)
+        swift = RULES.render_swift(self.SECTIONS, tools)
+        self.assertIn('Root(path: "Library/Application Support/Claude", name: "Claude desktop data", '
+                      'section: .init(owner: .claude, title: "Desktop data", summary: "Desktop profiles and caches."), '
+                      'curationIdentifier: "com.anthropic.claudefordesktop", parts: [\n'
+                      '            Part(path: "vm_bundles/*/rootfs.img", name: "Claude VM system disk", explanation: "Linux and tools.")\n'
+                      '        ]),', swift)
+        self.assertIn('Root(path: ".claude", name: "Claude Code data", section: .init(owner: .claudeCode, title: "Task data", '
+                      'summary: "Conversations."), explanation: "Protected.", reviewsWorktrees: false)', swift)
+        self.assertIn('"com.anthropic.claudefordesktop": AppDataCuration(root: "Library/Application Support/Claude", '
+                      'regenerable: electronRegenerable + ["Partitions/*/Cache"], remainderName: "Claude settings and data")', swift)
+        self.assertIn('        case claude = "Claude"\n', swift)
+        self.assertIn('        case claudeCode = "Claude Code"\n', swift)
+        self.assertIn('            case .claudeCode: .claude\n', swift)
+        self.assertIn('        .claude: "com.anthropic.claudefordesktop"', swift)
+        self.assertIn('paddedFallbacks: Set<FileEntry.AITool> = []', swift)
+
+    def test_a_curation_can_share_the_path_of_the_ai_root(self):
+        tools = self.tools()
+        tools["claude-code"]["bundleIdentifiers"] = ["com.anthropic.claudecode"]
+        tools["claude-code"]["storage"].append({"path": "~/.claude", "type": "userData", "table": "curations", "owner": "applications",
+                                                "treatment": "protect", "name": "Claude Code settings and data"})
+        RULES.validate(self.SECTIONS, tools)
+        swift = RULES.render_swift(self.SECTIONS, tools)
+        self.assertIn('"com.anthropic.claudecode": AppDataCuration(root: ".claude", regenerable: [], remainderName: "Claude Code settings and data")', swift)
+        self.assertEqual(RULES.rule_paths(tools["claude-code"], self.SECTIONS, tools), ["~/.claude"])
+        tools["claude-code"]["storage"].append({"path": "~/.claude", "type": "userData", "coverage": "protected"})
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(self.SECTIONS, tools)
+
+    def test_ai_documents(self):
+        tools = self.tools()
+        coverage = RULES.render_section("ai-tools", self.SECTIONS, tools)
+        self.assertIn("| Claude desktop | `~/Library/Application Support/Claude` | Caches are selectable. |", coverage)
+        self.assertIn("| Claude Code | `~/.claude` | Everything stays protected. |", coverage)
+        identifiers = RULES.render_section("ai-identifiers", self.SECTIONS, tools)
+        self.assertIn("| Claude 2.31 | `com.anthropic.claudefordesktop` |", identifiers)
+
+    def test_ai_rules_need_their_fields(self):
+        tools = self.tools()
+        del tools["claude-code"]["owner"]
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(self.SECTIONS, tools)
+        tools = self.tools()
+        del tools["claude-desktop"]["storage"][0]["section"]
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(self.SECTIONS, tools)
+        tools = self.tools()
+        tools["claude-code"]["aiTool"]["rawValue"] = "Other"
+        with self.assertRaises(RULES.RuleError):
+            RULES.render_swift(self.SECTIONS, tools)
+
+
 class RenderingTests(unittest.TestCase):
     def test_row_text(self):
         section = RULES.render_section("databases", SECTIONS, {"mysql": tool()})

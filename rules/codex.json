@@ -1,0 +1,113 @@
+{
+  "id": "codex",
+  "name": "Codex",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "codex",
+    "rawValue": "Codex",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "codex",
+    "name": "Codex"
+  },
+  "removalRules": "Archived and inactive sessions require deletion review. Active sessions and other storage stay protected. Linked Git worktrees retain their review controls.",
+  "storage": [
+    {
+      "path": "~/.codex",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex task data",
+      "section": {
+        "title": "Task data",
+        "summary": "Settings, attachments, plugins, and worktrees."
+      }
+    },
+    {
+      "path": "~/.codex/sessions",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex sessions",
+      "explanation": "Saved conversations and task history. Use Codex to manage these files."
+    },
+    {
+      "path": "~/.codex/archived_sessions",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex archived sessions",
+      "explanation": "Archived conversations can contain task history. Use Codex to manage these files."
+    },
+    {
+      "path": "~/.codex/attachments",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex attachments",
+      "explanation": "Files attached to tasks. These files can be the only local copies."
+    },
+    {
+      "path": "~/.codex/generated_images",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex generated images",
+      "explanation": "Images created in tasks. These files can be the only local copies."
+    },
+    {
+      "path": "~/.codex/memories",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex memories",
+      "explanation": "Persistent memories and supporting files remain protected. Session deletion does not select this folder."
+    },
+    {
+      "path": "~/.codex/plugins",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex plugins",
+      "explanation": "Installed plugins and their files. Use Codex to manage plugins."
+    },
+    {
+      "path": "~/.codex/cache",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex other cache files",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.codex/.tmp",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex temporary files",
+      "explanation": "These files can belong to active tasks. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.cache/codex-runtimes",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex downloaded runtimes",
+      "section": {
+        "title": "Downloaded tools",
+        "summary": "Downloaded runtimes used to run tasks."
+      }
+    }
+  ]
+}

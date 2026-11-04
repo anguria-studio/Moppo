@@ -1,7 +1,27 @@
 {
   "id": "stability-matrix",
   "name": "Stability Matrix",
-  "section": "application-data",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "stabilityMatrix",
+    "rawValue": "StabilityMatrix",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "stabilityMatrix",
+    "name": "Stability Matrix"
+  },
+  "bundleIdentifiers": [
+    "ai.lykos.stabilitymatrix"
+  ],
+  "removalRules": "Protected inventory. Models, settings, and the database stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "Stability Matrix 2.16.5",
+    "macos": "27.2"
+  },
+  "note": "Stability Matrix 2.16.5 in portable mode keeps `Data` next to the application.",
   "storage": [
     {
       "path": "~/Library/Application Support/StabilityMatrix",
@@ -19,10 +39,33 @@
         "macos": "27.2"
       },
       "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    },
+    {
+      "path": "/Applications/Data",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Stability Matrix data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Portable data",
+        "summary": "Models, settings, and the Stability Matrix database."
+      },
+      "identifiedBy": [
+        ".sm-portable",
+        "StabilityMatrix.db"
+      ],
+      "explanation": "Stability Matrix keeps its portable data next to the application. Moppo keeps all files protected."
+    },
+    {
+      "path": "/Applications/Data/Models",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Stability Matrix models",
+      "explanation": "Models that the installed packages share. Use Stability Matrix to manage them."
     }
-  ],
-  "bundleIdentifiers": [
-    "ai.lykos.stabilitymatrix"
-  ],
-  "note": "Stability Matrix 2.16.5, team 78LBV9V26G. The folder holds `global.json` and the logs."
+  ]
 }

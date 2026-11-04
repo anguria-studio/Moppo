@@ -1,0 +1,26 @@
+{
+  "id": "pytorch",
+  "name": "PyTorch",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "pyTorch",
+    "rawValue": "PyTorch"
+  },
+  "owner": {
+    "case": "pyTorch",
+    "name": "PyTorch"
+  },
+  "removalRules": "One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs.",
+  "storage": [
+    {
+      "path": "~/.cache/torch/hub/checkpoints",
+      "type": "download",
+      "coverage": "protected"
+    },
+    {
+      "path": "~/.cache/torch/hub/<owner>_<repository>_<ref>",
+      "type": "download",
+      "coverage": "protected"
+    }
+  ]
+}

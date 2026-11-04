@@ -1,0 +1,57 @@
+{
+  "id": "openclaw",
+  "name": "OpenClaw",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "openClaw",
+    "rawValue": "OpenClaw"
+  },
+  "owner": {
+    "case": "openClaw",
+    "name": "OpenClaw"
+  },
+  "removalRules": "Protected inventory. Agent sessions, the workspace, state databases, and settings stay protected.",
+  "storage": [
+    {
+      "path": "~/.openclaw",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenClaw data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Local data",
+        "summary": "Agent sessions, workspace files, state, and settings."
+      },
+      "explanation": "OpenClaw keeps agent data and settings here. Moppo keeps all files protected, including unknown files."
+    },
+    {
+      "path": "~/.openclaw/agents",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenClaw agent sessions",
+      "explanation": "Agent settings and saved sessions. Use OpenClaw to manage them."
+    },
+    {
+      "path": "~/.openclaw/workspace",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenClaw workspace",
+      "explanation": "Workspace files and their Git history can be the only copies. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.openclaw/state",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "OpenClaw state",
+      "explanation": "OpenClaw uses these databases while it runs. Moppo keeps them protected."
+    }
+  ]
+}

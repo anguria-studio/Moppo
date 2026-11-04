@@ -184,15 +184,22 @@
       "homebrew"
     ]
   },
+  "application-caches": {
+    "title": "Desktop application caches",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "chrome",
+      "vscode",
+      "figma",
+      "ferdium",
+      "tor-browser"
+    ]
+  },
   "application-data": {
     "title": "Application data folders with other names",
     "document": "docs/tool-catalog.md",
     "tools": [
-      "anythingllm",
-      "cherry-studio",
-      "stability-matrix",
       "voiceink",
-      "t3-code",
       "superwhisper"
     ]
   },
@@ -220,6 +227,55 @@
       "ai-coustics",
       "vagrant",
       "terraform"
+    ]
+  },
+  "ai-tools": {
+    "title": "Current coverage",
+    "document": "docs/ai-storage.md",
+    "format": "aiCoverage",
+    "tools": [
+      "codex",
+      "chatgpt",
+      "claude-code",
+      "claude-desktop",
+      "cursor",
+      "grok-bot",
+      "t3-code",
+      "ollama",
+      "hugging-face",
+      "lm-studio",
+      "pytorch",
+      "whisper",
+      "keras",
+      "gpt4all",
+      "gemini",
+      "antigravity",
+      "copilot",
+      "opencode",
+      "goose",
+      "openclaw",
+      "kiro",
+      "devin",
+      "anythingllm",
+      "cherry-studio",
+      "comfy",
+      "stability-matrix"
+    ]
+  },
+  "ai-identifiers": {
+    "title": "Bundle identifiers",
+    "document": "docs/ai-storage.md",
+    "format": "bundleIdentifiers",
+    "tools": [
+      "t3-code",
+      "opencode",
+      "goose",
+      "kiro",
+      "devin",
+      "anythingllm",
+      "cherry-studio",
+      "comfy",
+      "stability-matrix"
     ]
   }
 }

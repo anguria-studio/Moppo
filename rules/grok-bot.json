@@ -1,0 +1,105 @@
+{
+  "id": "grok-bot",
+  "name": "Grok Bot",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "grokBot",
+    "rawValue": "GrokBot"
+  },
+  "owner": {
+    "case": "grokBot",
+    "name": "Grok Bot"
+  },
+  "bundleIdentifiers": [
+    "com.anysphere.sand"
+  ],
+  "removalRules": "Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected.",
+  "storage": [
+    {
+      "path": "~/.grokbot",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Grok Bot local computer data",
+      "section": {
+        "title": "Local computer data",
+        "summary": "Credentials, settings, and files prepared for upload."
+      },
+      "explanation": "Local computer credentials, settings, and staged attachments remain protected. Use Grok Bot to manage these files."
+    },
+    {
+      "path": "~/.grokbot/attachment-staging",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Grok Bot staged attachments",
+      "explanation": "Files prepared for upload can be the only local copies. Moppo keeps this folder protected."
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/Partitions/*/Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/Partitions/*/Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/Partitions/*/GPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/Partitions/*/DawnWebGPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/Partitions/*/DawnGraphiteCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/Partitions/*/DawnCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot/v8-code-cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer"
+    },
+    {
+      "path": "~/Library/Application Support/Grok Bot",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Grok Bot desktop data",
+      "curated": true,
+      "remainderName": "Grok Bot settings and data",
+      "electronCaches": true,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Desktop profiles, settings, and caches."
+      }
+    }
+  ]
+}

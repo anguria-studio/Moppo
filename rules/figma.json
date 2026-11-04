@@ -1,0 +1,67 @@
+{
+  "id": "figma",
+  "name": "Figma",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "com.figma.Desktop"
+  ],
+  "note": "Figma keeps one Chromium profile for each desktop engine version. Old engine caches often hold most of the folder. The files beside them and the bundled agents are installation and user state.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Figma",
+      "type": "userData",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Figma settings and data",
+      "recognition": "Bundle identifier `com.figma.Desktop`",
+      "removal": "Never offer whole. Moppo offers the caches below it.",
+      "restore": "Not possible",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Figma/DesktopProfile/*/Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Figma layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Figma/DesktopProfile/*/Code Cache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Figma layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Figma/DesktopProfile/*/GPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Figma layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Figma/DesktopProfile/*/Crashpad",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Figma layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

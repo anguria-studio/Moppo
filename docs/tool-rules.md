@@ -33,8 +33,21 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 | `name` | The tool name. The row explanation uses it. |
 | `section` | A section from `sections.json`. |
 | `note` | Optional. A sentence under the section table. |
-| `bundleIdentifiers` | The bundle identifiers of the desktop application. Needed for an application data folder. |
+| `bundleIdentifiers` | The bundle identifiers of the desktop application. Needed for an application data folder, a curation, and the tool icon. |
+| `aiTool` | For an AI tool. The `case` and `rawValue` of `FileEntry.AITool`, and `paddedIcon` when the bundled icon includes the padding of an application icon. Tool files can share one. |
+| `owner` | For an AI tool. The `case` and `name` of the heading in Cleanup. |
+| `documentName` | Optional. The name in the AI coverage table when it differs from `name`. |
+| `removalRules` | For an AI tool. The removal rules cell of the AI coverage table. |
+| `verified` | Optional. The observed version of the tool, for the bundle identifier table. |
 | `storage` | One entry for each path. |
+
+## Sections
+
+`sections.json` gives each section a `title`, a `document`, an optional `format`, and its `tools` in order.
+The `catalog` format, the default, writes the seven-column table of `docs/tool-catalog.md`.
+The `aiCoverage` format writes one row for each tool: its document name, its rule paths, and its removal rules.
+The `bundleIdentifiers` format writes the observed version of each tool with its first bundle identifier.
+A tool in an `aiCoverage` section needs no catalog cells.
 
 ## Storage fields
 
@@ -48,6 +61,10 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 | `name` | With `table`. The row name in Moppo. |
 | `check` | A check in Swift code that the rule needs, such as `goModuleCache`. |
 | `applicationData` | `true` when the path is also an application data folder of the tool. |
+| `section` | For an AI tool root. The `title` and `summary` of its storage section in Cleanup. |
+| `curated` | For an AI tool root. `true` when the desktop application curation applies, with its `remainderName`. |
+| `electronCaches` | For a curation root. `true` when Moppo also offers the Chromium caches at the top of the folder. |
+| `reviewsWorktrees` | For an AI tool root. `false` when Git worktree review does not run inside it. |
 | `coverage` | Without `table`. The `Moppo today` value: `row`, `protected`, `caches`, `hidden`, `size`, `no`, or a ticket number. |
 | `identifiedBy` | Paths in the folder that identify the tool. One is sufficient. A glob component matches any child. A final `/` requires a folder. For a cache in a home folder, the one item that identifies its layout. |
 | `layout` | For a protected home folder or location. Items that must all exist before Moppo offers a cache in it. |
@@ -81,6 +98,11 @@ A row without a rule shows its `coverage`.
 | `toolHomeLocations` | `ToolHomeFolders.locations` | Protected tool storage outside the listed folders, with the items that identify it. |
 | `packageManagerCaches` | `PackageManagerScanner.roots` | Package caches that Moppo offers by their path. The rule with `"check": "goModuleCache"` is the Go module cache. |
 | `applicationDataFolders` | `ApplicationDataFolders.byBundleIdentifier` | Data folders that use another name than their application. The tool needs `bundleIdentifiers`. |
+| `aiToolStorage` | `AIToolStorage.roots` | Protected AI tool storage. A rule below a root is one of its parts. The tool needs `owner` and `aiTool`. |
+| `curations` | `ApplicationsScanner.curations` | A support folder with caches beside user data. The protected root locks the remainder. An offered path below it is a regenerable cache. |
+
+A curated AI root, with `"curated": true` and a `remainderName`, is also a curation. Its curation caches sit below it.
+The generator also writes `FileEntry.AITool`, `AIStorageSection.Owner`, and `ToolIcons` from the `aiTool` and `owner` fields of the tool files.
 
 A rule in another table can also set `"applicationData": true`.
 The generator then adds its path to `ApplicationDataFolders.byBundleIdentifier` under the tool's `bundleIdentifiers`.
