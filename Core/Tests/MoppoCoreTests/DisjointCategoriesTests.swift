@@ -123,6 +123,29 @@ struct DisjointCategoriesTests {
         #expect(ToolHomeFolders.names.isDisjoint(with: skipped))
     }
 
+    /// Hidden Data shows each tool location as one locked row. A location inside or around a path
+    /// that another rule lists would count the same bytes twice.
+    @Test("no tool location overlaps a folder that another rule lists")
+    func toolLocationsAreDisjoint() {
+        let locations = ToolHomeFolders.locations.filter { $0.base == .home }.map(\.path)
+        let others = AIToolStorage.roots.filter { $0.base == .home }.map(\.path)
+            + PackageManagerScanner.roots.map { $0.components.joined(separator: "/") }
+            + DatabaseStorage.roots.filter { $0.base == .home }.map(\.path)
+            + ToolHomeFolders.all.map(\.name)
+            + Array(LocalModelStores.homeDotFolders) + Array(EditorExtensionStores.homeDotFolders)
+        for location in locations {
+            let first = String(location.split(separator: "/")[0])
+            #expect(!first.hasPrefix(".") || HiddenDataScanner.dotDirectorySkipList.contains(first),
+                    "Hidden Data lists \(first) whole, which includes \(location)")
+            for other in others {
+                // A glob component can match any child, so compare the folder above it.
+                let literal = other.split(separator: "/").prefix { !$0.contains(where: { "*?[".contains($0) }) }
+                    .joined(separator: "/")
+                #expect(!ApplicationsScanner.overlaps(location, literal), "\(location) overlaps \(other)")
+            }
+        }
+    }
+
     /// System Caches lists the children of `~/.cache`, and Hidden Data lists home dot-folders.
     /// Each lists a partly claimed folder child by child, so the folder must be one of those
     /// rows, and no whole claim may cover it.

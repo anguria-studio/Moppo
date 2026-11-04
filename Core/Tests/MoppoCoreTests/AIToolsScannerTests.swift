@@ -176,6 +176,9 @@ struct AIToolsScannerTests {
 
     /// File and folder names come from the #216 layouts on 3 November 2026. Contents are placeholders.
     private static let inventoryLayout: [(root: String, owner: AIStorageSection.Owner, files: [String], children: [String])] = [
+        (".local/share/claude", .claudeCode, ["versions/2.1.316", "versions/2.1.317"], []),
+        (".local/share/cursor-agent", .cursor, ["versions/2026.10.22-27dcf5f/index.js",
+            "versions/2026.10.22-27dcf5f/node_modules/sqlite3/package.json"], []),
         (".copilot", .copilot, ["session-state/8758cd1f/events.jsonl", "installed-plugins/plugin/plugin.json",
             "logs/process-1.log", "session-store.db", "config.json"], ["Copilot sessions", "Copilot plugins", "Copilot logs"]),
         (".local/share/opencode", .openCode, ["opencode.db", "snapshot/global/aec7d851/HEAD", "log/opencode.log"],
@@ -254,17 +257,19 @@ struct AIToolsScannerTests {
         #expect(hidden.entries.map(\.displayName) == [".config/gh"])
     }
 
-    @Test("Folder names alone do not identify Comfy Desktop or Stability Matrix storage")
+    @Test("Folder names alone do not identify Comfy Desktop, Stability Matrix, or installer storage")
     func unidentifiedToolFolders() async throws {
         let sandbox = try Sandbox()
         let applications = sandbox.home.appendingPathComponent("Applications")
         for path in ["Applications/Data/StabilityMatrix.db", "ComfyUI-Installs/ComfyUI/ComfyUI/main.py",
-                     "ComfyUI-Shared/models/checkpoints/model.safetensors", "ComfyUI-Shared/output/image.png"] {
+                     "ComfyUI-Shared/models/checkpoints/model.safetensors", "ComfyUI-Shared/output/image.png",
+                     ".local/share/claude/notes.txt", ".local/share/cursor-agent/notes.txt"] {
             try sandbox.file(path, bytes: 8192)
         }
         let ai = try await AIToolsScanner(home: sandbox.home, applications: applications).scan(context: ScanContext())
         #expect(ai.entries.isEmpty)
-        #expect(!ai.claimedStoragePaths.contains { $0.hasPrefix(sandbox.home.path + "/ComfyUI") || $0.hasPrefix(applications.path) })
+        #expect(!ai.claimedStoragePaths.contains { $0.hasPrefix(sandbox.home.path + "/ComfyUI") || $0.hasPrefix(applications.path)
+            || $0.hasPrefix(sandbox.home.path + "/.local/share/c") })
     }
 
     @Test("AI attachments cannot enter the archive sweep when AI Tools is disabled",

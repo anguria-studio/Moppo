@@ -637,6 +637,12 @@ It offers a cache in such a folder only when the catalog verified a Trash move.
 The tool layout must also be present.
 A folder name alone is not evidence.
 
+`ToolHomeFolders.locations` lists tool storage outside the folders that other rows show, such as folders in `~/.local`.
+Hidden & System Data shows each location with its size and its owner, at any size.
+A location gets a row only when an item from its layout exists.
+The same cache rules apply in these rows.
+AI tool storage, such as `~/.local/share/claude`, is in AI Tools.
+
 `RuleDocumentTests` compares the catalog rows and the AI storage paths with the Swift tables.
 When you change a rule, change its document row in the same pull request.
 

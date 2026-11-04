@@ -99,11 +99,10 @@ struct RuleDocumentTests {
                               table: "PackageManagerScanner.roots"))
         }
         rules.append(Rule(path: "~/go/pkg/mod", treatment: .offer, table: "PackageManagerScanner.scan"))
-        for folder in ToolHomeFolders.all {
-            rules.append(Rule(path: "~/" + folder.name, treatment: .protect, table: "ToolHomeFolders.all"))
+        for (path, folder, table) in toolHomeFolders {
+            rules.append(Rule(path: path, treatment: .protect, table: table))
             for cache in folder.caches {
-                rules.append(Rule(path: "~/" + folder.name + "/" + cache.path, treatment: .offer,
-                                  table: "ToolHomeFolders.caches"))
+                rules.append(Rule(path: path + "/" + cache.path, treatment: .offer, table: table + ".caches"))
             }
         }
         for root in DatabaseStorage.roots {
@@ -134,6 +133,13 @@ struct RuleDocumentTests {
         }
         return rules
     }()
+
+    /// The protected home folders and the tool storage locations, each with its path in the `~/` form.
+    private static let toolHomeFolders: [(path: String, folder: ToolHomeFolders.Folder, table: String)] =
+        ToolHomeFolders.all.map { ("~/" + $0.name, $0, "ToolHomeFolders.all") }
+        + ToolHomeFolders.locations.map {
+            (($0.base == .home ? "~/" : "/Users/Shared/") + $0.path, $0.folder, "ToolHomeFolders.locations")
+        }
 
     /// The folders that the model readers claim or read. Model rows need review, so they count as protected here.
     private static let modelStorePaths: [String] =
@@ -181,6 +187,14 @@ struct RuleDocumentTests {
         get throws { try catalogRows().flatMap(\.paths).filter { !$0.hasPrefix("<project>") } }
     }
 
+    /// Every path that `docs/ai-storage.md` names, in a table or in a sentence.
+    /// That document has priority for AI storage, such as the ai-coustics models that a location protects.
+    private static var aiStorageMentions: [String] {
+        get throws {
+            try document("ai-storage.md").flatMap(codeSpans).filter { $0.hasPrefix("~/") || $0.hasPrefix("/") }
+        }
+    }
+
     // MARK: - The catalog
 
     @Test("the Moppo today column uses only the values that the Columns table defines")
@@ -223,21 +237,20 @@ struct RuleDocumentTests {
         }
     }
 
-    @Test("each protected home folder has a catalog row in it")
+    @Test("each protected home folder and tool storage location is in a document")
     func protectedHomeFoldersHaveRows() throws {
-        let paths = try Self.catalogPathsForComparison
-        for folder in ToolHomeFolders.all {
-            let path = "~/" + folder.name
-            #expect(paths.contains { Self.covers(path, $0) }, "no catalog row names \(path) or a path in it")
+        let paths = try Self.catalogPathsForComparison + Self.aiStorageMentions
+        for (path, _, _) in Self.toolHomeFolders {
+            #expect(paths.contains { Self.covers(path, $0) }, "no document names \(path) or a path in it")
         }
     }
 
     @Test("each verified cache in a protected home folder is a Row")
     func homeFolderCachesAreRows() throws {
         let rows = try Self.catalogRows()
-        for folder in ToolHomeFolders.all {
+        for (folderPath, folder, _) in Self.toolHomeFolders {
             for cache in folder.caches {
-                let path = "~/" + folder.name + "/" + cache.path
+                let path = folderPath + "/" + cache.path
                 let row = rows.first { $0.paths.contains { Self.same($0, path) } }
                 #expect(row?.today == "Row", "\(path) is \(row?.today ?? "not in the catalog")")
             }
