@@ -1,0 +1,50 @@
+{
+  "id": "nuget",
+  "name": "NuGet",
+  "section": "dotnet",
+  "storage": [
+    {
+      "path": "~/.local/share/NuGet",
+      "type": "cache",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "NuGet keeps its HTTP cache here. Use dotnet nuget locals http-cache --clear to remove the cache.",
+      "recognition": "`http-cache` or `Migrations` folder",
+      "removal": "Never offer. Use `dotnet nuget locals http-cache --clear`.",
+      "restore": "Next restore",
+      "status": "Not verified. #350 checked the protection on the test Mac. No test removed the folder.",
+      "name": "NuGet data",
+      "identifiedBy": [
+        "http-cache",
+        "Migrations"
+      ]
+    },
+    {
+      "path": "~/.nuget/packages",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`dotnet nuget locals global-packages --list`",
+      "removal": "Trash",
+      "restore": "Next restore. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": ".NET SDK 10.0.403"
+      }
+    },
+    {
+      "path": "~/.local/share/NuGet/http-cache",
+      "type": "cache",
+      "coverage": "protected",
+      "recognition": "`dotnet nuget locals http-cache --list`",
+      "removal": "`dotnet nuget locals http-cache --clear`",
+      "restore": "Next restore",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": ".NET SDK 10.0.403"
+      }
+    }
+  ]
+}

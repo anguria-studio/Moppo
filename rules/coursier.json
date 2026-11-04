@@ -1,0 +1,20 @@
+{
+  "id": "coursier",
+  "name": "Coursier",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/Library/Caches/Coursier",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next sbt run. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "sbt 2.0.12"
+      }
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "go": {
+    "title": "Go",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "go",
+      "gopls",
+      "golangci-lint",
+      "goenv"
+    ]
+  },
+  "rust": {
+    "title": "Rust",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "cargo",
+      "rustup",
+      "sccache"
+    ]
+  },
+  "php": {
+    "title": "PHP",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "composer",
+      "laravel",
+      "symfony",
+      "herd",
+      "valet"
+    ]
+  },
+  "perl": {
+    "title": "Perl",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "cpanm",
+      "perlbrew",
+      "plenv",
+      "carton"
+    ]
+  },
+  "python": {
+    "title": "Python",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "pyenv",
+      "conda",
+      "poetry",
+      "pipx",
+      "pre-commit"
+    ]
+  },
+  "ruby": {
+    "title": "Ruby",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "rubygems",
+      "rbenv",
+      "rvm",
+      "chruby",
+      "ruby-install",
+      "gnupg",
+      "bundler"
+    ]
+  },
+  "java": {
+    "title": "Java, Kotlin, and Scala",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "maven",
+      "gradle",
+      "sbt",
+      "coursier",
+      "sdkman",
+      "kotlin-native",
+      "jetbrains"
+    ]
+  },
+  "android": {
+    "title": "Android",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "android-sdk",
+      "android-tools",
+      "android-studio"
+    ]
+  },
+  "dotnet": {
+    "title": ".NET",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "nuget",
+      "dotnet"
+    ]
+  },
+  "elixir-haskell": {
+    "title": "Elixir, Erlang, and Haskell",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "mix",
+      "ghcup",
+      "cabal",
+      "stack"
+    ]
+  },
+  "version-managers": {
+    "title": "Version managers for more than one language",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "asdf",
+      "mise"
+    ]
+  },
+  "containers": {
+    "title": "Container and virtual machine tools",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "colima",
+      "lima",
+      "orbstack",
+      "podman"
+    ]
+  },
+  "credentials": {
+    "title": "Credentials and cloud tools",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "aws",
+      "azure",
+      "gcloud",
+      "gh",
+      "docker-cli",
+      "kubectl",
+      "ssh"
+    ]
+  },
+  "databases": {
+    "title": "Databases",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "postgresql",
+      "postgres-app",
+      "dbngin",
+      "mysql",
+      "mongodb",
+      "redis",
+      "opensearch",
+      "elasticsearch",
+      "homebrew-services",
+      "sqlite",
+      "dbeaver"
+    ]
+  },
+  "other": {
+    "title": "Other tool storage",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "ai-coustics"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "rubygems",
+  "name": "RubyGems",
+  "section": "ruby",
+  "storage": [
+    {
+      "path": "~/.local/share/gem",
+      "type": "installed",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "RubyGems user gems",
+      "identifiedBy": [
+        "ruby/*/specifications"
+      ],
+      "explanation": "RubyGems keeps the gems from gem install --user-install here. Use gem uninstall --user-install to remove a gem.",
+      "recognition": "`gem list`",
+      "removal": "`gem uninstall --user-install <gem>`",
+      "restore": "`gem install --user-install <gem>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "RubyGems 3.5.22"
+      }
+    },
+    {
+      "path": "~/.gem",
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "`gem list`",
+      "removal": "`gem uninstall <gem>`",
+      "restore": "`gem install <gem>`",
+      "status": "Not created by RubyGems 3.5.22"
+    }
+  ]
+}

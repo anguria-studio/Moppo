@@ -1,0 +1,20 @@
+{
+  "id": "bundler",
+  "name": "Bundler",
+  "section": "ruby",
+  "storage": [
+    {
+      "path": "<project>/vendor/bundle",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`Gemfile.lock` beside `vendor`, and `BUNDLE_PATH` in `.bundle/config`",
+      "removal": "Trash, only if Git does not track it",
+      "restore": "`bundle install`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Bundler 2.5.22"
+      }
+    }
+  ]
+}

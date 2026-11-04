@@ -1,0 +1,20 @@
+{
+  "id": "carton",
+  "name": "Carton",
+  "section": "perl",
+  "storage": [
+    {
+      "path": "<project>/local",
+      "type": "download",
+      "coverage": "no",
+      "recognition": "`cpanfile.snapshot` beside the folder",
+      "removal": "Trash, only if Git does not track it",
+      "restore": "`carton install`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Carton"
+      }
+    }
+  ]
+}

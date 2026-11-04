@@ -1,0 +1,53 @@
+{
+  "id": "sdkman",
+  "name": "SDKMAN",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/.sdkman",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "SDKMAN keeps the installed JVM tools here. Use sdk uninstall or sdk flush to remove them.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `sdk uninstall` or `sdk flush`.",
+      "restore": "`sdk install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.sdkman/candidates/<tool>/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`sdk list`",
+      "removal": "`sdk uninstall <tool> <version>`",
+      "restore": "`sdk install <tool> <version>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "jbang 0.143.0 through SDKMAN"
+      }
+    },
+    {
+      "path": "~/.sdkman/tmp",
+      "type": "cache",
+      "coverage": "protected",
+      "recognition": "SDKMAN layout",
+      "removal": "`sdk flush`",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2"
+      }
+    },
+    {
+      "path": "~/.sdkman/archives",
+      "type": "cache",
+      "coverage": "protected",
+      "recognition": "SDKMAN layout",
+      "removal": "`sdk flush`",
+      "restore": "Next install",
+      "status": "Not created in the 2026-11-02 test"
+    }
+  ]
+}

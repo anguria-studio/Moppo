@@ -1,0 +1,36 @@
+{
+  "id": "colima",
+  "name": "Colima",
+  "section": "containers",
+  "storage": [
+    {
+      "path": "~/.colima",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Colima keeps its virtual machines and container data disks here. Use colima delete after review.",
+      "recognition": "Colima installed",
+      "removal": "`colima delete` after review",
+      "restore": "Not possible for volumes after `colima delete --data`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Colima 0.10.3"
+      }
+    },
+    {
+      "path": "~/.colima/_lima/_disks/<profile>",
+      "type": "userData",
+      "coverage": "protected",
+      "recognition": "Colima layout",
+      "removal": "`colima delete --data` after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Colima 0.10.3"
+      }
+    }
+  ]
+}

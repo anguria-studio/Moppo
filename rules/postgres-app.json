@@ -1,0 +1,26 @@
+{
+  "id": "postgres-app",
+  "name": "Postgres.app",
+  "section": "databases",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Postgres/var-<version>",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Postgres.app data",
+      "identifiedBy": [
+        "PG_VERSION"
+      ],
+      "recognition": "Postgres.app installed and `PG_VERSION` file",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "Postgres.app 2.9.6 with PostgreSQL 18",
+        "macos": "27.2"
+      }
+    }
+  ]
+}

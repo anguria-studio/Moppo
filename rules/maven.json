@@ -1,0 +1,52 @@
+{
+  "id": "maven",
+  "name": "Maven",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/.m2",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Maven keeps downloads and settings here. settings.xml can contain repository passwords.",
+      "recognition": "Folder name",
+      "removal": "Never offer whole. Moppo offers `repository` for review.",
+      "restore": "Not possible for `settings.xml`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.m2/repository",
+      "type": "download",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "identifiedBy": [
+        ".meta"
+      ],
+      "caveat": "Maven downloads it again. Artifacts from mvn install do not come back.",
+      "recognition": "Maven layout",
+      "removal": "Trash",
+      "restore": "Next Maven build. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Maven 3.10.0"
+      },
+      "note": "Maven 3.10 writes `.meta` in its repository. An older layout gets no offer."
+    },
+    {
+      "path": "<project>/target",
+      "type": "build",
+      "coverage": "row",
+      "recognition": "`pom.xml` beside the folder",
+      "removal": "Trash",
+      "restore": "`mvn package`. It works without a network connection when the repository contains the dependencies.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Maven 3.10.0"
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "rbenv",
+  "name": "rbenv",
+  "section": "ruby",
+  "storage": [
+    {
+      "path": "~/.rbenv",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "rbenv keeps the installed Ruby versions here. Use rbenv uninstall to remove a version.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `rbenv uninstall` for a version.",
+      "restore": "`rbenv install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.rbenv/versions/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`rbenv versions`",
+      "removal": "`rbenv uninstall -f <version>`",
+      "restore": "`rbenv install <version>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Ruby 3.3.13 through rbenv"
+      }
+    }
+  ]
+}

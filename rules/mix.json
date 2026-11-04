@@ -1,0 +1,58 @@
+{
+  "id": "mix",
+  "name": "Mix",
+  "section": "elixir-haskell",
+  "storage": [
+    {
+      "path": "~/.mix",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Mix keeps installed archives, such as Hex, here.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `mix archive.uninstall`.",
+      "restore": "`mix local.hex --force`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "<project>/_build",
+      "type": "build",
+      "coverage": "#49",
+      "recognition": "`mix.exs` beside the folder",
+      "removal": "Trash",
+      "restore": "`mix compile`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Elixir 1.20.5"
+      }
+    },
+    {
+      "path": "<project>/deps",
+      "type": "download",
+      "coverage": "no",
+      "recognition": "`mix.lock` beside the folder",
+      "removal": "Trash",
+      "restore": "`mix deps.get`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Elixir 1.20.5"
+      }
+    },
+    {
+      "path": "~/.mix/archives",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "Mix layout",
+      "removal": "Never remove automatically",
+      "restore": "`mix local.hex --force`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Hex 2.6.0 with Elixir 1.20.5"
+      }
+    }
+  ]
+}

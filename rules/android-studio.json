@@ -1,0 +1,16 @@
+{
+  "id": "android-studio",
+  "name": "Android Studio",
+  "section": "android",
+  "storage": [
+    {
+      "path": "~/Library/Caches/Google/AndroidStudio<version>",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Older version than the installed IDE",
+      "removal": "Trash",
+      "restore": "Next IDE start",
+      "status": "Not verified. Android Studio needs the desktop session."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "gnupg",
+  "name": "GnuPG",
+  "section": "ruby",
+  "storage": [
+    {
+      "path": "~/.gnupg",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "GnuPG keeps your keys and settings here.",
+      "recognition": "GnuPG layout",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "macos": "27.2",
+        "tool": "GnuPG 2.5.24"
+      }
+    }
+  ]
+}

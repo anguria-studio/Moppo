@@ -64,6 +64,11 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Check writing
         run: vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs
+      # The generated Swift table and document tables must match rules/*.json.
+      - name: Check generated rule tables
+        run: |
+          python3 scripts/rules.py check
+          python3 -m unittest discover -s scripts -p 'test_rules.py'
 
   core-tests:
     name: Core tests
