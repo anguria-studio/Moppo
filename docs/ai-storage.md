@@ -18,9 +18,9 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | --- | --- | --- |
 | Codex | `~/.codex`, `~/.cache/codex-runtimes` | Archived and inactive sessions require deletion review. Active sessions and other storage stay protected. Linked Git worktrees retain their review controls. |
 | ChatGPT desktop | `~/Library/Application Support/Codex` | Verified Chromium caches are selectable. Profiles and other files stay protected. |
-| Claude Code | `~/.claude` | Conversations, memories, attachments, file history, and other files stay protected. Linked Git worktrees use the existing review controls. |
+| Claude Code | `~/.claude`, `~/.local/share/claude` | Conversations, memories, attachments, file history, installed versions, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
-| Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/Library/Application Support/Cursor` | CLI conversations and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
+| Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/.local/share/cursor-agent`, `~/Library/Application Support/Cursor` | CLI conversations, CLI versions, and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
 | T3 Code | `~/.t3`, `~/Library/Application Support/t3code-v2` | Application data, scratch projects, downloaded tools, caches, worktrees, desktop data, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
 | Gemini CLI, Antigravity | `~/.gemini`, `~/Library/Application Support/Antigravity` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
@@ -314,6 +314,13 @@ The rented Mac supplied these bundle identifiers. Headings use them to show the 
 
 If an application is absent, the heading uses the icon that the #216 checks took from its signed application.
 GitHub Copilot CLI and OpenClaw have no desktop application, so their headings use a generic icon.
+
+The native installers of Claude Code and Cursor CLI keep each installed version in a `versions` folder.
+AI Tools shows `~/.local/share/claude` and `~/.local/share/cursor-agent` as protected rows only when this folder exists.
+App Uninstaller for Cursor does not list `~/.local/share/cursor-agent`, because the Cursor CLI uses it without the application.
+
+Hidden & System Data shows `~/Library/Application Support/multimodal-models` as a protected row.
+It contains an ai-coustics audio model. The #216 checks did not identify the application that uses it.
 
 Moppo does not change these cache rows. The layouts do not show user data in them:
 

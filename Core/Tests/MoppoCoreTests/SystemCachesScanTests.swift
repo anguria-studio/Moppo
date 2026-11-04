@@ -162,6 +162,23 @@ struct SystemCachesScanTests {
         #expect(packages.safeToRemoveBytes == packages.totalBytes)
     }
 
+    /// cabal 3.16 keeps its package index in `~/.cache/cabal` (#323). A build fails without it until `cabal update` runs.
+    @Test("the cabal 3.16 package cache is a Package Manager row that needs review")
+    func cabalPackagesNeedReview() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.file(".cache/cabal/packages/hackage.haskell.org/01-index.tar", bytes: 3 * 1024 * 1024)
+        try sandbox.file(".cache/cabal/logs/build.log", bytes: 4096)
+
+        let system = try await sandbox.scanner().scan(context: ScanContext())
+        let packages = try await PackageManagerScanner(home: sandbox.home).scan(context: ScanContext())
+
+        #expect(system.entries.isEmpty)
+        let row = try #require(packages.entries.first)
+        #expect(packages.entries.count == 1 && row.displayName == "Cabal packages (XDG)")
+        #expect(row.url.lastPathComponent == "cabal" && !row.isRegenerable && row.safetyCaveat?.contains("cabal update") == true)
+        #expect(packages.safeToRemoveBytes == 0)
+    }
+
     @Test("an excluded child of ~/.cache is not listed, and the rest still is")
     func excludedChildIsSkipped() async throws {
         let sandbox = try Sandbox()
