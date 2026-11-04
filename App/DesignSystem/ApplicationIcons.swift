@@ -13,28 +13,8 @@ enum ApplicationIcons {
     }
 
     private static let cache = NSCache<NSString, NSImage>()
-    private static let identifiers: [FileEntry.AITool: String] = [
-        .chatGPT: "com.openai.codex",
-        .claude: "com.anthropic.claudefordesktop",
-        .cursor: "com.todesktop.230313mzl4w4u92",
-        .grokBot: "com.anysphere.sand",
-        .t3Code: "com.t3tools.t3code",
-        .antigravity: "com.google.antigravity",
-        .gpt4All: "gpt4all",
-        // The #216 rented Mac verified these identifiers on 3 November 2026.
-        .openCode: "ai.opencode.desktop",
-        .goose: "com.electron.goose",
-        .kiro: "dev.kiro.desktop",
-        .devin: "com.exafunction.windsurf",
-        .anythingLLM: "com.anythingllm",
-        .cherryStudio: "com.kangfenmao.CherryStudio",
-        .comfy: "com.todesktop.241012ess7yxs0e",
-        .stabilityMatrix: "ai.lykos.stabilitymatrix"
-    ]
-    /// Fallback icons that already include the padding of an application icon.
-    private static let paddedFallbacks: Set<FileEntry.AITool> = [
-        .codex, .t3Code, .gpt4All, .openCode, .goose, .kiro, .devin, .anythingLLM, .cherryStudio, .comfy, .stabilityMatrix
-    ]
+    private static let identifiers = ToolIcons.bundleIdentifiers
+    private static let paddedFallbacks = ToolIcons.paddedFallbacks
 
     static func icon(for url: URL) -> NSImage {
         if let cached = cache.object(forKey: url.path as NSString) { return cached }

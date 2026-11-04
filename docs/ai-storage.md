@@ -14,6 +14,7 @@ Exclusions and protected file patterns take priority over storage rules.
 Other categories do not offer paths owned by an enabled AI Tools scan.
 If you disable AI Tools, its home data and model stores remain outside generic cleanup scans.
 
+<!-- rules:begin ai-tools -->
 | Tool | Default paths | Removal rules |
 | --- | --- | --- |
 | Codex | `~/.codex`, `~/.cache/codex-runtimes` | Archived and inactive sessions require deletion review. Active sessions and other storage stay protected. Linked Git worktrees retain their review controls. |
@@ -21,9 +22,17 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Claude Code | `~/.claude`, `~/.local/share/claude` | Conversations, memories, attachments, file history, installed versions, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
 | Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/.local/share/cursor-agent`, `~/Library/Application Support/Cursor` | CLI conversations, CLI versions, and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
-| T3 Code | `~/.t3`, `~/Library/Application Support/t3code-v2` | Application data, scratch projects, downloaded tools, caches, worktrees, desktop data, and unknown files stay protected. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
-| Gemini CLI, Antigravity | `~/.gemini`, `~/Library/Application Support/Antigravity` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
+| T3 Code | `~/Library/Application Support/t3code-v2`, `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, desktop data, and unknown files stay protected. |
+| Ollama | `~/.ollama` | Protected inventory. Moppo cannot verify complete model ownership or active models. |
+| Hugging Face | `~/.cache/huggingface` | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
+| LM Studio | `~/.lmstudio`, `~/.cache/lm-studio` | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
+| PyTorch | `~/.cache/torch/hub/checkpoints`, `~/.cache/torch/hub/<owner>_<repository>_<ref>` | One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs. |
+| Whisper | `~/.cache/whisper/*.pt` | One row for each model file. |
+| Keras | `~/.keras/models`, `~/.keras/datasets` | One row for each model or dataset. Other folders in `~/.keras` stay in Hidden & System Data. Moppo never offers `keras.json`. |
+| GPT4All | `~/Library/Application Support/nomic.ai/GPT4All/*.gguf` | One row for each model file. Settings, chats, and LocalDocs databases stay outside removal targets. |
+| Gemini CLI | `~/.gemini` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
+| Antigravity | `~/Library/Application Support/Antigravity` | Protected inventory. The desktop support folder stays protected, including its cache folders. |
 | GitHub Copilot CLI | `~/.copilot` | Protected inventory. Sessions, plugins, logs, settings, and unknown files stay protected. |
 | OpenCode | `~/.local/share/opencode`, `~/.local/state/opencode`, `~/.config/opencode` | Protected inventory. The session database, snapshots, logs, and settings stay protected. |
 | Goose | `~/.local/share/goose`, `~/.local/state/goose`, `~/.config/goose` | Protected inventory. Sessions, the model catalog, request logs, sign-in data, and keys stay protected. |
@@ -31,15 +40,20 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Kiro | `~/.kiro`, `~/.kiro-shared` | Protected inventory. Sessions, logs, and shared state stay protected. |
 | Devin | `~/.codeium`, `~/.devin`, `~/.devin-shared`, `~/.local/share/devin`, `~/.config/devin` | Protected inventory. Memories, rules, conversations, CLI sessions, and settings stay protected. |
 | AnythingLLM | `~/Library/Application Support/anythingllm-desktop` | Protected inventory. Documents, vector data, models, engines, keys, and cache folders stay protected. |
-| Cherry Studio | `~/.cherrystudio`, `~/Library/Application Support/CherryStudio` | Protected inventory. Downloaded tools, the library, toolchains, credentials, and cache folders stay protected. |
+| Cherry Studio | `~/Library/Application Support/CherryStudio`, `~/.cherrystudio` | Protected inventory. Downloaded tools, the library, toolchains, credentials, and cache folders stay protected. |
 | Comfy Desktop | `~/ComfyUI-Installs`, `~/ComfyUI-Shared` | Protected inventory. Models, outputs, workflows, custom nodes, and Python environments stay protected. |
-| Stability Matrix | `/Applications/Data` | Protected inventory. Models, settings, and the database stay protected. |
-| Ollama | Default model store | Protected inventory. Moppo cannot verify complete model ownership or active models. |
-| Hugging Face, LM Studio | Existing default model stores | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
-| PyTorch Hub | `~/.cache/torch/hub/checkpoints`, `~/.cache/torch/hub/<owner>_<repository>_<ref>` | One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs. |
-| Whisper | `~/.cache/whisper/*.pt` | One row for each model file. |
-| Keras | `~/.keras/models`, `~/.keras/datasets` | One row for each model or dataset. Other folders in `~/.keras` stay in Hidden & System Data. Moppo never offers `keras.json`. |
-| GPT4All | `~/Library/Application Support/nomic.ai/GPT4All/*.gguf` | One row for each model file. Settings, chats, and LocalDocs databases stay outside removal targets. |
+| Stability Matrix | `~/Library/Application Support/StabilityMatrix`, `/Applications/Data` | Protected inventory. Models, settings, and the database stay protected. |
+
+The native installers keep each installed version in `versions`. `~/.local/bin` links to the active one.
+T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.
+Gemini CLI and Antigravity share `~/.gemini`. One root counts each byte once.
+Antigravity desktop 2.28.1 uses this identifier and support folder. The evidence does not verify its cache folders, so no path counts as regenerable.
+Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`.
+AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.
+Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.
+Comfy Desktop 1.1.8 made these folders. Its launcher folder and ComfyUI identify an installation.
+Stability Matrix 2.16.5 in portable mode keeps `Data` next to the application.
+<!-- rules:end ai-tools -->
 
 Cleanup groups related storage under application headings.
 Codex and ChatGPT have separate headings because their displayed storage has different owners.
@@ -300,6 +314,7 @@ These folders keep their existing Applications protection.
 
 The rented Mac supplied these bundle identifiers. Headings use them to show the application icon:
 
+<!-- rules:begin ai-identifiers -->
 | Tool | Bundle identifier |
 | --- | --- |
 | T3 Code (Beta) 0.1.6 | `com.t3tools.t3code` |
@@ -311,6 +326,14 @@ The rented Mac supplied these bundle identifiers. Headings use them to show the 
 | Cherry Studio 2.1.10 | `com.kangfenmao.CherryStudio` |
 | Comfy Desktop 1.1.8 | `com.todesktop.241012ess7yxs0e` |
 | Stability Matrix 2.16.5 | `ai.lykos.stabilitymatrix` |
+
+T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.
+Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`.
+AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.
+Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.
+Comfy Desktop 1.1.8 made these folders. Its launcher folder and ComfyUI identify an installation.
+Stability Matrix 2.16.5 in portable mode keeps `Data` next to the application.
+<!-- rules:end ai-identifiers -->
 
 If an application is absent, the heading uses the icon that the #216 checks took from its signed application.
 GitHub Copilot CLI and OpenClaw have no desktop application, so their headings use a generic icon.

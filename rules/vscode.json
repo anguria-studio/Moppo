@@ -1,0 +1,79 @@
+{
+  "id": "vscode",
+  "name": "Visual Studio Code",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "com.microsoft.VSCode"
+  ],
+  "note": "VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Code",
+      "type": "userData",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Visual Studio Code settings and data",
+      "electronCaches": true,
+      "recognition": "Bundle identifier `com.microsoft.VSCode`",
+      "removal": "Never offer whole. Moppo offers the caches below it.",
+      "restore": "Not possible",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Code/CachedData",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "VS Code layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Code/CachedExtensions",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "VS Code layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Code/CachedExtensionVSIXs",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "VS Code layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Code/CachedProfilesData",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "VS Code layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Application Support/Code/CachedConfigurations",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "VS Code layout",
+      "removal": "Trash",
+      "restore": "Next launch.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

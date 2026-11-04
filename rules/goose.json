@@ -1,0 +1,86 @@
+{
+  "id": "goose",
+  "name": "Goose",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "goose",
+    "rawValue": "Goose",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "goose",
+    "name": "Goose"
+  },
+  "bundleIdentifiers": [
+    "com.electron.goose"
+  ],
+  "removalRules": "Protected inventory. Sessions, the model catalog, request logs, sign-in data, and keys stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "Goose 1.57.0",
+    "macos": "27.2"
+  },
+  "storage": [
+    {
+      "path": "~/.local/share/goose",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Goose data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Local data",
+        "summary": "Sessions, apps, and the model catalog."
+      },
+      "explanation": "Goose keeps sessions and other data here. Moppo keeps all files protected, including unknown files."
+    },
+    {
+      "path": "~/.local/share/goose/sessions",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Goose sessions",
+      "explanation": "Saved sessions and task history. Use Goose to manage them."
+    },
+    {
+      "path": "~/.local/share/goose/model_catalog",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Goose model catalog",
+      "explanation": "Goose downloads this list of models. The evidence does not show that removal is safe."
+    },
+    {
+      "path": "~/.local/state/goose",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Goose logs",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Logs",
+        "summary": "Logs, including requests to models."
+      },
+      "explanation": "Logs can contain requests to models. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.config/goose",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Goose settings",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Settings",
+        "summary": "Settings, sign-in data, and local keys."
+      },
+      "explanation": "Settings, sign-in data, and local keys remain protected. Use Goose to manage them."
+    }
+  ]
+}

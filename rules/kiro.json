@@ -1,0 +1,72 @@
+{
+  "id": "kiro",
+  "name": "Kiro",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "kiro",
+    "rawValue": "Kiro",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "kiro",
+    "name": "Kiro"
+  },
+  "bundleIdentifiers": [
+    "dev.kiro.desktop"
+  ],
+  "removalRules": "Protected inventory. Sessions, logs, and shared state stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "Kiro 1.4.86",
+    "macos": "27.2"
+  },
+  "storage": [
+    {
+      "path": "~/.kiro",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Kiro data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Local data",
+        "summary": "Sessions, extensions, powers, and logs."
+      },
+      "explanation": "Kiro keeps sessions and settings here. Moppo keeps all files protected, including unknown files."
+    },
+    {
+      "path": "~/.kiro/sessions",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Kiro sessions",
+      "explanation": "Saved sessions and task history. Use Kiro to manage them."
+    },
+    {
+      "path": "~/.kiro/logs",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Kiro logs",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.kiro-shared",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Kiro shared state",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Shared state",
+        "summary": "State that Kiro windows share."
+      },
+      "explanation": "Kiro uses this state database. Moppo keeps it protected."
+    }
+  ]
+}

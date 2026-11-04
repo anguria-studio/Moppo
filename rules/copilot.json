@@ -1,0 +1,58 @@
+{
+  "id": "copilot",
+  "name": "GitHub Copilot",
+  "documentName": "GitHub Copilot CLI",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "copilot",
+    "rawValue": "Copilot"
+  },
+  "owner": {
+    "case": "copilot",
+    "name": "GitHub Copilot"
+  },
+  "removalRules": "Protected inventory. Sessions, plugins, logs, settings, and unknown files stay protected.",
+  "storage": [
+    {
+      "path": "~/.copilot",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "GitHub Copilot CLI data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "CLI data",
+        "summary": "Sessions, settings, plugins, and logs."
+      },
+      "explanation": "Copilot CLI keeps sessions, settings, and plugins here. Moppo keeps all files protected, including unknown files."
+    },
+    {
+      "path": "~/.copilot/session-state",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Copilot sessions",
+      "explanation": "Saved sessions, checkpoints, and file snapshots. Use Copilot CLI to manage them."
+    },
+    {
+      "path": "~/.copilot/installed-plugins",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Copilot plugins",
+      "explanation": "Installed plugins and their files. Use Copilot CLI to manage plugins."
+    },
+    {
+      "path": "~/.copilot/logs",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Copilot logs",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    }
+  ]
+}

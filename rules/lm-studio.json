@@ -1,0 +1,26 @@
+{
+  "id": "lm-studio",
+  "name": "LM Studio",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "lmStudio",
+    "rawValue": "LMStudio"
+  },
+  "owner": {
+    "case": "lmStudio",
+    "name": "LM Studio"
+  },
+  "removalRules": "Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected.",
+  "storage": [
+    {
+      "path": "~/.lmstudio",
+      "type": "download",
+      "coverage": "protected"
+    },
+    {
+      "path": "~/.cache/lm-studio",
+      "type": "download",
+      "coverage": "protected"
+    }
+  ]
+}

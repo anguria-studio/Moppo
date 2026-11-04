@@ -1,14 +1,41 @@
 {
   "id": "t3-code",
   "name": "T3 Code",
-  "section": "application-data",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "t3Code",
+    "rawValue": "T3Code",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "t3Code",
+    "name": "T3 Code"
+  },
+  "bundleIdentifiers": [
+    "com.t3tools.t3code"
+  ],
+  "removalRules": "Application data, scratch projects, downloaded tools, caches, worktrees, desktop data, and unknown files stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "T3 Code (Beta) 0.1.6",
+    "macos": "27.2"
+  },
+  "note": "T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.",
   "storage": [
     {
       "path": "~/Library/Application Support/t3code-v2",
       "type": "userData",
-      "table": "applicationDataFolders",
-      "owner": "applications",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
       "treatment": "protect",
+      "name": "T3 Code desktop data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Desktop profile, settings, and caches."
+      },
+      "explanation": "Moppo has not verified which T3 Code desktop files are safe to remove. All files remain protected, including cache folders.",
       "recognition": "Folder name",
       "removal": "App Uninstaller or Application Leftovers, after review",
       "restore": "Not possible",
@@ -18,11 +45,67 @@
         "tool": "T3 Code 0.1.6",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
+      "applicationData": true
+    },
+    {
+      "path": "~/.t3",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "T3 Code data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Local data",
+        "summary": "Application data, scratch projects, downloaded tools, caches, and worktrees remain protected."
+      },
+      "explanation": "T3 Code manages this storage. Moppo keeps all files protected, including unknown files and worktrees."
+    },
+    {
+      "path": "~/.t3/userdata",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "T3 Code application data",
+      "explanation": "Settings, credentials, attachments, browser files, logs, and unknown state remain protected. Use T3 Code to manage them."
+    },
+    {
+      "path": "~/.t3/scratch",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "T3 Code scratch projects",
+      "explanation": "Scratch projects can contain source files and dependencies. Moppo keeps the whole folder protected."
+    },
+    {
+      "path": "~/.t3/tools",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "T3 Code downloaded tools",
+      "explanation": "Installed tools can be required by T3 Code. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.t3/caches",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "T3 Code caches",
+      "explanation": "The folder name does not prove that removal is safe. Moppo keeps these files protected."
+    },
+    {
+      "path": "~/.t3/worktrees",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "T3 Code worktrees",
+      "explanation": "Worktrees can contain project files and local changes. Moppo keeps all T3 Code worktrees protected."
     }
-  ],
-  "bundleIdentifiers": [
-    "com.t3tools.t3code"
-  ],
-  "note": "T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it."
+  ]
 }

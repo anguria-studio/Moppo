@@ -1,14 +1,41 @@
 {
   "id": "cherry-studio",
   "name": "Cherry Studio",
-  "section": "application-data",
+  "section": "ai-tools",
+  "aiTool": {
+    "case": "cherryStudio",
+    "rawValue": "CherryStudio",
+    "paddedIcon": true
+  },
+  "owner": {
+    "case": "cherryStudio",
+    "name": "Cherry Studio"
+  },
+  "bundleIdentifiers": [
+    "com.kangfenmao.CherryStudio"
+  ],
+  "removalRules": "Protected inventory. Downloaded tools, the library, toolchains, credentials, and cache folders stay protected.",
+  "verified": {
+    "date": "2026-11-03",
+    "kind": "found",
+    "tool": "Cherry Studio 2.1.10",
+    "macos": "27.2"
+  },
+  "note": "Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.",
   "storage": [
     {
       "path": "~/Library/Application Support/CherryStudio",
       "type": "userData",
-      "table": "applicationDataFolders",
-      "owner": "applications",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
       "treatment": "protect",
+      "name": "Cherry Studio desktop data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Desktop data",
+        "summary": "Notes, agents, toolchains, credentials, and caches."
+      },
+      "explanation": "Moppo has not verified which Cherry Studio files are safe to remove. All files remain protected, including credentials and cache folders.",
       "recognition": "Folder name",
       "removal": "App Uninstaller or Application Leftovers, after review",
       "restore": "Not possible",
@@ -18,14 +45,22 @@
         "tool": "Cherry Studio 2.1.10",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
+      "applicationData": true
     },
     {
       "path": "~/.cherrystudio",
       "type": "userData",
-      "table": "applicationDataFolders",
-      "owner": "applications",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
       "treatment": "protect",
+      "name": "Cherry Studio data",
+      "reviewsWorktrees": false,
+      "section": {
+        "title": "Local data",
+        "summary": "Downloaded tools and settings."
+      },
+      "explanation": "Cherry Studio keeps downloaded tools and settings here. Moppo keeps all files protected.",
       "recognition": "Folder name",
       "removal": "App Uninstaller or Application Leftovers, after review",
       "restore": "Not possible",
@@ -35,11 +70,44 @@
         "tool": "Cherry Studio 2.1.10",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
+      "applicationData": true
+    },
+    {
+      "path": "~/.cherrystudio/bin",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cherry Studio installed tools",
+      "explanation": "Cherry Studio can require these tools. Moppo keeps them protected."
+    },
+    {
+      "path": "~/Library/Application Support/CherryStudio/Data",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cherry Studio library",
+      "explanation": "Notes, agents, skills, and the main database can be the only local copies."
+    },
+    {
+      "path": "~/Library/Application Support/CherryStudio/Toolchain",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cherry Studio toolchain",
+      "explanation": "Cherry Studio can require these downloaded tools. Moppo keeps them protected."
+    },
+    {
+      "path": "~/Library/Application Support/CherryStudio/Runtime",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Cherry Studio runtime data",
+      "explanation": "Cherry Studio uses this model and provider data. Moppo keeps it protected."
     }
-  ],
-  "bundleIdentifiers": [
-    "com.kangfenmao.CherryStudio"
-  ],
-  "note": "Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application."
+  ]
 }
