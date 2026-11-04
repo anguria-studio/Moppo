@@ -137,6 +137,28 @@ struct ToolCommandRemovalTests {
         #expect(FileManager.default.fileExists(atPath: later.cache.path))
     }
 
+    @Test("Stop during the measurement before a command keeps the command from running")
+    func cancellationBeforeCommand() async throws {
+        let fixture = try Fixture(script: "/usr/bin/touch \"$GOMODCACHE/../ran\"\n/bin/rm -rf -- \"$GOMODCACHE\"")
+        let many = fixture.cache.appendingPathComponent("cache/download/example.invalid")
+        for folder in 0..<200 {
+            let directory = many.appendingPathComponent("d\(folder)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for file in 0..<250 {
+                FileManager.default.createFile(atPath: directory.appendingPathComponent("f\(file)").path, contents: Data([0x61]))
+            }
+        }
+        let entry = fixture.entry()
+        let task = Task { try await fixture.remove(entry) }
+        try await Task.sleep(for: .milliseconds(20))
+        task.cancel()
+        let outcome = try await task.value
+        let marker = fixture.cache.deletingLastPathComponent().appendingPathComponent("ran")
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        #expect(FileManager.default.fileExists(atPath: fixture.cache.path))
+        #expect(outcome.toolCommandResults.map(\.status) == [.cancelled])
+    }
+
     @Test("Changed targets and executables cannot use an earlier confirmation", arguments: [true, false])
     func changedIdentity(target: Bool) async throws {
         let fixture = try Fixture()

@@ -30,7 +30,8 @@ struct CleanupOperationView: View {
                 detail: summary,
                 icon: .deletion(bytes: totalBytes),
                 onCancel: onCancel,
-                isCancelling: isCancelling
+                isCancelling: isCancelling,
+                cancellingTitle: PageProgressView.stoppingRemovalTitle
             )
         }
     }

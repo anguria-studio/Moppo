@@ -30,7 +30,9 @@ struct RemovalOperationSurface: View {
                         ActivityOverlay(
                             activity: activity,
                             onCancel: cancelCleanupOperation,
-                            isCancelling: model.cleanup.isInterruptingApplicationQuit || model.cleanup.isInterruptingRemoval
+                            isCancelling: model.cleanup.isInterruptingApplicationQuit || model.cleanup.isInterruptingRemoval,
+                            cancellingTitle: model.cleanup.isInterruptingRemoval
+                                ? PageProgressView.stoppingRemovalTitle : PageProgressView.stoppingWaitTitle
                         )
                             // Keep operation controls active above the disabled page.
                             .environment(\.isEnabled, true)
@@ -74,13 +76,14 @@ struct ActivityOverlay: View {
     let activity: AppModel.Activity
     var onCancel: (() -> Void)? = nil
     var isCancelling = false
+    var cancellingTitle = PageProgressView.stoppingWaitTitle
 
     var body: some View {
         ZStack {
             Token.pageBackground
             PageProgressView(
                 title: activity.title, detail: activity.detail, icon: activity.progressIcon,
-                onCancel: onCancel, isCancelling: isCancelling
+                onCancel: onCancel, isCancelling: isCancelling, cancellingTitle: cancellingTitle
             )
         }
         // The colour fill is what catches the clicks. Without a content shape the
