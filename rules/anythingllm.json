@@ -1,0 +1,28 @@
+{
+  "id": "anythingllm",
+  "name": "AnythingLLM",
+  "section": "application-data",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/anythingllm-desktop",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "AnythingLLM 1.19.0",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    }
+  ],
+  "bundleIdentifiers": [
+    "com.anythingllm"
+  ],
+  "note": "AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`."
+}

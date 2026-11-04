@@ -1,0 +1,20 @@
+{
+  "id": "npm",
+  "name": "npm",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/.npm/_cacache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "npm cache",
+      "recognition": "npm layout",
+      "removal": "Trash",
+      "restore": "Next `npm install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder.",
+      "note": "`~/.npm/_logs` stays. It is small, and npm asks users to attach it to bug reports."
+    }
+  ]
+}

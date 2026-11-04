@@ -170,9 +170,17 @@ In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/
 | `~/miniconda3/pkgs`, `~/anaconda3/pkgs`, `~/miniforge3/pkgs` | Download | `conda info` | `conda clean --all` | Next install | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
 | `~/miniconda3/envs/<name>`, `~/anaconda3/envs/<name>`, `~/miniforge3/envs/<name>` | Installed | `conda env list` | `conda env remove --name <name>` after review | `conda env create` from an environment file | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
 | `~/Library/Caches/pypoetry/virtualenvs` | Installed | Poetry layout | Trash after review | `poetry install` with `poetry.lock` | No | Verified 2026-11-02, Poetry 2.5.1, macOS 27.2 |
+| `~/Library/Caches/pypoetry/cache` | Download | Poetry layout | Trash | Next `poetry install`. A network connection is necessary. | Row | Found 2026-11-02. Not verified. Moppo offered the row in the test. No test removed the folder. |
+| `~/Library/Caches/pypoetry/artifacts` | Download | Poetry layout | Trash | Next `poetry install`. A network connection is necessary. | Row | Found 2026-11-02. Not verified. Moppo offered the row in the test. No test removed the folder. |
 | `~/Library/Application Support/pipx/venvs` | Installed | `pipx list` | `pipx uninstall <package>` | `pipx install <package>` | No | Verified 2026-11-02, pipx 1.18.11, macOS 27.2 |
 | `~/Library/Logs/pipx` | Logs | Folder location | Trash after review | Not possible | Caches | Verified 2026-11-03, pipx 1.18.11, macOS 27.2 |
 | `~/.cache/pre-commit` | Cache | Folder location | `pre-commit clean` | Next hook run. A network connection is necessary. | Caches | Verified 2026-11-02, pre-commit 4.7.0, macOS 27.2 |
+| `~/Library/Caches/pip` | Download | Folder name | Trash | Next `pip install`. A network connection is necessary. | Row | Found 2026-11-02. Not verified. Moppo offered the row in the test. No test removed the folder. |
+| `~/.cache/uv` | Download | Folder name | Trash | Next `uv sync`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/pipenv` | Download | Folder name | Trash | Next `pipenv install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+
+Poetry keeps its downloads in `cache` and `artifacts`. The `virtualenvs` folder beside them holds project environments, which no rule offers.
+uv links or clones environments out of this cache, so they survive its removal. `uv cache clean` is the tool's own instruction.
 <!-- rules:end python -->
 
 pipx 1.18 uses `~/Library/Application Support/pipx` on macOS. The path `~/.local/pipx` is from older pipx versions.
@@ -202,6 +210,7 @@ Moppo has a row for the Bundler cache in `~/.bundle/cache`.
 | `~/.cache/ruby-install` | Cache | Folder location | Trash | Next `ruby-install` run | Caches | Verified 2026-11-03, ruby-install 0.10.2, macOS 27.2 |
 | `~/.gnupg` | User data | GnuPG layout | Never offer | Not possible | Protected | Found 2026-11-03, GnuPG 2.5.24, macOS 27.2 |
 | `<project>/vendor/bundle` | Download | `Gemfile.lock` beside `vendor`, and `BUNDLE_PATH` in `.bundle/config` | Trash, only if Git does not track it | `bundle install`. A network connection is necessary. | Row | Verified 2026-11-02, Bundler 2.5.22, macOS 27.2 |
+| `~/.bundle/cache` | Download | Folder name | Trash | Next `bundle install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 <!-- rules:end ruby -->
 
 RubyGems 3.5 writes `--user-install` gems to `~/.local/share/gem`, not to `~/.gem`.
@@ -225,6 +234,8 @@ In the 2026-11-02 test, Moppo offered `~/.gradle/caches` and `~/Library/Caches/C
 | `~/.m2/repository` | Download | Maven layout | Trash | Next Maven build. A network connection is necessary. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
 | `<project>/target` | Build | `pom.xml` beside the folder | Trash | `mvn package`. It works without a network connection when the repository contains the dependencies. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
 | `~/.gradle/daemon` | Logs | Gradle layout | Trash when no Gradle daemon runs | Next build | No | Verified 2026-11-02, Gradle 9.8.2, macOS 27.2 |
+| `~/.gradle/caches` | Download | Gradle layout | Trash | Next build. A network connection is necessary. | Row | Found 2026-11-02. Not verified. Moppo offered the row in the test. No test removed the folder. |
+| `~/.gradle/wrapper/dists` | Download | Gradle layout | Trash | Next build with the wrapper. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/.sbt` | User data | `1.0` folder | Never offer whole. Moppo offers `boot` as a row. | Not possible for settings and plugins | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.sbt/boot` | Download | sbt layout | Trash | Not necessary for sbt 2 | Row | Verified 2026-11-02, sbt 2.0.12, macOS 27.2 |
 | `~/Library/Caches/Coursier` | Download | Folder name | Trash | Next sbt run. A network connection is necessary. | Row | Verified 2026-11-03, sbt 2.0.12, macOS 27.2 |
@@ -235,8 +246,11 @@ In the 2026-11-02 test, Moppo offered `~/.gradle/caches` and `~/Library/Caches/C
 | `~/.konan` | Download | `dependencies` folder with the Kotlin/Native LLVM and `libffi` | Trash | Next `kotlinc-native` build. A network connection is necessary. | Hidden | Verified 2026-11-03, Kotlin/Native 2.4.21, macOS 27.2 |
 | `~/Library/Caches/JetBrains/<product><version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. The IDE needs the desktop session. |
 | `~/Library/Application Support/JetBrains/<product><version>` | User data | IDE settings | Never offer | Not possible | No | Not verified. The IDE needs the desktop session. |
+| `~/.ivy2/cache` | Download | Ivy layout | Trash | Next sbt run. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
 Maven 3.10 writes `.meta` in its repository. An older layout gets no offer.
+The Gradle wrapper keeps a full distribution for each project-pinned version under `dists`.
+`~/.ivy2/local` holds what the user published with `publishLocal`. Only `cache` is a download.
 <!-- rules:end java -->
 
 `~/.m2` can contain `settings.xml` with repository passwords. Moppo protects `~/.m2` and offers only `~/.m2/repository` for review.
@@ -307,12 +321,14 @@ In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 | `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Row | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `~/.local/state/cabal/store` | Installed | cabal layout | Trash after review | Next build for project dependencies | Protected | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `<project>/dist-newstyle` | Build | `.cabal` file beside the folder | Trash | `cabal build` | No | Verified 2026-11-02, cabal 3.16.1.0, macOS 27.2 |
+| `~/.cabal/packages` | Download | cabal layout | Trash | `cabal update`. A network connection is necessary. | Row | Not verified. cabal 3.16 does not create this folder. Older cabal versions use it. See #323. |
 | `~/.stack` | Installed | `config.yaml` and `stack.sqlite3` | Never offer whole. Moppo offers `snapshots`, `pantry`, and `setup-exe-cache` as rows. | Not possible for `config.yaml` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.stack/programs/<platform>/ghc-<version>` | Installed | Stack layout | Trash after review | Next `stack build`. A network connection is necessary. | Protected | Verified 2026-11-03, Stack 3.11.1 with GHC 9.10.3, macOS 27.2 |
 | `~/.stack/snapshots` | Build | Stack layout | Trash | Next `stack build` | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `~/.stack/pantry`, `~/.stack/setup-exe-cache` | Download | Stack layout | Trash | Next `stack build`. A network connection is necessary. | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `~/.stack/config.yaml` | User data | Stack layout | Never offer | Not possible | Protected | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `<project>/.stack-work` | Build | `stack.yaml` beside the folder | Trash | `stack build` | No | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
+| `~/.hex/packages` | Download | Hex layout | Trash | Next `mix deps.get`. A network connection is necessary. | Row | Found 2026-11-02. Not verified. Moppo offered the row in the test. No test removed the folder. |
 <!-- rules:end elixir-haskell -->
 
 cabal 3.16 uses the XDG layout on macOS. It did not create `~/.cabal`.
@@ -400,6 +416,109 @@ The #321 rules protect them by name. Protection by name removes nothing, so the 
 `~/.gnupg` is in the Ruby section, because the RVM install created it.
 Hidden & System Data lists the other folders in `~/.config` as separate rows.
 
+## JavaScript
+
+Moppo offers these caches by their path. The rules are older than the catalog. No test Mac verified a row.
+
+<!-- rules:begin javascript -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/.npm/_cacache` | Download | npm layout | Trash | Next `npm install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/Yarn` | Download | Folder name | Trash | Next `yarn install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.yarn/cache` | Download | Folder name | Trash | Next `yarn install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.cache/yarn` | Download | Folder name | Trash | Next `yarn install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.yarn/berry/cache` | Download | Yarn Berry layout | Trash | Next `yarn install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/pnpm/store` | Download | pnpm layout | Trash | Next `pnpm install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.pnpm-store` | Download | pnpm layout | Trash | Next `pnpm install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/pnpm` | Cache | Folder name | Trash | Next `pnpm install` | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.bun/install/cache` | Download | Bun layout | Trash | Next `bun install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/deno` | Download | Folder name | Trash | Next `deno run`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/node-gyp` | Download | Folder name | Trash | Next native module build. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/electron` | Download | Folder name | Trash | Next `npm install` of Electron. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/electron-builder` | Download | Folder name | Trash | Next electron-builder run. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/ms-playwright` | Download | Folder name | Trash | `npx playwright install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.cache/ms-playwright` | Download | Folder name | Trash | `npx playwright install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/Cypress` | Download | Folder name | Trash | `cypress install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+
+`~/.npm/_logs` stays. It is small, and npm asks users to attach it to bug reports.
+Yarn 1 on macOS uses `~/Library/Caches/Yarn`. The `~/.yarn/cache` and `~/.cache/yarn` layouts come from Linux or a migrated home. A Mac can carry any of them.
+The pnpm store is content-addressable. Its files are hard-linked or cloned into each project, so removal frees less than the row shows.
+`~/.bun` also holds the Bun runtime. Only the install cache is a download.
+Playwright's macOS default is `~/Library/Caches/ms-playwright`. `~/.cache/ms-playwright` is the Linux layout.
+<!-- rules:end javascript -->
+
+## Swift and Apple tools
+
+Moppo offers these caches by their path. The rules are older than the catalog. No test Mac verified a row.
+
+<!-- rules:begin swift -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Caches/org.swift.swiftpm` | Download | Folder name | Trash | Next `swift build`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/org.carthage.CarthageKit` | Download | Folder name | Trash | Next `carthage update`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Caches/CocoaPods` | Download | Folder name | Trash | Next `pod install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+
+`~/.cocoapods/repos` is not a row. It is a clone of the spec index, and a new clone is a multi-gigabyte download.
+<!-- rules:end swift -->
+
+## Dart
+
+Moppo offers the two download folders of the pub cache by their path.
+
+<!-- rules:begin dart -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/.pub-cache/hosted` | Download | pub layout | Trash | Next `dart pub get`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.pub-cache/git` | Download | pub layout | Trash | Next `dart pub get`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+
+`~/.pub-cache/bin` and `global_packages` hold what `pub global activate` installed. Only the two download folders are rows.
+<!-- rules:end dart -->
+
+## C and C++
+
+Moppo offers the ccache folder by its path.
+
+<!-- rules:begin c-cpp -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Caches/ccache` | Cache | Folder name | Trash | Next build | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+<!-- rules:end c-cpp -->
+
+## Homebrew
+
+Moppo offers the Homebrew download cache by its path. Old formula versions are separate rows that Homebrew removes.
+
+<!-- rules:begin homebrew -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Caches/Homebrew` | Download | Folder name | Trash | Next `brew install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+<!-- rules:end homebrew -->
+
+## Application data folders with other names
+
+These applications keep data in folders that do not match their name or bundle identifier.
+Moppo shows each folder with its application as user data, in App Uninstaller, and in Application Leftovers after an uninstall.
+
+<!-- rules:begin application-data -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Application Support/anythingllm-desktop` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, AnythingLLM 1.19.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/Library/Application Support/CherryStudio` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Cherry Studio 2.1.10, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/.cherrystudio` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Cherry Studio 2.1.10, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/Library/Application Support/StabilityMatrix` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Stability Matrix 2.16.5, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/Library/Application Support/VoiceInk` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, VoiceInk 2.21, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/Library/Application Support/t3code-v2` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, T3 Code 0.1.6, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/Library/Application Support/superwhisper` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Superwhisper 3.1.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+| `~/superwhisper` | User data | `settings/settings.json` and `modes` | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Superwhisper 3.1.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
+
+AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.
+Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.
+Stability Matrix 2.16.5, team 78LBV9V26G. The folder holds `global.json` and the logs.
+VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder.
+T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.
+Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings.
+<!-- rules:end application-data -->
+
 ## Databases
 
 Database files are user data. Moppo must never offer them for removal.
@@ -433,6 +552,7 @@ MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. The MongoDB formula need
 OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
 Redis wrote a new log file at its next start. The old log did not come back.
 A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database. A file with a `.db` name and no SQLite header is not a SQLite database.
+DBeaver, team 42B6MDKMW8. The folder holds the workspace, drivers, and settings.
 <!-- rules:end databases -->
 
 Database client applications such as TablePlus and DBeaver store connections and scripts.
@@ -456,6 +576,8 @@ These folders belong to tools that no section above covers.
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/Library/Application Support/multimodal-models` | Download | `ai-coustics/<name>/<model>.aicmodel` files | Never offer | Not possible | Protected | Found 2026-11-03. Not verified. No application identified the folder. #350 checked the protection on the test Mac. |
+| `~/.vagrant.d/boxes` | Download | Vagrant layout | `vagrant box remove` after review | `vagrant box add`. A network connection is necessary. | No | Not verified. The user can package a box on this Mac, and the other boxes are multi-gigabyte downloads. |
+| `~/.terraform.d/plugin-cache` | Download | Terraform layout | Never offer automatically | Next `terraform init`. A network connection is necessary. | No | Not verified. Working directories link into this cache, so removal breaks them until the next `terraform init`. |
 
 The #216 checks found an ai-coustics audio model here. No application identified it as its own.
 <!-- rules:end other -->

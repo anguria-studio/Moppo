@@ -68,3 +68,86 @@ extension ToolHomeFolders {
         Location(path: "Library/Application Support/multimodal-models", name: "ai-coustics audio models", base: .home, identifiedBy: ["ai-coustics/*/*.aicmodel"], explanation: "An application keeps ai-coustics audio models here. Moppo cannot identify the application, so it keeps the models protected.", layout: [], caches: [])
     ]
 }
+
+extension PackageManagerScanner {
+    /// Package caches. Each root comes from a rule with `"table": "packageManagerCaches"`.
+    /// The roots are pairwise disjoint. `DisjointCategoriesTests` checks this.
+    static let roots: [CacheRoot] = [
+        CacheRoot(label: "Go build cache", components: ["Library", "Caches", "go-build"]),
+        CacheRoot(label: "Cargo registry", components: [".cargo", "registry"]),
+        CacheRoot(label: "Cargo git dependencies", components: [".cargo", "git"]),
+        CacheRoot(label: "Composer cache", components: ["Library", "Caches", "composer"]),
+        // Poetry keeps its downloads in `cache` and `artifacts`. The `virtualenvs` folder beside them holds project environments, which no rule offers.
+        CacheRoot(label: "Poetry cache", components: ["Library", "Caches", "pypoetry", "cache"]),
+        CacheRoot(label: "Poetry artifacts", components: ["Library", "Caches", "pypoetry", "artifacts"]),
+        CacheRoot(label: "pip cache", components: ["Library", "Caches", "pip"]),
+        // uv links or clones environments out of this cache, so they survive its removal. `uv cache clean` is the tool's own instruction.
+        CacheRoot(label: "uv cache", components: [".cache", "uv"]),
+        CacheRoot(label: "Pipenv cache", components: ["Library", "Caches", "pipenv"]),
+        CacheRoot(label: "Bundler cache", components: [".bundle", "cache"]),
+        CacheRoot(label: "Gradle cache", components: [".gradle", "caches"]),
+        // The Gradle wrapper keeps a full distribution for each project-pinned version under `dists`.
+        CacheRoot(label: "Gradle distributions", components: [".gradle", "wrapper", "dists"]),
+        CacheRoot(label: "Coursier cache", components: ["Library", "Caches", "Coursier"]),
+        // `~/.ivy2/local` holds what the user published with `publishLocal`. Only `cache` is a download.
+        CacheRoot(label: "Ivy cache", components: [".ivy2", "cache"]),
+        CacheRoot(label: "NuGet packages", components: [".nuget", "packages"]),
+        CacheRoot(label: "Cabal packages (XDG)", components: [".cache", "cabal"], reviewCaveat: "cabal update downloads it again. A network connection is necessary."),
+        CacheRoot(label: "Cabal packages", components: [".cabal", "packages"]),
+        CacheRoot(label: "Hex packages", components: [".hex", "packages"]),
+        // `~/.npm/_logs` stays. It is small, and npm asks users to attach it to bug reports.
+        CacheRoot(label: "npm cache", components: [".npm", "_cacache"]),
+        // Yarn 1 on macOS uses `~/Library/Caches/Yarn`. The `~/.yarn/cache` and `~/.cache/yarn` layouts come from Linux or a migrated home. A Mac can carry any of them.
+        CacheRoot(label: "Yarn cache", components: ["Library", "Caches", "Yarn"]),
+        CacheRoot(label: "Yarn cache (classic)", components: [".yarn", "cache"]),
+        CacheRoot(label: "Yarn cache (XDG)", components: [".cache", "yarn"]),
+        CacheRoot(label: "Yarn Berry cache", components: [".yarn", "berry", "cache"]),
+        // The pnpm store is content-addressable. Its files are hard-linked or cloned into each project, so removal frees less than the row shows.
+        CacheRoot(label: "pnpm store", components: ["Library", "pnpm", "store"]),
+        CacheRoot(label: "pnpm store (legacy)", components: [".pnpm-store"]),
+        CacheRoot(label: "pnpm metadata cache", components: ["Library", "Caches", "pnpm"]),
+        // `~/.bun` also holds the Bun runtime. Only the install cache is a download.
+        CacheRoot(label: "Bun install cache", components: [".bun", "install", "cache"]),
+        CacheRoot(label: "Deno cache", components: ["Library", "Caches", "deno"]),
+        CacheRoot(label: "node-gyp headers", components: ["Library", "Caches", "node-gyp"]),
+        CacheRoot(label: "Electron downloads", components: ["Library", "Caches", "electron"]),
+        CacheRoot(label: "electron-builder cache", components: ["Library", "Caches", "electron-builder"]),
+        // Playwright's macOS default is `~/Library/Caches/ms-playwright`. `~/.cache/ms-playwright` is the Linux layout.
+        CacheRoot(label: "Playwright browsers", components: ["Library", "Caches", "ms-playwright"]),
+        CacheRoot(label: "Playwright browsers (XDG)", components: [".cache", "ms-playwright"]),
+        CacheRoot(label: "Cypress binaries", components: ["Library", "Caches", "Cypress"]),
+        CacheRoot(label: "SwiftPM cache", components: ["Library", "Caches", "org.swift.swiftpm"]),
+        CacheRoot(label: "Carthage cache", components: ["Library", "Caches", "org.carthage.CarthageKit"]),
+        // `~/.cocoapods/repos` is not a row. It is a clone of the spec index, and a new clone is a multi-gigabyte download.
+        CacheRoot(label: "CocoaPods cache", components: ["Library", "Caches", "CocoaPods"]),
+        // `~/.pub-cache/bin` and `global_packages` hold what `pub global activate` installed. Only the two download folders are rows.
+        CacheRoot(label: "Dart pub cache", components: [".pub-cache", "hosted"]),
+        CacheRoot(label: "Dart pub git dependencies", components: [".pub-cache", "git"]),
+        CacheRoot(label: "ccache", components: ["Library", "Caches", "ccache"]),
+        CacheRoot(label: "Homebrew cache", components: ["Library", "Caches", "Homebrew"])
+    ]
+
+    /// The Go module cache, which `go clean -modcache` removes. The rule has `"check": "goModuleCache"`.
+    static let goModuleCache = "go/pkg/mod"
+}
+
+extension ApplicationDataFolders {
+    /// Folders by bundle identifier. Each folder comes from a rule with `"table": "applicationDataFolders"`
+    /// or `"applicationData": true`, under the `bundleIdentifiers` of its tool.
+    static let byBundleIdentifier: [String: [Folder]] = [
+        // AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.
+        "com.anythingllm": [Folder(path: "Library/Application Support/anythingllm-desktop")],
+        // Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.
+        "com.kangfenmao.CherryStudio": [Folder(path: "Library/Application Support/CherryStudio"), Folder(path: ".cherrystudio")],
+        // Stability Matrix 2.16.5, team 78LBV9V26G. The folder holds `global.json` and the logs.
+        "ai.lykos.stabilitymatrix": [Folder(path: "Library/Application Support/StabilityMatrix")],
+        // VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder.
+        "com.prakashjoshipax.VoiceInk": [Folder(path: "Library/Application Support/VoiceInk")],
+        // T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.
+        "com.t3tools.t3code": [Folder(path: "Library/Application Support/t3code-v2")],
+        // Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings.
+        "com.superduper.superwhisper": [Folder(path: "Library/Application Support/superwhisper"), Folder(path: "superwhisper", identifiedBy: ["settings/settings.json", "modes"])],
+        // DBeaver, team 42B6MDKMW8. The folder holds the workspace, drivers, and settings.
+        "org.jkiss.dbeaver.core.product": [Folder(path: "Library/DBeaverData")]
+    ]
+}

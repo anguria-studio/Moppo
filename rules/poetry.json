@@ -15,6 +15,39 @@
         "macos": "27.2",
         "tool": "Poetry 2.5.1"
       }
+    },
+    {
+      "path": "~/Library/Caches/pypoetry/cache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Poetry cache",
+      "recognition": "Poetry layout",
+      "removal": "Trash",
+      "restore": "Next `poetry install`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "kind": "found"
+      },
+      "status": "Not verified. Moppo offered the row in the test. No test removed the folder.",
+      "note": "Poetry keeps its downloads in `cache` and `artifacts`. The `virtualenvs` folder beside them holds project environments, which no rule offers."
+    },
+    {
+      "path": "~/Library/Caches/pypoetry/artifacts",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Poetry artifacts",
+      "recognition": "Poetry layout",
+      "removal": "Trash",
+      "restore": "Next `poetry install`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "kind": "found"
+      },
+      "status": "Not verified. Moppo offered the row in the test. No test removed the folder."
     }
   ]
 }

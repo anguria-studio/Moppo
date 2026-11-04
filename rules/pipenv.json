@@ -1,0 +1,19 @@
+{
+  "id": "pipenv",
+  "name": "Pipenv",
+  "section": "python",
+  "storage": [
+    {
+      "path": "~/Library/Caches/pipenv",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Pipenv cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `pipenv install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

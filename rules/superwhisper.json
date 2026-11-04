@@ -1,0 +1,49 @@
+{
+  "id": "superwhisper",
+  "name": "Superwhisper",
+  "section": "application-data",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/superwhisper",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "Superwhisper 3.1.0",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    },
+    {
+      "path": "~/superwhisper",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "identifiedBy": [
+        "settings/settings.json",
+        "modes"
+      ],
+      "recognition": "`settings/settings.json` and `modes`",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "Superwhisper 3.1.0",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    }
+  ],
+  "bundleIdentifiers": [
+    "com.superduper.superwhisper"
+  ],
+  "note": "Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings."
+}

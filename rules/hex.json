@@ -1,0 +1,23 @@
+{
+  "id": "hex",
+  "name": "Hex",
+  "section": "elixir-haskell",
+  "storage": [
+    {
+      "path": "~/.hex/packages",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Hex packages",
+      "recognition": "Hex layout",
+      "removal": "Trash",
+      "restore": "Next `mix deps.get`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "kind": "found"
+      },
+      "status": "Not verified. Moppo offered the row in the test. No test removed the folder."
+    }
+  ]
+}

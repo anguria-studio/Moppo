@@ -1,0 +1,31 @@
+{
+  "id": "electron",
+  "name": "Electron",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/Library/Caches/electron",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Electron downloads",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `npm install` of Electron. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/Library/Caches/electron-builder",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "electron-builder cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next electron-builder run. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

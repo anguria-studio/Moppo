@@ -6,7 +6,10 @@
     {
       "path": "~/.cargo/registry",
       "type": "download",
-      "coverage": "row",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Cargo registry",
       "recognition": "`CACHEDIR.TAG`, and `index`, `cache`, and `src` folders",
       "removal": "Trash",
       "restore": "Next build. A network connection is necessary.",
@@ -19,7 +22,10 @@
     {
       "path": "~/.cargo/git",
       "type": "download",
-      "coverage": "row",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Cargo git dependencies",
       "recognition": "`CACHEDIR.TAG`, and `db` and `checkouts` folders",
       "removal": "Trash",
       "restore": "Next build. A network connection is necessary.",

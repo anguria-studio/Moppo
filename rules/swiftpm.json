@@ -1,0 +1,19 @@
+{
+  "id": "swiftpm",
+  "name": "Swift Package Manager",
+  "section": "swift",
+  "storage": [
+    {
+      "path": "~/Library/Caches/org.swift.swiftpm",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "SwiftPM cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `swift build`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

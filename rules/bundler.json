@@ -15,6 +15,18 @@
         "macos": "27.2",
         "tool": "Bundler 2.5.22"
       }
+    },
+    {
+      "path": "~/.bundle/cache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Bundler cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `bundle install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
     }
   ]
 }

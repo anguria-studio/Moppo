@@ -1,0 +1,28 @@
+{
+  "id": "voiceink",
+  "name": "VoiceInk",
+  "section": "application-data",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/VoiceInk",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "VoiceInk 2.21",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    }
+  ],
+  "bundleIdentifiers": [
+    "com.prakashjoshipax.VoiceInk"
+  ],
+  "note": "VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder."
+}

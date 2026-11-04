@@ -9,6 +9,7 @@
       "table": "databaseStorage",
       "owner": "hiddenSystemData",
       "treatment": "protect",
+      "applicationData": true,
       "name": "DBeaver data",
       "identifiedBy": [
         "workspace6/*/.dbeaver/data-sources.json"
@@ -16,12 +17,16 @@
       "recognition": "`workspace6/<project>/.dbeaver/data-sources.json`",
       "removal": "Never offer",
       "restore": "Not possible",
+      "contents": "DBeaver connections, scripts, and settings",
       "verified": {
         "date": "2026-11-02",
         "tool": "DBeaver 26.2.4",
         "macos": "27.2"
-      },
-      "contents": "DBeaver connections, scripts, and settings"
+      }
     }
-  ]
+  ],
+  "bundleIdentifiers": [
+    "org.jkiss.dbeaver.core.product"
+  ],
+  "note": "DBeaver, team 42B6MDKMW8. The folder holds the workspace, drivers, and settings."
 }

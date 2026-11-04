@@ -102,31 +102,24 @@ public struct SystemCachesScanner: CategoryScanner {
     /// offered to the user twice — cleaning one category would make the other's
     /// figure a lie. The Electron predecessor had exactly this overlap.
     ///
-    /// This list must mirror every `["Library", "Caches", …]` root in
-    /// `PackageManagerScanner`. `DisjointCategoriesTests` asserts that it does, so
-    /// adding a cache root there fails the build here rather than silently
-    /// double-counting.
-    static let packageManagerOwnedCacheNames: Set<String> = [
-        "Homebrew", "pip", "CocoaPods",
-        // Added at integration: PackageManagerScanner claims these too, and the
-        // original three-name list would have double-counted them.
-        "Yarn", "pnpm", "ms-playwright",
-        // Added with the 20 Sep 2026 roots. Each was a row here, named for its
-        // folder; it is a row there now, named for its tool.
-        "deno", "go-build", "Coursier", "composer", "pipenv", "pypoetry", "org.swift.swiftpm",
-        "org.carthage.CarthageKit", "node-gyp", "electron", "electron-builder",
-        "Cypress", "ccache"
-    ]
+    /// The set comes from every `["Library", "Caches", …]` root in
+    /// `PackageManagerScanner.roots`, so a new cache root there is skipped here.
+
+    static let packageManagerOwnedCacheNames: Set<String> = Set(
+        PackageManagerScanner.roots.map(\.components)
+            .filter { $0.count >= 3 && $0[0] == "Library" && $0[1] == "Caches" }
+            .map { $0[2] }
+    )
 
     /// Children of `~/.cache` that **Package Manager Caches** offers.
     ///
-    /// The same bargain as the list above, for the other cache root, and held to
-    /// `PackageManagerScanner`'s `[".cache", …]` roots in both directions by
-    /// `DisjointCategoriesTests`: a name missing here is offered twice, a stale name
-    /// here is offered by nobody.
-    static let packageManagerOwnedDotCacheNames: Set<String> = [
-        "uv", "yarn", "ms-playwright", "cabal"
-    ]
+    /// The same bargain as the set above, for the other cache root. The set comes from
+    /// `PackageManagerScanner`'s `[".cache", …]` roots. `DisjointCategoriesTests` checks that
+    /// each such root is an immediate child of `~/.cache`.
+
+    static let packageManagerOwnedDotCacheNames: Set<String> = Set(
+        PackageManagerScanner.roots.map(\.components).filter { $0.count == 2 && $0[0] == ".cache" }.map { $0[1] }
+    )
 
     /// Whether a child is called regenerable.
     ///
