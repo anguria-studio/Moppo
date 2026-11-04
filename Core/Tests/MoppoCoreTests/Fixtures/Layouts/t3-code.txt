@@ -1,0 +1,35 @@
+~/.t3/bin/
+~/.t3/caches/
+~/.t3/caches/pull-requests/
+~/.t3/userdata/
+~/.t3/userdata/attachments/
+~/.t3/userdata/clerk/
+~/.t3/userdata/logs/
+~/.t3/userdata/secrets/
+~/.t3/userdata/settings.json
+~/.t3/userdata/themes/
+~/.t3/worktrees/
+~/Library/Application Support/t3code-v2/Cache/
+~/Library/Application Support/t3code-v2/Cache/Cache_Data/
+~/Library/Application Support/t3code-v2/Cache/No_Vary_Search/
+~/Library/Application Support/t3code-v2/Code Cache/
+~/Library/Application Support/t3code-v2/Code Cache/electron-preload/
+~/Library/Application Support/t3code-v2/Code Cache/js/
+~/Library/Application Support/t3code-v2/Code Cache/wasm/
+~/Library/Application Support/t3code-v2/DawnGraphiteCache/
+~/Library/Application Support/t3code-v2/DawnWebGPUCache/
+~/Library/Application Support/t3code-v2/GPUCache/
+~/Library/Application Support/t3code-v2/GPUPersistentCache/
+~/Library/Application Support/t3code-v2/GPUPersistentCache/GPUCache/
+~/Library/Application Support/t3code-v2/GraphiteDawnCache/
+~/Library/Application Support/t3code-v2/IndexedDB/
+~/Library/Application Support/t3code-v2/IndexedDB/t3code_app_0.indexeddb.leveldb/
+~/Library/Application Support/t3code-v2/Local Storage/
+~/Library/Application Support/t3code-v2/Local Storage/leveldb/
+~/Library/Application Support/t3code-v2/Partitions/
+~/Library/Application Support/t3code-v2/Session Storage/
+~/Library/Application Support/t3code-v2/Shared Dictionary/
+~/Library/Application Support/t3code-v2/Shared Dictionary/cache/
+~/Library/Application Support/t3code-v2/WebStorage/
+~/Library/Application Support/t3code-v2/blob_storage/
+~/Library/Application Support/t3code-v2/declarative_performance_observer.db

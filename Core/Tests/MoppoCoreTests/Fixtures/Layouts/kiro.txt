@@ -1,0 +1,7 @@
+~/.kiro-shared/sharedStorage/
+~/.kiro/extensions/
+~/.kiro/logs/
+~/.kiro/powers/
+~/.kiro/powers/registries/
+~/.kiro/session-index/
+~/.kiro/sessions/

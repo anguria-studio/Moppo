@@ -1,0 +1,41 @@
+~/Library/Application Support/Claude/Cache/
+~/Library/Application Support/Claude/Cache/Cache_Data/
+~/Library/Application Support/Claude/Cache/No_Vary_Search/
+~/Library/Application Support/Claude/Code Cache/
+~/Library/Application Support/Claude/Code Cache/electron-preload/
+~/Library/Application Support/Claude/Code Cache/js/
+~/Library/Application Support/Claude/Code Cache/wasm/
+~/Library/Application Support/Claude/Crashpad/
+~/Library/Application Support/Claude/Crashpad/attachments/
+~/Library/Application Support/Claude/Crashpad/completed/
+~/Library/Application Support/Claude/Crashpad/new/
+~/Library/Application Support/Claude/Crashpad/pending/
+~/Library/Application Support/Claude/DawnGraphiteCache/
+~/Library/Application Support/Claude/DawnWebGPUCache/
+~/Library/Application Support/Claude/GPUCache/
+~/Library/Application Support/Claude/GPUPersistentCache/
+~/Library/Application Support/Claude/GPUPersistentCache/GPUCache/
+~/Library/Application Support/Claude/GraphiteDawnCache/
+~/Library/Application Support/Claude/IndexedDB/
+~/Library/Application Support/Claude/IndexedDB/https_claude.ai_0.indexeddb.blob/
+~/Library/Application Support/Claude/IndexedDB/https_claude.ai_0.indexeddb.leveldb/
+~/Library/Application Support/Claude/Local Storage/
+~/Library/Application Support/Claude/Local Storage/leveldb/
+~/Library/Application Support/Claude/Session Storage/
+~/Library/Application Support/Claude/Shared Dictionary/
+~/Library/Application Support/Claude/Shared Dictionary/cache/
+~/Library/Application Support/Claude/WebStorage/
+~/Library/Application Support/Claude/WebStorage/2/
+~/Library/Application Support/Claude/blob_storage/
+~/Library/Application Support/Claude/claude-code-sessions/
+~/Library/Application Support/Claude/claude-code/
+~/Library/Application Support/Claude/claude-code/2.1.309/
+~/Library/Application Support/Claude/declarative_performance_observer.db
+~/Library/Application Support/Claude/git-shadow/
+~/Library/Application Support/Claude/git-shadow/scratch/
+~/Library/Application Support/Claude/local-agent-mode-sessions/
+~/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/
+~/Library/Application Support/Claude/sentry/
+~/Library/Application Support/Claude/sentry/queue/
+~/Library/Application Support/Claude/spaces-present/
+~/Library/Application Support/Claude/spaces-present/f58026e8/

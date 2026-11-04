@@ -1,0 +1,24 @@
+~/Library/Application Support/Antigravity/Cache/
+~/Library/Application Support/Antigravity/Cache/Cache_Data/
+~/Library/Application Support/Antigravity/Cache/No_Vary_Search/
+~/Library/Application Support/Antigravity/Code Cache/
+~/Library/Application Support/Antigravity/Code Cache/electron-preload/
+~/Library/Application Support/Antigravity/Code Cache/js/
+~/Library/Application Support/Antigravity/Code Cache/wasm/
+~/Library/Application Support/Antigravity/DawnGraphiteCache/
+~/Library/Application Support/Antigravity/DawnWebGPUCache/
+~/Library/Application Support/Antigravity/GPUCache/
+~/Library/Application Support/Antigravity/GPUPersistentCache/
+~/Library/Application Support/Antigravity/GPUPersistentCache/GPUCache/
+~/Library/Application Support/Antigravity/GraphiteDawnCache/
+~/Library/Application Support/Antigravity/Local Storage/
+~/Library/Application Support/Antigravity/Local Storage/leveldb/
+~/Library/Application Support/Antigravity/Partitions/
+~/Library/Application Support/Antigravity/Partitions/hub-browser-anonymous/
+~/Library/Application Support/Antigravity/Partitions/hub-browser-anonymous/declarative_performance_observer.db
+~/Library/Application Support/Antigravity/Session Storage/
+~/Library/Application Support/Antigravity/Shared Dictionary/
+~/Library/Application Support/Antigravity/Shared Dictionary/cache/
+~/Library/Application Support/Antigravity/bin/
+~/Library/Application Support/Antigravity/blob_storage/
+~/Library/Application Support/Antigravity/declarative_performance_observer.db

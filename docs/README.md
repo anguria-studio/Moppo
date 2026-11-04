@@ -647,7 +647,7 @@ The same cache rules apply in these rows.
 AI tool storage, such as `~/.local/share/claude`, is in AI Tools.
 
 `RuleDocumentTests` compares the catalog rows and the AI storage paths with the Swift tables.
-When you change a rule, change its document row in the same pull request.
+`LayoutFixtureTests` checks that each rule recognizes its layout, from the registry and from the layout fixtures.
 
 The [tool rule registry](tool-rules.md) in `rules/` holds the catalog rows and the AI storage rows.
 It generates the Swift tables for databases, home folders, package caches, application data folders, AI tools, curations, model stores, and editors.
