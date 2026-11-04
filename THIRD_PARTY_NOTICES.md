@@ -26,8 +26,16 @@ The names and icons belong to their respective owners.
 - Cherry Studio: Shanghai Qianhui Technology Co., Ltd. The fallback icon comes from Cherry Studio 2.1.10.
 - Comfy Desktop: Drip Artificial Inc. The fallback icon comes from the official Comfy Desktop application, version 1.1.8.
 - Stability Matrix: Lykos LLC. The fallback icon comes from the official Stability Matrix application, version 2.16.5.
+- OpenClaw: OpenClaw Foundation. The fallback icon comes from the [official repository](https://github.com/openclaw/openclaw).
 
 For icons from the #216 checks, the owner names come from the application copyright or Developer ID signature.
+
+The OpenClaw repository uses the MIT License.
+Moppo exported the OpenClaw icon from `apps/macos/Icon.icon` at commit `c2b82d6b9c5ce46a319feaffe50d4ea9ec5ab737`.
+Moppo used Icon Composer 27.2 to export the Default macOS rendition at 512 by 512 pixels.
+
+GitHub Copilot CLI shows a system symbol, not a GitHub icon.
+The [GitHub logo guidelines](https://brand.github.com/foundations/logo) do not give permission to use the Copilot icon in other products.
 
 Installed application icons take priority over the bundled fallback icons.
 

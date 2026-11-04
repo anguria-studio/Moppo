@@ -418,19 +418,14 @@ struct AIStorageGroupHeader: View {
                 .frame(width: Metrics.disclosureSlot)
                 .frame(width: Metrics.disclosureSlot + Metrics.childIndent, alignment: .leading)
                 .accessibilityHidden(true)
-            Group {
-                if let icon = ApplicationIcons.icon(for: owner.tool) {
-                    Image(nsImage: icon.image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: icon.size, height: icon.size)
-                } else {
-                    Image(systemName: "app")
-                        .foregroundStyle(Token.Text.secondary)
-                }
-            }
-            .frame(width: Metrics.checkbox)
-            .accessibilityHidden(true)
+            let icon = ApplicationIcons.icon(for: owner.tool)
+            Image(nsImage: icon.image)
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(Token.Text.secondary)
+                .frame(width: icon.size, height: icon.size)
+                .frame(width: Metrics.checkbox)
+                .accessibilityHidden(true)
             Text(owner.rawValue)
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.Text.primary)
