@@ -41,6 +41,9 @@ Changes that affect Moppo users appear here, with the newest release first.
 ### Fixes
 
 - Show the T3 Code icon in **AI Tools**. Earlier versions showed an empty square.
+- Show launch agents and launch daemons that use another file name in App Uninstaller and Application Leftovers.
+- Connect a launch file to its application only by its program path or its `AssociatedBundleIdentifiers` key.
+- Connect the Comet updater agent to Comet, because `Comet.app` contains the updater that the agent names.
 
 ## [0.6.0] - 2026-11-02
 
