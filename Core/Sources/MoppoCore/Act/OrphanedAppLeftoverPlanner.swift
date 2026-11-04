@@ -136,9 +136,9 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
         candidates: CandidateScan? = nil
     ) async throws -> OrphanedAppLeftoverPlan {
         let fileManager = FileManager.default
-        var installed = try AppUninstallPlanner.installedBundleIdentifiers(
+        var installed = try await AppUninstallPlanner.installedBundleIdentifiers(
             in: pathPlanner.applicationRoots, fileManager: fileManager,
-            checkCancellation: { try Task.checkCancellation() }
+            sharing: context.applicationBundleWalks
         )
         installed.formUnion(registeredApplicationBundleIdentifiers)
         let candidateScan = candidates ?? candidateBundleIdentifierScan(fileManager: fileManager)

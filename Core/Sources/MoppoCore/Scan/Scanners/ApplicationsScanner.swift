@@ -68,8 +68,8 @@ public struct ApplicationsScanner: CategoryScanner {
         var unreadableCount = 0
         var readAnyDirectory = false
         context.onPhase?("Scanning Applications")
-        let installed = try AppUninstallPlanner.installedBundleIdentifiers(
-            in: applicationDirectories, checkCancellation: { try Task.checkCancellation() }
+        let installed = try await AppUninstallPlanner.installedBundleIdentifiers(
+            in: applicationDirectories, sharing: context.applicationBundleWalks
         )
             .union(context.registeredApplicationBundleIdentifiers)
         let databaseFolders = DatabaseStorage.locations(home: home)
