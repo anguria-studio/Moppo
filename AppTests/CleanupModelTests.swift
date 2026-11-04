@@ -317,6 +317,40 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.categories.first?.entries.first?.allocatedBytes == 0)
     }
 
+    @Test("Stop during the measurement before a command keeps the real command from running")
+    func stopBeforeRealToolCommand() async throws {
+        let folder = try TemporaryFolder(prefix: "moppo-command-stop-real")
+        let target = folder.url.appendingPathComponent("go/pkg/mod")
+        let many = target.appendingPathComponent("cache/download/example.invalid")
+        for index in 0..<200 {
+            let directory = many.appendingPathComponent("d\(index)")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            for file in 0..<250 {
+                FileManager.default.createFile(atPath: directory.appendingPathComponent("f\(file)").path, contents: Data([0x61]))
+            }
+        }
+        let marker = folder.url.appendingPathComponent("ran")
+        let script = folder.url.appendingPathComponent("go-stub")
+        try "#!/bin/sh\n/usr/bin/touch \"\(marker.path)\"\n/bin/rm -rf -- \"$GOMODCACHE\"\n".write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let command = ToolCommandRemoval.goModuleCache(at: target, executable: script.path)
+        let entry = FileEntry(url: target, kind: .cache, allocatedBytes: 100, isRegenerable: true,
+            removalMethod: .toolCommand(command))
+        let remover = CleanupService(log: MoppoCore.RemovalLog(directory: folder.url.appendingPathComponent("history")))
+        let cleanup = CleanupModel(operations: OperationCoordinator(), remover: remover)
+        cleanup.scanResults = cleanupResults([entry])
+        cleanup.scannerSelection = [entry.id]
+        cleanup.requestCleanUp(in: .all)
+        let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
+        try await waitUntil { cleanup.canCancelRemoval }
+        try await Task.sleep(for: .milliseconds(20))
+        cleanup.cancelRemoval()
+        await task.value
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        #expect(FileManager.default.fileExists(atPath: target.path))
+        #expect(cleanup.cleanupOutcome?.toolCommandResults.map { $0.status } == [ToolCommandRemovalResult.Status.cancelled])
+    }
+
     @Test("The cleanup button says Remove when the selection has a tool command")
     func toolCommandRemoveLabel() throws {
         let folder = try TemporaryFolder(prefix: "moppo-command-label")

@@ -1011,9 +1011,13 @@ struct PageProgressView: View {
     var onStop: (() -> Void)? = nil
     var onCancel: (() -> Void)? = nil
     var isCancelling = false
+    var cancellingTitle = PageProgressView.stoppingWaitTitle
+
+    static let stoppingWaitTitle = "Stopping the wait"
+    static let stoppingRemovalTitle = "Stopping the removal"
 
     private var displayedTitle: String {
-        if isCancelling { return "Stopping the wait" }
+        if isCancelling { return cancellingTitle }
         return isInterrupting ? ScanInterruptionView.title : title
     }
 
