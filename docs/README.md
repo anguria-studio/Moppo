@@ -227,6 +227,7 @@ Core/                         Swift package
     Scan/                    Category scanners, Codex session review, and scan coordination
     Act/                     Cleanup, Docker images and volumes, app uninstall, sound libraries, Trash, history
     Resources/               Homebrew formula version adapter
+    Generated/               Rule tables that scripts/rules.py writes from rules/
     Duplicates/              File duplicate detection and removal
     StorageExplorer/         Folder measurement and reviewed removal
   Sources/MoppoScan/         Shared macOS scan context and application ownership
@@ -258,6 +259,8 @@ Helpers/                      Separate application tools
   AdministratorTrash/        Approved sound library moves and recovery
   HomebrewAskpass/            Homebrew password prompt
 skills/moppo-cleanup/          Portable agent instructions for CLI inspection and saved plans
+rules/                        Tool rule registry, one JSON file for each tool
+scripts/                      Release packaging and the rule generator
 design/                       Archived design handoff, kept locally
 ```
 
@@ -645,6 +648,10 @@ AI tool storage, such as `~/.local/share/claude`, is in AI Tools.
 
 `RuleDocumentTests` compares the catalog rows and the AI storage paths with the Swift tables.
 When you change a rule, change its document row in the same pull request.
+
+The [tool rule registry](tool-rules.md) in `rules/` holds the database rules.
+It generates their Swift table and their document table.
+Change a rule in `rules/<tool>.json`, then run `python3 scripts/rules.py generate`.
 
 ## Scanner rows and Git worktrees
 

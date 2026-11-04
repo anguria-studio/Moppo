@@ -49,6 +49,7 @@ Run the tests and writing checks from the repository root:
 
 ```sh
 python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/rules.py check
 swift test --package-path Core --no-parallel \
   --filter 'ReviewFindingsTests/(processCancellationKillsChild|descendantHoldingStdoutDoesNotHang)|AllocatedSizeMeasurerTests/cloudReadsReserveLocalWorkers|HiddenDataScanTests/archivesOverlapCloud|CodexSessionsTests|GitWorktreeTests|ProjectActivityTests|ToolCommandRemovalTests|VendorFolderTests'
 swift test --package-path Core \

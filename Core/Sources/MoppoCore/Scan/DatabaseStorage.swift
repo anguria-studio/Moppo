@@ -1,6 +1,7 @@
 import Foundation
 
 /// Database data folders from the Databases section of docs/tool-catalog.md.
+/// The `roots` table is in `Generated/ToolRules.swift`. Change a rule in `rules/<tool>.json`.
 ///
 /// Database files are user data. Moppo shows these folders with their sizes and
 /// never offers them, or a file in them, for removal. This includes MySQL binary
@@ -50,30 +51,6 @@ enum DatabaseStorage {
     static let homebrewPrefixes = [
         URL(fileURLWithPath: "/opt/homebrew", isDirectory: true),
         URL(fileURLWithPath: "/usr/local", isDirectory: true)
-    ]
-
-    private static let postgreSQL = ["PG_VERSION"]
-    private static let mySQL = ["ibdata1", "mysql/"]
-    private static let redis = ["dump.rdb", "appendonly*"]
-    private static let search = ["nodes/*/_state/", "_state/"]
-
-    static let roots: [Root] = [
-        // `postgresql@<version>` also matches the data folder of an older version.
-        Root(path: "var/postgresql@*", name: "PostgreSQL data", identifiedBy: postgreSQL, tool: "PostgreSQL"),
-        Root(path: "var/postgres", name: "PostgreSQL data", identifiedBy: postgreSQL, tool: "PostgreSQL"),
-        // The MySQL data folder also holds the binary logs.
-        Root(path: "var/mysql", name: "MySQL data", identifiedBy: mySQL, tool: "MySQL"),
-        Root(path: "var/mongodb", name: "MongoDB data", identifiedBy: ["WiredTiger*"], tool: "MongoDB"),
-        Root(path: "var/db/redis", name: "Redis data", identifiedBy: redis, tool: "Redis"),
-        Root(path: "var/lib/opensearch", name: "OpenSearch data", identifiedBy: search, tool: "OpenSearch"),
-        Root(path: "var/lib/elasticsearch", name: "Elasticsearch data", identifiedBy: search, tool: "Elasticsearch"),
-        Root(path: "Library/DBeaverData", name: "DBeaver data", base: .home,
-             identifiedBy: ["workspace6/*/.dbeaver/data-sources.json"], tool: "DBeaver",
-             contents: "DBeaver connections, scripts, and settings"),
-        Root(path: "Library/Application Support/Postgres/var-*", name: "Postgres.app data", base: .home,
-             identifiedBy: postgreSQL, tool: "Postgres.app", listedWithApplication: true),
-        Root(path: "Library/Application Support/com.tinyapp.DBngin/Engines/*/*", name: "DBngin data", base: .home,
-             identifiedBy: postgreSQL + mySQL + redis, tool: "DBngin", listedWithApplication: true)
     ]
 
     /// The recognized database folders that exist.

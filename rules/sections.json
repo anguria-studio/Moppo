@@ -1,0 +1,19 @@
+{
+  "databases": {
+    "title": "Databases",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "postgresql",
+      "postgres-app",
+      "dbngin",
+      "mysql",
+      "mongodb",
+      "redis",
+      "opensearch",
+      "elasticsearch",
+      "homebrew-services",
+      "sqlite",
+      "dbeaver"
+    ]
+  }
+}

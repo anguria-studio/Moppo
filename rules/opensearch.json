@@ -1,0 +1,28 @@
+{
+  "id": "opensearch",
+  "name": "OpenSearch",
+  "section": "databases",
+  "note": "OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.",
+  "storage": [
+    {
+      "path": "/opt/homebrew/var/lib/opensearch",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "OpenSearch data",
+      "identifiedBy": [
+        "nodes/*/_state/",
+        "_state/"
+      ],
+      "recognition": "`nodes/<number>/_state` folder",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "OpenSearch 3.9.0",
+        "macos": "27.2"
+      }
+    }
+  ]
+}

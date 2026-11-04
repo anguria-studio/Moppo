@@ -1,0 +1,45 @@
+{
+  "id": "dbngin",
+  "name": "DBngin",
+  "section": "databases",
+  "note": "DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "DBngin data",
+      "identifiedBy": [
+        "PG_VERSION",
+        "ibdata1",
+        "mysql/",
+        "dump.rdb",
+        "appendonly*"
+      ],
+      "recognition": "DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION`",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "DBngin 27.0.2 with MySQL 9.7.2",
+        "macos": "27.2"
+      }
+    },
+    {
+      "path": "/Users/Shared/DBngin/<engine>/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "DBngin installed. A `bin` folder with the server programs.",
+      "removal": "DBngin, after review",
+      "restore": "DBngin downloads the version again",
+      "verified": {
+        "date": "2026-11-02",
+        "kind": "found",
+        "tool": "DBngin 27.0.2"
+      },
+      "status": "Not verified. Removal and restore need the DBngin app in the desktop session."
+    }
+  ]
+}

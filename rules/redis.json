@@ -1,0 +1,27 @@
+{
+  "id": "redis",
+  "name": "Redis",
+  "section": "databases",
+  "storage": [
+    {
+      "path": "/opt/homebrew/var/db/redis",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "Redis data",
+      "identifiedBy": [
+        "dump.rdb",
+        "appendonly*"
+      ],
+      "recognition": "`dump.rdb` or `appendonly` files",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "Redis 8.10.3",
+        "macos": "27.2"
+      }
+    }
+  ]
+}

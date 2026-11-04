@@ -1,0 +1,21 @@
+{
+  "id": "homebrew-services",
+  "name": "Homebrew services",
+  "section": "databases",
+  "storage": [
+    {
+      "path": "/opt/homebrew/var/log",
+      "type": "logs",
+      "coverage": "no",
+      "recognition": "Service log files",
+      "removal": "Trash after review, when the service does not run",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "tool": "Redis 8.10.3",
+        "macos": "27.2"
+      },
+      "note": "Redis wrote a new log file at its next start. The old log did not come back."
+    }
+  ]
+}
