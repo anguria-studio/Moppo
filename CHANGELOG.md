@@ -33,6 +33,11 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show the sizes of the protected Postgres.app and DBngin data folders under their applications.
 - Keep the Postgres.app, DBngin, and DBeaver data folders in App Uninstaller and Application Leftovers.
 - Moppo never offers database data, MySQL binary logs, or the data folder of an older PostgreSQL version.
+- Show tool storage that Moppo did not scan before as protected Hidden & System Data rows with their sizes and owners.
+- This applies to Podman machines, mise, NuGet, RubyGems, the cabal store, the Android SDK, DBngin versions, and ai-coustics models.
+- Offer only the Podman image cache in these rows. Podman downloads it again at the next `podman machine init`.
+- Show the Claude Code and Cursor CLI versions from the native installers as protected AI Tools rows.
+- Show the cabal 3.16 package cache in `~/.cache/cabal` as a Package Manager Caches row that needs review.
 
 ### Command line and agents
 

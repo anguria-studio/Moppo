@@ -279,4 +279,127 @@ struct HiddenDataScanTests {
         #expect(entry.children.isEmpty)
     }
 
+
+    // MARK: - Tool storage outside the listed folders (#323)
+
+    /// A location layout from the #257 and #216 manifests of 3 November 2026: names only, with small test sizes.
+    struct ToolLocationFixture: CustomTestStringConvertible, Sendable {
+        let path: String
+        /// The location is in the shared folder, not in the home folder.
+        var isShared = false
+        let files: [String]
+        /// The cache rows that Moppo offers, relative to the location.
+        var caches: Set<String> = []
+        var testDescription: String { path }
+
+        static let sharedFolder = "Users/Shared"
+
+        @discardableResult
+        func make(in sandbox: Sandbox) throws -> URL {
+            let relative = isShared ? Self.sharedFolder + "/" + path : path
+            for file in files { try sandbox.file(relative + "/" + file, bytes: 64 * 1024) }
+            return sandbox.home.appendingPathComponent(relative)
+        }
+    }
+
+    static let toolLocations: [ToolLocationFixture] = [
+        .init(path: ".local/share/containers/podman/machine",
+              files: ["applehv/cache/e4b416b1758cb94b.raw.zst", "applehv/efi-bl-podman-machine-default",
+                      "machine", "machine.pub", "port-alloc.dat"],
+              caches: ["applehv/cache"]),
+        .init(path: ".local/share/mise", files: ["installs/jq/1.7.1/jq", "installs/jq/.mise.backend.toml",
+                                                 "installs/.mise-installs.toml"]),
+        .init(path: ".local/share/NuGet", files: ["http-cache/670c1461$api.nuget.org/list_newtonsoft.json.dat", "Migrations/1"]),
+        .init(path: ".local/share/gem", files: ["ruby/3.3.0/gems/rainbow-3.1.1/README.markdown",
+                                                "ruby/3.3.0/specifications/rainbow-3.1.1.gemspec", "ruby/3.3.0/cache/rainbow-3.1.1.gem"]),
+        .init(path: ".local/state/cabal", files: ["store/ghc-9.10.3-fe9c/package.db/package.cache"]),
+        .init(path: "Library/Android/sdk", files: [".knownPackages", "build-tools/37.0.0/aapt2", "ndk/30.0.16248370/source.properties",
+                                                   "platforms/android-36/android.jar", "platform-tools/adb", "emulator/emulator",
+                                                   "system-images/android-36/google_apis/arm64-v8a/system.img"]),
+        .init(path: "DBngin", isShared: true, files: ["mysql/9.7.2_arm64/bin/mysqld", "mysql/9.7.2_arm64/LICENSE"]),
+        .init(path: "Library/Application Support/multimodal-models",
+              files: ["ai-coustics/quail-vf-2.1-l-48khz/quail_vf_2_1_l_48khz_zp75mq89_v7.aicmodel"])
+    ]
+
+    private func scanToolLocations(in sandbox: Sandbox) async throws -> ScanCategoryResult {
+        try await HiddenDataScanner(home: sandbox.home,
+            sharedFolder: sandbox.home.appendingPathComponent(ToolLocationFixture.sharedFolder)).scan(context: ScanContext())
+    }
+
+    @Test("each tool location has a fixture")
+    func toolLocationFixturesCoverTheRules() {
+        #expect(Set(Self.toolLocations.map(\.path)) == Set(ToolHomeFolders.locations.map(\.path)))
+    }
+
+    @Test("tool storage outside the listed folders is locked, names its owner, and keeps its size at any size",
+          arguments: toolLocations)
+    func toolLocationIsLocked(fixture: ToolLocationFixture) async throws {
+        let sandbox = try Sandbox()
+        let folder = try fixture.make(in: sandbox)
+        let total = try await AllocatedSizeMeasurer().measure(folder).allocatedBytes
+        let rule = try #require(ToolHomeFolders.locations.first { $0.path == fixture.path })
+
+        let result = try await scanToolLocations(in: sandbox)
+
+        #expect(result.entries.count == 1)
+        let entry = try #require(result.entries.first)
+        #expect(entry.url.standardizedFileURL == folder.standardizedFileURL)
+        #expect(entry.displayName == rule.name)
+        #expect(entry.protectionReason == .inventory)
+        #expect(entry.protectionExplanation == rule.explanation)
+        #expect(!CleanupService.removalAllowed(entry, userDataRemovalOverrides: [entry.id]))
+        #expect(total < 5 * 1024 * 1024 && entry.displayBytes == total)
+        let prefix = entry.url.path + "/"
+        #expect(Set(entry.children.map { String($0.url.path.dropFirst(prefix.count)) }) == fixture.caches)
+        #expect(entry.children.allSatisfy { !$0.isRemovalLocked && !$0.isRegenerable && $0.safetyCaveat != nil })
+    }
+
+    @Test("a folder name alone or a linked folder does not identify tool storage")
+    func toolLocationNeedsItsLayout() async throws {
+        let sandbox = try Sandbox()
+        for fixture in Self.toolLocations where fixture.path != ".local/share/mise" {
+            let relative = fixture.isShared ? ToolLocationFixture.sharedFolder + "/" + fixture.path : fixture.path
+            try sandbox.file(relative + "/notes/readme.txt", bytes: 64 * 1024)
+        }
+        let elsewhere = try ToolLocationFixture(path: "Documents/mise", files: ["installs/jq/1.7.1/jq"]).make(in: sandbox)
+        try FileManager.default.createDirectory(at: sandbox.home.appendingPathComponent(".local/share"),
+                                                withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: sandbox.home.appendingPathComponent(".local/share/mise"),
+                                                   withDestinationURL: elsewhere)
+
+        let result = try await scanToolLocations(in: sandbox)
+
+        #expect(result.entries.isEmpty)
+    }
+
+    enum PodmanCacheEvidence: CaseIterable, Sendable {
+        case machineKeyMissing, imageMissing
+    }
+
+    @Test("the Podman image cache is offered only with the machine layout and an image", arguments: PodmanCacheEvidence.allCases)
+    func podmanCacheNeedsItsLayout(evidence: PodmanCacheEvidence) async throws {
+        let sandbox = try Sandbox()
+        let fixture = Self.toolLocations[0]
+        let folder = try fixture.make(in: sandbox)
+        let removed = evidence == .machineKeyMissing ? "machine.pub" : fixture.files[0]
+        try FileManager.default.removeItem(at: folder.appendingPathComponent(removed))
+
+        let result = try await scanToolLocations(in: sandbox)
+
+        let entry = try #require(result.entries.first)
+        #expect(entry.displayName == "Podman machines" && entry.protectionReason == .inventory)
+        #expect(entry.children.isEmpty)
+    }
+
+    @Test("a large archive in tool storage counts only in its tool row")
+    func archiveInToolLocationCountsOnce() async throws {
+        let sandbox = try Sandbox()
+        let folder = try Self.toolLocations.first { $0.path == "Library/Android/sdk" }!.make(in: sandbox)
+        try sandbox.file("Library/Android/sdk/.temp/PackageOperation01/system-image.zip", bytes: 260 * 1024 * 1024)
+
+        let result = try await scanToolLocations(in: sandbox)
+
+        #expect(result.entries.map(\.url.standardizedFileURL) == [folder.standardizedFileURL])
+    }
+
 }
