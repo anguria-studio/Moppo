@@ -30,7 +30,8 @@ OWNERS = {
     "applications", "applicationLeftovers", "documentsAndFiles",
 }
 TREATMENTS = {"offer", "review", "protect"}
-TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations"}
+TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders"}
+CHECKS = {"goModuleCache": "packageManagerCaches"}
 HOME_TABLES = {"toolHomeFolders", "toolHomeLocations"}
 COVERAGE = {
     "row": "Row",
@@ -98,8 +99,13 @@ def validate_tool(tool, sections, listed):
         raise RuleError(f"{name}: sections.json does not list this tool")
     if not isinstance(tool["storage"], list) or not tool["storage"]:
         raise RuleError(f"{name}: storage must be a list with at least one entry")
+    identifiers = tool.get("bundleIdentifiers", [])
+    if not isinstance(identifiers, list) or not all(isinstance(value, str) and value for value in identifiers):
+        raise RuleError(f"{name}: bundleIdentifiers must be a list of strings")
     for storage in tool["storage"]:
         validate_storage(name, storage)
+        if (storage.get("table") == "applicationDataFolders" or storage.get("applicationData")) and not identifiers:
+            raise RuleError(f"{name}: an application data folder needs the tool's bundleIdentifiers")
 
 
 def validate_storage(name, storage):
@@ -138,10 +144,18 @@ def validate_storage(name, storage):
                 raise RuleError(f"{where}: a cache has at most one identifiedBy item")
             if treatment == "review" and not storage.get("caveat"):
                 raise RuleError(f"{where}: a cache that needs review needs a caveat")
+        if table == "applicationDataFolders" and treatment != "protect":
+            raise RuleError(f"{where}: an application data folder is protected")
+        if table == "packageManagerCaches" and not storage.get("name"):
+            raise RuleError(f"{where}: a package cache needs the row name")
+        if "check" in storage and CHECKS.get(storage["check"]) != table:
+            raise RuleError(f"{where}: check must be one of {', '.join(sorted(CHECKS))}, for its table")
         if storage["type"] == "userData" and treatment != "protect":
             raise RuleError(f"{where}: user data is never offered")
         if treatment != "protect":
-            if not storage.get("identifiedBy") and not storage.get("check") and table not in HOME_TABLES:
+            # A package cache is offered by its path. The scanner does not read a marker in it.
+            if not storage.get("identifiedBy") and not storage.get("check") \
+                    and table not in HOME_TABLES and table != "packageManagerCaches":
                 raise RuleError(f"{where}: an offered path needs identifiedBy or check")
             if "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
                 raise RuleError(f"{where}: an offered path needs a verified record, or a status that starts with Not verified")
@@ -149,6 +163,10 @@ def validate_storage(name, storage):
         coverage = storage.get("coverage")
         if coverage not in COVERAGE and not (isinstance(coverage, str) and TICKET.match(coverage)):
             raise RuleError(f"{where}: coverage must be a ticket number or one of {', '.join(sorted(COVERAGE))}")
+        if storage.get("applicationData"):
+            raise RuleError(f"{where}: applicationData needs a table. Use the applicationDataFolders table instead.")
+    if storage.get("applicationData") and storage.get("treatment") != "protect":
+        raise RuleError(f"{where}: an application data folder is protected")
     for key in ("identifiedBy", "layout"):
         if not isinstance(storage.get(key, []), list):
             raise RuleError(f"{where}: {key} must be a list")
@@ -403,6 +421,63 @@ def render_tool_home_locations(sections, tools):
     return "\n".join(lines)
 
 
+def render_package_caches(sections, tools):
+    lines = []
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "packageManagerCaches" or storage.get("check"):
+            continue
+        for path in storage_paths(storage):
+            _, relative = swift_base(path)
+            if storage.get("note"):
+                lines.append(f"        // {storage['note']}")
+            caveat = f", reviewCaveat: {swift_string(storage['caveat'])}" if storage["treatment"] == "review" else ""
+            lines.append(
+                f"        CacheRoot(label: {swift_string(storage['name'])}, "
+                f"components: {swift_list(relative.split('/'))}{caveat}),"
+            )
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
+def render_go_module_cache(sections, tools):
+    """The constant for the rule with `"check": "goModuleCache"`, or nothing when the registry has none."""
+    for _, _, storage in rows(sections, tools):
+        if storage.get("check") == "goModuleCache":
+            path = swift_string(swift_base(storage_paths(storage)[0])[1])
+            return ("\n    /// The Go module cache, which `go clean -modcache` removes. "
+                    "The rule has `\"check\": \"goModuleCache\"`.\n"
+                    f"    static let goModuleCache = {path}\n")
+    return ""
+
+
+def render_application_data_folders(sections, tools):
+    lines = []
+    seen = set()
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "applicationDataFolders" and not storage.get("applicationData"):
+            continue
+        for identifier in tool["bundleIdentifiers"]:
+            if identifier in seen:
+                continue
+            seen.add(identifier)
+            folders = []
+            for entry in tool["storage"]:
+                if entry.get("table") != "applicationDataFolders" and not entry.get("applicationData"):
+                    continue
+                for path in storage_paths(entry):
+                    _, relative = swift_base(path)
+                    identified = entry.get("identifiedBy", []) if entry.get("table") == "applicationDataFolders" else []
+                    suffix = f", identifiedBy: {swift_list(identified)}" if identified else ""
+                    folders.append(f"Folder(path: {swift_string(relative)}{suffix})")
+            if tool.get("note"):
+                lines.append(f"        // {tool['note']}")
+            lines.append(f"        {swift_string(identifier)}: [{', '.join(folders)}],")
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
 def render_swift(sections, tools):
     return f"""// Generated by scripts/rules.py from rules/*.json. Do not edit this file.
 // Change a rule in rules/<tool>.json, then run `python3 scripts/rules.py generate`.
@@ -424,6 +499,22 @@ extension ToolHomeFolders {{
     /// Tool storage outside the listed folders. Each location comes from a rule with `"table": "toolHomeLocations"`.
     static let locations: [Location] = [
 {render_tool_home_locations(sections, tools)}
+    ]
+}}
+
+extension PackageManagerScanner {{
+    /// Package caches. Each root comes from a rule with `"table": "packageManagerCaches"`.
+    /// The roots are pairwise disjoint. `DisjointCategoriesTests` checks this.
+    static let roots: [CacheRoot] = [
+{render_package_caches(sections, tools)}
+    ]
+{render_go_module_cache(sections, tools)}}}
+
+extension ApplicationDataFolders {{
+    /// Folders by bundle identifier. Each folder comes from a rule with `"table": "applicationDataFolders"`
+    /// or `"applicationData": true`, under the `bundleIdentifiers` of its tool.
+    static let byBundleIdentifier: [String: [Folder]] = [
+{render_application_data_folders(sections, tools)}
     ]
 }}
 """

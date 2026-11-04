@@ -1,0 +1,19 @@
+{
+  "id": "ccache",
+  "name": "ccache",
+  "section": "c-cpp",
+  "storage": [
+    {
+      "path": "~/Library/Caches/ccache",
+      "type": "cache",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "ccache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next build",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

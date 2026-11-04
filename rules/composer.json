@@ -21,7 +21,10 @@
     {
       "path": "~/Library/Caches/composer",
       "type": "download",
-      "coverage": "row",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Composer cache",
       "recognition": "Folder name",
       "removal": "Trash",
       "restore": "`composer install`. A network connection is necessary.",

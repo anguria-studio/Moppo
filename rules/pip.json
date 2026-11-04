@@ -1,0 +1,23 @@
+{
+  "id": "pip",
+  "name": "pip",
+  "section": "python",
+  "storage": [
+    {
+      "path": "~/Library/Caches/pip",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "pip cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `pip install`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "kind": "found"
+      },
+      "status": "Not verified. Moppo offered the row in the test. No test removed the folder."
+    }
+  ]
+}

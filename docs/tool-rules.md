@@ -33,6 +33,7 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 | `name` | The tool name. The row explanation uses it. |
 | `section` | A section from `sections.json`. |
 | `note` | Optional. A sentence under the section table. |
+| `bundleIdentifiers` | The bundle identifiers of the desktop application. Needed for an application data folder. |
 | `storage` | One entry for each path. |
 
 ## Storage fields
@@ -45,6 +46,8 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 | `owner` | With `table`. The category that lists the path: `aiTools`, `packageManagers`, `hiddenSystemData`, `systemCaches`, `applications`, `applicationLeftovers`, or `documentsAndFiles`. |
 | `treatment` | With `table`. `offer`, `review`, or `protect`. |
 | `name` | With `table`. The row name in Moppo. |
+| `check` | A check in Swift code that the rule needs, such as `goModuleCache`. |
+| `applicationData` | `true` when the path is also an application data folder of the tool. |
 | `coverage` | Without `table`. The `Moppo today` value: `row`, `protected`, `caches`, `hidden`, `size`, `no`, or a ticket number. |
 | `identifiedBy` | Paths in the folder that identify the tool. One is sufficient. A glob component matches any child. A final `/` requires a folder. For a cache in a home folder, the one item that identifies its layout. |
 | `layout` | For a protected home folder or location. Items that must all exist before Moppo offers a cache in it. |
@@ -76,6 +79,12 @@ A row without a rule shows its `coverage`.
 | `databaseStorage` | `DatabaseStorage.roots` | Protected database data folders. |
 | `toolHomeFolders` | `ToolHomeFolders.all` | Protected home folders. An offered path below a folder is one of its caches. |
 | `toolHomeLocations` | `ToolHomeFolders.locations` | Protected tool storage outside the listed folders, with the items that identify it. |
+| `packageManagerCaches` | `PackageManagerScanner.roots` | Package caches that Moppo offers by their path. The rule with `"check": "goModuleCache"` is the Go module cache. |
+| `applicationDataFolders` | `ApplicationDataFolders.byBundleIdentifier` | Data folders that use another name than their application. The tool needs `bundleIdentifiers`. |
+
+A rule in another table can also set `"applicationData": true`.
+The generator then adds its path to `ApplicationDataFolders.byBundleIdentifier` under the tool's `bundleIdentifiers`.
+`SystemCachesScanner` and `HiddenDataScanner` derive their skip sets from `PackageManagerScanner.roots`, so no other table lists a package cache twice.
 
 A cache in a home folder or location is an `offer` or `review` entry with the same table, below the folder path.
 The generator needs exactly one protected folder above such a path.

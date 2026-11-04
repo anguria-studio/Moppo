@@ -9,20 +9,24 @@
       "table": "toolHomeLocations",
       "owner": "hiddenSystemData",
       "treatment": "protect",
+      "name": "cabal package store",
+      "identifiedBy": [
+        "store/ghc-*"
+      ],
       "explanation": "cabal keeps built packages here. Projects and programs from cabal install can need them.",
       "recognition": "`store/ghc-<version>` folder",
       "removal": "Never offer. Projects and programs from `cabal install` can need the store.",
       "restore": "Next build",
-      "status": "Not verified. #350 checked the protection on the test Mac. No test removed the folder.",
-      "name": "cabal package store",
-      "identifiedBy": [
-        "store/ghc-*"
-      ]
+      "status": "Not verified. #350 checked the protection on the test Mac. No test removed the folder."
     },
     {
       "path": "~/.cache/cabal",
       "type": "download",
-      "coverage": "row",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "review",
+      "name": "Cabal packages (XDG)",
+      "caveat": "cabal update downloads it again. A network connection is necessary.",
       "recognition": "cabal layout",
       "removal": "Trash after review",
       "restore": "`cabal update` and the next build. A network connection is necessary.",
@@ -57,6 +61,18 @@
         "macos": "27.2",
         "tool": "cabal 3.16.1.0"
       }
+    },
+    {
+      "path": "~/.cabal/packages",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Cabal packages",
+      "recognition": "cabal layout",
+      "removal": "Trash",
+      "restore": "`cabal update`. A network connection is necessary.",
+      "status": "Not verified. cabal 3.16 does not create this folder. Older cabal versions use it. See #323."
     }
   ]
 }

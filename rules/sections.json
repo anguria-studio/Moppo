@@ -47,7 +47,10 @@
       "conda",
       "poetry",
       "pipx",
-      "pre-commit"
+      "pre-commit",
+      "pip",
+      "uv",
+      "pipenv"
     ]
   },
   "ruby": {
@@ -73,7 +76,8 @@
       "coursier",
       "sdkman",
       "kotlin-native",
-      "jetbrains"
+      "jetbrains",
+      "ivy"
     ]
   },
   "android": {
@@ -100,7 +104,8 @@
       "mix",
       "ghcup",
       "cabal",
-      "stack"
+      "stack",
+      "hex"
     ]
   },
   "version-managers": {
@@ -134,6 +139,63 @@
       "ssh"
     ]
   },
+  "javascript": {
+    "title": "JavaScript",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "npm",
+      "yarn",
+      "pnpm",
+      "bun",
+      "deno",
+      "node-gyp",
+      "electron",
+      "playwright",
+      "cypress"
+    ]
+  },
+  "swift": {
+    "title": "Swift and Apple tools",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "swiftpm",
+      "carthage",
+      "cocoapods"
+    ]
+  },
+  "dart": {
+    "title": "Dart",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "pub"
+    ]
+  },
+  "c-cpp": {
+    "title": "C and C++",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "ccache"
+    ]
+  },
+  "homebrew": {
+    "title": "Homebrew",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "homebrew"
+    ]
+  },
+  "application-data": {
+    "title": "Application data folders with other names",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "anythingllm",
+      "cherry-studio",
+      "stability-matrix",
+      "voiceink",
+      "t3-code",
+      "superwhisper"
+    ]
+  },
   "databases": {
     "title": "Databases",
     "document": "docs/tool-catalog.md",
@@ -155,7 +217,9 @@
     "title": "Other tool storage",
     "document": "docs/tool-catalog.md",
     "tools": [
-      "ai-coustics"
+      "ai-coustics",
+      "vagrant",
+      "terraform"
     ]
   }
 }

@@ -1,0 +1,20 @@
+{
+  "id": "bun",
+  "name": "Bun",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/.bun/install/cache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Bun install cache",
+      "recognition": "Bun layout",
+      "removal": "Trash",
+      "restore": "Next `bun install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder.",
+      "note": "`~/.bun` also holds the Bun runtime. Only the install cache is a download."
+    }
+  ]
+}

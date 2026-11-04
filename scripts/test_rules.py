@@ -101,6 +101,42 @@ class ValidationTests(unittest.TestCase):
         self.rejects("needs verified or status", {"mysql": tool(storage=[storage(verified=None)])})
 
 
+class TableTests(unittest.TestCase):
+    def test_package_caches_and_the_go_module_cache(self):
+        tools = {"mysql": tool(storage=[
+            storage(path="~/.npm/_cacache", type="cache", table="packageManagerCaches", owner="packageManagers",
+                    treatment="offer", name="npm cache", identifiedBy=None, verified=None, status="Not verified. Old rule."),
+            storage(path="~/.cache/cabal", type="download", table="packageManagerCaches", owner="packageManagers",
+                    treatment="review", name="Cabal packages (XDG)", identifiedBy=None, caveat="cabal update downloads it again."),
+            storage(path="~/go/pkg/mod", type="download", table="packageManagerCaches", owner="packageManagers",
+                    treatment="review", name="Go module cache", identifiedBy=None, check="goModuleCache"),
+        ])}
+        RULES.validate(SECTIONS, tools)
+        swift = RULES.render_swift(SECTIONS, tools)
+        self.assertIn('CacheRoot(label: "npm cache", components: [".npm", "_cacache"]),', swift)
+        self.assertIn('CacheRoot(label: "Cabal packages (XDG)", components: [".cache", "cabal"], '
+                      'reviewCaveat: "cabal update downloads it again.")\n', swift)
+        self.assertIn('static let goModuleCache = "go/pkg/mod"', swift)
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(SECTIONS, {"mysql": tool(storage=[storage(check="goModuleCache")])})
+
+    def test_application_data_folders(self):
+        app = tool(id="dbeaver", name="DBeaver", bundleIdentifiers=["org.jkiss.dbeaver.core.product"], storage=[
+            storage(path="~/Library/DBeaverData", name="DBeaver data", applicationData=True),
+            storage(path="~/dbeaver", type="userData", table="applicationDataFolders", owner="applications",
+                    treatment="protect", identifiedBy=["workspace"], verified=None, status="Found."),
+        ])
+        sections = {"databases": {**SECTIONS["databases"], "tools": ["dbeaver"]}}
+        RULES.validate(sections, {"dbeaver": app})
+        swift = RULES.render_swift(sections, {"dbeaver": app})
+        self.assertIn('"org.jkiss.dbeaver.core.product": [Folder(path: "Library/DBeaverData"), '
+                      'Folder(path: "dbeaver", identifiedBy: ["workspace"])]', swift)
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, {"dbeaver": {**app, "bundleIdentifiers": []}})
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, {"dbeaver": {**app, "storage": [storage(table=None, owner=None, treatment=None, coverage="no", applicationData=True)]}})
+
+
 class RenderingTests(unittest.TestCase):
     def test_row_text(self):
         section = RULES.render_section("databases", SECTIONS, {"mysql": tool()})

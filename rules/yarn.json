@@ -1,0 +1,56 @@
+{
+  "id": "yarn",
+  "name": "Yarn",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/Library/Caches/Yarn",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Yarn cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `yarn install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder.",
+      "note": "Yarn 1 on macOS uses `~/Library/Caches/Yarn`. The `~/.yarn/cache` and `~/.cache/yarn` layouts come from Linux or a migrated home. A Mac can carry any of them."
+    },
+    {
+      "path": "~/.yarn/cache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Yarn cache (classic)",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `yarn install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/.cache/yarn",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Yarn cache (XDG)",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `yarn install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/.yarn/berry/cache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Yarn Berry cache",
+      "recognition": "Yarn Berry layout",
+      "removal": "Trash",
+      "restore": "Next `yarn install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

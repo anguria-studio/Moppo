@@ -1,0 +1,19 @@
+{
+  "id": "node-gyp",
+  "name": "node-gyp",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/Library/Caches/node-gyp",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "node-gyp headers",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next native module build. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

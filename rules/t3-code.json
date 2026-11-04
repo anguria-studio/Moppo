@@ -1,0 +1,28 @@
+{
+  "id": "t3-code",
+  "name": "T3 Code",
+  "section": "application-data",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/t3code-v2",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "T3 Code 0.1.6",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    }
+  ],
+  "bundleIdentifiers": [
+    "com.t3tools.t3code"
+  ],
+  "note": "T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it."
+}

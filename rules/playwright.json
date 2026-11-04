@@ -1,0 +1,32 @@
+{
+  "id": "playwright",
+  "name": "Playwright",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/Library/Caches/ms-playwright",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Playwright browsers",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "`npx playwright install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder.",
+      "note": "Playwright's macOS default is `~/Library/Caches/ms-playwright`. `~/.cache/ms-playwright` is the Linux layout."
+    },
+    {
+      "path": "~/.cache/ms-playwright",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Playwright browsers (XDG)",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "`npx playwright install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

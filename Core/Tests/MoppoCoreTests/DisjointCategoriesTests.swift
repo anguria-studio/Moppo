@@ -18,48 +18,6 @@ import Testing
 @Suite("Categories claim disjoint paths")
 struct DisjointCategoriesTests {
 
-    /// Every child of `~/Library/Caches` that `PackageManagerScanner` claims, or
-    /// claims something inside. System Caches lists those children whole, so it has
-    /// to leave each of them alone, whichever it is: Poetry's folder holds two
-    /// claimed downloads and, beside them, environments nobody should offer.
-    private var packageManagerCacheChildren: Set<String> {
-        Set(
-            PackageManagerScanner.roots
-                .map(\.components)
-                .filter { $0.count >= 3 && $0[0] == "Library" && $0[1] == "Caches" }
-                .map { $0[2] }
-        )
-    }
-
-    @Test("System Caches skips every ~/Library/Caches root that Package Manager claims")
-    func systemCachesSkipsPackageManagerRoots() {
-        let claimed = packageManagerCacheChildren
-        let skipped = SystemCachesScanner.packageManagerOwnedCacheNames
-
-        let doubleCounted = claimed.subtracting(skipped)
-        #expect(
-            doubleCounted.isEmpty,
-            """
-            PackageManagerScanner claims \(doubleCounted.sorted()) under ~/Library/Caches, \
-            but SystemCachesScanner does not skip them, so those bytes are counted in \
-            both categories. Add them to SystemCachesScanner.packageManagerOwnedCacheNames.
-            """
-        )
-    }
-
-    @Test("the skip list contains nothing Package Manager has stopped claiming")
-    func skipListHasNoStaleEntries() {
-        let claimed = packageManagerCacheChildren
-        let stale = SystemCachesScanner.packageManagerOwnedCacheNames.subtracting(claimed)
-        #expect(
-            stale.isEmpty,
-            """
-            SystemCachesScanner skips \(stale.sorted()), but PackageManagerScanner no \
-            longer claims them — those caches are now invisible to both categories.
-            """
-        )
-    }
-
     @Test("package manager cache roots are pairwise disjoint")
     func packageManagerRootsAreDisjoint() {
         let paths = PackageManagerScanner.roots.map { $0.components.joined(separator: "/") }
@@ -77,40 +35,11 @@ struct DisjointCategoriesTests {
     /// claim a child — and only a child, since a deeper path would sit inside one of
     /// that scanner's rows. Until 20 Sep 2026 it listed the folder as one row, and
     /// `~/.cache/yarn` and `~/.cache/ms-playwright` were taken off this list for it.
-    @Test("a package manager root under ~/.cache is an immediate child that System Caches skips")
-    func dotCacheRootsAreSkippedBySystemCaches() {
+    @Test("a package manager root under ~/.cache is an immediate child")
+    func dotCacheRootsAreImmediateChildren() {
         let roots = PackageManagerScanner.roots.map(\.components).filter { $0.first == ".cache" }
         let nested = roots.filter { $0.count != 2 }.map { $0.joined(separator: "/") }
         #expect(nested.isEmpty, "\(nested) are not immediate children of ~/.cache")
-
-        let claimed = Set(roots.compactMap { $0.count == 2 ? $0[1] : nil })
-        let skipped = SystemCachesScanner.packageManagerOwnedDotCacheNames
-        #expect(claimed.subtracting(skipped).isEmpty,
-                "\(claimed.subtracting(skipped).sorted()) would be offered by both categories")
-        #expect(skipped.subtracting(claimed).isEmpty,
-                "\(skipped.subtracting(claimed).sorted()) would be offered by neither")
-    }
-
-    /// `HiddenDataScanner` lists every large dot-folder in the home whole. A package
-    /// manager root inside one — `~/.cargo/registry` inside `~/.cargo` — would be
-    /// offered by both, and the whole-folder row would take the toolchain with the
-    /// cache. `~/.pnpm-store` was claimed here and listed there from the day pnpm
-    /// was added; nothing compared the two lists.
-    @Test("Hidden Data skips every home dot-folder that Package Manager claims inside")
-    func hiddenDataSkipsPackageManagerDotFolders() {
-        let claimed = Set(PackageManagerScanner.roots.compactMap { root -> String? in
-            guard let first = root.components.first, first.hasPrefix(".") else { return nil }
-            return first
-        })
-        let listedTwice = claimed.subtracting(HiddenDataScanner.dotDirectorySkipList)
-        #expect(
-            listedTwice.isEmpty,
-            """
-            PackageManagerScanner claims paths inside \(listedTwice.sorted()), which \
-            HiddenDataScanner also lists whole. Add them to \
-            HiddenDataScanner.dotDirectorySkipList.
-            """
-        )
     }
 
     /// Hidden Data skips a folder in these lists before it checks the protected tool folders.

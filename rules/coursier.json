@@ -6,7 +6,10 @@
     {
       "path": "~/Library/Caches/Coursier",
       "type": "download",
-      "coverage": "row",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Coursier cache",
       "recognition": "Folder name",
       "removal": "Trash",
       "restore": "Next sbt run. A network connection is necessary.",

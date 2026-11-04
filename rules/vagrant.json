@@ -1,0 +1,16 @@
+{
+  "id": "vagrant",
+  "name": "Vagrant",
+  "section": "other",
+  "storage": [
+    {
+      "path": "~/.vagrant.d/boxes",
+      "type": "download",
+      "coverage": "no",
+      "recognition": "Vagrant layout",
+      "removal": "`vagrant box remove` after review",
+      "restore": "`vagrant box add`. A network connection is necessary.",
+      "status": "Not verified. The user can package a box on this Mac, and the other boxes are multi-gigabyte downloads."
+    }
+  ]
+}

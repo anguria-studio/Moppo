@@ -1,0 +1,28 @@
+{
+  "id": "stability-matrix",
+  "name": "Stability Matrix",
+  "section": "application-data",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/StabilityMatrix",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "Stability Matrix 2.16.5",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    }
+  ],
+  "bundleIdentifiers": [
+    "ai.lykos.stabilitymatrix"
+  ],
+  "note": "Stability Matrix 2.16.5, team 78LBV9V26G. The folder holds `global.json` and the logs."
+}
