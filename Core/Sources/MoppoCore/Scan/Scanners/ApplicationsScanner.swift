@@ -63,7 +63,6 @@ public struct ApplicationsScanner: CategoryScanner {
     // MARK: - Scanning
 
     public func scan(context: ScanContext) async throws -> ScanCategoryResult {
-        let library = home.appendingPathComponent("Library", isDirectory: true)
         let fileManager = FileManager.default
         var entries: [FileEntry] = []
         var unreadableCount = 0
@@ -115,7 +114,7 @@ public struct ApplicationsScanner: CategoryScanner {
 
                 var children: [FileEntry] = []
                 for candidate in Self.leftoverCandidates(
-                    baseName: baseName, bundleID: bundleID, library: library
+                    baseName: baseName, bundleID: bundleID, home: home
                 ) {
                     let candidatePath = candidate.url.standardizedFileURL.path
                     if curatedRoots.contains(where: { Self.overlaps(candidatePath, $0) }) {
@@ -788,9 +787,10 @@ public struct ApplicationsScanner: CategoryScanner {
     /// Only paths that exist are returned, and each path appears once even when two
     /// rules match it.
     private static func leftoverCandidates(
-        baseName: String, bundleID: String?, library: URL
+        baseName: String, bundleID: String?, home: URL
     ) -> [Candidate] {
         let fileManager = FileManager.default
+        let library = home.appendingPathComponent("Library", isDirectory: true)
         var candidates: [Candidate] = []
         var seen = Set<String>()
 
@@ -811,6 +811,9 @@ public struct ApplicationsScanner: CategoryScanner {
             add(inLibrary("Caches", bundleID), .cache)
             add(inLibrary("Containers", bundleID), .folder)
             add(inLibrary("Application Support", bundleID), .folder)
+            for folder in ApplicationDataFolders.folders(for: bundleID, home: home) {
+                add(folder, .folder)
+            }
             add(inLibrary("Application Scripts", bundleID), .folder)
             add(inLibrary("Saved Application State", "\(bundleID).savedState"), .cache)
             add(inLibrary("WebKit", bundleID), .cache)

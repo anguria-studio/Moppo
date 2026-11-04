@@ -24,6 +24,8 @@ public struct OrphanedAppLeftoverPlan: Sendable, Equatable {
 
     let applicationRoots: [URL]
     let allowedRelatedRoots: [URL]
+    /// Named data folders outside `allowedRelatedRoots`. See `ApplicationDataFolders`.
+    var allowedRelatedFolders: [URL] = []
 
     public var itemCount: Int { groups.reduce(0) { $0 + $1.items.count } }
     public var totalBytes: Int64 { groups.reduce(0) { $0 + $1.totalBytes } }
@@ -50,7 +52,7 @@ public struct OrphanedAppLeftoverPlan: Sendable, Equatable {
 /// application once owned it**: a path in a location macOS creates for
 /// applications and nothing else — a sandbox container, an application-scripts
 /// folder, saved window state, WebKit storage, HTTP storage — or an entry in the
-/// curated app-data table. A name that merely parses as reverse-DNS is not
+/// curated app-data table or in `ApplicationDataFolders`. A name that merely parses as reverse-DNS is not
 /// evidence. `/Library/Preferences/org.cups.printers.plist` is the user's printer
 /// configuration; `org.swift.swiftpm` is a build tool's cache. Both are shaped like
 /// bundle identifiers, neither ever belonged to an application, and an earlier
@@ -283,7 +285,8 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
             preservedPaths: deduplicated(preserved),
             unreadableCount: unreadableCount,
             applicationRoots: pathPlanner.applicationRoots,
-            allowedRelatedRoots: pathPlanner.allowedRelatedRoots
+            allowedRelatedRoots: pathPlanner.allowedRelatedRoots,
+            allowedRelatedFolders: pathPlanner.allowedRelatedFolders
         )
     }
 
@@ -432,6 +435,8 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
             let root = pathPlanner.home.appendingPathComponent(curation.root)
             if fileManager.fileExists(atPath: root.path) { result.insert(identifier) }
         }
+        // A verified data folder is evidence of the same kind. See `ApplicationDataFolders`.
+        result.formUnion(ApplicationDataFolders.identifiersWithFolders(home: pathPlanner.home))
         if let soundLibraries = pathPlanner.soundLibraries {
             result.formUnion(soundLibraries.candidateIdentifiers())
         }
@@ -599,9 +604,9 @@ extension OrphanedAppLeftoverPlan {
            currentIdentity != item.plannedIdentity {
             return false
         }
-        guard let root = plan.allowedRelatedRoots.first(where: {
-            AppUninstallPlanner.isInside(item.url, root: $0)
-        }), !AppUninstallPlanner.isSymbolicLink(item.url) else { return false }
+        guard let root = AppUninstallPlanner.relatedRoot(
+            of: item.url, roots: plan.allowedRelatedRoots, folders: plan.allowedRelatedFolders
+        ), !AppUninstallPlanner.isSymbolicLink(item.url) else { return false }
         return !AppUninstallPlanner.hasSymbolicLinkInParents(of: item.url, through: root)
     }
 }

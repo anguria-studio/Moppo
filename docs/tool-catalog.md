@@ -343,14 +343,15 @@ Only the tool can remove its own logs and old data safely.
 | `/opt/homebrew/var/lib/elasticsearch` | User data | `nodes/<number>/_state` or `_state` folder | Never offer | Not possible | Hidden & System Data, protected | Not verified. Homebrew core has no Elasticsearch formula. |
 | `/opt/homebrew/var/log` | Logs | Service log files | Trash after review, when the service does not run | Not possible | No | Verified 2026-11-03, Redis 8.10.3, macOS 27.2 |
 | `<project>/*.sqlite`, `<project>/*.sqlite3`, `<project>/*.db` | User data | `SQLite format 3` header | Never offer | Not possible | No | Verified 2026-11-03, SQLite 3.54.0, macOS 27.2 |
-| `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
+| `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Applications, protected. Hidden & System Data, protected, without DBeaver | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
 
 Database client applications such as TablePlus and DBeaver store connections and scripts.
 Treat their data folders as user data.
 DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
 Moppo shows the Postgres.app and DBngin data folders under their applications as protected rows with their sizes.
 App Uninstaller and Application Leftovers keep these folders. Moppo does not offer them for removal.
-Moppo shows `~/Library/DBeaverData` in Hidden & System Data, not with DBeaver, because the folder is not in `~/Library/Application Support`.
+Moppo shows `~/Library/DBeaverData` as protected data with DBeaver. App Uninstaller and Application Leftovers keep it.
+Without DBeaver, Moppo shows the folder in Hidden & System Data.
 Moppo protects a data folder only when the recognition file exists. A folder name alone does not identify a database.
 On an Intel Mac, the Homebrew folders are in `/usr/local/var`.
 Older PostgreSQL data folders can remain after an upgrade.

@@ -81,6 +81,35 @@ struct DatabaseStorageTests {
         #expect(result.totalBytes == result.entries.reduce(0) { $0 + $1.displayBytes })
     }
 
+    @Test("DBeaver data shows once: with DBeaver, or in Hidden & System Data without it")
+    func dbeaverDataHasOneOwner() async throws {
+        let sandbox = try Sandbox()
+        try sandbox.layout(["Library/DBeaverData/workspace6/General/.dbeaver/data-sources.json"], under: sandbox.home)
+        let folder = sandbox.home.appendingPathComponent("Library/DBeaverData").standardizedFileURL
+        let applications = sandbox.root.appendingPathComponent("Applications", isDirectory: true)
+        let coordinator = ScanCoordinator(scanners: [
+            ApplicationsScanner(applicationDirectories: [applications], home: sandbox.home, soundLibraries: nil),
+            HiddenDataScanner(home: sandbox.home)
+        ])
+        func rows(_ results: ScanResults) -> [(CategoryID, FileEntry)] {
+            results.categories.flatMap { category in
+                (category.entries + category.entries.flatMap(\.children)).map { (category.categoryID, $0) }
+            }.filter { $0.1.url.standardizedFileURL == folder }
+        }
+
+        let alone = rows(try await coordinator.scan())
+        #expect(alone.map(\.0) == [.hiddenSystemData])
+
+        // Larger than the 1 MiB noise floor, as a real application is.
+        try sandbox.layout(["DBeaver.app/Contents/MacOS/dbeaver"], under: applications, bytes: 2 * 1024 * 1024)
+        let plist = ["CFBundleIdentifier": "org.jkiss.dbeaver.core.product", "CFBundlePackageType": "APPL"]
+        try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            .write(to: applications.appendingPathComponent("DBeaver.app/Contents/Info.plist"))
+        let installed = rows(try await coordinator.scan())
+        #expect(installed.map(\.0) == [.applications])
+        #expect(installed.allSatisfy { $0.1.protectionReason == .inventory })
+    }
+
     @Test("A database folder name without its database files is not protected")
     func folderNameIsNotEvidence() async throws {
         let sandbox = try Sandbox()

@@ -24,8 +24,9 @@ enum DatabaseStorage {
         let tool: String
         /// What the folder holds, for the row explanation.
         var contents: String? = nil
-        /// An application row shows this folder with its application.
-        /// Hidden & System Data does not list it.
+        /// Only an application row shows this folder. Hidden & System Data does not measure it.
+        /// Hidden & System Data lists the other folders. When an application row also lists
+        /// one, such as `~/Library/DBeaverData`, the scan keeps only the application row.
         var listedWithApplication = false
     }
 

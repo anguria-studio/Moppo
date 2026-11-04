@@ -229,6 +229,7 @@ public actor ScanCoordinator {
         results = removingApplicationLeftoverOverlaps(from: results)
         results = removingAIToolOverlaps(from: results)
         results = removingInstalledApplicationOverlaps(from: results)
+        results = removingApplicationInventoryOverlaps(from: results)
 
         // Present in the design's fixed order, not completion order.
         let order = CategoryID.allCases
@@ -365,6 +366,38 @@ public actor ScanCoordinator {
                   result.entries.contains(where: isClaimed)
             else { return result }
 
+            var copy = result
+            copy.entries.removeAll(where: isClaimed)
+            copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }
+            if copy.entries.isEmpty, copy.availability == .available {
+                copy.availability = .empty
+            }
+            return copy
+        }
+    }
+
+    /// An installed application's row owns the protected data folders listed under it,
+    /// such as `~/Library/DBeaverData`. Hidden & System Data shows such a folder only
+    /// when no application row lists it.
+    static func removingApplicationInventoryOverlaps(
+        from results: [ScanCategoryResult]
+    ) -> [ScanCategoryResult] {
+        let claimed = results
+            .first(where: { $0.categoryID == .applications })?
+            .entries
+            .flatMap(\.children)
+            .filter { $0.protectionReason == .inventory }
+            .map { $0.url.standardizedFileURL.path } ?? []
+        guard !claimed.isEmpty else { return results }
+
+        func isClaimed(_ entry: FileEntry) -> Bool {
+            entry.protectionReason == .inventory
+                && claimed.contains { ApplicationsScanner.overlaps(entry.url.standardizedFileURL.path, $0) }
+        }
+
+        return results.map { result in
+            guard result.categoryID == .hiddenSystemData, result.entries.contains(where: isClaimed)
+            else { return result }
             var copy = result
             copy.entries.removeAll(where: isClaimed)
             copy.totalBytes = copy.entries.reduce(0) { $0 + $1.displayBytes }

@@ -290,7 +290,11 @@ It does not list loose files in `~/.config` because they are settings.
 Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`, so Moppo shows one shared row under Devin.
 
 T3 Code, AnythingLLM, and Cherry Studio use support folder names that do not match their applications.
-Applications and Application Leftovers do not find these folders, so the AI Tools rows show them.
+`ApplicationDataFolders` connects these folders to the bundle identifiers of their applications.
+While the application is in an Applications folder, the AI Tools rows show the folders. The application row does not count them again.
+App Uninstaller lists the folders as user data.
+If the application is absent, Application Leftovers owns the folders and requires the user-data review.
+`~/.t3` stays in AI Tools because the T3 Code command-line server also uses it.
 OpenCode, Goose, Kiro, Devin, and Comfy Desktop keep their support folders with their applications.
 These folders keep their existing Applications protection.
 
