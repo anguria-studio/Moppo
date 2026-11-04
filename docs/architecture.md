@@ -147,6 +147,18 @@ Cleanup has the All and Safe to Remove tabs. The [user guide](user-guide.md) des
 
 The research record holds the full check rules and their limits.
 
+## Saved plan execution
+
+The shared `MoppoPlans` module provides `CleanupPlanService` and `PlanReview` for terminal and app clients.
+Removal clients must call `revalidate` after confirmation, immediately before removal.
+They must use the fresh entries and expected identities from the returned review.
+Before each item, they call `recheck` with that review. This check does not scan again.
+They must retain the owning service's identity, ownership, eligibility, and shared-storage checks.
+They must also retain service checks between targets because files can change after validation.
+A directory identity does not establish an immutable snapshot of all descendant contents.
+App clients must keep the current selection until the user accepts the proposal.
+Terminal and app removal use the same execution lock and saved outcomes.
+
 ## The boot snapshot
 
 macOS boots from a sealed, read-only APFS snapshot named `com.apple.os.update-…`, mounted at `/`. It is the running operating system, not an update leftover.
