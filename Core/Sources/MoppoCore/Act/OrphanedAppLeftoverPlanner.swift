@@ -52,13 +52,14 @@ public struct OrphanedAppLeftoverPlan: Sendable, Equatable {
 /// application once owned it**: a path in a location macOS creates for
 /// applications and nothing else — a sandbox container, an application-scripts
 /// folder, saved window state, WebKit storage, HTTP storage — or an entry in the
-/// curated app-data table or in `ApplicationDataFolders`. A name that merely parses as reverse-DNS is not
+/// curated app-data table or in `ApplicationDataFolders`, or the `AssociatedBundleIdentifiers`
+/// key of a launch file. A name that merely parses as reverse-DNS is not
 /// evidence. `/Library/Preferences/org.cups.printers.plist` is the user's printer
 /// configuration; `org.swift.swiftpm` is a build tool's cache. Both are shaped like
 /// bundle identifiers, neither ever belonged to an application, and an earlier
 /// version of this rule offered the printer configuration as "safe to delete".
 /// Once an identifier is established, its preferences, caches and launch items
-/// are collected as leftovers — but never as the reason it was believed to be one.
+/// are collected as leftovers — but a file name is never the reason it was believed to be one.
 public struct OrphanedAppLeftoverPlanner: Sendable {
 
     /// The identifiers with application evidence, and the roots that could not be
@@ -195,6 +196,8 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
             ))
         }
 
+        candidates += launchItemCandidates(identifiers: identifiers, installed: installed)
+
         var itemsByIdentifier: [String: [AppUninstallPlan.Item]] = [:]
         var preserved: [URL] = []
         var claimedPaths = Set<String>()
@@ -290,6 +293,28 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
         )
     }
 
+    /// Launch files that name a removed application in `AssociatedBundleIdentifiers`.
+    ///
+    /// A file stays when any identifier in it has an installed owner, or when its
+    /// program is in an installed application. The Comet updater agent names
+    /// `ai.perplexity.CometUpdater`, a bundle in `Comet.app`, so it stays while Comet is installed.
+    private func launchItemCandidates(
+        identifiers: Set<String>, installed: Set<String>
+    ) -> [AppUninstallPlanner.Candidate] {
+        LaunchItemFile.files(in: pathPlanner.launchItemDirectories).compactMap { file in
+            guard !file.associatedBundleIdentifiers.isEmpty,
+                  !file.associatedBundleIdentifiers.contains(where: {
+                      AppUninstallPlanner.ownerIsInstalled($0, installedBundleIdentifiers: installed)
+                  }),
+                  file.installedApplication(in: pathPlanner.applicationRoots) == nil,
+                  let owner = file.associatedBundleIdentifiers.sorted().first(where: identifiers.contains)
+            else { return nil }
+            return AppUninstallPlanner.Candidate(
+                url: file.url, category: .helpers, content: .appComponent, ownerBundleIdentifier: owner
+            )
+        }
+    }
+
     /// Distinguishes an absent path from a path that macOS keeps private.
     /// `fileExists` returns false for both states and previously hid denied rows.
     private static func pathStatus(_ url: URL) -> CandidatePathStatus {
@@ -356,7 +381,8 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
     /// and licensing schemes all write reverse-DNS names there, and none of them
     /// is an application. Those paths are still *collected* for an identifier
     /// that qualifies — `candidates(for:)` probes every location — they just
-    /// cannot be the reason it qualifies.
+    /// cannot be the reason it qualifies. A launch file name is not consulted
+    /// either, but its `AssociatedBundleIdentifiers` key is.
     private func candidateBundleIdentifierScan(fileManager: FileManager) -> CandidateScan {
         var result = Set<String>()
         var unreadableCount = 0
@@ -437,6 +463,10 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
         }
         // A verified data folder is evidence of the same kind. See `ApplicationDataFolders`.
         result.formUnion(ApplicationDataFolders.identifiersWithFolders(home: pathPlanner.home))
+        // A launch file names its application in `AssociatedBundleIdentifiers`. See `LaunchItemFile`.
+        for file in LaunchItemFile.files(in: pathPlanner.launchItemDirectories) {
+            result.formUnion(file.associatedBundleIdentifiers)
+        }
         if let soundLibraries = pathPlanner.soundLibraries {
             result.formUnion(soundLibraries.candidateIdentifiers())
         }
