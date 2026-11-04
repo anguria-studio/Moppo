@@ -7,14 +7,16 @@ import MoppoCore
 @MainActor
 struct AIStorageGroupTests {
     @Test("Each AI tool has an icon, and repeated lookups keep the same image")
-    func stableToolIcons() throws {
-        // Grok Bot has no bundled fallback icon, so its icon needs the installed app.
-        // GitHub Copilot CLI and OpenClaw have no application icon, so their headings use a generic symbol.
-        for tool in FileEntry.AITool.allCases where ![.grokBot, .copilot, .openClaw].contains(tool) {
-            let first = try #require(ApplicationIcons.icon(for: tool))
-            let next = try #require(ApplicationIcons.icon(for: tool))
-            #expect(first.image === next.image, "\(tool.rawValue) creates a new image")
+    func stableToolIcons() {
+        // Without the installed app, these tools use a system symbol because Moppo has no bundled icon for them.
+        let symbolTools: Set<FileEntry.AITool> = [.chatGPT, .grokBot, .copilot]
+        for tool in FileEntry.AITool.allCases {
+            let first = ApplicationIcons.icon(for: tool)
+            #expect(first.image === ApplicationIcons.icon(for: tool).image, "\(tool.rawValue) creates a new image")
+            #expect(first.image.size.width > 0, "\(tool.rawValue) has an empty icon")
+            if !symbolTools.contains(tool) { #expect(!first.image.isTemplate, "\(tool.rawValue) has no bundled icon") }
         }
+        #expect(ApplicationIcons.icon(for: .copilot).image.isTemplate)
     }
 
     @Test("Groups retain row identities and count sessions and child storage once")
@@ -167,7 +169,6 @@ struct AIStorageGroupTests {
     @Test("Collapsed and expanded application groups render in both appearances", arguments: [false, true])
     func render(dark: Bool) async throws {
         let rows = fixture()
-        #expect(ApplicationIcons.icon(for: .codex) != nil)
         for width in [788.0, 908.0] {
             var collapsedHeight = 0.0
             for expanded in [false, true] {

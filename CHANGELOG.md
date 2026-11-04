@@ -41,6 +41,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 ### Fixes
 
 - Show the T3 Code icon in **AI Tools**. Earlier versions showed an empty square.
+- Show the OpenClaw icon in **AI Tools**. Earlier versions showed an empty square.
+- Show a neutral symbol, not an empty square, for AI tools without an icon, such as GitHub Copilot CLI.
 
 ## [0.6.0] - 2026-11-02
 
