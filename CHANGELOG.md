@@ -21,6 +21,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show logs in `~/Library/Logs` as **Not regenerable** in Cleanup and App Uninstaller. **Safe to Remove** no longer selects them.
 - Show protected AI Tools rows for GitHub Copilot CLI, OpenCode, Goose, OpenClaw, and Kiro.
 - Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
+- Show protected AI Tools rows for the Codex settings, credentials, databases, history, skills, installed packages, and desktop data.
 - Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
 - Show the other folders in `~/.config` as separate Hidden & System Data rows.
 - Protect toolchain, virtual machine, and credential folders in Hidden & System Data, such as `~/.rustup`, `~/.colima`, and `~/.aws`.
