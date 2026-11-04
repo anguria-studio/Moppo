@@ -234,6 +234,73 @@ struct AppUninstallPlannerTests {
         #expect(plan.items.map(\.id) == [selected.path])
     }
 
+    /// The RustDesk layout from the rented Mac for #56, 3 November 2026.
+    @Test("launch files with another name join the application by program or associated identifier")
+    func launchFilesWithOtherNames() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("RustDesk", identifier: "com.carriez.rustdesk")
+        let other = try sandbox.application("Perplexity", identifier: "ai.perplexity.macv3")
+        let otherProgram = other.appendingPathComponent("Contents/MacOS/perplexityd")
+        try FileManager.default.createDirectory(
+            at: otherProgram.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        try Data().write(to: otherProgram)
+        let agents = sandbox.systemLibrary.appendingPathComponent("LaunchAgents")
+        let server = try writeLaunchItem(
+            at: agents.appendingPathComponent("com.carriez.RustDesk_server.plist"),
+            program: app.appendingPathComponent("Contents/MacOS/RustDesk").path,
+            associated: "com.carriez.rustdesk"
+        )
+        let service = try writeLaunchItem(
+            at: sandbox.systemLibrary.appendingPathComponent("LaunchDaemons/com.carriez.RustDesk_service.plist"),
+            program: "/bin/sh", associated: "com.carriez.rustdesk"
+        )
+        // A similar name is not evidence. A program in another application keeps the file with it.
+        try writeLaunchItem(at: agents.appendingPathComponent("com.carriez.RustDesk_helper.plist"), program: "/bin/sh")
+        try writeLaunchItem(
+            at: agents.appendingPathComponent("com.carriez.RustDesk_shared.plist"),
+            program: otherProgram.path, associated: "com.carriez.rustdesk"
+        )
+
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+        let launchItems = plan.items.filter { $0.category == .helpers }
+
+        #expect(Set(launchItems.map(\.id)) == [server.path, service.path])
+        #expect(launchItems.allSatisfy { $0.content == .appComponent && $0.ownerBundleIdentifier == "com.carriez.rustdesk" })
+    }
+
+    /// The Comet layout from the rented Mac for #56, 3 November 2026. The program is missing there.
+    @Test("a launch file that names an embedded updater joins only the application that contains it")
+    func launchFileOfEmbeddedUpdater() async throws {
+        let sandbox = try Sandbox()
+        let comet = try sandbox.application("Comet", identifier: "ai.perplexity.comet")
+        try sandbox.application(
+            "CometUpdater", identifier: "ai.perplexity.CometUpdater",
+            under: comet.appendingPathComponent("Contents/Frameworks/Comet Framework.framework/Versions/156.0.8078.130/Helpers")
+        )
+        let perplexity = try sandbox.application("Perplexity", identifier: "ai.perplexity.macv3")
+        let wake = try writeLaunchItem(
+            at: sandbox.home.appendingPathComponent("Library/LaunchAgents/ai.perplexity.CometUpdater.wake.plist"),
+            program: sandbox.home.appendingPathComponent(
+                "Library/Application Support/Perplexity/CometUpdater/Current/CometUpdater.app/Contents/MacOS/CometUpdater"
+            ).path,
+            associated: ["ai.perplexity.CometUpdater"]
+        )
+
+        let cometPlan = try await sandbox.planner().plan(applicationURL: comet)
+        let perplexityPlan = try await sandbox.planner().plan(applicationURL: perplexity)
+
+        let item = try #require(cometPlan.items.first { $0.id == wake.path })
+        #expect(item.ownerBundleIdentifier == "ai.perplexity.CometUpdater")
+        let exclusive = try AppUninstallPlanner.exclusiveBundleIdentifiers(
+            candidates: Set(cometPlan.items.compactMap(\.ownerBundleIdentifier)),
+            selectedApplication: comet, applicationRoots: [sandbox.applications, sandbox.userApplications],
+            checkCancellation: {}
+        )
+        #expect(AppUninstallPlanner.removalIsStillSafe(item, in: cometPlan, exclusiveBundleIdentifiers: exclusive))
+        #expect(!perplexityPlan.items.contains { $0.category == .helpers })
+    }
+
     @Test("Batch reviews share current owners and one Homebrew lookup", arguments: [false, true])
     func batchOwnership(catalogFails: Bool) async throws {
         let sandbox = try Sandbox()
