@@ -72,10 +72,6 @@ struct WorktreeReviewSheet: View {
                                     .font(.mcSectionHeader)
                                 Text(verdict).font(.mcBody).foregroundStyle(Token.Text.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
-                                if !isChecking {
-                                    Text("Moppo checks again before removal.")
-                                        .font(.mcSubtitle).foregroundStyle(Token.Text.secondary)
-                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -87,7 +83,8 @@ struct WorktreeReviewSheet: View {
                                 review.mergePullRequestNumber.map { "PR #\($0) → " + target } ?? "Into " + target
                             } ?? "",
                             detail: review.mergePullRequestNumber == nil ? "Confirmed using saved remote data."
-                                : "Confirmed by GitHub and saved Git history.", unknown: "Not confirmed")
+                                : "Confirmed by GitHub and saved Git history.",
+                            unknown: review.openPullRequestNumber.map { "PR #\($0) open" } ?? "Not confirmed")
                         Divider()
                         check("Uncommitted changes", state: review.localFilesCheck)
                         Divider()
@@ -97,7 +94,8 @@ struct WorktreeReviewSheet: View {
                         Divider()
                         check("Ignored files", state: review.ignoredFilesCheck,
                             clear: review.ignoredFiles.isEmpty ? "None" : review.mergedInto != nil
-                                ? "Included with merged worktree" : "Regenerable files only")
+                                ? "Included with merged worktree"
+                                : review.copiedIgnoredFiles.isEmpty ? "Regenerable files only" : "Regenerable files and copies")
                         Divider()
                         check("Git locks", state: review.locks)
                         Divider()
@@ -106,6 +104,9 @@ struct WorktreeReviewSheet: View {
                     if !review.localFiles.isEmpty { files("Files only on this Mac", items: review.localFiles) }
                     if !review.localIgnoredFiles.isEmpty {
                         files("Local ignored files", items: review.localIgnoredFiles, showsBytes: true)
+                    }
+                    if !review.copiedIgnoredFiles.isEmpty {
+                        files("Copies in the main checkout", items: review.copiedIgnoredFiles, showsBytes: true)
                     }
                     if !review.unverifiedIgnoredFiles.isEmpty {
                         files("Unverified files", items: review.unverifiedIgnoredFiles, showsBytes: true)
@@ -187,6 +188,9 @@ struct WorktreeReviewSheet: View {
                 }
                 return "Saved remote data contains these commits. Removal includes all ignored local files, including environment files."
             }
+            if !review.copiedIgnoredFiles.isEmpty {
+                return "All checks passed using saved remote data. Project tools can recreate the ignored files, or the main checkout has identical copies."
+            }
             return "All checks passed using saved remote data. Git and project tools can recreate these files."
         }
         if let path = review.missingGitData {
@@ -194,6 +198,9 @@ struct WorktreeReviewSheet: View {
                 + "Someone removed the main repository, or a virtual machine, such as the Claude VM, owns this worktree."
         }
         var findings: [String] = []
+        if let number = review.openPullRequestNumber {
+            findings.append("Pull request #\(number) is open. GitHub has all commits of this worktree, but the merge is not complete.")
+        }
         if review.status == .uncommittedChanges || !review.localFiles.isEmpty {
             let count = review.localFiles.count
             findings.append(count == 0 ? "This worktree has uncommitted changes."
@@ -265,9 +272,10 @@ struct WorktreeReviewSheet: View {
                         let included = review.includesAfterMerge(file)
                         let label = file.status == .ignored
                             ? (file.regeneratesSafely == true ? "Regenerable" : included ? "Included"
+                               : file.hasMainCheckoutCopy ? "Copy"
                                : file.regeneratesSafely == false ? "Review" : "Unverified")
                             : file.status.rawValue
-                        Badge(text: label, style: file.regeneratesSafely == true || included ? .safe
+                        Badge(text: label, style: file.regeneratesSafely == true || included || file.hasMainCheckoutCopy ? .safe
                             : file.status == .changed || file.regeneratesSafely == false ? .review : .neutral).fixedSize()
                     }.padding(.horizontal, 14).padding(.vertical, 7)
                 }

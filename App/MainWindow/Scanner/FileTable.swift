@@ -1588,6 +1588,10 @@ private struct WorktreeNameBlock: View {
                         Badge(text: review.statusLabel, style: badgeStyle)
                             .fixedSize()
                     }.buttonStyle(.plain).help("Review worktree checks")
+                    if let number = review.openPullRequestNumber {
+                        Badge(text: "PR #\(number) open").fixedSize()
+                            .help("GitHub has this commit in an open pull request. The merge is not complete.")
+                    }
                 }
                 Label(review.branch, systemImage: "arrow.triangle.branch")
                     .font(.mcSubtitle).foregroundStyle(Token.Text.secondary).lineLimit(1).truncationMode(.middle)

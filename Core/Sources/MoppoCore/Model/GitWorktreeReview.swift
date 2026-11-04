@@ -29,6 +29,8 @@ public struct GitWorktreeReview: Sendable, Equatable {
         public var allocatedBytes: Int64 = 0
         public var regeneratesSafely: Bool?
         public var canRemoveWhenMerged = false
+        /// The main checkout has a regular file with identical contents at the same path.
+        public var hasMainCheckoutCopy = false
         public var id: String { path }
         public init(path: String, status: Status, allocatedBytes: Int64 = 0, regeneratesSafely: Bool? = nil) {
             self.path = path
@@ -43,6 +45,8 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public var pushStatus: FileEntry.GitWorktreePushStatus = .unknown
     public var mergedInto: String?
     public var mergePullRequestNumber: Int?
+    /// An open GitHub pull request whose head is the worktree commit. The merge is not complete.
+    public var openPullRequestNumber: Int?
     public var mergeIssue = "The merge was not checked."
     public var localFiles: [File] = []
     public var ignoredFiles: [File] = []
@@ -56,6 +60,8 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public var locks: Check = .unknown("Git locks were not checked.")
     public var activity: Check = .unknown("Open files and processes were not checked.")
     var verifiedGeneratedProjects: Set<URL> = []
+    /// The working folder of the main checkout. A bare repository has none.
+    var mainCheckout: URL?
     var mergeCandidate: GitHubMergeVerifier.Candidate?
 
     public init() {}
@@ -63,7 +69,8 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public var ignoredBytes: Int64 { ignoredFiles.reduce(0) { $0 + $1.allocatedBytes } }
     public var mergeCheck: Check { mergedInto == nil ? .unknown(mergeIssue) : .clear }
     public var regenerableIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == true } }
-    public var localIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false } }
+    public var localIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false && !$0.hasMainCheckoutCopy } }
+    public var copiedIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false && $0.hasMainCheckoutCopy } }
     public var unverifiedIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == nil } }
     public var unpushedCommitCount: Int? {
         switch pushStatus {
@@ -82,7 +89,9 @@ public struct GitWorktreeReview: Sendable, Equatable {
         let local = localIgnoredFiles.filter { !includesAfterMerge($0) }
         if !local.isEmpty { return .found(local.map(\.path).joined(separator: ", ")) }
         guard filesChecked, status != .unavailable else { return .unknown(filesIssue) }
-        guard ignoredFiles.allSatisfy({ $0.regeneratesSafely == true || includesAfterMerge($0) }) else { return .unknown(ignoredFilesIssue) }
+        guard ignoredFiles.allSatisfy({ $0.regeneratesSafely == true || $0.hasMainCheckoutCopy || includesAfterMerge($0) }) else {
+            return .unknown(ignoredFilesIssue)
+        }
         return .clear
     }
 
@@ -108,6 +117,19 @@ public struct GitWorktreeReview: Sendable, Equatable {
     }
 
     public var isSafeToRemove: Bool { outcome == .safeToRemove }
+
+    /// Stops counting main checkout copies that a removal also removes.
+    public func ignoringCopies(within removed: [URL]) -> GitWorktreeReview {
+        guard let mainCheckout else { return self }
+        var review = self
+        for index in review.ignoredFiles.indices where review.ignoredFiles[index].hasMainCheckoutCopy {
+            let copy = mainCheckout.appendingPathComponent(review.ignoredFiles[index].path).standardizedFileURL.path
+            if removed.contains(where: { copy == $0.standardizedFileURL.path || copy.hasPrefix($0.standardizedFileURL.path + "/") }) {
+                review.ignoredFiles[index].hasMainCheckoutCopy = false
+            }
+        }
+        return review
+    }
     public var statusLabel: String { outcome.rawValue }
 
     static func failureReason(_ error: Error, tool: String) -> String {
