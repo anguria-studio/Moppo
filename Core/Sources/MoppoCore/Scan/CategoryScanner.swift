@@ -46,6 +46,8 @@ public struct ScanContext: Sendable {
     public var applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan?
     /// True when results include items smaller than 1 MB.
     public var showsSmallItems: Bool
+    /// Bundle identifier walks that the categories of this scan share.
+    let applicationBundleWalks = ApplicationBundleWalks()
 
     /// Reports the current phase within this category.
     var onPhase: (@Sendable (String) -> Void)?
