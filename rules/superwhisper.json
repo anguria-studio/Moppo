@@ -2,6 +2,10 @@
   "id": "superwhisper",
   "name": "Superwhisper",
   "section": "application-data",
+  "bundleIdentifiers": [
+    "com.superduper.superwhisper"
+  ],
+  "comment": "Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings.",
   "storage": [
     {
       "path": "~/Library/Application Support/superwhisper",
@@ -41,9 +45,5 @@
       },
       "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
     }
-  ],
-  "bundleIdentifiers": [
-    "com.superduper.superwhisper"
-  ],
-  "note": "Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings."
+  ]
 }

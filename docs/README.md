@@ -515,6 +515,10 @@ macOS can include space from removable temporary files in its available capacity
 These figures can differ without a measurement error.
 
 **Separate physical usage and category measurements.** Category measurements can exceed physical usage because files can share storage or change during a scan.
+
+**Count protected parents once.** AI Tools subtracts the disclosed child sizes from each protected parent remainder, so child rows do not count the same bytes twice.
+Allocated bytes include shared APFS storage and do not prove how much a removal frees.
+A sparse VM disk image can have a large virtual capacity and a small allocated size.
 Moppo preserves the measured category values and the physical Free value.
 When category totals exceed physical usage, the capacity bar shows Used and Free.
 The separate category list states the difference.
@@ -624,6 +628,7 @@ The system disk can contain Linux, installed tools, and task files.
 A folder name or file age does not make these files disposable.
 
 Read the [AI storage sources and limits](ai-storage.md) before you add storage rules.
+Use `swift run --package-path Core moppo-cli ai` to inspect the default storage rows without removal.
 Read the [Codex session recovery research](codex-session-recovery.md) before you add session recovery.
 
 ## Developer tool storage

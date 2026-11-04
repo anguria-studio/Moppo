@@ -2,6 +2,10 @@
   "id": "dbeaver",
   "name": "DBeaver",
   "section": "databases",
+  "bundleIdentifiers": [
+    "org.jkiss.dbeaver.core.product"
+  ],
+  "comment": "DBeaver, team 42B6MDKMW8. The folder holds the workspace, drivers, and settings.",
   "storage": [
     {
       "path": "~/Library/DBeaverData",
@@ -24,9 +28,5 @@
         "macos": "27.2"
       }
     }
-  ],
-  "bundleIdentifiers": [
-    "org.jkiss.dbeaver.core.product"
-  ],
-  "note": "DBeaver, team 42B6MDKMW8. The folder holds the workspace, drivers, and settings."
+  ]
 }

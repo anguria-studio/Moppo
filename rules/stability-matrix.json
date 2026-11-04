@@ -21,7 +21,8 @@
     "tool": "Stability Matrix 2.16.5",
     "macos": "27.2"
   },
-  "note": "Stability Matrix 2.16.5 in portable mode keeps `Data` next to the application.",
+  "note": "In portable mode, Stability Matrix keeps `Data` next to the application.",
+  "comment": "Stability Matrix 2.16.5, team 78LBV9V26G. The support folder holds `global.json` and the logs.",
   "storage": [
     {
       "path": "~/Library/Application Support/StabilityMatrix",

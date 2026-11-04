@@ -16,6 +16,10 @@ The [Moppo project](https://github.com/orgs/anguria-studio/projects/1) holds sta
 - If manual checks remain incomplete when you close a ticket, add them to an open ticket.
 - Keep `BACKLOG.local.md` as a historical record.
 - Do not keep a second active ticket list in local files.
+- A private research record holds test observations, evidence locations, and inventories. `CLAUDE.local.md` names it.
+- Keep the public documents to tables, behavior rules, and process.
+- Put a dated observation, an evidence location, or a test coverage list in the research record, not in `docs`.
+- Put a fact that outlives the next test into a `note` field in `rules/`, not into prose.
 
 Read project items with this command:
 

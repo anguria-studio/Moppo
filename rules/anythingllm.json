@@ -21,7 +21,7 @@
     "tool": "AnythingLLM 1.19.0",
     "macos": "27.2"
   },
-  "note": "AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.",
+  "comment": "AnythingLLM 1.19.0, team 35S2NMU3G4. The Electron package name is `anythingllm-desktop`.",
   "storage": [
     {
       "path": "~/Library/Application Support/anythingllm-desktop",
@@ -29,6 +29,7 @@
       "table": "aiToolStorage",
       "owner": "aiTools",
       "treatment": "protect",
+      "applicationData": true,
       "name": "AnythingLLM desktop data",
       "reviewsWorktrees": false,
       "section": {
@@ -45,8 +46,7 @@
         "tool": "AnythingLLM 1.19.0",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
-      "applicationData": true
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
     },
     {
       "path": "~/Library/Application Support/anythingllm-desktop/storage/documents",

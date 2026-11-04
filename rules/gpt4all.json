@@ -24,7 +24,7 @@
       "treatment": "review",
       "store": "gpt4All",
       "claimed": false,
-      "note": "Each `.gguf` file is one model. Settings, chats, and LocalDocs databases stay outside removal targets. GPT4All can use another download folder, which Moppo does not read."
+      "note": "Settings, chats, and LocalDocs databases in the same folder stay out. GPT4All can use another download folder, which Moppo does not read."
     }
   ]
 }

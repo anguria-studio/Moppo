@@ -5,7 +5,8 @@
   "bundleIdentifiers": [
     "com.google.Chrome"
   ],
-  "note": "Nothing under `Service Worker` is a row. `Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. Removal of the caches with a live registration leaves Chrome pointing at resources that are gone. `Shared Dictionary` is withheld too. A running Chrome holds its index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.",
+  "note": "Nothing under `Service Worker` or `Shared Dictionary` is a row. A live registration or an in-memory index points at the removed files, and sites fail to load.",
+  "comment": "`Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. A running Chrome holds the dictionary index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.",
   "storage": [
     {
       "path": "~/Library/Application Support/Google/Chrome",

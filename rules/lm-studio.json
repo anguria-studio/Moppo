@@ -11,6 +11,7 @@
     "name": "LM Studio"
   },
   "removalRules": "Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected.",
+  "note": "LM Studio loads a model by opening its file, and `lms import --symbolic-link` links to Hugging Face files, so an open or linked model stays protected.",
   "storage": [
     {
       "path": "~/.lmstudio",

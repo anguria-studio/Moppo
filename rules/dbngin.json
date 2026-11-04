@@ -47,7 +47,7 @@
         "tool": "DBngin 27.0.2"
       },
       "status": "Not verified. Removal and restore need the DBngin app in the desktop session.",
-      "note": "DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`."
+      "comment": "DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`."
     }
   ]
 }

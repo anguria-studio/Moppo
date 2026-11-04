@@ -37,7 +37,7 @@
         "macos": "27.2",
         "tool": "Maven 3.10.0"
       },
-      "note": "Maven 3.10 writes `.meta` in its repository. An older layout gets no offer."
+      "comment": "Maven 3.10 writes `.meta` in its repository. An older layout gets no offer."
     },
     {
       "path": "<project>/target",

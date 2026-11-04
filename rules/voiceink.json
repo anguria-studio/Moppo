@@ -2,6 +2,10 @@
   "id": "voiceink",
   "name": "VoiceInk",
   "section": "application-data",
+  "bundleIdentifiers": [
+    "com.prakashjoshipax.VoiceInk"
+  ],
+  "comment": "VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder.",
   "storage": [
     {
       "path": "~/Library/Application Support/VoiceInk",
@@ -20,9 +24,5 @@
       },
       "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
     }
-  ],
-  "bundleIdentifiers": [
-    "com.prakashjoshipax.VoiceInk"
-  ],
-  "note": "VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder."
+  ]
 }

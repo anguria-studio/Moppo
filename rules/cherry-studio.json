@@ -21,7 +21,7 @@
     "tool": "Cherry Studio 2.1.10",
     "macos": "27.2"
   },
-  "note": "Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.",
+  "comment": "Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.",
   "storage": [
     {
       "path": "~/Library/Application Support/CherryStudio",
@@ -29,6 +29,7 @@
       "table": "aiToolStorage",
       "owner": "aiTools",
       "treatment": "protect",
+      "applicationData": true,
       "name": "Cherry Studio desktop data",
       "reviewsWorktrees": false,
       "section": {
@@ -45,8 +46,7 @@
         "tool": "Cherry Studio 2.1.10",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
-      "applicationData": true
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
     },
     {
       "path": "~/.cherrystudio",
@@ -54,6 +54,7 @@
       "table": "aiToolStorage",
       "owner": "aiTools",
       "treatment": "protect",
+      "applicationData": true,
       "name": "Cherry Studio data",
       "reviewsWorktrees": false,
       "section": {
@@ -70,8 +71,7 @@
         "tool": "Cherry Studio 2.1.10",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
-      "applicationData": true
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
     },
     {
       "path": "~/.cherrystudio/bin",

@@ -36,7 +36,7 @@
       "owner": "applications",
       "treatment": "protect",
       "name": "Antigravity settings and data",
-      "note": "Antigravity desktop 2.28.1 uses this identifier and support folder. The evidence does not verify its cache folders, so no path counts as regenerable."
+      "comment": "Antigravity desktop 2.28.1 uses this identifier and support folder. The evidence does not verify its cache folders, so no path counts as regenerable."
     }
   ]
 }

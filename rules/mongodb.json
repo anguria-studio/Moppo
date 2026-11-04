@@ -2,7 +2,8 @@
   "id": "mongodb",
   "name": "MongoDB",
   "section": "databases",
-  "note": "MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.",
+  "note": "MongoDB writes logs to `/opt/homebrew/var/log/mongodb`.",
+  "comment": "The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.",
   "storage": [
     {
       "path": "/opt/homebrew/var/mongodb",

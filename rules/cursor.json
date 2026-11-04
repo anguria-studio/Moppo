@@ -14,6 +14,7 @@
     "com.todesktop.230313mzl4w4u92"
   ],
   "removalRules": "CLI conversations, CLI versions, and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls.",
+  "note": "Cursor advises deleting chats through History, and CLI conversations have no cloud backup, so Moppo never edits `state.vscdb` or removes CLI sessions.",
   "storage": [
     {
       "path": "~/.cursor/projects",

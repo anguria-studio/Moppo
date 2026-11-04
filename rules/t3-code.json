@@ -21,7 +21,7 @@
     "tool": "T3 Code (Beta) 0.1.6",
     "macos": "27.2"
   },
-  "note": "T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.",
+  "comment": "T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.",
   "storage": [
     {
       "path": "~/Library/Application Support/t3code-v2",
@@ -29,6 +29,7 @@
       "table": "aiToolStorage",
       "owner": "aiTools",
       "treatment": "protect",
+      "applicationData": true,
       "name": "T3 Code desktop data",
       "reviewsWorktrees": false,
       "section": {
@@ -45,8 +46,7 @@
         "tool": "T3 Code 0.1.6",
         "macos": "27.2"
       },
-      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it.",
-      "applicationData": true
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
     },
     {
       "path": "~/.t3",
