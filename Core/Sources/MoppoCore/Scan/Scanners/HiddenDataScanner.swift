@@ -35,15 +35,19 @@ public struct HiddenDataScanner: CategoryScanner {
     private let home: URL
     /// Homebrew prefixes that can hold database data folders. See `DatabaseStorage`.
     private let homebrewPrefixes: [URL]
+    /// The folder that can hold DBngin server versions. See `ToolHomeFolders.locations`.
+    private let sharedFolder: URL?
 
     public init() {
-        self.init(home: URL(fileURLWithPath: NSHomeDirectory()), homebrewPrefixes: DatabaseStorage.homebrewPrefixes)
+        self.init(home: URL(fileURLWithPath: NSHomeDirectory()), homebrewPrefixes: DatabaseStorage.homebrewPrefixes,
+                  sharedFolder: ToolHomeFolders.sharedFolder)
     }
 
-    /// A fixture home reads no Homebrew prefix unless the caller supplies one.
-    public init(home: URL, homebrewPrefixes: [URL] = []) {
+    /// A fixture home reads no Homebrew prefix or shared folder unless the caller supplies one.
+    public init(home: URL, homebrewPrefixes: [URL] = [], sharedFolder: URL? = nil) {
         self.home = home
         self.homebrewPrefixes = homebrewPrefixes
+        self.sharedFolder = sharedFolder
     }
 
     // MARK: - Thresholds
@@ -172,9 +176,10 @@ public struct HiddenDataScanner: CategoryScanner {
         context.onPhase?("Measuring database data")
         try await appendDatabaseFolders(context: context, to: &found, claiming: &claimed)
 
-        // 8. Large hidden dot-directories in $HOME.
+        // 8. Large hidden dot-directories in $HOME, and tool storage that no other row shows.
         context.onPhase?("Measuring hidden files")
         try await appendHiddenDirectories(context: context, to: &found, claiming: &claimed)
+        try await appendToolLocations(context: context, to: &found, claiming: &claimed)
 
         // 9. Large archives and VM images.
         context.onPhase?("Finding large archives")
@@ -337,16 +342,32 @@ public struct HiddenDataScanner: CategoryScanner {
         }
     }
 
+    /// Shows tool storage outside the folders above with its size, at any size. See `ToolHomeFolders.locations`.
+    private func appendToolLocations(
+        context: ScanContext,
+        to found: inout Found,
+        claiming claimed: inout [String]
+    ) async throws {
+        for (location, url) in ToolHomeFolders.existingLocations(home: home, sharedFolder: sharedFolder) {
+            try Task.checkCancellation()
+            claimed.append(url.path)
+            guard !context.isExcluded(url) else { continue }
+            try await appendToolFolder(url, location.folder, displayName: location.name, minimumBytes: Threshold.any,
+                                       context: context, to: &found)
+        }
+    }
+
     /// Shows a toolchain, virtual machine, or credential folder with its size and locks it.
     /// Verified caches in the folder are separate rows. See `ToolHomeFolders`.
     private func appendToolFolder(
-        _ url: URL, _ folder: ToolHomeFolders.Folder, displayName: String?, context: ScanContext, to found: inout Found
+        _ url: URL, _ folder: ToolHomeFolders.Folder, displayName: String?,
+        minimumBytes: Int64 = Threshold.hiddenDirectory, context: ScanContext, to found: inout Found
     ) async throws {
         let caches = ToolHomeFolders.offeredCaches(of: folder, in: url)
         let measurements = try await context.measurer.measure(url, retaining: caches.map(\.url))
         let total = measurements[url.standardizedFileURL] ?? .zero
         found.unreadableCount += total.unreadableCount
-        guard total.allocatedBytes >= Threshold.hiddenDirectory else { return }
+        guard total.allocatedBytes >= minimumBytes else { return }
 
         var entry = FileEntry(
             url: url, displayName: displayName, kind: .folder, allocatedBytes: total.allocatedBytes,

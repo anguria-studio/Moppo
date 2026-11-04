@@ -170,7 +170,7 @@ Moppo has a row for the Bundler cache in `~/.bundle/cache`.
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.local/share/gem` | Installed | `gem list` | `gem uninstall --user-install <gem>` | `gem install --user-install <gem>` | No | Verified 2026-11-02, RubyGems 3.5.22, macOS 27.2 |
+| `~/.local/share/gem` | Installed | `gem list` | `gem uninstall --user-install <gem>` | `gem install --user-install <gem>` | Protected | Verified 2026-11-02, RubyGems 3.5.22, macOS 27.2 |
 | `~/.gem` | Installed | `gem list` | `gem uninstall <gem>` | `gem install <gem>` | No | Not created by RubyGems 3.5.22 |
 | `~/.rbenv/versions/<version>` | Installed | `rbenv versions` | `rbenv uninstall -f <version>` | `rbenv install <version>` | Protected | Verified 2026-11-02, Ruby 3.3.13 through rbenv, macOS 27.2 |
 | `~/.rvm/rubies/<version>` | Installed | `rvm list` | `rvm remove <version>` | `rvm install <version>` | Protected | Verified 2026-11-03, RVM 1.29.12-next with Ruby 3.3.13, macOS 27.2 |
@@ -221,17 +221,18 @@ The test did not use the Kotlin Gradle plugin.
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/Library/Android/sdk/system-images` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | No | Verified 2026-11-02, system image android-36 arm64, macOS 27.2 |
-| `~/Library/Android/sdk/ndk/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | No | Verified 2026-11-03, NDK 30.0.16248370, macOS 27.2 |
-| `~/Library/Android/sdk/build-tools/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | No | Verified 2026-11-02, build tools 37.0.0, macOS 27.2 |
-| `~/Library/Android/sdk/emulator` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall emulator` | `sdkmanager emulator` | No | Verified 2026-11-03, emulator 37.2.13, macOS 27.2 |
+| `~/Library/Android/sdk/system-images` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | Protected | Verified 2026-11-02, system image android-36 arm64, macOS 27.2 |
+| `~/Library/Android/sdk/ndk/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | Protected | Verified 2026-11-03, NDK 30.0.16248370, macOS 27.2 |
+| `~/Library/Android/sdk/build-tools/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | Protected | Verified 2026-11-02, build tools 37.0.0, macOS 27.2 |
+| `~/Library/Android/sdk/emulator` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall emulator` | `sdkmanager emulator` | Protected | Verified 2026-11-03, emulator 37.2.13, macOS 27.2 |
 | `~/.android/avd` | User data | `avdmanager list avd` | `avdmanager delete avd --name <name>` after review | Create the emulator again | Protected | Verified 2026-11-02 for an AVD that never started, macOS 27.2 |
 | `~/.android/cache` | Cache | Folder location | Trash | Not necessary | Row | Verified 2026-11-02, cmdline-tools from Homebrew, macOS 27.2 |
 | `~/Library/Caches/Google/AndroidStudio<version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. Android Studio needs the desktop session. |
 
 Emulator images contain installed apps and test data. Treat them as user data until verification.
 The tested AVD never started, so it contained no apps or data.
-Moppo does not list any Android SDK folder. The SDK used about 9 GB in this test. The NDK used 2.8 GiB of it.
+Moppo shows `~/Library/Android/sdk` as one protected Hidden System Data row. The SDK used about 9 GB in this test. The NDK used 2.8 GiB of it.
+Moppo does not offer SDK packages because only `sdkmanager` removes them correctly.
 `~/.android/avd` stayed after the removal of the emulator package.
 The Homebrew `avdmanager` does not find an SDK in `~/Library/Android/sdk`. Use `cmdline-tools;latest` from that SDK.
 `sdkmanager` did not create `~/.android/cache` again after its removal.
@@ -243,11 +244,12 @@ Moppo has a row for NuGet packages in `~/.nuget/packages`.
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.nuget/packages` | Download | `dotnet nuget locals global-packages --list` | Trash | Next restore. A network connection is necessary. | Row | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
-| `~/.local/share/NuGet/http-cache` | Cache | `dotnet nuget locals http-cache --list` | `dotnet nuget locals http-cache --clear` | Next restore | No | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
+| `~/.local/share/NuGet/http-cache` | Cache | `dotnet nuget locals http-cache --list` | `dotnet nuget locals http-cache --clear` | Next restore | Protected | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
 | `/usr/local/share/dotnet/sdk/<version>` | Installed | `dotnet --list-sdks` | Official uninstall tool after review | Install the SDK again | No | Found 2026-11-02, .NET SDK 10.0.403. Not verified. The uninstall tool needs administrator rights. |
 | `<project>/bin`, `<project>/obj` | Build | `.csproj` or `.fsproj` beside the folders | Trash | `dotnet build` | #49 | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
 
 The Homebrew `dotnet-sdk` cask installs the SDK in `/usr/local/share/dotnet`, also on Apple silicon.
+Moppo shows `~/.local/share/NuGet` as a protected Hidden System Data row at any size. It does not offer the HTTP cache, because the catalog verified only the `dotnet` command.
 
 ## Elixir, Erlang, and Haskell
 
@@ -261,8 +263,8 @@ In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 | `~/.mix/archives` | Installed | Mix layout | Never remove automatically | `mix local.hex --force` | Protected | Verified 2026-11-03, Hex 2.6.0 with Elixir 1.20.5, macOS 27.2 |
 | `~/.ghcup/ghc/<version>` | Installed | `ghcup list` | `ghcup rm ghc <version>` | `ghcup install ghc <version>` | Protected | Verified 2026-11-02, GHC 9.10.3 through ghcup 0.2.6.2, macOS 27.2 |
 | `~/.ghcup/cache` | Cache | ghcup layout | `ghcup gc --cache` | Next install | Protected | Verified 2026-11-02, ghcup 0.2.6.2, macOS 27.2 |
-| `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Caches | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
-| `~/.local/state/cabal/store` | Installed | cabal layout | Trash after review | Next build for project dependencies | No | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
+| `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Row, review required | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
+| `~/.local/state/cabal/store` | Installed | cabal layout | Trash after review | Next build for project dependencies | Protected | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `~/.stack/programs/<platform>/ghc-<version>` | Installed | Stack layout | Trash after review | Next `stack build`. A network connection is necessary. | Protected | Verified 2026-11-03, Stack 3.11.1 with GHC 9.10.3, macOS 27.2 |
 | `~/.stack/snapshots` | Build | Stack layout | Trash | Next `stack build` | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `~/.stack/pantry`, `~/.stack/setup-exe-cache` | Download | Stack layout | Trash | Next `stack build`. A network connection is necessary. | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
@@ -270,8 +272,9 @@ In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 | `<project>/dist-newstyle` | Build | `.cabal` file beside the folder | Trash | `cabal build` | No | Verified 2026-11-02, cabal 3.16.1.0, macOS 27.2 |
 | `<project>/.stack-work` | Build | `stack.yaml` beside the folder | Trash | `stack build` | No | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 
-cabal 3.16 uses the XDG layout on macOS. It did not create `~/.cabal`. The Moppo row for `~/.cabal/packages` does not find these files.
-Moppo shows `~/.cache/cabal` as a System Caches row that needs review. It used 1.1 GiB in this test.
+cabal 3.16 uses the XDG layout on macOS. It did not create `~/.cabal`.
+Moppo shows `~/.cache/cabal` as the `Cabal packages (XDG)` row in Package Manager Caches. The row needs review. It used 1.1 GiB in this test.
+Moppo shows `~/.local/state/cabal` as a protected Hidden System Data row when a `store/ghc-<version>` folder identifies it.
 Without `~/.cache/cabal`, `cabal build` stopped with `unknown package` until `cabal update` ran.
 The next build restored the store for project dependencies. The test did not check programs from `cabal install`.
 `mix compile` failed after the removal of `deps`. `mix deps.get` restored it.
@@ -288,12 +291,12 @@ Stack wrote a new default `config.yaml` after a Trash move of `~/.stack`. The us
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.asdf/installs/<tool>/<version>` | Installed | `asdf list` | `asdf uninstall <tool> <version>` | `asdf install <tool> <version>` | Protected | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
 | `~/.asdf/downloads` | Cache | asdf layout | Trash | Next install | Row | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
-| `~/.local/share/mise/installs/<tool>/<version>` | Installed | `mise ls` | `mise uninstall <tool>@<version>` | `mise install <tool>@<version>` | No | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
+| `~/.local/share/mise/installs/<tool>/<version>` | Installed | `mise ls` | `mise uninstall <tool>@<version>` | `mise install <tool>@<version>` | Protected | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 | `~/Library/Caches/mise` | Cache | Folder name | `mise cache clear` | Next install | Caches | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 
 Keep each version that a `.tool-versions` or `mise.toml` file in a project names.
 Moppo shows `~/.asdf` as a protected Hidden System Data row when it is larger than 5 MiB. Moppo offers only `~/.asdf/downloads` in it.
-Moppo does not scan `~/.local`, so it does not show mise installations.
+Moppo shows `~/.local/share/mise` as a protected Hidden System Data row when it contains `installs`.
 
 ## Container and virtual machine tools
 
@@ -307,8 +310,8 @@ Moppo reviews Docker images and the Docker build cache through Docker.
 | `~/.lima/_config` | User data | Lima layout. It contains the `user` SSH key. | Never offer | Not possible | Protected | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/Library/Caches/lima` | Download | `download/by-url-sha256` folder inside | Trash | Next `limactl start` of a new instance. A network connection is necessary. | Caches | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/.orbstack` | User data | OrbStack installed | OrbStack settings after review | Not possible for volumes | No | Not verified. The OrbStack app needs a first start in the desktop session. |
-| `~/.local/share/containers/podman/machine` | User data | Podman installed | `podman machine rm` after review | Not possible for volumes | No | Verified 2026-11-02, Podman 6.1.4, macOS 27.2 |
-| `~/.local/share/containers/podman/machine/applehv/cache` | Download | Podman layout | Trash | `podman machine init`. A network connection is necessary. | No | Verified 2026-11-03, Podman 6.1.4, macOS 27.2 |
+| `~/.local/share/containers/podman/machine` | User data | Podman installed | `podman machine rm` after review | Not possible for volumes | Protected | Verified 2026-11-02, Podman 6.1.4, macOS 27.2 |
+| `~/.local/share/containers/podman/machine/applehv/cache` | Download | Podman layout | Trash | `podman machine init`. A network connection is necessary. | Row | Verified 2026-11-03, Podman 6.1.4, macOS 27.2 |
 
 Virtual machine disks can contain container volumes and databases. Moppo must not move them to the Trash.
 
@@ -321,7 +324,9 @@ Colima 0.10.3 did not create `~/.lima`.
 `limactl delete` removed the instance folder. A test file in the virtual machine did not come back.
 In the test, the instance and the image cache each used 3.6 GiB.
 `podman machine rm` left a 894 MiB machine image in the Podman cache folder.
-Moppo does not scan `~/.local`. It did not show the Podman machine, which used 7.8 GiB.
+The Podman machine used 7.8 GiB in the test. Moppo shows it as a protected Hidden System Data row.
+The `machine` and `machine.pub` files are the SSH key of the machine.
+Moppo offers `applehv/cache` only when `machine.pub` and a `.raw.zst` image identify the Podman layout.
 
 ## Databases
 
@@ -334,7 +339,7 @@ Only the tool can remove its own logs and old data safely.
 | `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
 | `~/Library/Application Support/Postgres/var-<version>` | User data | Postgres.app installed and `PG_VERSION` file | Never offer | Not possible | Applications, protected | Verified 2026-11-02, Postgres.app 2.9.6 with PostgreSQL 18, macOS 27.2 |
 | `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION` | Never offer | Not possible | Applications, protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
-| `/Users/Shared/DBngin/<engine>/<version>` | Installed | DBngin installed. A `bin` folder with the server programs. | DBngin, after review | DBngin downloads the version again | No | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
+| `/Users/Shared/DBngin/<engine>/<version>` | Installed | DBngin installed. A `bin` folder with the server programs. | DBngin, after review | DBngin downloads the version again | Protected | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
 | `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
 | MySQL binary logs in the data folder | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected in the MySQL data row | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
 | `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
@@ -365,7 +370,8 @@ A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as pa
 A file with a `.db` name and no SQLite header is not a SQLite database.
 Moppo shows a project folder with SQLite files as a Documents and Files row that needs review. It does not show the database files as rows.
 Moppo shows the Homebrew data folders as protected Hidden & System Data rows with their sizes.
-Moppo does not show the SQLite files, `/Users/Shared/DBngin`, or `/opt/homebrew/var/log` as rows.
+Moppo shows `/Users/Shared/DBngin` as a protected Hidden & System Data row when a version folder contains `bin`.
+Moppo does not show the SQLite files or `/opt/homebrew/var/log` as rows.
 The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
 
 ## Rows that remain not verified

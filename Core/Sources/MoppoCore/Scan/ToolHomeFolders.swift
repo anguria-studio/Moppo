@@ -22,7 +22,7 @@ enum ToolHomeFolders {
 
     struct Cache: Sendable {
         let path: String
-        /// An item in the cache that identifies its layout.
+        /// An item in the cache that identifies its layout. A glob component matches any child.
         var marker: String?
         /// True when the tool makes the cache again without a network connection.
         let isRegenerable: Bool
@@ -120,13 +120,77 @@ enum ToolHomeFolders {
         all.first { $0.name == name }
     }
 
+    // MARK: - Tool storage outside the listed folders
+
+    /// Tool storage that no other row shows, such as folders in `~/.local` (#323).
+    /// Hidden System Data shows each location with its size and locks it, as it does for the folders above.
+    struct Location: Sendable {
+        /// The folder that holds `path`.
+        enum Base: Sendable { case home, sharedFolder }
+
+        let path: String
+        /// The row name. It names the tool that owns the storage.
+        let name: String
+        var base: Base = .home
+        /// Items in the location that identify the tool. One item is sufficient. A glob component matches any child.
+        let identifiedBy: [String]
+        let explanation: String
+        var layout: [String] = []
+        var caches: [Cache] = []
+
+        var folder: Folder { Folder(name: path, explanation: explanation, layout: layout, caches: caches) }
+    }
+
+    /// `/Users/Shared`, where DBngin keeps its server versions.
+    static let sharedFolder = URL(fileURLWithPath: "/Users/Shared", isDirectory: true)
+
+    static let locations: [Location] = [
+        // Podman 6.1 keeps the machine disks and the machine SSH key here.
+        Location(path: ".local/share/containers/podman/machine", name: "Podman machines",
+                 identifiedBy: ["machine.pub", "applehv", "libkrun"],
+                 explanation: "Podman keeps its virtual machines, their disks, and an SSH key here. Use podman machine rm after review.",
+                 layout: ["machine.pub"],
+                 caches: [.download("applehv/cache", marker: "*.raw.zst",
+                                    caveat: "The next podman machine init downloads it again. A network connection is necessary.")]),
+        Location(path: ".local/share/mise", name: "mise tool versions", identifiedBy: ["installs"],
+                 explanation: "mise keeps the installed tool versions here. Use mise uninstall to remove a version."),
+        Location(path: ".local/share/NuGet", name: "NuGet data", identifiedBy: ["http-cache", "Migrations"],
+                 explanation: "NuGet keeps its HTTP cache here. Use dotnet nuget locals http-cache --clear to remove the cache."),
+        Location(path: ".local/share/gem", name: "RubyGems user gems", identifiedBy: ["ruby/*/specifications"],
+                 explanation: "RubyGems keeps the gems from gem install --user-install here. Use gem uninstall --user-install to remove a gem."),
+        Location(path: ".local/state/cabal", name: "cabal package store", identifiedBy: ["store/ghc-*"],
+                 explanation: "cabal keeps built packages here. Projects and programs from cabal install can need them."),
+        Location(path: "Library/Android/sdk", name: "Android SDK",
+                 identifiedBy: [".knownPackages", "platform-tools", "build-tools", "cmdline-tools"],
+                 explanation: "The Android SDK keeps build tools, platforms, system images, the NDK, and the emulator here. Use sdkmanager --uninstall to remove a package."),
+        // DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`.
+        Location(path: "DBngin", name: "DBngin server versions", base: .sharedFolder, identifiedBy: ["*/*/bin"],
+                 explanation: "DBngin keeps its database server versions here. Use DBngin to remove a version."),
+        // The #216 checks found an ai-coustics audio model here. No application identified it as its own.
+        Location(path: "Library/Application Support/multimodal-models", name: "ai-coustics audio models",
+                 identifiedBy: ["ai-coustics/*/*.aicmodel"],
+                 explanation: "An application keeps ai-coustics audio models here. Moppo cannot identify the application, so it keeps the models protected.")
+    ]
+
+    /// The locations that exist and that their layout identifies. A location with a link in its path is not used.
+    static func existingLocations(home: URL, sharedFolder: URL?) -> [(location: Location, url: URL)] {
+        locations.compactMap { location in
+            guard let base = location.base == .home ? home : sharedFolder else { return nil }
+            let url = base.appendingPathComponent(location.path)
+            guard isOwned(url, under: base), (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true,
+                  location.identifiedBy.contains(where: { ApplicationsScanner.expand($0, under: url).contains(where: exists) })
+            else { return nil }
+            return (location, url)
+        }
+    }
+
     /// The caches that Moppo can offer in `url`. A link is never a cache.
     static func offeredCaches(of folder: Folder, in url: URL) -> [(url: URL, cache: Cache)] {
         guard folder.layout.allSatisfy({ exists(url.appendingPathComponent($0)) }) else { return [] }
         return folder.caches.compactMap { cache in
             let cacheURL = url.appendingPathComponent(cache.path)
             guard isOwned(cacheURL, under: url),
-                  cache.marker.map({ exists(cacheURL.appendingPathComponent($0)) }) ?? true
+                  cache.marker.map({ ApplicationsScanner.expand($0, under: cacheURL).contains(where: exists) }) ?? true
             else { return nil }
             return (cacheURL, cache)
         }
