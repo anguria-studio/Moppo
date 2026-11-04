@@ -1,0 +1,95 @@
+~/Library/Application Support/Codex/ActorSafetyLists/
+~/Library/Application Support/Codex/ActorSafetyLists/9.8200.9609/
+~/Library/Application Support/Codex/AmountExtractionHeuristicRegexes/
+~/Library/Application Support/Codex/AmountExtractionHeuristicRegexes/4/
+~/Library/Application Support/Codex/CaptchaProviders/
+~/Library/Application Support/Codex/CaptchaProviders/8.5419.4434/
+~/Library/Application Support/Codex/CertificateRevocation/
+~/Library/Application Support/Codex/CertificateRevocation/10878/
+~/Library/Application Support/Codex/CertificateRevocation/10880/
+~/Library/Application Support/Codex/Crashpad/
+~/Library/Application Support/Codex/Crashpad/attachments/
+~/Library/Application Support/Codex/Crashpad/completed/
+~/Library/Application Support/Codex/Crashpad/new/
+~/Library/Application Support/Codex/Crashpad/pending/
+~/Library/Application Support/Codex/Crowd Deny/
+~/Library/Application Support/Codex/Crowd Deny/2026.11.2.137/
+~/Library/Application Support/Codex/Default/
+~/Library/Application Support/Codex/Default/AutofillAiModelCache/
+~/Library/Application Support/Codex/Default/AutofillStrikeDatabase/
+~/Library/Application Support/Codex/Default/BudgetDatabase/
+~/Library/Application Support/Codex/Default/ClientCertificates/
+~/Library/Application Support/Codex/Default/DawnGraphiteCache/
+~/Library/Application Support/Codex/Default/DawnWebGPUCache/
+~/Library/Application Support/Codex/Default/Extension Rules/
+~/Library/Application Support/Codex/Default/Extension Scripts/
+~/Library/Application Support/Codex/Default/Extension State/
+~/Library/Application Support/Codex/Default/Extensions/
+~/Library/Application Support/Codex/Default/Feature Engagement Tracker/
+~/Library/Application Support/Codex/Default/GPUCache/
+~/Library/Application Support/Codex/Default/IndexedDB/
+~/Library/Application Support/Codex/Default/Local Extension Settings/
+~/Library/Application Support/Codex/Default/Local Storage/
+~/Library/Application Support/Codex/Default/Partitions/
+~/Library/Application Support/Codex/Default/PersistentOriginTrials/
+~/Library/Application Support/Codex/Default/Platform Notifications/
+~/Library/Application Support/Codex/Default/Segmentation Platform/
+~/Library/Application Support/Codex/Default/Service Worker/
+~/Library/Application Support/Codex/Default/Session Storage/
+~/Library/Application Support/Codex/Default/Shared Dictionary/
+~/Library/Application Support/Codex/Default/Site Characteristics Database/
+~/Library/Application Support/Codex/Default/Sync Data/
+~/Library/Application Support/Codex/Default/WebStorage/
+~/Library/Application Support/Codex/Default/blob_storage/
+~/Library/Application Support/Codex/Default/chrome_cart_db/
+~/Library/Application Support/Codex/Default/commerce_subscription_db/
+~/Library/Application Support/Codex/Default/declarative_performance_observer.db
+~/Library/Application Support/Codex/Default/discount_infos_db/
+~/Library/Application Support/Codex/Default/discounts_db/
+~/Library/Application Support/Codex/Default/heavy_ad_intervention_opt_out.db
+~/Library/Application Support/Codex/Default/optimization_guide_hint_cache_store/
+~/Library/Application Support/Codex/Default/parcel_tracking_db/
+~/Library/Application Support/Codex/Default/shared_proto_db/
+~/Library/Application Support/Codex/FileTypePolicies/
+~/Library/Application Support/Codex/FileTypePolicies/145.0.7584.0/
+~/Library/Application Support/Codex/FirstPartySetsPreloaded/
+~/Library/Application Support/Codex/FirstPartySetsPreloaded/2025.7.24.0/
+~/Library/Application Support/Codex/GPUPersistentCache/
+~/Library/Application Support/Codex/GPUPersistentCache/GPUCache/
+~/Library/Application Support/Codex/GraphiteDawnCache/
+~/Library/Application Support/Codex/MEIPreload/
+~/Library/Application Support/Codex/MEIPreload/1.1.0.3/
+~/Library/Application Support/Codex/OnDeviceHeadSuggestModel/
+~/Library/Application Support/Codex/OptimizationGuideModelsManifest/
+~/Library/Application Support/Codex/OptimizationHints/
+~/Library/Application Support/Codex/OptimizationHints/770/
+~/Library/Application Support/Codex/OptimizationHints/771/
+~/Library/Application Support/Codex/OriginTrials/
+~/Library/Application Support/Codex/PKIMetadata/
+~/Library/Application Support/Codex/PKIMetadata/1825/
+~/Library/Application Support/Codex/PrivacySandboxAttestationsPreloaded/
+~/Library/Application Support/Codex/SSLErrorAssistant/
+~/Library/Application Support/Codex/SSLErrorAssistant/7/
+~/Library/Application Support/Codex/Safe Browsing/
+~/Library/Application Support/Codex/SafetyTips/
+~/Library/Application Support/Codex/SafetyTips/3092/
+~/Library/Application Support/Codex/Subresource Filter/
+~/Library/Application Support/Codex/Subresource Filter/Indexed Rules/
+~/Library/Application Support/Codex/Subresource Filter/Unindexed Rules/
+~/Library/Application Support/Codex/TrustTokenKeyCommitments/
+~/Library/Application Support/Codex/TrustTokenKeyCommitments/2026.10.12.1/
+~/Library/Application Support/Codex/WasmTtsEngine/
+~/Library/Application Support/Codex/WidevineCdm/
+~/Library/Application Support/Codex/WidevineCdm/4.10.3112.0/
+~/Library/Application Support/Codex/ZxcvbnData/
+~/Library/Application Support/Codex/ZxcvbnData/3/
+~/Library/Application Support/Codex/artifact-sessions/
+~/Library/Application Support/Codex/artifact-sessions/runtime-generations/
+~/Library/Application Support/Codex/artifact-sessions/store/
+~/Library/Application Support/Codex/component_crx_cache/
+~/Library/Application Support/Codex/executor-plugins/
+~/Library/Application Support/Codex/executor-plugins/codex-app-tools/
+~/Library/Application Support/Codex/extensions_crx_cache/
+~/Library/Application Support/Codex/segmentation_platform/
+~/Library/Application Support/Codex/sentry/
+~/Library/Application Support/Codex/sentry/queue/

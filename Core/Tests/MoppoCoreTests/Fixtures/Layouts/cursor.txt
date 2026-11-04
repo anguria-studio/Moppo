@@ -1,0 +1,51 @@
+~/.local/share/cursor-agent/versions/
+~/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/
+~/Library/Application Support/Cursor/AgentStores/
+~/Library/Application Support/Cursor/AgentStores/cursor_agent_stores/
+~/Library/Application Support/Cursor/Backups/
+~/Library/Application Support/Cursor/Cache/
+~/Library/Application Support/Cursor/Cache/Cache_Data/
+~/Library/Application Support/Cursor/Cache/No_Vary_Search/
+~/Library/Application Support/Cursor/CachedData/
+~/Library/Application Support/Cursor/CachedExtensionVSIXs/
+~/Library/Application Support/Cursor/CachedProfilesData/
+~/Library/Application Support/Cursor/CachedProfilesData/__default__profile__/
+~/Library/Application Support/Cursor/Code Cache/
+~/Library/Application Support/Cursor/Code Cache/electron-preload/
+~/Library/Application Support/Cursor/Code Cache/js/
+~/Library/Application Support/Cursor/Code Cache/wasm/
+~/Library/Application Support/Cursor/Crashpad/
+~/Library/Application Support/Cursor/Crashpad/attachments/
+~/Library/Application Support/Cursor/Crashpad/completed/
+~/Library/Application Support/Cursor/Crashpad/new/
+~/Library/Application Support/Cursor/Crashpad/pending/
+~/Library/Application Support/Cursor/DawnGraphiteCache/
+~/Library/Application Support/Cursor/DawnWebGPUCache/
+~/Library/Application Support/Cursor/GPUCache/
+~/Library/Application Support/Cursor/IndexedDB/
+~/Library/Application Support/Cursor/IndexedDB/vscode-file_vscode-app_0.indexeddb.blob/
+~/Library/Application Support/Cursor/IndexedDB/vscode-file_vscode-app_0.indexeddb.leveldb/
+~/Library/Application Support/Cursor/Local Storage/
+~/Library/Application Support/Cursor/Local Storage/leveldb/
+~/Library/Application Support/Cursor/Session Storage/
+~/Library/Application Support/Cursor/Shared Dictionary/
+~/Library/Application Support/Cursor/Shared Dictionary/cache/
+~/Library/Application Support/Cursor/User/
+~/Library/Application Support/Cursor/User/History/
+~/Library/Application Support/Cursor/User/globalStorage/
+~/Library/Application Support/Cursor/User/globalStorage/conversation-search.db
+~/Library/Application Support/Cursor/User/settings.json
+~/Library/Application Support/Cursor/User/snippets/
+~/Library/Application Support/Cursor/User/workspaceStorage/
+~/Library/Application Support/Cursor/WebStorage/
+~/Library/Application Support/Cursor/agent-harness/
+~/Library/Application Support/Cursor/agent-harness/.lock/
+~/Library/Application Support/Cursor/agent-harness/attempts/
+~/Library/Application Support/Cursor/agent-harness/hosts/
+~/Library/Application Support/Cursor/agent-harness/serving/
+~/Library/Application Support/Cursor/agent-harness/versions/
+~/Library/Application Support/Cursor/blob_storage/
+~/Library/Application Support/Cursor/logs/
+~/Library/Application Support/Cursor/process-monitor/
+~/Library/Application Support/Cursor/sentry/
+~/Library/Application Support/Cursor/sentry/queue/

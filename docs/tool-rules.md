@@ -91,6 +91,16 @@ The generator refuses to write when a rule breaks one of these rules:
 The `Moppo today` column comes from the rule: `Protected` for `protect`, and `Row` for `offer` and `review`.
 A row without a rule shows its `coverage`.
 
+## Tests
+
+`RuleDocumentTests` compares the document tables with the Swift tables in both directions.
+`LayoutFixtureTests` reads the registry files and builds each rule's layout in a temporary home.
+A rule with `identifiedBy` or `layout` items must recognize the folder with them and refuse the folder without them.
+`Core/Tests/MoppoCoreTests/Fixtures/Layouts/<tool>.txt` holds names from the #216 manifests of a rented Mac: folders at two levels and the files that rules name, with no contents.
+Where a tool has a fixture, the suite builds it and checks that each rule of the tool recognizes the real layout.
+Generated names, such as session identifiers, and the rental user name are not in the fixtures.
+A new tool needs one JSON file and, when a manifest exists, one fixture file.
+
 ## Audit
 
 ```sh

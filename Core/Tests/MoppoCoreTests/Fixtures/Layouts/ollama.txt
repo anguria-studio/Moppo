@@ -1,0 +1,6 @@
+~/.ollama/cache/
+~/.ollama/models/
+~/.ollama/models/blobs/
+~/.ollama/models/manifests-v2/
+~/.ollama/models/manifests/
+~/.ollama/models/metadata/

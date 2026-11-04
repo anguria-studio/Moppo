@@ -1,0 +1,11 @@
+~/.config/goose/chatgpt_codex/
+~/.config/goose/config.yaml
+~/.config/goose/gemini_oauth/
+~/.config/goose/tls/
+~/.config/goose/xai_oauth/
+~/.local/share/goose/apps/
+~/.local/share/goose/model_catalog/
+~/.local/share/goose/sessions/
+~/.local/share/goose/sessions/sessions.db
+~/.local/state/goose/logs/
+~/.local/state/goose/logs/cli/

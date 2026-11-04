@@ -1,0 +1,48 @@
+~/.cherrystudio/bin/
+~/.cherrystudio/config/
+~/Library/Application Support/CherryStudio/Cache/
+~/Library/Application Support/CherryStudio/Cache/Cache_Data/
+~/Library/Application Support/CherryStudio/Cache/No_Vary_Search/
+~/Library/Application Support/CherryStudio/Code Cache/
+~/Library/Application Support/CherryStudio/Code Cache/js/
+~/Library/Application Support/CherryStudio/Code Cache/wasm/
+~/Library/Application Support/CherryStudio/Crashpad/
+~/Library/Application Support/CherryStudio/Crashpad/attachments/
+~/Library/Application Support/CherryStudio/Crashpad/completed/
+~/Library/Application Support/CherryStudio/Crashpad/new/
+~/Library/Application Support/CherryStudio/Crashpad/pending/
+~/Library/Application Support/CherryStudio/Credentials/
+~/Library/Application Support/CherryStudio/Data/
+~/Library/Application Support/CherryStudio/Data/Agents/
+~/Library/Application Support/CherryStudio/Data/FileIntakes/
+~/Library/Application Support/CherryStudio/Data/MiniApps/
+~/Library/Application Support/CherryStudio/Data/Notes/
+~/Library/Application Support/CherryStudio/Data/Skills/
+~/Library/Application Support/CherryStudio/DawnGraphiteCache/
+~/Library/Application Support/CherryStudio/DawnWebGPUCache/
+~/Library/Application Support/CherryStudio/GPUCache/
+~/Library/Application Support/CherryStudio/GPUPersistentCache/
+~/Library/Application Support/CherryStudio/GPUPersistentCache/GPUCache/
+~/Library/Application Support/CherryStudio/GraphiteDawnCache/
+~/Library/Application Support/CherryStudio/Local Storage/
+~/Library/Application Support/CherryStudio/Local Storage/leveldb/
+~/Library/Application Support/CherryStudio/Partitions/
+~/Library/Application Support/CherryStudio/Partitions/agent-browser/
+~/Library/Application Support/CherryStudio/Partitions/agent-browser/declarative_performance_observer.db
+~/Library/Application Support/CherryStudio/Partitions/webview/
+~/Library/Application Support/CherryStudio/Partitions/webview/declarative_performance_observer.db
+~/Library/Application Support/CherryStudio/Runtime/
+~/Library/Application Support/CherryStudio/Runtime/models/
+~/Library/Application Support/CherryStudio/Runtime/provider-registry-override/
+~/Library/Application Support/CherryStudio/Session Storage/
+~/Library/Application Support/CherryStudio/Shared Dictionary/
+~/Library/Application Support/CherryStudio/Shared Dictionary/cache/
+~/Library/Application Support/CherryStudio/Toolchain/
+~/Library/Application Support/CherryStudio/Toolchain/claude-agent-sdk/
+~/Library/Application Support/CherryStudio/Toolchain/mise/
+~/Library/Application Support/CherryStudio/Toolchain/mlx-node/
+~/Library/Application Support/CherryStudio/Toolchain/onnxruntime/
+~/Library/Application Support/CherryStudio/Toolchain/sherpa-onnx/
+~/Library/Application Support/CherryStudio/blob_storage/
+~/Library/Application Support/CherryStudio/declarative_performance_observer.db
+~/Library/Application Support/CherryStudio/restore-staging/

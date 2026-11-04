@@ -1,0 +1,10 @@
+~/.copilot/ide/
+~/.copilot/installed-plugins/
+~/.copilot/logs/
+~/.copilot/plugin-data/
+~/.copilot/plugin-data/_direct/
+~/.copilot/servers/
+~/.copilot/session-state/
+~/.copilot/session-state/.session-operation-locks/
+~/.copilot/session-store.db
+~/.copilot/sidebar-sessions-state/
