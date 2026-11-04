@@ -21,7 +21,7 @@
     "tool": "Comfy Desktop 1.1.8",
     "macos": "27.2"
   },
-  "note": "Comfy Desktop 1.1.8 made these folders. Its launcher folder and ComfyUI identify an installation.",
+  "comment": "Comfy Desktop 1.1.8 made these folders. Its launcher folder and ComfyUI identify an installation.",
   "storage": [
     {
       "path": "~/ComfyUI-Installs",

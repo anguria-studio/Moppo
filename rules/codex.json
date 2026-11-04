@@ -16,6 +16,8 @@
     "--version"
   ],
   "removalRules": "Archived and inactive sessions require deletion review. Active sessions and other storage stay protected. Linked Git worktrees retain their review controls.",
+  "note": "Moppo deletes a session only through `codex delete --force`, after it repeats its checks. Memories, attachments, and generated images stay out of session deletion.",
+  "comment": "Moppo never edits the Codex databases or decompresses history. The reviewed `CODEX_HOME` goes to the command.",
   "storage": [
     {
       "path": "~/.codex",

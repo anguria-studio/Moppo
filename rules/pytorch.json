@@ -19,7 +19,7 @@
       "owner": "aiTools",
       "treatment": "review",
       "store": "pyTorchHub",
-      "note": "`~/.cache/torch/hub` holds weight files in `checkpoints` and one folder for each downloaded repository. Other folders in `~/.cache/torch` are compiler caches."
+      "note": "Weight files sit in `checkpoints`, and each downloaded repository has its own folder. Other folders in `~/.cache/torch` are compiler caches."
     }
   ]
 }

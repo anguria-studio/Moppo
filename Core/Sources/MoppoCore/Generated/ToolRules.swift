@@ -147,7 +147,7 @@ extension ApplicationDataFolders {
         "com.anythingllm": [Folder(path: "Library/Application Support/anythingllm-desktop")],
         // Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application.
         "com.kangfenmao.CherryStudio": [Folder(path: "Library/Application Support/CherryStudio"), Folder(path: ".cherrystudio")],
-        // Stability Matrix 2.16.5 in portable mode keeps `Data` next to the application.
+        // In portable mode, Stability Matrix keeps `Data` next to the application. Stability Matrix 2.16.5, team 78LBV9V26G. The support folder holds `global.json` and the logs.
         "ai.lykos.stabilitymatrix": [Folder(path: "Library/Application Support/StabilityMatrix")]
     ]
 }

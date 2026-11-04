@@ -19,7 +19,7 @@
       "owner": "aiTools",
       "treatment": "review",
       "store": "huggingFace",
-      "note": "The hub inside carries `CACHEDIR.TAG`. The reader handles the classic layout and the shared blob layout."
+      "comment": "The hub inside carries `CACHEDIR.TAG`. The reader handles the classic layout and the shared blob layout."
     }
   ]
 }

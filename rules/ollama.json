@@ -15,6 +15,7 @@
     "--version"
   ],
   "removalRules": "Protected inventory. Moppo cannot verify complete model ownership or active models.",
+  "note": "Moppo cannot verify which models Ollama still references, so the rows stay protected inventory.",
   "storage": [
     {
       "path": "~/.ollama",

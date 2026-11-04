@@ -22,7 +22,7 @@
         "kind": "found"
       },
       "status": "Not verified. No application identified the folder. #350 checked the protection on the test Mac.",
-      "note": "The #216 checks found an ai-coustics audio model here. No application identified it as its own."
+      "comment": "The #216 checks found an ai-coustics audio model here. No application identified it as its own."
     }
   ]
 }

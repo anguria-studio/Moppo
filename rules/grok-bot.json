@@ -14,6 +14,8 @@
     "com.anysphere.sand"
   ],
   "removalRules": "Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected.",
+  "note": "Grok Bot rebuilds `v8-code-cache` from its bundled JavaScript, so Moppo offers that cache.",
+  "comment": "Its main computer runs in the cloud, outside local cleanup.",
   "storage": [
     {
       "path": "~/.grokbot",

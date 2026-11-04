@@ -1,6 +1,6 @@
 # Tool rule registry
 
-[Back to the development notes](README.md#developer-tool-storage).
+[Back to the documentation index](README.md).
 
 The registry in `rules/` holds the storage rules for each third-party tool.
 `scripts/rules.py` generates the Swift tables and the document tables from it.
@@ -32,7 +32,8 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 | `id` | The file name without `.json`. |
 | `name` | The tool name. The row explanation uses it. |
 | `section` | A section from `sections.json`. |
-| `note` | Optional. A sentence under the section table. |
+| `note` | Optional. The fact that justifies the rules of the tool, in one sentence. In the AI coverage table it fills the `Notes` cell. In a catalog section the generator writes one short paragraph for each tool under the table, with the tool name first. |
+| `comment` | Optional. Detail for agents and reviewers, such as a team identifier or a package name. It goes into the generated Swift only. |
 | `bundleIdentifiers` | The bundle identifiers of the desktop application. Needed for an application data folder, a curation, and the tool icon. |
 | `aiTool` | For an AI tool. The `case` and `rawValue` of `FileEntry.AITool`, and `paddedIcon` when the bundled icon includes the padding of an application icon. Tool files can share one. |
 | `owner` | For an AI tool. The `case` and `name` of the heading in Cleanup. |
@@ -45,7 +46,7 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 
 `sections.json` gives each section a `title`, a `document`, an optional `format`, and its `tools` in order.
 The `catalog` format, the default, writes the seven-column table of `docs/tool-catalog.md`.
-The `aiCoverage` format writes one row for each tool: its document name, its rule paths, and its removal rules.
+The `aiCoverage` format writes one row for each tool: its document name, its rule paths, its removal rules, and its notes.
 The `bundleIdentifiers` format writes the observed version of each tool with its first bundle identifier.
 A tool in an `aiCoverage` section needs no catalog cells.
 
@@ -76,7 +77,8 @@ A tool in an `aiCoverage` section needs no catalog cells.
 | `verified` | `date`, `tool`, and `macos`. Optional `kind`, `verified` or `found`, and `scope`. |
 | `status` | The status text when there is no verification, or the text after it. |
 | `contents` | Optional, for `databaseStorage`. What the folder holds, for the row explanation. |
-| `note` | Optional. A sentence under the section table and a comment in the generated Swift. |
+| `note` | Optional. A fact that justifies the rule. It joins the tool's paragraph under the table and the comment in the generated Swift. |
+| `comment` | Optional. Detail that goes into the generated Swift only. |
 
 ## Rules that the generator enforces
 

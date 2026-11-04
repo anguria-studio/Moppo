@@ -31,7 +31,7 @@
         "macos": "27.2",
         "tool": "Podman 6.1.4"
       },
-      "note": "Podman 6.1 keeps the machine disks and the machine SSH key here."
+      "comment": "Podman 6.1 keeps the machine disks and the machine SSH key here."
     },
     {
       "path": "~/.local/share/containers/podman/machine/applehv/cache",

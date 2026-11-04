@@ -204,11 +204,15 @@ class AITableTests(unittest.TestCase):
 
     def test_ai_documents(self):
         tools = self.tools()
+        tools["claude-desktop"]["note"] = "A note in the Notes column."
         coverage = RULES.render_section("ai-tools", self.SECTIONS, tools)
-        self.assertIn("| Claude desktop | `~/Library/Application Support/Claude` | Caches are selectable. |", coverage)
-        self.assertIn("| Claude Code | `~/.claude` | Everything stays protected. |", coverage)
+        self.assertIn("| Tool | Default paths | Removal rules | Notes |", coverage)
+        self.assertIn("| Claude desktop | `~/Library/Application Support/Claude` | Caches are selectable. | A note in the Notes column. |", coverage)
+        self.assertIn("| Claude Code | `~/.claude` | Everything stays protected. |  |", coverage)
+        self.assertNotIn("**Claude desktop.**", coverage)
         identifiers = RULES.render_section("ai-identifiers", self.SECTIONS, tools)
         self.assertIn("| Claude 2.31 | `com.anthropic.claudefordesktop` |", identifiers)
+        self.assertNotIn("A note in the Notes column.", identifiers)
 
     def test_ai_rules_need_their_fields(self):
         tools = self.tools()
@@ -339,13 +343,16 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(RULES.coverage_text(storage(table=None, owner=None, treatment=None, coverage="caches")), "Caches")
         self.assertEqual(RULES.coverage_text(storage(table=None, owner=None, treatment=None, coverage="#49")), "#49")
 
-    def test_notes_follow_the_table(self):
-        tools = {"mysql": tool(note="MySQL keeps its error log in the data folder.",
-                               storage=[storage(note="The data folder also holds the binary logs.")])}
+    def test_notes_follow_the_table_as_one_bullet_per_tool(self):
+        tools = {"mysql": tool(note="MySQL keeps its error log in the data folder.", comment="MySQL 26.10, from Homebrew.",
+                               storage=[storage(note="The data folder also holds the binary logs.", comment="Seen on the test Mac.")])}
         section = RULES.render_section("databases", SECTIONS, tools)
         self.assertTrue(section.endswith(
-            "|\n\nThe data folder also holds the binary logs.\nMySQL keeps its error log in the data folder.\n"
+            "|\n\n**MySQL.** MySQL keeps its error log in the data folder. The data folder also holds the binary logs.\n"
             "<!-- rules:end databases -->"))
+        self.assertNotIn("Seen on the test Mac", section)
+        swift = RULES.render_swift(SECTIONS, tools)
+        self.assertIn("        // The data folder also holds the binary logs. Seen on the test Mac.\n", swift)
 
     def test_swift_roots(self):
         tools = {"mysql": tool(storage=[

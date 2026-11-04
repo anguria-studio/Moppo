@@ -72,10 +72,17 @@ struct RuleDocumentTests {
         let path: String
     }
 
+    /// The rows of the table whose header has a `Default paths` column, read by that column.
     private static func aiStoragePaths() throws -> [AIStoragePath] {
-        try document("ai-storage.md").enumerated().flatMap { index, line -> [AIStoragePath] in
-            guard let cells = cells(line), cells.count == 3, !cells[1].hasPrefix("-") else { return [] }
-            return codeSpans(cells[1]).filter { $0.hasPrefix("~/") || $0.hasPrefix("/") }
+        let lines = try document("ai-storage.md")
+        guard let header = lines.first(where: { cells($0)?.contains("Default paths") == true }),
+              let headerCells = cells(header), let column = headerCells.firstIndex(of: "Default paths")
+        else { return [] }
+        return lines.enumerated().flatMap { index, line -> [AIStoragePath] in
+            guard let cells = cells(line), cells.count == headerCells.count, line != header,
+                  !cells[column].hasPrefix("-")
+            else { return [] }
+            return codeSpans(cells[column]).filter { $0.hasPrefix("~/") || $0.hasPrefix("/") }
                 .map { AIStoragePath(line: index + 1, tool: cells[0], path: $0) }
         }
     }

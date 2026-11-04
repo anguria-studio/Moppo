@@ -120,3 +120,18 @@ Track outstanding checks in GitHub issues #16 and #15.
 Check signed feeds, release notes, invalid feeds, and unavailable servers.
 Check an update between two installed signed and notarized versions.
 Confirm that settings, History, access permissions, and the Homebrew password helper work after the update.
+
+## Update behavior
+
+Sparkle 2.10.0 provides the standard update interface.
+Moppo checks for updates automatically by default. Users can turn off automatic checks in Settings.
+Installation requires approval.
+The installation guard waits for the active operation and then prevents new disk work.
+App termination waits for disk work, including when an approved update is waiting.
+An unconfigured Debug build makes no update requests.
+Release builds require a valid HTTPS feed and Ed25519 public key.
+The Help menu provides Privacy Information and Report a Problem.
+The app includes [privacy information](../App/Resources/Privacy.md).
+Support reports include application and macOS versions.
+They exclude file paths, photos, removal logs, and stored measurements.
+Email Support opens a draft to `hello@anguria.studio` for user review.

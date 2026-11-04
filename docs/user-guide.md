@@ -165,6 +165,18 @@ Moppo protects a local model when another application opens it, links to it, or 
 Hard-linked model files count once.
 Gemini CLI and Antigravity share `~/.gemini`. Moppo shows this folder once, under Gemini, and keeps it protected.
 
+Application headings start collapsed. Expand a heading to show its storage sections, and a section to show its children.
+A heading has no selection or removal action. Range selection includes only visible sections.
+A protected parent row shows its total size, including its child rows and other protected files.
+A child row can be selectable while its parent stays protected, and it can still need review.
+Allocated sizes include shared storage, so a removal can free less than a row shows.
+
+Expand **Codex sessions** or **Codex archived sessions** to review single conversations.
+Use the amber parent lock to unlock inactive conversations together, then select the conversations you want to delete.
+Active sessions and unknown files stay locked. The parent folder never enters the selection.
+Select **Clean Up** to confirm. Codex deletes the history permanently, and Put Back cannot restore it.
+Claude Code, Claude, and Cursor conversations stay protected. Delete them in those applications.
+
 ### Open items elsewhere
 
 Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer** or **Reveal in Finder**.
@@ -359,7 +371,7 @@ A volume can hold the only copy of its data, such as a database, so volume rows 
 Docker removes a volume and all its data permanently. Docker keeps no backup, and Put Back cannot restore the data.
 
 Volumes used by containers remain locked, including volumes of stopped containers.
-The [development notes](README.md#deliberate-limitations) explain the current limits.
+The [architecture notes](architecture.md#deliberate-limitations) explain the current limits.
 
 ## Your data
 
@@ -368,7 +380,7 @@ The [development notes](README.md#deliberate-limitations) explain the current li
 - **Permissions stay under your control.** macOS manages file and photo access. Moppo reports content that it cannot read.
 - **Background work needs Moppo.** Schedules and low-space checks also run in menu bar mode.
 
-Read the [permissions notes](README.md#permissions) for local storage and development signing details.
+Read the [permissions notes](building.md#permissions) for local storage and development signing details.
 
 ## Updates and support
 

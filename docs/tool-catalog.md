@@ -1,6 +1,6 @@
 # Developer tool storage catalog
 
-[Back to the development notes](README.md#developer-tool-storage).
+[Back to the documentation index](README.md).
 
 This catalog lists storage that developer tools create on a Mac.
 It records which storage can come back after removal and which storage Moppo must never offer.
@@ -11,13 +11,6 @@ Use it to plan new scanner rules and protection rules.
 
 AI tools are in the [AI storage sources and limits](ai-storage.md).
 That document has priority for AI tool paths.
-
-## Test environment
-
-A person verified the rows on a disposable MacRent Mac mini on 2 and 3 November 2026.
-The Mac had macOS 27.2 (26B123), Homebrew 7.0.12, an Apple M4 chip, and 32 GB of memory.
-The `Moppo today` values come from the signed Moppo 0.6.0 and from an earlier Moppo build of `0a0cb82`.
-Issue #257 keeps the test comments and the location of the evidence packet.
 
 ## Storage types
 
@@ -81,14 +74,6 @@ See the [tool rule registry](tool-rules.md) for the format.
 | `~/.goenv/releases-cache.json` | Cache | goenv layout | Trash | Next `goenv install` | Row | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
 <!-- rules:end go -->
 
-goenv 3 installs default tools, such as `gopls` and `staticcheck`, into each version.
-It keeps their modules in `~/.goenv/shared/go-mod`, 1.1 GiB in the test.
-That folder stays after `goenv uninstall`.
-The installed tools ran after the removal of `~/.goenv/shared/go-mod`.
-`goenv install --list` and `goenv refresh` did not write `releases-cache.json` again. The next `goenv install` wrote it.
-Moppo shows `~/.goenv` as a protected Hidden System Data row. Moppo offers only `shared/go-mod` and `releases-cache.json` in it.
-`goenv uninstall` without `--yes` asks for confirmation and skips the removal when no terminal answers.
-
 ## Rust
 
 <!-- rules:begin rust -->
@@ -103,12 +88,6 @@ Moppo shows `~/.goenv` as a protected Hidden System Data row. Moppo offers only 
 | `~/.rustup/downloads`, `~/.rustup/tmp` | Cache | Folder location | Trash | Not necessary | Row | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
 | `~/Library/Caches/Mozilla.sccache` | Cache | Folder name | Trash | Next build | Caches | Verified 2026-11-02, sccache 0.19.0, macOS 27.2 |
 <!-- rules:end rust -->
-
-Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file names.
-
-> **Warning:** Moppo can move all of `~/.rustup` to the Trash after review.
-> After that move, `cargo` and `rustc` stop working.
-> `rustup default stable` downloads the default toolchain again. Other toolchains do not come back.
 
 ## PHP
 
@@ -128,14 +107,6 @@ Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file 
 | `~/.config/valet` | User data | Valet installed | Never offer | Not possible | No | Not verified. `valet install` changes the DNS resolver and the `sudoers` file. |
 <!-- rules:end php -->
 
-Herd and Valet can contain site settings, certificates, and database services.
-Composer 2.11.1 keeps its home in `~/.composer` and its cache in `~/Library/Caches/composer` on macOS.
-`~/.composer` can contain `auth.json` with registry tokens. Moppo shows it as a protected Hidden System Data row.
-Moppo shows Laravel and Symfony project folders as general Documents and Files rows. It does not select them.
-Laravel wrote a new log file and a new `storage/logs` folder at the next log entry.
-After a Trash move of the complete folder, `storage/logs/.gitignore` did not come back.
-Moppo 0.6.0 includes the verified `vendor` rows from #256. The scanner hides project folders smaller than 1 MiB.
-
 ## Perl
 
 <!-- rules:begin perl -->
@@ -153,13 +124,6 @@ Moppo 0.6.0 includes the verified `vendor` rows from #256. The scanner hides pro
 | `~/.plenv/cache` | Download | Perl source archives in the plenv layout | Trash | Next `plenv install`. A network connection is necessary. | Row | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
 | `<project>/local` | Download | `cpanfile.snapshot` beside the folder | Trash, only if Git does not track it | `carton install` | No | Verified 2026-11-02, Carton, macOS 27.2 |
 <!-- rules:end perl -->
-
-After one Perl build, `~/perl5/perlbrew/build` used 229 MiB. `perlbrew clean` removed it.
-After one Perl build, `~/.plenv/build` used 229 MiB and `~/.plenv/cache` used 20 MiB. Perl ran after their removal.
-`carton` stopped after the removal of `~/perl5/lib/perl5`. `cpanm` restored the modules.
-The Perl in macOS has its own copy of some modules, such as `Try::Tiny`. Test a removal with a module that only `~/perl5` contains.
-Moppo does not show `~/perl5`. The general hidden folder row includes only hidden folders.
-Moppo offers `~/.cpanm/work` as a row. The `build.log` file stays in the protected `~/.cpanm` row.
 
 ## Python
 
@@ -184,16 +148,10 @@ In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/
 | `~/.cache/uv` | Download | Folder name | Trash | Next `uv sync`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Caches/pipenv` | Download | Folder name | Trash | Next `pipenv install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
-Poetry keeps its downloads in `cache` and `artifacts`. The `virtualenvs` folder beside them holds project environments, which no rule offers.
-uv links or clones environments out of this cache, so they survive its removal. `uv cache clean` is the tool's own instruction.
-<!-- rules:end python -->
+**Poetry.** Poetry keeps its downloads in `cache` and `artifacts`. The `virtualenvs` folder beside them holds project environments, which no rule offers.
 
-pipx 1.18 uses `~/Library/Application Support/pipx` on macOS. The path `~/.local/pipx` is from older pipx versions.
-pipx creates `~/Library/Logs/pipx` again at the next command. The old logs do not come back.
-Moppo 0.6.0 offered `~/Library/Logs/pipx` as safe, because it treated `~/Library/Logs` as a cache folder.
-Since #336, Moppo shows each item in `~/Library/Logs` as **Not regenerable**. **Safe to Remove** does not select these items.
-`conda clean --all` did not damage existing environments.
-pyenv can build Python 3.12 only with OpenSSL 3. When Homebrew has OpenSSL 4, set `PYTHON_BUILD_HOMEBREW_OPENSSL_FORMULA=openssl@3`.
+**uv.** uv links or clones environments out of this cache, so they survive its removal. `uv cache clean` is the tool's own instruction.
+<!-- rules:end python -->
 
 ## Ruby
 
@@ -217,15 +175,6 @@ Moppo has a row for the Bundler cache in `~/.bundle/cache`.
 | `<project>/vendor/bundle` | Download | `Gemfile.lock` beside `vendor`, and `BUNDLE_PATH` in `.bundle/config` | Trash, only if Git does not track it | `bundle install`. A network connection is necessary. | Row | Verified 2026-11-02, Bundler 2.5.22, macOS 27.2 |
 | `~/.bundle/cache` | Download | Folder name | Trash | Next `bundle install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 <!-- rules:end ruby -->
-
-RubyGems 3.5 writes `--user-install` gems to `~/.local/share/gem`, not to `~/.gem`.
-Moppo offers the `vendor` folder only when it contains only `bundle`. A `vendor/cache` folder from `bundle cache` keeps it protected.
-`bundle install --local` did not restore `vendor/bundle` in this test.
-RVM stable 1.29.12 does not know Ruby 3.3 and asks for the removed `openssl@1.1` formula. Use `rvm get master`.
-After one install, `~/.rvm/src` used 266 MiB. `rvm remove` also removed the gem folders of that Ruby.
-ruby-install keeps the source folder and the archive in `~/src`, 330 MiB for Ruby 3.3.13. Ruby ran after their removal.
-The RVM install imported the RVM signing keys into `~/.gnupg`. That folder can contain private keys.
-Moppo does not show `~/src`. The general hidden folder row includes only hidden folders.
 
 ## Java, Kotlin, and Scala
 
@@ -253,18 +202,10 @@ In the 2026-11-02 test, Moppo offered `~/.gradle/caches` and `~/Library/Caches/C
 | `~/Library/Application Support/JetBrains/<product><version>` | User data | IDE settings | Never offer | Not possible | No | Not verified. The IDE needs the desktop session. |
 | `~/.ivy2/cache` | Download | Ivy layout | Trash | Next sbt run. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
-Maven 3.10 writes `.meta` in its repository. An older layout gets no offer.
-The Gradle wrapper keeps a full distribution for each project-pinned version under `dists`.
-`~/.ivy2/local` holds what the user published with `publishLocal`. Only `cache` is a download.
-<!-- rules:end java -->
+**Gradle.** The Gradle wrapper keeps a full distribution for each project-pinned version under `dists`.
 
-`~/.m2` can contain `settings.xml` with repository passwords. Moppo protects `~/.m2` and offers only `~/.m2/repository` for review.
-sbt 2 compiled after the removal of `~/.sbt/boot` and did not create it again.
-sbt 2 downloaded the 133 MiB Coursier cache again in 6 seconds.
-SDKMAN needs Bash 4 or later. Install a newer Bash before you install SDKMAN on macOS.
-The project scanner hides a `target` folder that is smaller than 1 MiB.
-The test used the `kotlinc-native` compiler from the official release archive. It downloaded 688 MiB into `~/.konan/dependencies`.
-The test did not use the Kotlin Gradle plugin.
+**Ivy.** `~/.ivy2/local` holds what the user published with `publishLocal`. Only `cache` is a download.
+<!-- rules:end java -->
 
 ## Android
 
@@ -282,14 +223,6 @@ The test did not use the Kotlin Gradle plugin.
 | `~/Library/Caches/Google/AndroidStudio<version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. Android Studio needs the desktop session. |
 <!-- rules:end android -->
 
-Emulator images contain installed apps and test data. Treat them as user data until verification.
-The tested AVD never started, so it contained no apps or data.
-Moppo shows `~/Library/Android/sdk` as one protected Hidden System Data row. The SDK used about 9 GB in this test. The NDK used 2.8 GiB of it.
-Moppo does not offer SDK packages because only `sdkmanager` removes them correctly.
-`~/.android/avd` stayed after the removal of the emulator package.
-The Homebrew `avdmanager` does not find an SDK in `~/Library/Android/sdk`. Use `cmdline-tools;latest` from that SDK.
-`sdkmanager` did not create `~/.android/cache` again after its removal.
-
 ## .NET
 
 Moppo has a row for NuGet packages in `~/.nuget/packages`.
@@ -303,9 +236,6 @@ Moppo has a row for NuGet packages in `~/.nuget/packages`.
 | `/usr/local/share/dotnet/sdk/<version>` | Installed | `dotnet --list-sdks` | Official uninstall tool after review | Install the SDK again | No | Found 2026-11-02, .NET SDK 10.0.403. Not verified. The uninstall tool needs administrator rights. |
 | `<project>/bin`, `<project>/obj` | Build | `.csproj` or `.fsproj` beside the folders | Trash | `dotnet build` | #49 | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
 <!-- rules:end dotnet -->
-
-The Homebrew `dotnet-sdk` cask installs the SDK in `/usr/local/share/dotnet`, also on Apple silicon.
-Moppo shows `~/.local/share/NuGet` as a protected Hidden System Data row at any size. It does not offer the HTTP cache, because the catalog verified only the `dotnet` command.
 
 ## Elixir, Erlang, and Haskell
 
@@ -336,19 +266,6 @@ In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 | `~/.hex/packages` | Download | Hex layout | Trash | Next `mix deps.get`. A network connection is necessary. | Row | Found 2026-11-02. Not verified. Moppo offered the row in the test. No test removed the folder. |
 <!-- rules:end elixir-haskell -->
 
-cabal 3.16 uses the XDG layout on macOS. It did not create `~/.cabal`.
-Moppo shows `~/.cache/cabal` as the `Cabal packages (XDG)` row in Package Manager Caches. The row needs review. It used 1.1 GiB in this test.
-Moppo shows `~/.local/state/cabal` as a protected Hidden System Data row when a `store/ghc-<version>` folder identifies it.
-Without `~/.cache/cabal`, `cabal build` stopped with `unknown package` until `cabal update` ran.
-The next build restored the store for project dependencies. The test did not check programs from `cabal install`.
-`mix compile` failed after the removal of `deps`. `mix deps.get` restored it.
-With no terminal input, `mix deps.get` installed Hex again by itself.
-Stack installed GHC in `~/.stack/programs`, 2.1 GiB in this test.
-Stack wrote a new default `config.yaml` after a Trash move of `~/.stack`. The user setting in the old file did not come back.
-
-> **Warning:** Moppo can move all of `~/.stack` to the Trash after review.
-> That move removes the Stack settings in `config.yaml`.
-
 ## Version managers for more than one language
 
 <!-- rules:begin version-managers -->
@@ -361,10 +278,6 @@ Stack wrote a new default `config.yaml` after a Trash move of `~/.stack`. The us
 | `~/.local/share/mise/installs/<tool>/<version>` | Installed | `mise ls` | `mise uninstall <tool>@<version>` | `mise install <tool>@<version>` | Protected | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 | `~/Library/Caches/mise` | Cache | Folder name | `mise cache clear` | Next install | Caches | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 <!-- rules:end version-managers -->
-
-Keep each version that a `.tool-versions` or `mise.toml` file in a project names.
-Moppo shows `~/.asdf` as a protected Hidden System Data row when it is larger than 5 MiB. Moppo offers only `~/.asdf/downloads` in it.
-Moppo shows `~/.local/share/mise` as a protected Hidden System Data row when it contains `installs`.
 
 ## Container and virtual machine tools
 
@@ -382,24 +295,7 @@ Moppo reviews Docker images and the Docker build cache through Docker.
 | `~/.orbstack` | User data | OrbStack installed | OrbStack settings after review | Not possible for volumes | No | Not verified. The OrbStack app needs a first start in the desktop session. |
 | `~/.local/share/containers/podman/machine` | User data | Podman installed | `podman machine rm` after review | Not possible for volumes | Protected | Verified 2026-11-02, Podman 6.1.4, macOS 27.2 |
 | `~/.local/share/containers/podman/machine/applehv/cache` | Download | Podman layout | Trash | `podman machine init`. A network connection is necessary. | Row | Verified 2026-11-03, Podman 6.1.4, macOS 27.2 |
-
-Podman 6.1 keeps the machine disks and the machine SSH key here.
 <!-- rules:end containers -->
-
-Virtual machine disks can contain container volumes and databases. Moppo must not move them to the Trash.
-
-> **Warning:** Moppo can move all of `~/.colima` or `~/.lima` to the Trash after review.
-> These folders contain the virtual machines, their data disks, and the Lima SSH key.
-
-`colima delete` keeps the container data disk in Colima 0.10.3. A volume came back after a new `colima start`.
-`colima delete --data` also removes the data disk.
-Colima 0.10.3 did not create `~/.lima`.
-`limactl delete` removed the instance folder. A test file in the virtual machine did not come back.
-In the test, the instance and the image cache each used 3.6 GiB.
-`podman machine rm` left a 894 MiB machine image in the Podman cache folder.
-The Podman machine used 7.8 GiB in the test. Moppo shows it as a protected Hidden System Data row.
-The `machine` and `machine.pub` files are the SSH key of the machine.
-Moppo offers `applehv/cache` only when `machine.pub` and a `.raw.zst` image identify the Podman layout.
 
 ## Credentials and cloud tools
 
@@ -417,9 +313,6 @@ The #321 rules protect them by name. Protection by name removes nothing, so the 
 | `~/.kube` | User data | `config` file with cluster credentials | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
 | `~/.ssh` | User data | Keys and `config` | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
 <!-- rules:end credentials -->
-
-`~/.gnupg` is in the Ruby section, because the RVM install created it.
-Hidden & System Data lists the other folders in `~/.config` as separate rows.
 
 ## JavaScript
 
@@ -445,11 +338,15 @@ Moppo offers these caches by their path. The rules are older than the catalog. N
 | `~/.cache/ms-playwright` | Download | Folder name | Trash | `npx playwright install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Caches/Cypress` | Download | Folder name | Trash | `cypress install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
-`~/.npm/_logs` stays. It is small, and npm asks users to attach it to bug reports.
-Yarn 1 on macOS uses `~/Library/Caches/Yarn`. The `~/.yarn/cache` and `~/.cache/yarn` layouts come from Linux or a migrated home. A Mac can carry any of them.
-The pnpm store is content-addressable. Its files are hard-linked or cloned into each project, so removal frees less than the row shows.
-`~/.bun` also holds the Bun runtime. Only the install cache is a download.
-Playwright's macOS default is `~/Library/Caches/ms-playwright`. `~/.cache/ms-playwright` is the Linux layout.
+**npm.** `~/.npm/_logs` stays. It is small, and npm asks users to attach it to bug reports.
+
+**Yarn.** Yarn 1 on macOS uses `~/Library/Caches/Yarn`. The `~/.yarn/cache` and `~/.cache/yarn` layouts come from Linux or a migrated home. A Mac can carry any of them.
+
+**pnpm.** The pnpm store is content-addressable. Its files are hard-linked or cloned into each project, so removal frees less than the row shows.
+
+**Bun.** `~/.bun` also holds the Bun runtime. Only the install cache is a download.
+
+**Playwright.** Playwright's macOS default is `~/Library/Caches/ms-playwright`. `~/.cache/ms-playwright` is the Linux layout.
 <!-- rules:end javascript -->
 
 ## Swift and Apple tools
@@ -463,7 +360,7 @@ Moppo offers these caches by their path. The rules are older than the catalog. N
 | `~/Library/Caches/org.carthage.CarthageKit` | Download | Folder name | Trash | Next `carthage update`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Caches/CocoaPods` | Download | Folder name | Trash | Next `pod install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
-`~/.cocoapods/repos` is not a row. It is a clone of the spec index, and a new clone is a multi-gigabyte download.
+**CocoaPods.** `~/.cocoapods/repos` is not a row. It is a clone of the spec index, and a new clone is a multi-gigabyte download.
 <!-- rules:end swift -->
 
 ## Dart
@@ -476,7 +373,7 @@ Moppo offers the two download folders of the pub cache by their path.
 | `~/.pub-cache/hosted` | Download | pub layout | Trash | Next `dart pub get`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/.pub-cache/git` | Download | pub layout | Trash | Next `dart pub get`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
-`~/.pub-cache/bin` and `global_packages` hold what `pub global activate` installed. Only the two download folders are rows.
+**Dart pub.** `~/.pub-cache/bin` and `global_packages` hold what `pub global activate` installed. Only the two download folders are rows.
 <!-- rules:end dart -->
 
 ## C and C++
@@ -518,7 +415,7 @@ The VS Code rows also hold its desktop caches, because one tool has one section.
 | `~/.vscode-insiders/extensions` | Installed | `.obsolete` record or a `.vsctmp` folder in the store | Trash the versions that the editor marked for removal | The editor installs an extension again | Row | Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use. |
 | `~/.vscode-oss/extensions` | Installed | `.obsolete` record or a `.vsctmp` folder in the store | Trash the versions that the editor marked for removal | The editor installs an extension again | Row | Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use. |
 
-VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder. The editor's own record decides which extension versions are obsolete, never the version number. A pinned older version makes the highest version the wrong guess. So do profiles that share the folder.
+**Visual Studio Code.** VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder. The editor's own record decides which extension versions are obsolete, never the version number. A pinned older version makes the highest version the wrong guess. So do profiles that share the folder.
 <!-- rules:end editors -->
 
 ## Desktop application caches
@@ -558,10 +455,13 @@ Every Electron application also gets its Chromium caches offered. The rules here
 | `~/Library/Application Support/TorBrowser-Data` | User data | Bundle identifier `org.torproject.torbrowser` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Application Support/TorBrowser-Data/Browser/Caches` | Cache | Tor Browser layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
-Nothing under `Service Worker` is a row. `Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. Removal of the caches with a live registration leaves Chrome pointing at resources that are gone. `Shared Dictionary` is withheld too. A running Chrome holds its index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.
-Figma keeps one Chromium profile for each desktop engine version. Old engine caches often hold most of the folder. The files beside them and the bundled agents are installation and user state.
-Ferdium has normal Electron caches at the root and a Chromium partition for each configured messaging service. Recipes, configuration, cookies, and sessions remain protected.
-Tor Browser separates disposable browser caches from the profile and the Tor keys. The whole profile root is never a cache.
+**Google Chrome.** Nothing under `Service Worker` or `Shared Dictionary` is a row. A live registration or an in-memory index points at the removed files, and sites fail to load.
+
+**Figma.** Figma keeps one Chromium profile for each desktop engine version. Old engine caches often hold most of the folder. The files beside them and the bundled agents are installation and user state.
+
+**Ferdium.** Ferdium has normal Electron caches at the root and a Chromium partition for each configured messaging service. Recipes, configuration, cookies, and sessions remain protected.
+
+**Tor Browser.** Tor Browser separates disposable browser caches from the profile and the Tor keys. The whole profile root is never a cache.
 <!-- rules:end application-caches -->
 
 ## Application data folders with other names
@@ -575,9 +475,6 @@ Moppo shows each folder with its application as user data, in App Uninstaller, a
 | `~/Library/Application Support/VoiceInk` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, VoiceInk 2.21, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
 | `~/Library/Application Support/superwhisper` | User data | Folder name | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Superwhisper 3.1.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
 | `~/superwhisper` | User data | `settings/settings.json` and `modes` | App Uninstaller or Application Leftovers, after review | Not possible | Protected | Found 2026-11-03, Superwhisper 3.1.0, macOS 27.2. The #216 tests found the folder after the first start of the signed application. No test removed it. |
-
-VoiceInk 2.21, team V6J6A3VWY2. VoiceInk also uses its bundle identifier folder.
-Superwhisper 3.1.0, team XDP69BYUP9. `~/superwhisper` holds settings, modes, and recordings.
 <!-- rules:end application-data -->
 
 ## Databases
@@ -603,31 +500,20 @@ Only the tool can remove its own logs and old data safely.
 | `<project>/*.sqlite`, `<project>/*.sqlite3`, `<project>/*.db` | User data | `SQLite format 3` header | Never offer | Not possible | No | Verified 2026-11-03, SQLite 3.54.0, macOS 27.2 |
 | `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Protected | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
 
-`postgresql@<version>` also matches the data folder of an older version. Do not offer it until a person confirms that the new version contains the data.
-DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`.
-DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
-The MySQL data folder also holds the binary logs.
-`PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows. Binary logs can be necessary for replication and for recovery to a point in time.
-MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.
-MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
-OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
-Redis wrote a new log file at its next start. The old log did not come back.
-A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database. A file with a `.db` name and no SQLite header is not a SQLite database.
-DBeaver, team 42B6MDKMW8. The folder holds the workspace, drivers, and settings.
-<!-- rules:end databases -->
+**PostgreSQL.** `postgresql@<version>` also matches the data folder of an older version. Do not offer it until a person confirms that the new version contains the data.
 
-Database client applications such as TablePlus and DBeaver store connections and scripts.
-Treat their data folders as user data.
-Moppo shows the Postgres.app and DBngin data folders under their applications as protected rows with their sizes.
-App Uninstaller and Application Leftovers keep these folders. Moppo does not offer them for removal.
-Moppo shows `~/Library/DBeaverData` as protected data with DBeaver. App Uninstaller and Application Leftovers keep it.
-Without DBeaver, Moppo shows the folder in Hidden & System Data.
-Moppo protects a data folder only when the recognition file exists. A folder name alone does not identify a database.
-On an Intel Mac, the Homebrew folders are in `/usr/local/var`.
-Moppo shows a project folder with SQLite files as a Documents and Files row that needs review. It does not show the database files as rows.
-Moppo shows the Homebrew data folders as protected Hidden & System Data rows with their sizes.
-Moppo shows `/Users/Shared/DBngin` as a protected Hidden & System Data row when a version folder contains `bin`.
-Moppo does not show the SQLite files or `/opt/homebrew/var/log` as rows.
+**DBngin.** DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
+
+**MySQL.** MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`. The MySQL data folder also holds the binary logs. `PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows. Binary logs can be necessary for replication and for recovery to a point in time.
+
+**MongoDB.** MongoDB writes logs to `/opt/homebrew/var/log/mongodb`.
+
+**OpenSearch.** OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
+
+**Homebrew services.** Redis wrote a new log file at its next start. The old log did not come back.
+
+**SQLite.** A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database. A file with a `.db` name and no SQLite header is not a SQLite database.
+<!-- rules:end databases -->
 
 ## Other tool storage
 
@@ -639,16 +525,4 @@ These folders belong to tools that no section above covers.
 | `~/Library/Application Support/multimodal-models` | Download | `ai-coustics/<name>/<model>.aicmodel` files | Never offer | Not possible | Protected | Found 2026-11-03. Not verified. No application identified the folder. #350 checked the protection on the test Mac. |
 | `~/.vagrant.d/boxes` | Download | Vagrant layout | `vagrant box remove` after review | `vagrant box add`. A network connection is necessary. | No | Not verified. The user can package a box on this Mac, and the other boxes are multi-gigabyte downloads. |
 | `~/.terraform.d/plugin-cache` | Download | Terraform layout | Never offer automatically | Next `terraform init`. A network connection is necessary. | No | Not verified. Working directories link into this cache, so removal breaks them until the next `terraform init`. |
-
-The #216 checks found an ai-coustics audio model here. No application identified it as its own.
 <!-- rules:end other -->
-
-## Rows that remain not verified
-
-| Row | Reason |
-| --- | --- |
-| Herd, OrbStack, JetBrains IDE folders, and Android Studio caches | The apps need the desktop session. |
-| Valet | `valet install` changes the DNS resolver and the `sudoers` file. It also starts services as the root user. |
-| The .NET SDK folder | The test did not run the official uninstall tool, which needs administrator rights. |
-| DBngin server versions | Removal and restore need the DBngin app in the desktop session. |
-| Elasticsearch | Homebrew core has no Elasticsearch formula. |

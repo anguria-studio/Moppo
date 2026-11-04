@@ -40,7 +40,7 @@ TREATMENTS = {"offer", "review", "protect"}
 TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders",
           "aiToolStorage", "curations", "localModelStores", "editorExtensionStores"}
 FORMATS = {"catalog", "aiCoverage", "bundleIdentifiers"}
-AI_COVERAGE_HEADER = "| Tool | Default paths | Removal rules |\n| --- | --- | --- |"
+AI_COVERAGE_HEADER = "| Tool | Default paths | Removal rules | Notes |\n| --- | --- | --- | --- |"
 BUNDLE_HEADER = "| Tool | Bundle identifier |\n| --- | --- |"
 CHECKS = {"goModuleCache": "packageManagerCaches", "editorObsolete": "editorExtensionStores"}
 HOME_TABLES = {"toolHomeFolders", "toolHomeLocations"}
@@ -133,6 +133,9 @@ def validate_tool(tool, sections, listed):
                 or not re.match(r"^[a-z][a-z0-9.+-]*$", command[0]) \
                 or not all(re.match(r"^(-{1,2}[a-z][a-z-]*|[a-z][a-z.-]*)$", part) for part in command[1:]):
             raise RuleError(f"{name}: versionCommand is an executable name and up to two plain arguments")
+    for key in ("note", "comment"):
+        if key in tool and not isinstance(tool[key], str):
+            raise RuleError(f"{name}: {key} must be a string")
     for key in ("aiTool", "owner"):
         if key in tool and not (isinstance(tool[key], dict) and tool[key].get("case") and tool[key].get("rawValue" if key == "aiTool" else "name")):
             raise RuleError(f"{name}: {key} needs case and {'rawValue' if key == 'aiTool' else 'name'}")
@@ -242,6 +245,9 @@ def validate_storage(name, storage, catalog=True):
     for key in ("identifiedBy", "layout"):
         if not isinstance(storage.get(key, []), list):
             raise RuleError(f"{where}: {key} must be a list")
+    for key in ("note", "comment"):
+        if key in storage and not isinstance(storage[key], str):
+            raise RuleError(f"{where}: {key} must be a string")
     if "verified" in storage:
         verified = storage["verified"]
         if not DATE.match(str(verified.get("date", ""))):
@@ -415,7 +421,7 @@ def render_rows(section_id, sections, tools):
         for tool_id in section["tools"]:
             tool = tools[tool_id]
             paths = ", ".join(f"`{path}`" for path in rule_paths(tool, sections, tools))
-            lines.append(f"| {tool.get('documentName', tool['name'])} | {paths} | {tool['removalRules']} |")
+            lines.append(f"| {tool.get('documentName', tool['name'])} | {paths} | {tool['removalRules']} | {notes_of(tool)} |")
         return lines
     if fmt == "bundleIdentifiers":
         lines = [BUNDLE_HEADER]
@@ -438,18 +444,25 @@ def render_rows(section_id, sections, tools):
     return lines
 
 
+def notes_of(tool):
+    """The note of a tool and the notes of its storage entries, as one text."""
+    sentences = [tool["note"]] if tool.get("note") else []
+    sentences += [storage["note"] for storage in tool["storage"] if storage.get("note")]
+    return " ".join(sentences)
+
+
 def render_section(section_id, sections, tools):
     """The table and the notes between the markers of one section."""
     lines = [BEGIN.format(section_id)] + render_rows(section_id, sections, tools)
     notes = []
     for tool_id in sections[section_id]["tools"]:
         tool = tools[tool_id]
-        notes.extend(storage["note"] for storage in tool["storage"] if storage.get("note"))
-        if tool.get("note"):
-            notes.append(tool["note"])
-    if notes:
-        lines.append("")
-        lines.extend(notes)
+        if notes_of(tool):
+            notes.append(f"**{tool.get('documentName', tool['name'])}.** " + notes_of(tool))
+    if sections[section_id].get("format") in ("aiCoverage", "bundleIdentifiers"):
+        notes = []   # The AI coverage table has a Notes column. The identifier table shares its tools.
+    for note in notes:   # One paragraph for each tool, so a reader can scan by name.
+        lines += ["", note]
     lines.append(END.format(section_id))
     return "\n".join(lines)
 
@@ -481,6 +494,12 @@ def swift_string(value):
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def swift_comment(entry):
+    """The `//` line for an entry's note and comment, or nothing."""
+    text = " ".join(part for part in (entry.get("note"), entry.get("comment")) if part)
+    return [f"        // {text}"] if text else []
+
+
 def swift_list(values):
     return "[" + ", ".join(swift_string(value) for value in values) + "]"
 
@@ -499,8 +518,7 @@ def render_database_roots(sections, tools):
     for _, tool, storage in rows(sections, tools):
         if storage.get("table") != "databaseStorage":
             continue
-        if storage.get("note"):
-            lines.append(f"        // {storage['note']}")
+        lines += swift_comment(storage)
         for path in storage_paths(storage):
             base, relative = swift_base(path)
             contents = swift_string(storage["contents"]) if storage.get("contents") else "nil"
@@ -545,8 +563,7 @@ def render_tool_home_folders(sections, tools):
             continue
         for path in storage_paths(storage):
             _, relative = swift_base(path)
-            if storage.get("note"):
-                lines.append(f"        // {storage['note']}")
+            lines += swift_comment(storage)
             lines.append(
                 f"        Folder(name: {swift_string(relative)}, explanation: {swift_string(storage['explanation'])}, "
                 f"layout: {swift_list(storage.get('layout', []))}, "
@@ -564,8 +581,7 @@ def render_tool_home_locations(sections, tools):
             continue
         for path in storage_paths(storage):
             base, relative = swift_base(path)
-            if storage.get("note"):
-                lines.append(f"        // {storage['note']}")
+            lines += swift_comment(storage)
             lines.append(
                 f"        Location(path: {swift_string(relative)}, name: {swift_string(storage['name'])}, base: {base}, "
                 f"identifiedBy: {swift_list(storage['identifiedBy'])}, explanation: {swift_string(storage['explanation'])}, "
@@ -584,8 +600,7 @@ def render_package_caches(sections, tools):
             continue
         for path in storage_paths(storage):
             _, relative = swift_base(path)
-            if storage.get("note"):
-                lines.append(f"        // {storage['note']}")
+            lines += swift_comment(storage)
             caveat = f", reviewCaveat: {swift_string(storage['caveat'])}" if storage["treatment"] == "review" else ""
             lines.append(
                 f"        CacheRoot(label: {swift_string(storage['name'])}, "
@@ -626,8 +641,7 @@ def render_application_data_folders(sections, tools):
                     identified = entry.get("identifiedBy", []) if entry.get("table") == "applicationDataFolders" else []
                     suffix = f", identifiedBy: {swift_list(identified)}" if identified else ""
                     folders.append(f"Folder(path: {swift_string(relative)}{suffix})")
-            if tool.get("note"):
-                lines.append(f"        // {tool['note']}")
+            lines += swift_comment(tool)
             lines.append(f"        {swift_string(identifier)}: [{', '.join(folders)}],")
     if lines:
         lines[-1] = lines[-1].rstrip(",")
@@ -659,8 +673,7 @@ def render_ai_roots(sections, tools):
             part_relative = part_relative[len(relative) + 1:]
             parts.append(f"Part(path: {swift_string(part_relative)}, name: {swift_string(part['name'])}, "
                          f"explanation: {swift_string(part['explanation'])})")
-        if storage.get("note"):
-            lines.append(f"        // {storage['note']}")
+        lines += swift_comment(storage)
         arguments = [f"path: {swift_string(relative)}", f"name: {swift_string(storage['name'])}",
                      f"section: .init(owner: .{tool['owner']['case']}, title: {swift_string(storage['section']['title'])}, "
                      f"summary: {swift_string(storage['section']['summary'])})"]
@@ -701,8 +714,8 @@ def render_curations(sections, tools):
         if storage.get("electronCaches"):
             regenerable = "electronRegenerable + " + regenerable if caches else "electronRegenerable"
         remainder = storage["remainderName"] if storage["table"] == "aiToolStorage" else storage["name"]
-        if storage.get("note") and storage["table"] == "curations":
-            lines.append(f"        // {storage['note']}")
+        if storage["table"] == "curations":
+            lines += swift_comment(storage)
         lines.append(f"        {swift_string(tool['bundleIdentifiers'][0])}: AppDataCuration(root: {swift_string(relative)}, "
                      f"regenerable: {regenerable}, remainderName: {swift_string(remainder)}),")
     if lines:

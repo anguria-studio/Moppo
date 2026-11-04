@@ -1,134 +1,94 @@
 # Moppo command line
 
-[Back to the project overview](../README.md).
+[Back to the documentation index](README.md).
 
-The supported CLI uses the name `moppo`.
-It scans and inspects cleanup candidates without opening the app.
-It can save cleanup proposals for later review.
-It can remove a saved plan at one exact revision, from Terminal or through optional app review.
-The development tool named `moppo-cli` has separate diagnostic commands.
-The [agent workflow](agent-workflow.md) provides skill installation and user confirmation guidance.
+`moppo` scans a Mac for cleanup candidates, saves a plan, and removes a plan that the user approved.
+It does not open the app. Each command has a `--json` form for scripts and agents.
+The [agent workflow](agent-workflow.md) describes the skill that drives it.
+The development tool `moppo-cli` is separate and has diagnostic commands.
 
 ## Install
 
-This CLI ships with the next Moppo release.
-Earlier releases do not include it.
+In Moppo, open **Settings > Advanced**. In **Command line and agents**, select **Install** for the command-line tool.
+This links `~/.local/bin/moppo` to the executable inside the signed app, so app updates also update the command.
+The CLI ships with the next Moppo release. Earlier releases do not include it.
 
-Copy Moppo.app from the release disk image to Applications.
-To add the `moppo` command, open Moppo and go to **Settings > Advanced**.
-In **Command line and agents**, select **Install** for the command-line tool.
-This creates the link in `~/.local/bin` that the next steps describe.
-
-To install the command manually, the app does not need to run.
-Check the included executable:
+To make the link yourself, without opening the app:
 
 ```sh
-/Applications/Moppo.app/Contents/Helpers/moppo --version
-```
-
-To add the command to a user-owned command folder:
-
-```sh
+/Applications/Moppo.app/Contents/Helpers/moppo --version   # Check the executable
 mkdir -p "$HOME/.local/bin"
 ln -s /Applications/Moppo.app/Contents/Helpers/moppo "$HOME/.local/bin/moppo"
+export PATH="$HOME/.local/bin:$PATH"                        # In your shell configuration, if needed
 ```
 
-If that name already exists, inspect it before replacing it.
-Add this line to your shell configuration if the folder is absent from PATH:
+Inspect an existing `moppo` in that folder before you replace it.
+Keep the executable inside the app, where its resources are.
 
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-The link uses the executable inside the signed app.
-App updates also update that executable.
-Keep the executable inside the app so its package resources remain available.
-A release needs no Swift installation or source build.
-
-## Scan and inspect
+## Commands
 
 ```sh
 moppo --help
-moppo scan --json
-moppo scan --category xcode --json
-```
-
-Each scan saves a local report and returns a scan identifier and revision.
-Copy that identifier into the following commands.
-The identifiers below are placeholders.
-
-```sh
-moppo items --scan scan_ID --limit 100 --json
+moppo scan --json                                        # Scan, save a report, return scan_ID and its revision
+moppo scan --category xcode --json                       # Scan one enabled category
+moppo items --scan scan_ID --limit 100 --json            # Page through the saved items
 moppo items --scan scan_ID --category xcode --offset 100 --limit 100 --json
-moppo explain --scan scan_ID --item item_ID --json
+moppo explain --scan scan_ID --item item_ID --json       # One item and its reason
+moppo plan create --scan scan_ID --revision SCAN_HASH --items item_ID,item_OTHER --json
+moppo plan inspect --plan plan_ID --json                 # Check the plan against a fresh scan
+moppo plan remove --plan plan_ID --revision PLAN_HASH --json       # Remove that exact revision
+moppo plan review --plan plan_ID --app --json            # Open the plan in Moppo instead
+moppo plan outcomes --plan plan_ID --json                # Results of each removal attempt
+moppo plan invalidate --plan plan_ID --revision PLAN_HASH --json   # Delete the saved proposal
+moppo exclude --scan scan_ID --item item_ID --json       # Never offer the item again
 ```
 
-Item identifiers remain stable within one saved scan.
-A new scan creates new identifiers.
-An item identifier is not a path or permission to remove data.
-Saved reports cannot serve as removal authorization.
+The identifiers and hashes are placeholders.
+Use the `revision` of the scan response to create a plan, and the `revision` of the plan response to remove or invalidate it.
 
-Item pages contain up to 100 entries by default.
-The maximum page size is 500.
-When more items remain, `next_offset` gives the next page offset.
-On the last page, `next_offset` is `null`.
-An offset beyond the result count returns an empty page.
-Filters apply before pagination.
-The `explain` command returns one matching item.
-
-## Save and review a plan
-
-A plan selects existing items from one exact scan revision.
-It does not authorize removal or change the app's current selection.
-The identifiers and hashes below are placeholders.
+Normal output omits names, paths, and explanations that can contain paths.
+Add `--include-paths` to one command to disclose them:
 
 ```sh
-moppo plan create --scan scan_ID --revision SCAN_HASH --items item_ID,item_OTHER --json
-moppo plan inspect --plan plan_ID --json
-moppo plan invalidate --plan plan_ID --revision PLAN_HASH --json
+moppo items --scan scan_ID --json --include-paths
 ```
 
-Use the scan response's `revision` value for creation.
-Use the plan response's `revision` value for invalidation.
-The `--items` list accepts one to 500 distinct item identifiers.
-The CLI rejects paths, commands, protection overrides, and unknown options.
-A failed item check rejects the complete proposal.
+An agent can send command output to its provider, and reduced output still contains categories, sizes, and classifications.
+The CLI never returns file contents, and it needs no MCP server.
 
-Creation and inspection scan the selected categories again.
-They apply current preferences and check file identities, protection, eligibility, and target membership.
-They also check selected trees for protected patterns and unreadable items.
-The checks do not remove files or run removal commands.
+## Scan and inspect
 
-Plans currently support ordinary file targets, file groups, local model groups, and available fixed tool targets.
-Application removal reviews, virtual targets such as Docker images and volumes, and symbolic link targets return `unsupported_target`.
-Protected rows and protected children remain excluded, regardless of earlier app overrides.
-Children of a model group require their parent selection.
-Selecting both a parent and its child fails validation.
+- **Reports.** Each scan saves a report and returns a scan identifier and revision.
+- **Identifiers.** Item identifiers stay stable in one scan. A new scan creates new ones.
+- **Not permission.** An identifier is not a path, and a saved report does not authorize removal.
+- **Pages.** `items` returns 100 entries by default and 500 at most. Filters apply before pagination.
+- **Next page.** `next_offset` gives the next offset, or `null` on the last page.
+- **Past the end.** An offset beyond the result count returns an empty page.
+- **Explain.** `explain` returns one matching item.
 
-A valid response has `status: review_required`.
-It includes the plan identifier, plan revision, source scan revision, expiry, and selected items.
-Names and paths still require `--include-paths`.
-Plan records contain identifiers and revisions, without removal paths or commands.
+## Save a plan
 
-The optional `scan_allocated_bytes` value counts each selected file identity once.
-It includes exclusive model files from the current inventory.
-It excludes shared blobs that the inventory keeps for other models.
-Moppo omits this aggregate when multiple targets include directory measurements that can overlap or share files.
-Individual row sizes remain available.
-The `recoverable_space: unverified` value is separate from scan sizes.
-No plan claims verified recoverable space.
+- **Selection.** A plan holds 1 to 500 item identifiers from one scan revision.
+- **No paths.** The CLI rejects paths, commands, protection overrides, and unknown options.
+- **All or nothing.** One failed item check rejects the complete proposal.
+- **Fresh checks.** Creation and inspection scan the selected categories again with the current preferences.
+- **Checks.** Identity, protection, eligibility, target membership, protected patterns, and unreadable items. The checks remove nothing.
+- **Supported targets.** Ordinary files, file groups, local model groups, and available fixed tool targets.
+- **Unsupported.** Application reviews, virtual targets such as Docker images and volumes, and symbolic links return `unsupported_target`.
+- **Protected.** Protected rows and children stay out, regardless of earlier app overrides.
+- **Groups.** A child of a model group needs its parent. Selecting both fails validation.
+- **Response.** `status: review_required` with the plan identifier, plan revision, scan revision, expiry, and items.
+- **Sizes.** `scan_allocated_bytes` counts each selected file identity once, plus exclusive model files.
+- **Omitted sizes.** Moppo omits the aggregate when directory measurements can overlap or share files. Row sizes stay.
+- **Unverified.** `recoverable_space: unverified` is separate from scan sizes. No plan claims verified recoverable space.
+- **Changes.** A size change does not reject a plan. A changed file, identity, kind, protection, or removal command does.
+- **Expiry.** A plan expires after one day, or with its source scan. The store keeps twenty valid plans.
+- **Invalidate.** Invalidation removes only the saved proposal, not cleanup targets or the selection in the app.
 
-Sizes can change between the scan and the plan review.
-Directory contents can also change during ordinary cache use.
-These changes do not reject a plan. The review shows the sizes from the fresh scan.
-A changed regular file, identity, kind, protection, or removal command rejects the plan.
-
-Plans expire after one day or when their source scan expires, whichever occurs first.
-The plan store retains at most twenty valid plans.
-Scan pruning keeps the source scans of unexpired plans.
-Expiry of the source scan prevents plan review.
-Invalidation removes only the saved proposal.
-Invalidation does not change cleanup targets or the app's selection.
+A plan never changes the selection in the app, and it does not authorize removal.
+The revision is a SHA-256 digest of the stored record.
+It detects changes, but it is not a signature, a consent token, or a security boundary against another process under the same account.
+The [architecture notes](architecture.md#saved-plan-execution) describe the module that terminal and app clients share.
 
 | Error code | Required action |
 | --- | --- |
@@ -143,163 +103,84 @@ Invalidation does not change cleanup targets or the app's selection.
 | `evidence_unavailable` | Run a new scan with this CLI version |
 | `expired` or `record_unavailable` | Create a new plan from an available scan |
 
-The revision is a SHA-256 digest of the canonical stored record.
-It detects changes but is not a signature, consent token, or security boundary against another process under the same account.
-Storage never replaces an existing identifier.
-A review holds an immutable proposal and checks its revision again after the fresh scan.
-Deletion, expiry, or replacement invalidates that review.
-Concurrent clients cannot silently replace its selection through the store API.
+## Remove a plan
 
-The shared `MoppoPlans` module provides `CleanupPlanService` and `PlanReview` for terminal and app clients.
-Removal clients must call `revalidate` after confirmation, immediately before removal.
-They must use the fresh entries and expected identities from the returned review.
-Before each item, they call `recheck` with that review. This check does not scan again.
-They must retain the owning service's identity, ownership, eligibility, and shared-storage checks.
-They must also retain service checks between targets because files can change after validation.
-A directory identity does not establish an immutable snapshot of all descendant contents.
-App clients must keep the current selection until the user accepts the proposal.
-Terminal and app removal use the same execution lock and saved outcomes.
+`plan remove` does not open Moppo. An agent runs it only after the user approves the plan.
 
-## Removal
+- **One revision.** The command removes only the revision you pass. Another revision returns `plan_changed` before any check.
+- **Trash first.** Ordinary items move to Trash without a prompt. Put Back in Cleanup History restores them.
+- **Protected items** stay out, and specialized app targets keep their own review flows.
+- **Permanent items.** No Put Back. `permanent_items` lists them, and `permanent_commands` names the tool, such as `brew`.
+- **Paths.** The complete command contains paths, so it appears only with `--include-paths`.
+- **Authentication.** For a permanent item, macOS asks the Mac user for Touch ID, a paired watch, or the login password.
+- **No bypass.** A shell cannot answer that dialog. No `--yes`, force, or bypass option exists.
+- **Cancelled authentication.** A cancelled or failed authentication cancels the complete plan before removal.
+- **Fresh checks.** Moppo scans again before removal, and checks the plan, settings, and identities before each item.
+- **One lock.** Terminal removal, app review, app cleanup, uninstall, Trash, duplicates, and Storage Explorer share one lock.
+- **Busy.** A busy lock returns exit 75 and `execution_busy`. Older builds and external tools do not take part.
+- **Interrupts.** Before removal, Ctrl-C cancels without changes. During removal, the current item finishes, then Moppo cancels the rest.
+- **Unknown results.** A forced exit can leave a `started` record with an unknown result. Do not retry automatically.
+- **After removal.** `plan outcomes` keeps the results after expiry or invalidation. Cleanup History records attempts and skips.
 
-Inspect a saved proposal, then remove that exact revision:
-
-```sh
-moppo plan inspect --plan plan_ID --json
-moppo plan remove --plan plan_ID --revision PLAN_HASH --json
-```
-
-The command does not open Moppo.
-It removes only the plan revision that you supply.
-A different revision returns `plan_changed` before any check or removal.
-Protected items remain excluded. Specialized app targets retain their existing review flows.
-
-Ordinary items move to Trash without a prompt.
-Put Back in Cleanup History can restore them while they remain in Trash.
-An agent can run this command after the user approves the plan.
-
-Permanent removals have no Put Back recovery.
-The plan output lists them in `permanent_items`.
-`permanent_commands` gives the tool that removes each permanent item, such as `brew` or `go`.
-The complete command contains paths, so it appears only with `--include-paths`.
-Removal responses do not include these fields.
-If a plan contains a permanent item, macOS asks the Mac user to authenticate with Touch ID, a paired watch, or the login password.
-A shell process cannot answer this system dialog.
-A cancelled or failed authentication cancels the complete plan before removal and returns exit 130.
-Without a local login session, the command returns exit 79 and `authentication_unavailable`.
-No `--yes`, force, or other bypass option exists.
-
-Before removal, Moppo checks the complete plan again with a fresh scan.
-Before each item, it checks the plan, the settings, and the target identities again.
-The shared lock prevents another updated Moppo app or terminal client from changing cleanup targets concurrently.
-Regular app cleanup, uninstall, Trash operations, duplicate removal, and Storage Explorer removal use the same lock.
-External tools and older Moppo builds do not participate in this lock.
-A busy lock returns exit 75 and `execution_busy`.
-
-Before removal starts, an interrupt cancels without changing targets.
-During removal, Ctrl-C or SIGTERM lets the current item finish, then cancels the remaining items.
 For other commands, a second interrupt stops the command at once. Those commands do not change cleanup targets.
-The command waits for that item so it can save receipts and outcomes.
-A forced process exit can leave a `started` record with an unknown result.
-Do not retry automatically after interruption or an unknown result.
 
-A completed removal returns exit 0.
-A final result with skipped, failed, partial, or unknown items returns exit 3.
-Cancellation or rejected authentication before any item starts returns exit 130.
-Use `plan outcomes` to inspect retained results, including after plan expiry or invalidation.
-Cleanup History records attempted removals and validation skips.
-Put Back requires a saved receipt and a matching item that remains in Trash.
+## Review in the app
 
-## Optional app review
+- **Open.** `--app` opens Moppo with the plan identifier and revision. The URL holds no paths or commands.
+- **Status.** `app_requested` means that Moppo accepted the request, not consent, review, or removal.
+- **Busy app.** `app_copy_running` means that another Moppo copy runs. Quit it, then request the review again.
+- **Welcome guide.** The request waits until the welcome guide finishes.
+- **Proposal.** Moppo checks the revision, scans the targets, and shows names, paths, sizes, reasons, and recovery limits.
+- **Confirmation.** Select **Review Removal…**, then confirm the items. Settings cannot disable this confirmation.
+- **Permanent tools.** Each permanent tool removal shows an extra warning with the exact command.
+- **One review.** Another request cannot replace an open review, and an active app operation blocks a new one.
+- **Specialized reviews.** Git worktrees, Codex history, sound libraries, and Xcode build caches keep their own app controls.
+- **Stop.** Cancel before confirmation to keep every target. **Stop After Current Item** finishes the current item first.
+- **Recovery.** Cancellation does not restore completed removals. Use Put Back in Cleanup History.
 
-```sh
-moppo plan review --plan plan_ID --app --json
-moppo plan outcomes --plan plan_ID --json
-```
+App review removes items with the same checks, lock, and receipts as the terminal command.
+The existing Cleanup selection stays separate, and a retained execution record prevents another attempt with the same plan revision.
 
-The explicit `--app` option opens Moppo with the saved plan identifier and revision.
-The URL contains no file paths or commands.
-The CLI returns `app_requested` after launch accepts the request.
-This status does not indicate consent, successful review, or removal.
-If another Moppo copy runs, the CLI returns `app_copy_running`.
-Quit that copy before requesting app review again.
-The app checks the saved revision and scans current targets before showing them.
-If Moppo shows the welcome guide, the request waits until that guide finishes.
+## Outcomes
 
-The proposal shows names, paths, sizes, reasons, and recovery limits.
-Existing Cleanup selection remains separate.
-Select **Review Removal…** to accept the proposal for confirmation.
-Confirm the listed items before removal starts.
-The app requires confirmation even when settings disable normal cleanup confirmation.
-Each permanent tool removal requires an additional warning with the exact command.
-Protected targets remain excluded.
+`plan outcomes` returns each attempt with its `run_id`, status, counts, and item results.
+It works after plan invalidation or expiry.
 
-Another request cannot replace an open review.
-Active app operations block a new review.
-After the operation finishes, request the review again.
-Git worktrees, Codex history, sound libraries, and Xcode build cache reviews require their existing specialized app controls.
-Application and virtual targets retain the limits listed above.
-
-The shared executor checks the plan again after confirmation and before each item.
-It uses the existing removal service, file identities, tool checks, and Cleanup History receipts.
-Ordinary targets move to the Trash when supported.
-The executor never falls back to permanent deletion for an ordinary target.
-Concurrent saved-plan execution fails with `execution_busy`.
-A retained execution record prevents another attempt with the same plan revision.
-
-Cancel before confirmation to keep all targets unchanged.
-During removal, **Stop After Current Item** lets the current item finish before stopping remaining items.
-Cancellation does not restore completed removals.
-Use available Put Back actions in Cleanup History for recovery.
-
-Use `plan outcomes` after app review to retrieve saved results.
-The command works after plan invalidation or expiry.
-Each attempt has a `run_id`, status, and item outcomes.
-Item results include `trashed`, `deleted`, `partial`, `failed`, `skipped`, `cancelled`, or `unknown`.
-Counts distinguish Trash moves from permanent removals.
-`private_bytes` records measured private allocation. It does not promise free space after a Trash move.
-
-A `started` record without a final record means the outcome is unknown.
-An `unknown` item can have file changes that Moppo could not report.
-Check Cleanup History and the affected files before another attempt.
-`no_outcome` means no retained record exists. It does not prove that no removal occurred.
-Records can expire or leave the retention limit.
+| Value | Meaning |
+| --- | --- |
+| `trashed`, `deleted`, `partial`, `failed`, `skipped`, `cancelled`, `unknown` | Item results. Counts separate Trash moves from permanent removals |
+| `private_bytes` | Measured private allocation. It does not promise free space after a Trash move |
+| `started` without a final record | The outcome is unknown. Check Cleanup History and the files before another attempt |
+| `unknown` | The item can have changes that Moppo could not report |
+| `no_outcome` | No retained record exists. It does not prove that no removal occurred. Records expire |
 
 ## Exclude an item
 
-Stop Moppo from offering an item again:
-
-```sh
-moppo exclude --scan scan_ID --item item_ID --json
-```
-
-This command saves the same rules as **Never Offer This Again** in the app.
-It scans the item's category again to find the current identities.
-Local model rules identify manifests or repository folders, so shared blobs stay protected.
-Docker rules include the image or volume context.
+`moppo exclude` saves the same rules as **Never Offer This Again** in the app.
+It scans the category again to find the current identities.
 
 | Status | Meaning |
 | --- | --- |
 | `excluded` | Moppo saved one or more rules. `added_rules` gives the number |
 | `already_excluded` | Saved rules already cover the item |
+| `exclusion_unsupported` | Cleanup already skips the protected item |
 
-Protected items return `exclusion_unsupported` because cleanup already skips them.
-Later scans skip the item. A running Moppo app reloads the rules.
-The current app results keep the row until the next scan.
-Plans saved before the change fail with `exclusions_changed`.
-To remove a rule, open Moppo and go to **Settings > Exclusions**. Removal takes effect after another scan.
+- **Model rules** identify manifests or repository folders, so shared blobs stay protected.
+- **Docker rules** include the image or volume context.
+- **Effect.** Later scans skip the item. A running app reloads the rules but keeps the row until the next scan.
+- **Plans** saved before the change fail with `exclusions_changed`.
+- **Undo.** Open **Settings > Exclusions** in Moppo. The change applies after another scan.
 
 ## Settings and access
 
-The CLI reads enabled categories and exclusions from the Moppo preferences domain.
-Exclusions can identify folders, files, tool items such as Docker images and volumes, and filename patterns.
-Only `moppo exclude` changes these settings. It adds exclusions and never removes them.
-Without saved settings, the CLI enables all categories and applies built-in exclusions.
-The `--category` option restricts a scan to an enabled category.
-It cannot enable a disabled category.
-Invalid settings stop the CLI scan.
-
-Category identifiers are:
+- **Preferences.** The CLI reads enabled categories and exclusions from the Moppo preferences domain.
+- **Defaults.** Without saved settings, it enables every category and applies the built-in exclusions.
+- **Exclusions.** Rules can name folders, files, tool items such as Docker images, and filename patterns.
+- **Only `moppo exclude`** changes these settings. It adds exclusions and never removes them.
+- **Categories.** `--category` restricts a scan to an enabled category. It cannot enable a disabled one.
+- **Invalid settings** stop the scan.
+- **Access.** The CLI cannot inherit the Full Disk Access of the app. Grant the terminal access, then scan again.
+- **No sudo.** Administrator access cannot bypass macOS privacy controls.
 
 ```text
 documentsAndFiles
@@ -313,27 +194,13 @@ xcode
 docker
 ```
 
-Terminal access can differ from the signed app's access.
-The CLI cannot inherit the app's Full Disk Access grant.
-If macOS denies access, review the terminal's permissions in System Settings.
-Then run a new scan.
-Do not run the CLI with sudo.
-The CLI cannot use administrator access to bypass macOS privacy controls.
-
 ## Output contract
 
-JSON output uses `schema_version: 1` and snake_case field names.
-Dates use UTC ISO 8601 strings.
-Progress goes to standard error.
-Standard output contains one JSON document when `--json` is present.
-JSON errors include an error code and a message.
-A plan validation error also includes `item_id` when one selected item caused it.
-Text errors go to standard error.
-
-A scan response contains category totals and an item count.
-It does not include an unbounded item list.
-Use `items` to retrieve entries.
-Responses include the scan identifier, revision, timestamps, expiry, and scan status.
+- **JSON.** `schema_version: 1`, snake_case names, UTC ISO 8601 dates, and one document on standard output.
+- **Progress and text errors** go to standard error.
+- **Errors.** A JSON error has a code and a message, plus `item_id` when one selected item caused it.
+- **Scan response.** Category totals, an item count, the identifier, revision, timestamps, expiry, and status.
+- **Items.** The scan response has no item list. Use `items` to retrieve entries.
 
 | Field | Meaning |
 | --- | --- |
@@ -350,31 +217,20 @@ Responses include the scan identifier, revision, timestamps, expiry, and scan st
 | `regeneration` | `regenerable` or `not_regenerable`, when the engine classified the item |
 | `regeneration_reason` | Why a `not_regenerable` item does not come back, when the engine knows |
 
-Eligibility values are `protected`, `parent_review`, `app_review`, and `review_required`.
-None authorizes removal.
-`app_review` items need a review screen in Moppo. Examples are applications, Docker images, Docker volumes, Xcode build caches, Git worktrees, sound libraries, and Codex sessions.
-A saved plan cannot include these items, and plan creation returns `unsupported_target`.
-A new scan does not change this result. Remove these items in the Moppo app.
-Recovery values are `trash_if_supported`, `permanent`, and `external_tool`.
+| Field | Values |
+| --- | --- |
+| `eligibility` | `protected`, `parent_review`, `app_review`, or `review_required`. None authorizes removal |
+| `app_review` | Needs a review screen in Moppo: applications, Docker images and volumes, Xcode build caches, Git worktrees, sound libraries, and Codex sessions. A plan returns `unsupported_target` |
+| `recovery` | `trash_if_supported`, `permanent`, or `external_tool`. Check Trash availability before a removal command |
+| `project_activity` | `last_activity_at`, `git_ignore`, and `hold`. An item with a `hold` value is not safe to remove |
+| `git_ignore` | `ignored`, `not_ignored`, `unknown`, or `outside_repository` |
+| `hold` | `recent_activity`, `not_ignored_by_git`, or `unknown` |
+| `regeneration` | Absent when the engine did not classify the item. Do not treat absence as `regenerable` |
+| Scan status | `complete`, `partial`, `unavailable`, or `notInstalled`. Complete means no unreadable items in the enabled categories, not every file on the Mac |
 
-`project_activity` contains `last_activity_at`, `git_ignore`, and `hold`.
-`git_ignore` values are `ignored`, `not_ignored`, `unknown`, and `outside_repository`.
-`hold` values are `recent_activity`, `not_ignored_by_git`, and `unknown`.
-An item with a `hold` value is not safe to remove.
-The engine did not classify an item without `regeneration`.
-Do not treat a missing value as `regenerable`.
-Removal commands must check Trash availability.
-
-Parent and child sizes can overlap.
-Do not add item sizes to calculate total storage.
-Allocated and displayed sizes do not establish recoverable space.
-
-Status values are `complete`, `partial`, `unavailable`, and `notInstalled`.
-Complete means that the engine reported no unreadable items within the enabled categories and current scan rules.
-It does not mean that Moppo scanned every file on the Mac.
-Partial sizes contain measured bytes and can understate usage.
-Unavailable zero values do not mean empty storage.
-Missing applications receive `notInstalled` status.
+- **Sizes overlap.** Parent and child sizes can overlap. Do not add item sizes for a total.
+- **Not recoverable space.** Allocated and displayed sizes do not establish recoverable space.
+- **Partial** sizes can understate usage, and `unavailable` zero values do not mean empty storage.
 
 | Exit code | Result |
 | --- | --- |
@@ -393,55 +249,23 @@ Missing applications receive `notInstalled` status.
 | 79 | Permanent removal requires authentication by the Mac user, and authentication is unavailable |
 | 130 | Operation cancelled |
 
-Exit codes 2 and 77 still return a saved scan identifier.
-Inspection commands return 0 when retrieval succeeds, even when the saved scan is partial.
-Check the response status before using its measurements.
-Cancellation of scans or plan inspection does not remove cleanup targets.
-Cancellation before report storage does not save a partial report.
+- **Exit codes 2 and 77** still return a saved scan identifier.
+- **Inspection** returns 0 when retrieval succeeds, even for a partial scan. Check the status first.
+- **Cancellation** before report storage saves nothing. Cancelled scans and inspections change no targets.
+- **Storage.** A scan checks that it can save its report first. A blocked folder returns exit 74 and `storage_failure`.
 
-A scan checks that it can save its report before it starts.
-If the report folder blocks writes, the scan returns exit 74 and `storage_failure` at once.
-Agent sandboxes often cause this. The [agent guide](agent-workflow.md#agent-sandboxes) explains the client setting.
+Agent sandboxes often block that folder. The [agent guide](agent-workflow.md#agent-sandboxes) explains the client setting.
 
 ## Privacy and retention
 
-Reports contain file names, paths, and scan explanations.
-They remain under `~/Library/Application Support/Moppo/cli-scans`.
-The report folder uses mode 0700.
-Report files use mode 0600.
-The store rejects symbolic links at report files and the report folder.
-It also rejects shared file links and unexpected permissions.
-Each report can contain at most 64 MiB.
-Reports also store private file identity and policy evidence for plan validation.
-Command output never includes that evidence.
-Plans remain under `~/Library/Application Support/Moppo/cleanup-plans`.
-The same directory and file access rules apply to plans.
-Each plan can contain at most 64 KiB.
-Outcome records remain under `~/Library/Application Support/Moppo/plan-outcomes`.
-They contain identifiers, status codes, and counts without names or paths.
-The same directory and file access rules apply.
-Each record can contain at most 512 KiB.
-Records expire after seven days. The store retains at most 100 records.
-Start records and final records count separately toward this limit.
-The execution lock uses `~/Library/Application Support/Moppo/plan-execution`.
+| Store | Location under `~/Library/Application Support/Moppo` | Contents | Limits and retention |
+| --- | --- | --- | --- |
+| Scan reports | `cli-scans` | Names, paths, explanations, and private identity and policy evidence for plan validation | 64 MiB each. Seven days. The ten newest valid reports and the reports of unexpired plans stay |
+| Plans | `cleanup-plans` | Identifiers and revisions, without paths or commands | 64 KiB each. One day, or the life of the source scan. Twenty valid plans |
+| Outcomes | `plan-outcomes` | Identifiers, status codes, and counts, without names or paths | 512 KiB each. Seven days. 100 records, start and final records counted separately |
+| Execution lock | `plan-execution` | The lock that terminal and app removal share | None |
 
-Reports expire after seven days.
-A successful save removes expired reports.
-It retains the ten newest valid reports and the reports that unexpired plans use.
-The CLI refuses expired reports even before the next save.
-The store preserves invalid and unknown files.
-Unsupported schemas require a new scan.
-
-Normal output omits names, paths, and detailed explanations that can contain paths.
-Use `--include-paths` only when you want to disclose that information:
-
-```sh
-moppo items --scan scan_ID --json --include-paths
-```
-
-The option applies to the current command only.
-An agent can send command output to an external provider.
-Even reduced output contains categories, sizes, and storage classifications.
-Local execution does not guarantee local model processing.
-The CLI does not return file contents.
-The CLI needs no MCP server.
+Each folder uses mode 0700 and each file mode 0600.
+The store rejects symbolic links, shared file links, and unexpected permissions, and it preserves invalid and unknown files.
+Command output never includes the stored evidence.
+The CLI refuses expired reports, and an unsupported schema requires a new scan.
