@@ -1,0 +1,19 @@
+{
+  "id": "cypress",
+  "name": "Cypress",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/Library/Caches/Cypress",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Cypress binaries",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "`cypress install`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

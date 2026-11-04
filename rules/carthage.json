@@ -1,0 +1,19 @@
+{
+  "id": "carthage",
+  "name": "Carthage",
+  "section": "swift",
+  "storage": [
+    {
+      "path": "~/Library/Caches/org.carthage.CarthageKit",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Carthage cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `carthage update`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

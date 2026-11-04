@@ -1,0 +1,16 @@
+{
+  "id": "terraform",
+  "name": "Terraform",
+  "section": "other",
+  "storage": [
+    {
+      "path": "~/.terraform.d/plugin-cache",
+      "type": "download",
+      "coverage": "no",
+      "recognition": "Terraform layout",
+      "removal": "Never offer automatically",
+      "restore": "Next `terraform init`. A network connection is necessary.",
+      "status": "Not verified. Working directories link into this cache, so removal breaks them until the next `terraform init`."
+    }
+  ]
+}

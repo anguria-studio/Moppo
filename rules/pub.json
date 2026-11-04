@@ -1,0 +1,32 @@
+{
+  "id": "pub",
+  "name": "Dart pub",
+  "section": "dart",
+  "storage": [
+    {
+      "path": "~/.pub-cache/hosted",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Dart pub cache",
+      "recognition": "pub layout",
+      "removal": "Trash",
+      "restore": "Next `dart pub get`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder.",
+      "note": "`~/.pub-cache/bin` and `global_packages` hold what `pub global activate` installed. Only the two download folders are rows."
+    },
+    {
+      "path": "~/.pub-cache/git",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Dart pub git dependencies",
+      "recognition": "pub layout",
+      "removal": "Trash",
+      "restore": "Next `dart pub get`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}

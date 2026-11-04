@@ -1,0 +1,45 @@
+{
+  "id": "cherry-studio",
+  "name": "Cherry Studio",
+  "section": "application-data",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/CherryStudio",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "Cherry Studio 2.1.10",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    },
+    {
+      "path": "~/.cherrystudio",
+      "type": "userData",
+      "table": "applicationDataFolders",
+      "owner": "applications",
+      "treatment": "protect",
+      "recognition": "Folder name",
+      "removal": "App Uninstaller or Application Leftovers, after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found",
+        "tool": "Cherry Studio 2.1.10",
+        "macos": "27.2"
+      },
+      "status": "The #216 tests found the folder after the first start of the signed application. No test removed it."
+    }
+  ],
+  "bundleIdentifiers": [
+    "com.kangfenmao.CherryStudio"
+  ],
+  "note": "Cherry Studio 2.1.10, team 87242QY66T. The Electron package name is `CherryStudio`. `~/.cherrystudio` holds the downloaded tools and the `config` folder of the application."
+}

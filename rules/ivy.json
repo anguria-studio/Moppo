@@ -1,0 +1,20 @@
+{
+  "id": "ivy",
+  "name": "Ivy",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/.ivy2/cache",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Ivy cache",
+      "recognition": "Ivy layout",
+      "removal": "Trash",
+      "restore": "Next sbt run. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder.",
+      "note": "`~/.ivy2/local` holds what the user published with `publishLocal`. Only `cache` is a download."
+    }
+  ]
+}

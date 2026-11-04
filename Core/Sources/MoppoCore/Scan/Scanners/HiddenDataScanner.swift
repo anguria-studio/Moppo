@@ -93,15 +93,16 @@ public struct HiddenDataScanner: CategoryScanner {
     /// Every home dot-folder `PackageManagerScanner` claims a path inside must be
     /// here, or this scanner lists the folder whole and the cache is offered twice —
     /// once as a cache, once inside a row that would take the toolchain with it.
-    /// `.pnpm-store` was missing from the day pnpm was added; `DisjointCategoriesTests`
-    /// compares the two lists now. The price is that what is left of such a folder
+    /// `.pnpm-store` was missing from the day pnpm was added. The set now comes from
+    /// `PackageManagerScanner.roots`, so a new root cannot be missing. The price is that what is left of such a folder
     /// (`~/.cargo/bin`, `~/.npm/_npx`) is listed by nobody. That is the better side
     /// to err on: a row offering `~/.cargo` whole is an offer to uninstall Rust.
-    static let dotDirectorySkipList: Set<String> = [
-        ".Trash", ".cache", ".npm", ".yarn", ".gradle", ".local",
-        ".pnpm-store",
-        ".bun", ".cargo", ".ivy2", ".bundle", ".nuget", ".hex", ".cabal", ".pub-cache"
-    ]
+
+    static let dotDirectorySkipList: Set<String> = Set([".Trash", ".cache", ".local"]).union(
+        PackageManagerScanner.roots.compactMap { root in
+            root.components.first.flatMap { $0.hasPrefix(".") ? $0 : nil }
+        }
+    )
 
     private static let diskImageExtensions: Set<String> = ["dmg", "iso", "vmdk", "vhd", "qcow2"]
     private static let archiveExtensions: Set<String> = ["pkg", "zip", "tar", "gz", "ova"]

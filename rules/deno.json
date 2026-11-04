@@ -1,0 +1,19 @@
+{
+  "id": "deno",
+  "name": "Deno",
+  "section": "javascript",
+  "storage": [
+    {
+      "path": "~/Library/Caches/deno",
+      "type": "download",
+      "table": "packageManagerCaches",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Deno cache",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next `deno run`. A network connection is necessary.",
+      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    }
+  ]
+}
