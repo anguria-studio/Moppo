@@ -850,8 +850,10 @@ final class CleanupModel {
             onEvent(.checkingWorktrees)
             currentReviews = (try? await reviewWorktrees(worktrees.map(\.url))) ?? [:]
         }
+        // A main checkout copy protects nothing when the same plan removes it.
+        let removedURLs = plan.entries.map(\.url) + plan.entries.flatMap(Self.plannedTargets).map(\.url)
         for entry in worktrees {
-            let current = currentReviews[entry.url] ?? GitWorktreeReview()
+            let current = (currentReviews[entry.url] ?? GitWorktreeReview()).ignoringCopies(within: removedURLs)
             if !current.isSafeToRemove {
                 updateWorktreeReview(current, for: entry.id)
                 skippedWorktrees.insert(entry.id)
