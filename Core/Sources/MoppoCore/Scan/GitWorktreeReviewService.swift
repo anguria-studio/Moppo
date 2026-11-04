@@ -110,6 +110,9 @@ public struct GitWorktreeReviewService: Sendable {
             review.status = .unavailable
             review.filesIssue = GitWorktreeReview.failureReason(error, tool: "Git")
         }
+        if let output = try? await run(["worktree", "list", "--porcelain", "-z"]) {
+            review.mainCheckout = Self.mainCheckout(in: output, excluding: directory)
+        }
         do {
             let paths = try await run(["rev-parse", "--absolute-git-dir", "--git-common-dir"])
             let lines = String(decoding: paths, as: UTF8.self).split(separator: "\n")
@@ -158,6 +161,9 @@ public struct GitWorktreeReviewService: Sendable {
             }
             switch result {
             case .unavailable(let reason): review.mergeIssue = reason
+            case .open(let number):
+                review.openPullRequestNumber = number
+                review.mergeIssue = "Pull request #\(number) is open. GitHub has these commits, but the merge is not complete."
             case .verified(let proof):
                 review.mergeIssue = "The GitHub merge is absent from the saved default branch. Fetch remote data in your Git tool."
                 if proof.baseBranch != candidate.baseBranch {
@@ -200,6 +206,7 @@ public struct GitWorktreeReviewService: Sendable {
             ScanDiagnostics.current?.record("worktree_github_merge", details: [
                 "path": directory.path, "merged_into": review.mergedInto ?? "",
                 "pull_request": review.mergePullRequestNumber.map(String.init) ?? "",
+                "open_pull_request": review.openPullRequestNumber.map(String.init) ?? "",
                 "reason": review.mergedInto == nil ? review.mergeIssue : "verified"
             ])
         }
@@ -214,6 +221,7 @@ public struct GitWorktreeReviewService: Sendable {
             guard let measured = measurements[url] else {
                 review.ignoredFiles[index].regeneratesSafely = nil
                 review.ignoredFiles[index].canRemoveWhenMerged = false
+                review.ignoredFiles[index].hasMainCheckoutCopy = false
                 ScanDiagnostics.current?.record("worktree_ignored_file", details: [
                     "path": url.path, "worktree": directory.path,
                     "classification": "unverified", "reason": "missing_measurement"
@@ -231,6 +239,7 @@ public struct GitWorktreeReviewService: Sendable {
         review.ignoredFiles[index].allocatedBytes = measured.allocatedBytes
         review.ignoredFiles[index].regeneratesSafely = nil
         review.ignoredFiles[index].canRemoveWhenMerged = false
+        review.ignoredFiles[index].hasMainCheckoutCopy = false
         if measured.containsProtectedPattern {
             review.ignoredFiles[index].regeneratesSafely = false
         } else if measured.unreadableCount > 0 || measured.containsCloudOnlyItem {
@@ -238,14 +247,50 @@ public struct GitWorktreeReviewService: Sendable {
         } else {
             review.ignoredFiles[index].regeneratesSafely = regenerates
             review.ignoredFiles[index].canRemoveWhenMerged = regenerates != nil
+            if regenerates == false, let mainCheckout = review.mainCheckout {
+                review.ignoredFiles[index].hasMainCheckoutCopy = hasIdenticalCopy(
+                    of: url, path: review.ignoredFiles[index].path, in: mainCheckout)
+            }
         }
         let classification = review.ignoredFiles[index].regeneratesSafely
         ScanDiagnostics.current?.record("worktree_ignored_file", details: [
             "path": url.path, "worktree": directory.path,
             "classification": classification == true ? "regenerable" : classification == false ? "local" : "unverified",
             "included_after_merge": "\(review.includesAfterMerge(review.ignoredFiles[index]))",
+            "main_checkout_copy": "\(review.ignoredFiles[index].hasMainCheckoutCopy)",
             "allocated_bytes": "\(measured.allocatedBytes)"
         ])
+    }
+
+    /// Reads the main checkout from `git worktree list`. Git lists it first. A bare repository has no main checkout.
+    static func mainCheckout(in data: Data, excluding directory: URL) -> URL? {
+        let fields = data.split(separator: 0, omittingEmptySubsequences: false).map { String(decoding: $0, as: UTF8.self) }
+        guard let first = fields.first, first.hasPrefix("worktree /"),
+              !fields.prefix(while: { !$0.isEmpty }).contains("bare") else { return nil }
+        let url = URL(fileURLWithPath: String(first.dropFirst("worktree ".count)), isDirectory: true).standardizedFileURL
+        guard url.resolvingSymlinksInPath().path != directory.resolvingSymlinksInPath().path else { return nil }
+        return url
+    }
+
+    /// Compares an ignored regular file with the file at the same path in the main checkout.
+    /// Both files must be regular files of 1 MiB or less. Symbolic links never match.
+    static func hasIdenticalCopy(of url: URL, path: String, in mainCheckout: URL) -> Bool {
+        let limit = 1_048_576
+        guard !path.hasSuffix("/") else { return false }
+        let copy = mainCheckout.appendingPathComponent(path).standardizedFileURL
+        guard copy.resolvingSymlinksInPath().path.hasPrefix(mainCheckout.resolvingSymlinksInPath().path + "/") else { return false }
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        guard let original = try? url.resourceValues(forKeys: keys), let other = try? copy.resourceValues(forKeys: keys),
+              original.isRegularFile == true, other.isRegularFile == true,
+              original.isSymbolicLink != true, other.isSymbolicLink != true,
+              let size = original.fileSize, size == other.fileSize, size <= limit else { return false }
+        func contents(_ url: URL) -> Data? {
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
+            do { return try handle.read(upToCount: limit + 1) ?? Data() } catch { return nil }
+        }
+        guard let first = contents(url), let second = contents(copy), first.count <= limit else { return false }
+        return first == second
     }
 
     static func files(in data: Data, directory: URL) -> (local: [GitWorktreeReview.File], ignored: [GitWorktreeReview.File], complete: Bool) {

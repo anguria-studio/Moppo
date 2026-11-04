@@ -1,6 +1,6 @@
 import Foundation
 
-/// Reads merged pull requests through the installed GitHub CLI sign-in.
+/// Reads merged and open pull requests through the installed GitHub CLI sign-in.
 actor GitHubMergeVerifier {
     struct Repository: Hashable, Sendable {
         let owner: String
@@ -40,6 +40,8 @@ actor GitHubMergeVerifier {
 
     enum Lookup: Equatable, Sendable {
         case verified(Proof)
+        /// An open pull request has this exact commit as its head. GitHub has the commits, but the merge is not complete.
+        case open(Int)
         case unavailable(String)
     }
 
@@ -221,7 +223,12 @@ actor GitHubMergeVerifier {
             guard let commit = repo["c\(index)"] as? [String: Any], commit["oid"] as? String == request.head,
                   let connection = commit["associatedPullRequests"] as? [String: Any],
                   let pulls = connection["nodes"] as? [[String: Any]] else { return (request, incomplete) }
+            var open: Int?
             for pull in pulls {
+                if open == nil, pull["state"] as? String == "OPEN", pull["headRefOid"] as? String == request.head,
+                   let owner = pull["repository"] as? [String: Any],
+                   (owner["nameWithOwner"] as? String)?.lowercased() == repository.fullName,
+                   let number = pull["number"] as? Int, number > 0 { open = number }
                 guard pull["state"] as? String == "MERGED", pull["merged"] as? Bool == true,
                       pull["headRefOid"] as? String == request.head, pull["baseRefName"] as? String == base,
                       let owner = pull["repository"] as? [String: Any],
@@ -230,6 +237,9 @@ actor GitHubMergeVerifier {
                       let merge = pull["mergeCommit"] as? [String: Any], let oid = merge["oid"] as? String,
                       isCommit(oid) else { continue }
                 return (request, .verified(Proof(number: number, mergeCommit: oid, baseBranch: base)))
+            }
+            if let open {
+                return (request, .open(open))
             }
             let page = connection["pageInfo"] as? [String: Any]
             return (request, page?["hasNextPage"] as? Bool == false
