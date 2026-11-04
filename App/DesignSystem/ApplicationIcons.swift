@@ -23,23 +23,27 @@ enum ApplicationIcons {
         return icon
     }
 
-    static func icon(for tool: FileEntry.AITool) -> Icon? {
+    /// Returns an icon for each tool, so that no AI Tools row shows an empty square.
+    static func icon(for tool: FileEntry.AITool) -> Icon {
         if let identifier = identifiers[tool],
            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier),
            FileManager.default.fileExists(atPath: url.path) {
             return Icon(image: icon(for: url), includesPadding: true)
         }
         let key = "tool:\(tool.rawValue)" as NSString
-        if let image = cache.object(forKey: key) {
-            return Icon(image: image, includesPadding: paddedFallbacks.contains(tool))
-        }
-        let fallback = tool == .chatGPT
-            ? NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
-            : Bundle(for: BundleToken.self).image(forResource: tool.rawValue + "ToolIcon")
-        guard let image = fallback else { return nil }
+        let image = cache.object(forKey: key) ?? fallbackImage(for: tool)
         // Keep the same image during animated row updates.
         cache.setObject(image, forKey: key)
         return Icon(image: image, includesPadding: paddedFallbacks.contains(tool))
+    }
+
+    private static func fallbackImage(for tool: FileEntry.AITool) -> NSImage {
+        if tool != .chatGPT, let image = Bundle(for: BundleToken.self).image(forResource: tool.rawValue + "ToolIcon") {
+            return image
+        }
+        // A tool without a bundled icon, such as GitHub Copilot CLI, uses a neutral symbol.
+        let symbol = tool == .chatGPT ? "bubble.left.and.bubble.right" : "sparkles"
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: nil) ?? NSImage()
     }
 
     static func icon(for identifier: String) -> Icon? {

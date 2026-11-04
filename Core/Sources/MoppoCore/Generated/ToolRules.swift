@@ -437,6 +437,7 @@ public enum ToolIcons {
         .antigravity: "com.google.antigravity",
         .openCode: "ai.opencode.desktop",
         .goose: "com.electron.goose",
+        .openClaw: "ai.openclaw.mac",
         .kiro: "dev.kiro.desktop",
         .devin: "com.exafunction.windsurf",
         .anythingLLM: "com.anythingllm",

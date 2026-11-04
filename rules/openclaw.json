@@ -10,6 +10,9 @@
     "case": "openClaw",
     "name": "OpenClaw"
   },
+  "bundleIdentifiers": [
+    "ai.openclaw.mac"
+  ],
   "removalRules": "Protected inventory. Agent sessions, the workspace, state databases, and settings stay protected.",
   "storage": [
     {
