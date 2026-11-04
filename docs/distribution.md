@@ -77,7 +77,7 @@ Normal packaging rejects an app with detailed scan logging enabled.
 This check also applies to existing archives and prepared candidates.
 For private diagnostic packages, supply `--scan-logging` again when you use `--archive` or `--finish`.
 Git ignores generated scan and application logs.
-See [detailed scan test builds](README.md#detailed-scan-test-builds) for log contents and sharing instructions.
+See [scan profiling and diagnostics](building.md#scan-profiling-and-diagnostics) for the log contents and the sharing rules.
 
 ## Prepare before credentials are available
 

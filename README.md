@@ -104,7 +104,8 @@ See the [build and test guide](docs/building.md) for requirements, signing, comm
 | --- | --- |
 | [User guide](docs/user-guide.md) | Permissions, Cleanup filters, settings, removal, recovery, and updates |
 | [CLI guide](docs/cli.md) | The `moppo` command, JSON output, and saved cleanup plans |
-| [Development notes](docs/README.md) | Source layout, measurement rules, and current limits |
+| [Documentation index](docs/README.md) | Every guide, grouped for users, contributors, storage rules, and releases |
+| [Architecture](docs/architecture.md) | Source layout, state ownership, measurement rules, and current limits |
 | [Build and test](docs/building.md) | Development setup and required checks |
 | [Release packages](docs/distribution.md) | Signing, notarization, and packaging |
 | [Writing style](WRITING_STYLE.md) | Rules for documentation, interface text, and code comments |

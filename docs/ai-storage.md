@@ -1,6 +1,6 @@
 # AI storage sources and limits
 
-[Back to the development notes](README.md#ai-storage).
+[Back to the documentation index](README.md).
 
 ## Current coverage
 

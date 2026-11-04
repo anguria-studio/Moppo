@@ -1,6 +1,6 @@
 # Build and test Moppo
 
-[Back to the project overview](../README.md).
+[Back to the documentation index](README.md).
 
 Run the commands from the repository root unless a command changes the folder.
 
@@ -95,6 +95,79 @@ Local checks do not consume GitHub Actions minutes.
 When Actions can run again, require its checks to pass.
 See the [project instructions](../AGENTS.md#local-validation-during-actions-billing-limits) for the complete fallback rules.
 
-Use the **Moppo Onboarding** scheme to show the welcome guide on every Debug launch.
-This scheme keeps saved settings and system permissions.
-See the [development notes](README.md) for the command-line scanner, source layout, and measurement rules.
+## Run the app
+
+```sh
+xcodegen generate                 # regenerates Moppo.xcodeproj from project.yml
+open Moppo.xcodeproj              # ⌘R to run
+swift test --package-path Core    # check the engine
+swift run --package-path Core moppo-cli scan  # run the scanner
+vale README.md AGENTS.md WRITING_STYLE.md CHANGELOG.md SECURITY.md docs  # check project writing
+```
+
+`project.yml` generates `Moppo.xcodeproj`, and Git ignores the generated
+project. Change targets or build settings only in `project.yml`. XcodeGen includes
+new source files from `App/` automatically.
+
+Moppo imports preferences from the previous app identity once. Existing Moppo
+preferences take priority. When a Moppo data folder does not exist, Moppo moves
+the previous folder to the new name. This preserves caches, measurement history,
+and cleanup records for Put Back. If both folders exist, Moppo keeps them and uses
+the Moppo folder. macOS can request permissions again because the app identifier
+has changed.
+
+`App/Resources/AppIcon.icon` contains the Icon Composer source. It includes light
+and dark appearances with neutral background gradients. The menu bar uses a
+vector template image that follows the system appearance.
+
+Select the `Moppo Onboarding` scheme to show the welcome guide on every Debug run.
+This scheme passes `--show-onboarding`. It keeps saved settings and system permissions.
+The `Moppo` scheme shows the guide until you complete it.
+If access is missing on a later launch, Moppo shows the access step again.
+Select **Enable** to open System Settings, or select **Continue with Limited Access** to enter the app.
+At the end of the welcome guide, **Get Started** opens Cleanup, also without Full Disk Access.
+The cleanup scan starts when you enter Cleanup, including with limited access.
+With limited access, Cleanup scans only the folders that Moppo can read.
+Scheduled scans and automatic storage measurements wait for Full Disk Access.
+macOS can request folder access during a scan. Moppo requests Photos access when you open
+Duplicates > Photos. Returning from System Settings refreshes the permission state.
+The photo scan starts only when you select Find Duplicates.
+Use **Moppo > Show Welcome Guide** to read the guide again.
+Photo download controls and guidance are available in **Settings > Advanced**.
+
+## Permissions
+
+The app measures `~/Documents`, `~/Desktop` and `~/Downloads`, all TCC-gated. The
+Debug target uses the stable Apple Development identity configured in `project.yml`,
+so TCC grants survive rebuilds. Do not validate the app with
+`CODE_SIGNING_ALLOWED=NO`: that replaces the Debug product with an ad-hoc identity
+and macOS correctly asks for access again. The app target rejects unsigned builds.
+
+Moppo stores the last breakdown at
+`~/Library/Application Support/Moppo/breakdown-cache.json`. This data seeds the
+initial layout. The Dashboard refreshes it at launch. A scan also refreshes it with
+the category results.
+
+## Scan profiling and diagnostics
+
+```sh
+swift build --package-path Core -c release
+Core/.build/release/moppo-cli profile-scan cleanup --skip-docker
+Core/.build/release/moppo-cli profile-scan dashboard
+Core/.build/release/moppo-cli profile-scan cleanup --skip-docker --log-directory /tmp/moppo-scan-logs
+```
+
+`profile-scan` compares two runs in one process and prints category times, process CPU time, disk activity, and worker counts.
+The first run can use existing macOS file caches, so the report does not claim a cold disk cache.
+The output excludes account names, file names, and file paths. The command saves nothing and changes no preference.
+Record the Mac model, the macOS version, the access settings, and the build beside a report.
+
+`scripts/package-dmg.sh --scan-logging` builds a private test package that writes detailed logs to `~/Library/Logs/Moppo/Scans`.
+Select **Help > Show Scan Logs** to open the folder. Normal packages keep this logging off.
+Detailed logs can contain private file paths, project names, command arguments, and error messages. Review a log before you share it.
+Logs exclude file contents, conversation messages, passwords, tokens, and environment values.
+The research record describes each log record and each profiling figure.
+
+The [CLI guide](cli.md) describes the supported command interface.
+The [agent workflow](agent-workflow.md) covers skill installation, confirmation, disclosure, and client validation.
+The app and the CLI share exclusion decoding and the macOS scan context. With `settings.showsSmallItems` on, the scan hides only empty rows.

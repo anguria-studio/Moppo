@@ -371,7 +371,7 @@ A volume can hold the only copy of its data, such as a database, so volume rows 
 Docker removes a volume and all its data permanently. Docker keeps no backup, and Put Back cannot restore the data.
 
 Volumes used by containers remain locked, including volumes of stopped containers.
-The [development notes](README.md#deliberate-limitations) explain the current limits.
+The [architecture notes](architecture.md#deliberate-limitations) explain the current limits.
 
 ## Your data
 
@@ -380,7 +380,7 @@ The [development notes](README.md#deliberate-limitations) explain the current li
 - **Permissions stay under your control.** macOS manages file and photo access. Moppo reports content that it cannot read.
 - **Background work needs Moppo.** Schedules and low-space checks also run in menu bar mode.
 
-Read the [permissions notes](README.md#permissions) for local storage and development signing details.
+Read the [permissions notes](building.md#permissions) for local storage and development signing details.
 
 ## Updates and support
 

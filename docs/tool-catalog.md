@@ -1,6 +1,6 @@
 # Developer tool storage catalog
 
-[Back to the development notes](README.md#developer-tool-storage).
+[Back to the documentation index](README.md).
 
 This catalog lists storage that developer tools create on a Mac.
 It records which storage can come back after removal and which storage Moppo must never offer.

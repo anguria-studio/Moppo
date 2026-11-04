@@ -1,6 +1,6 @@
 # Tool rule registry
 
-[Back to the development notes](README.md#developer-tool-storage).
+[Back to the documentation index](README.md).
 
 The registry in `rules/` holds the storage rules for each third-party tool.
 `scripts/rules.py` generates the Swift tables and the document tables from it.

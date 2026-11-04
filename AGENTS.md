@@ -39,7 +39,7 @@ Read field identifiers with `gh project field-list` before you update a field.
 - Give the same name to the same event or state in each feature model.
 - Use test arguments only when each argument can change the result.
 - Before you add a test, make sure that no other test covers the same behavior.
-- When you move or add a feature folder, update the layout in `docs/README.md`.
+- When you move or add a feature folder, update the layout in `docs/architecture.md`.
 - After you change a file in `rules/`, run `python3 scripts/rules.py generate` and commit the generated files.
 - After a multi-part refactor, review the complete change for repeated code and repeated tests.
 
