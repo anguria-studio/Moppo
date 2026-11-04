@@ -637,6 +637,9 @@ It offers a cache in such a folder only when the catalog verified a Trash move.
 The tool layout must also be present.
 A folder name alone is not evidence.
 
+`RuleDocumentTests` compares the catalog rows and the AI storage paths with the Swift tables.
+When you change a rule, change its document row in the same pull request.
+
 ## Scanner rows and Git worktrees
 
 Cleanup has two tabs: All and Safe to Remove.
