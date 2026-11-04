@@ -643,6 +643,9 @@ A location gets a row only when an item from its layout exists.
 The same cache rules apply in these rows.
 AI tool storage, such as `~/.local/share/claude`, is in AI Tools.
 
+`RuleDocumentTests` compares the catalog rows and the AI storage paths with the Swift tables.
+When you change a rule, change its document row in the same pull request.
+
 ## Scanner rows and Git worktrees
 
 Cleanup has two tabs: All and Safe to Remove.
