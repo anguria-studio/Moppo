@@ -1,0 +1,28 @@
+{
+  "id": "ai-coustics",
+  "name": "ai-coustics",
+  "section": "other",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/multimodal-models",
+      "type": "download",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "ai-coustics audio models",
+      "identifiedBy": [
+        "ai-coustics/*/*.aicmodel"
+      ],
+      "explanation": "An application keeps ai-coustics audio models here. Moppo cannot identify the application, so it keeps the models protected.",
+      "recognition": "`ai-coustics/<name>/<model>.aicmodel` files",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "kind": "found"
+      },
+      "status": "Not verified. No application identified the folder. #350 checked the protection on the test Mac.",
+      "note": "The #216 checks found an ai-coustics audio model here. No application identified it as its own."
+    }
+  ]
+}

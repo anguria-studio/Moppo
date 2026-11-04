@@ -1,0 +1,51 @@
+{
+  "id": "asdf",
+  "name": "asdf",
+  "section": "version-managers",
+  "storage": [
+    {
+      "path": "~/.asdf",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "asdf keeps the installed tool versions here. Use asdf uninstall to remove a version.",
+      "recognition": "`installs` and `plugins`",
+      "removal": "Never offer whole. Use `asdf uninstall` for a version. Moppo offers `downloads` as a row.",
+      "restore": "`asdf install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "installs",
+        "plugins"
+      ]
+    },
+    {
+      "path": "~/.asdf/installs/<tool>/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`asdf list`",
+      "removal": "`asdf uninstall <tool> <version>`",
+      "restore": "`asdf install <tool> <version>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "asdf 0.20.2"
+      }
+    },
+    {
+      "path": "~/.asdf/downloads",
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "offer",
+      "recognition": "asdf layout",
+      "removal": "Trash",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "asdf 0.20.2"
+      }
+    }
+  ]
+}

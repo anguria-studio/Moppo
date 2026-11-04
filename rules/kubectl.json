@@ -1,0 +1,19 @@
+{
+  "id": "kubectl",
+  "name": "kubectl",
+  "section": "credentials",
+  "storage": [
+    {
+      "path": "~/.kube",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "kubectl keeps cluster settings and credentials here.",
+      "recognition": "`config` file with cluster credentials",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The rule protects the folder by name. No test removed it."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "gopls",
+  "name": "gopls",
+  "section": "go",
+  "storage": [
+    {
+      "path": "~/Library/Caches/gopls",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Folder name and owner",
+      "removal": "Trash",
+      "restore": "Next `gopls` run",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "gopls 0.24.0"
+      }
+    }
+  ]
+}

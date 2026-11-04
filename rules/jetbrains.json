@@ -1,0 +1,25 @@
+{
+  "id": "jetbrains",
+  "name": "JetBrains IDEs",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/Library/Caches/JetBrains/<product><version>",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Older version than the installed IDE",
+      "removal": "Trash",
+      "restore": "Next IDE start",
+      "status": "Not verified. The IDE needs the desktop session."
+    },
+    {
+      "path": "~/Library/Application Support/JetBrains/<product><version>",
+      "type": "userData",
+      "coverage": "no",
+      "recognition": "IDE settings",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The IDE needs the desktop session."
+    }
+  ]
+}

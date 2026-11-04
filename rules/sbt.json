@@ -1,0 +1,38 @@
+{
+  "id": "sbt",
+  "name": "sbt",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/.sbt",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "sbt keeps settings, plugins, and downloads here. Only the boot folder can be removed.",
+      "recognition": "`1.0` folder",
+      "removal": "Never offer whole. Moppo offers `boot` as a row.",
+      "restore": "Not possible for settings and plugins",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "1.0"
+      ]
+    },
+    {
+      "path": "~/.sbt/boot",
+      "type": "download",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "caveat": "sbt 1 downloads it again. A network connection is necessary.",
+      "recognition": "sbt layout",
+      "removal": "Trash",
+      "restore": "Not necessary for sbt 2",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "sbt 2.0.12"
+      }
+    }
+  ]
+}

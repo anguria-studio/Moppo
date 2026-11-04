@@ -649,8 +649,8 @@ AI tool storage, such as `~/.local/share/claude`, is in AI Tools.
 `RuleDocumentTests` compares the catalog rows and the AI storage paths with the Swift tables.
 When you change a rule, change its document row in the same pull request.
 
-The [tool rule registry](tool-rules.md) in `rules/` holds the database rules.
-It generates their Swift table and their document table.
+The [tool rule registry](tool-rules.md) in `rules/` holds the catalog rows, the database rules, and the protected home folders.
+It generates their Swift tables and the catalog tables.
 Change a rule in `rules/<tool>.json`, then run `python3 scripts/rules.py generate`.
 
 ## Scanner rows and Git worktrees

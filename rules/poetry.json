@@ -1,0 +1,20 @@
+{
+  "id": "poetry",
+  "name": "Poetry",
+  "section": "python",
+  "storage": [
+    {
+      "path": "~/Library/Caches/pypoetry/virtualenvs",
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "Poetry layout",
+      "removal": "Trash after review",
+      "restore": "`poetry install` with `poetry.lock`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Poetry 2.5.1"
+      }
+    }
+  ]
+}

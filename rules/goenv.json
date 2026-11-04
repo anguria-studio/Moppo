@@ -1,0 +1,70 @@
+{
+  "id": "goenv",
+  "name": "goenv",
+  "section": "go",
+  "storage": [
+    {
+      "path": "~/.goenv",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "goenv keeps the installed Go versions here. Use goenv uninstall to remove a version.",
+      "recognition": "`versions` and `shims`",
+      "removal": "Never offer. Use `goenv uninstall` for a version.",
+      "restore": "`goenv install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "versions",
+        "shims"
+      ]
+    },
+    {
+      "path": "~/.goenv/versions/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`goenv list`",
+      "removal": "`goenv uninstall <version> --yes`",
+      "restore": "`goenv install <version> --yes`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "goenv 3.2.2"
+      }
+    },
+    {
+      "path": "~/.goenv/shared/go-mod",
+      "type": "download",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "identifiedBy": [
+        "cache/download"
+      ],
+      "caveat": "The next goenv install downloads it again. A network connection is necessary.",
+      "recognition": "`cache/download` folder inside",
+      "removal": "Trash",
+      "restore": "`goenv install <version> --yes`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "goenv 3.2.2"
+      }
+    },
+    {
+      "path": "~/.goenv/releases-cache.json",
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "offer",
+      "recognition": "goenv layout",
+      "removal": "Trash",
+      "restore": "Next `goenv install`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "goenv 3.2.2"
+      }
+    }
+  ]
+}

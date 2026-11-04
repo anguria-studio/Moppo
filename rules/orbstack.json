@@ -1,0 +1,16 @@
+{
+  "id": "orbstack",
+  "name": "OrbStack",
+  "section": "containers",
+  "storage": [
+    {
+      "path": "~/.orbstack",
+      "type": "userData",
+      "coverage": "no",
+      "recognition": "OrbStack installed",
+      "removal": "OrbStack settings after review",
+      "restore": "Not possible for volumes",
+      "status": "Not verified. The OrbStack app needs a first start in the desktop session."
+    }
+  ]
+}

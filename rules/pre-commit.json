@@ -1,0 +1,20 @@
+{
+  "id": "pre-commit",
+  "name": "pre-commit",
+  "section": "python",
+  "storage": [
+    {
+      "path": "~/.cache/pre-commit",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Folder location",
+      "removal": "`pre-commit clean`",
+      "restore": "Next hook run. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "pre-commit 4.7.0"
+      }
+    }
+  ]
+}

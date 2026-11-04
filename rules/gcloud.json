@@ -1,0 +1,19 @@
+{
+  "id": "gcloud",
+  "name": "Google Cloud CLI",
+  "section": "credentials",
+  "storage": [
+    {
+      "path": "~/.config/gcloud",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "The Google Cloud CLI keeps its settings and credentials here.",
+      "recognition": "Google Cloud CLI layout",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The rule protects the folder by name. No test removed it."
+    }
+  ]
+}

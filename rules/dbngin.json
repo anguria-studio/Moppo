@@ -28,10 +28,17 @@
       }
     },
     {
-      "path": "/Users/Shared/DBngin/<engine>/<version>",
+      "path": "/Users/Shared/DBngin",
       "type": "installed",
-      "coverage": "protected",
-      "recognition": "DBngin installed. A `bin` folder with the server programs.",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "DBngin server versions",
+      "identifiedBy": [
+        "*/*/bin"
+      ],
+      "explanation": "DBngin keeps its database server versions here. Use DBngin to remove a version.",
+      "recognition": "DBngin installed. A `bin` folder in a version folder.",
       "removal": "DBngin, after review",
       "restore": "DBngin downloads the version again",
       "verified": {
@@ -39,7 +46,8 @@
         "kind": "found",
         "tool": "DBngin 27.0.2"
       },
-      "status": "Not verified. Removal and restore need the DBngin app in the desktop session."
+      "status": "Not verified. Removal and restore need the DBngin app in the desktop session.",
+      "note": "DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`."
     }
   ]
 }

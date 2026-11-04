@@ -1,0 +1,97 @@
+{
+  "id": "stack",
+  "name": "Stack",
+  "section": "elixir-haskell",
+  "storage": [
+    {
+      "path": "~/.stack",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Stack keeps GHC versions, package indexes, and your config.yaml settings here.",
+      "recognition": "`config.yaml` and `stack.sqlite3`",
+      "removal": "Never offer whole. Moppo offers `snapshots`, `pantry`, and `setup-exe-cache` as rows.",
+      "restore": "Not possible for `config.yaml`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "config.yaml",
+        "stack.sqlite3"
+      ]
+    },
+    {
+      "path": "~/.stack/programs/<platform>/ghc-<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "Stack layout",
+      "removal": "Trash after review",
+      "restore": "Next `stack build`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Stack 3.11.1 with GHC 9.10.3"
+      }
+    },
+    {
+      "path": "~/.stack/snapshots",
+      "type": "build",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "caveat": "The next stack build makes it again.",
+      "recognition": "Stack layout",
+      "removal": "Trash",
+      "restore": "Next `stack build`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Stack 3.11.1"
+      }
+    },
+    {
+      "paths": [
+        "~/.stack/pantry",
+        "~/.stack/setup-exe-cache"
+      ],
+      "type": "download",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "caveat": "The next stack build downloads it again. A network connection is necessary.",
+      "recognition": "Stack layout",
+      "removal": "Trash",
+      "restore": "Next `stack build`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Stack 3.11.1"
+      }
+    },
+    {
+      "path": "~/.stack/config.yaml",
+      "type": "userData",
+      "coverage": "protected",
+      "recognition": "Stack layout",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Stack 3.11.1"
+      }
+    },
+    {
+      "path": "<project>/.stack-work",
+      "type": "build",
+      "coverage": "no",
+      "recognition": "`stack.yaml` beside the folder",
+      "removal": "Trash",
+      "restore": "`stack build`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Stack 3.11.1"
+      }
+    }
+  ]
+}

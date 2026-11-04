@@ -1,0 +1,20 @@
+{
+  "id": "kotlin-native",
+  "name": "Kotlin/Native",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/.konan",
+      "type": "download",
+      "coverage": "hidden",
+      "recognition": "`dependencies` folder with the Kotlin/Native LLVM and `libffi`",
+      "removal": "Trash",
+      "restore": "Next `kotlinc-native` build. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Kotlin/Native 2.4.21"
+      }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "dotnet",
+  "name": ".NET SDK",
+  "section": "dotnet",
+  "storage": [
+    {
+      "path": "/usr/local/share/dotnet/sdk/<version>",
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "`dotnet --list-sdks`",
+      "removal": "Official uninstall tool after review",
+      "restore": "Install the SDK again",
+      "verified": {
+        "date": "2026-11-02",
+        "kind": "found",
+        "tool": ".NET SDK 10.0.403"
+      },
+      "status": "Not verified. The uninstall tool needs administrator rights."
+    },
+    {
+      "paths": [
+        "<project>/bin",
+        "<project>/obj"
+      ],
+      "type": "build",
+      "coverage": "#49",
+      "recognition": "`.csproj` or `.fsproj` beside the folders",
+      "removal": "Trash",
+      "restore": "`dotnet build`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": ".NET SDK 10.0.403"
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "go",
+  "name": "Go",
+  "section": "go",
+  "storage": [
+    {
+      "path": "~/go/pkg/mod",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`cache/download` folder inside. Folders and files are read-only.",
+      "removal": "`go clean -modcache`",
+      "restore": "`go mod download`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Go 1.27.3"
+      }
+    },
+    {
+      "path": "~/Library/Caches/go-build",
+      "type": "cache",
+      "coverage": "row",
+      "recognition": "`README` and hashed folders",
+      "removal": "Trash",
+      "restore": "Next build, without a network connection",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Go 1.27.3"
+      }
+    },
+    {
+      "path": "~/go/bin",
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "Executable files",
+      "removal": "Never remove automatically",
+      "restore": "`go install`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Go 1.27.3"
+      }
+    },
+    {
+      "path": "<project>/vendor",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`vendor/modules.txt`, `go.mod`, and `go.sum`",
+      "removal": "Trash, only if Git does not track it",
+      "restore": "`go mod vendor`. It works without a network connection when the module cache contains the modules.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Go 1.27.3"
+      }
+    }
+  ]
+}

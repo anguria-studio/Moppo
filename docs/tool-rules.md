@@ -46,7 +46,10 @@ After you change a file in `rules/`, run `generate` and commit the generated fil
 | `treatment` | With `table`. `offer`, `review`, or `protect`. |
 | `name` | With `table`. The row name in Moppo. |
 | `coverage` | Without `table`. The `Moppo today` value: `row`, `protected`, `caches`, `hidden`, `size`, `no`, or a ticket number. |
-| `identifiedBy` | Paths in the folder that identify the tool. One is sufficient. A glob component matches any child. A final `/` requires a folder. |
+| `identifiedBy` | Paths in the folder that identify the tool. One is sufficient. A glob component matches any child. A final `/` requires a folder. For a cache in a home folder, the one item that identifies its layout. |
+| `layout` | For a protected home folder or location. Items that must all exist before Moppo offers a cache in it. |
+| `explanation` | For a protected home folder or location. The row explanation in Moppo. |
+| `caveat` | For a cache that needs review. The text that tells what removal costs. |
 | `recognition`, `removal`, `restore` | The text of the document cells. |
 | `verified` | `date`, `tool`, and `macos`. Optional `kind`, `verified` or `found`, and `scope`. |
 | `status` | The status text when there is no verification, or the text after it. |
@@ -71,5 +74,10 @@ A row without a rule shows its `coverage`.
 | Table | Swift | Contents |
 | --- | --- | --- |
 | `databaseStorage` | `DatabaseStorage.roots` | Protected database data folders. |
+| `toolHomeFolders` | `ToolHomeFolders.all` | Protected home folders. An offered path below a folder is one of its caches. |
+| `toolHomeLocations` | `ToolHomeFolders.locations` | Protected tool storage outside the listed folders, with the items that identify it. |
+
+A cache in a home folder or location is an `offer` or `review` entry with the same table, below the folder path.
+The generator needs exactly one protected folder above such a path.
 
 Issue #352 moves the other tables into the registry.
