@@ -1111,6 +1111,18 @@ public struct AppUninstallPlanner: Sendable {
         return result
     }
 
+    /// Walks each application bundle at most one time for each scan.
+    static func installedBundleIdentifiers(
+        in roots: [URL], fileManager: FileManager = .default, sharing walks: ApplicationBundleWalks
+    ) async throws -> Set<String> {
+        let applications = try installedApplications(
+            in: roots, fileManager: fileManager, checkCancellation: Task.checkCancellation
+        )
+        return try await walks.identifiers(in: applications) {
+            try allBundleIdentifiers(in: $0, fileManager: fileManager, checkCancellation: Task.checkCancellation)
+        }
+    }
+
     static func ownerIsInstalled(
         _ identifier: String, installedBundleIdentifiers: Set<String>
     ) -> Bool {

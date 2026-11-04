@@ -439,6 +439,54 @@ struct AppUninstallPlannerTests {
         #expect(checkpoints == 8)
     }
 
+    @Test("Applications and Application Leftovers walk each bundle once in one scan")
+    func cleanupCategoriesShareBundleWalks() async throws {
+        let sandbox = try Sandbox()
+        for index in 0..<6 {
+            let app = try sandbox.application("Editor\(index)", identifier: "com.vendor.editor\(index)")
+            let helpers = app.appendingPathComponent("Contents/Library/LoginItems", isDirectory: true)
+            try FileManager.default.createDirectory(at: helpers, withIntermediateDirectories: true)
+            try sandbox.application("Helper", identifier: "com.vendor.editor\(index).helper", under: helpers)
+        }
+        try sandbox.application("Tool", identifier: "com.vendor.tool", under: sandbox.userApplications)
+        let coordinator = ScanCoordinator(scanners: [
+            ApplicationsScanner(
+                applicationDirectories: [sandbox.applications, sandbox.userApplications],
+                home: sandbox.home, soundLibraries: nil
+            ),
+            ApplicationLeftoversScanner(planner: OrphanedAppLeftoverPlanner(pathPlanner: sandbox.planner())),
+        ])
+        let diagnostics = try ScanDiagnostics(directory: sandbox.root.appendingPathComponent("diagnostics"))
+        _ = try await ScanDiagnostics.$current.withValue(diagnostics.context) {
+            try await coordinator.scan()
+        }
+        diagnostics.finish(outcome: "completed")
+        diagnostics.flush()
+
+        let records = try Data(contentsOf: diagnostics.fileURL).split(separator: 10).map {
+            try #require(try JSONSerialization.jsonObject(with: Data($0)) as? [String: Any])
+        }
+        let walkedPaths = records.compactMap { record -> String? in
+            guard record["event"] as? String == "span_start",
+                  let details = record["details"] as? [String: String],
+                  details["operation"] == "application_bundle_identifiers" else { return nil }
+            return details["path"]
+        }
+        #expect(walkedPaths.count == 7)
+        #expect(Set(walkedPaths).count == 7)
+    }
+
+    @Test("A failed bundle walk keeps no result, so the next caller walks again")
+    func failedBundleWalkIsRepeated() async throws {
+        let walks = ApplicationBundleWalks()
+        let app = URL(fileURLWithPath: "/Applications/Editor.app")
+        await #expect(throws: CancellationError.self) {
+            try await walks.identifiers(in: [app]) { _ in throw CancellationError() }
+        }
+        let identifiers = try await walks.identifiers(in: [app]) { _ in ["com.vendor.editor"] }
+        #expect(identifiers == ["com.vendor.editor"])
+    }
+
     @Test("Cleanup ownership scans reject cancellation before traversal", arguments: [
         CategoryID.applications, .applicationLeftovers
     ])
