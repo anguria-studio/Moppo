@@ -100,7 +100,7 @@ enum GitWorktreeDetector {
         var mergeCandidate: GitHubMergeVerifier.Candidate?
     }
 
-    /// Checks saved default branches before comparing the upstream or detached HEAD.
+    /// Checks saved default branches before comparing the upstream or the saved remote branches.
     static func pushStatus(of directory: URL, executable suppliedExecutable: String? = nil) async throws -> CommitComparison {
         let resolvedExecutable: String?
         if let suppliedExecutable { resolvedExecutable = suppliedExecutable }
@@ -165,6 +165,7 @@ enum GitWorktreeDetector {
                 result.mergeIssue = "The saved remote default branch is missing or ambiguous."
             }
             let comparison: [String]
+            var hasBranchWithoutUpstream = false
             if let upstream {
                 guard upstream.hasPrefix("refs/remotes/") else {
                     result.reason = "The upstream is a local branch."
@@ -172,16 +173,18 @@ enum GitWorktreeDetector {
                 }
                 comparison = [head, "^" + upstream, "--"]
             } else {
-                let branch = try await git(["rev-parse", "--abbrev-ref", "HEAD"])
-                guard branch == "HEAD" else {
-                    result.reason = "The upstream branch is missing or was deleted."
-                    return result
-                }
+                hasBranchWithoutUpstream = try await git(["rev-parse", "--abbrev-ref", "HEAD"]) != "HEAD"
                 comparison = [head, "--not", "--remotes", "--"]
             }
             let output = try await git(["rev-list", "--count"] + comparison)
             guard let count = Int(output), count >= 0 else {
                 result.reason = "Git did not return a valid commit count."
+                return result
+            }
+            // A branch without an upstream passes only when saved remote branches contain all of its commits.
+            // Other commits can be local work or the commits of a deleted, squash-merged branch.
+            if hasBranchWithoutUpstream, count > 0 {
+                result.reason = "The branch has no upstream, and saved remote branches do not contain \(count) of its commits."
                 return result
             }
             result.status = count == 0 ? .noUnpushedCommits : .unpushedCommits(count)

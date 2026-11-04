@@ -892,6 +892,33 @@ struct CleanupModelTests {
         #expect(updates == [result])
     }
 
+    @Test("A main checkout copy stops protecting a worktree when the same plan removes it", arguments: [false, true])
+    func mainCheckoutCopyInPlan(selectsMainCheckout: Bool) async throws {
+        let main = cleanupEntry("main")
+        var review = safeWorktreeReview()
+        review.mainCheckout = main.url
+        var copy = GitWorktreeReview.File(path: ".env", status: .ignored, regeneratesSafely: false)
+        copy.hasMainCheckoutCopy = true
+        review.ignoredFiles = [copy]
+        #expect(review.isSafeToRemove)
+        var worktree = cleanupEntry("worktree")
+        worktree.gitWorktreeReview = review
+        let current = review
+        let removal = HeldCleanupRemoval()
+        let cleanup = CleanupModel(operations: OperationCoordinator(), remover: removal,
+            reviewWorktrees: { urls in Dictionary(uniqueKeysWithValues: urls.map { ($0, current) }) }, measureSaving: { _ in nil })
+        let selected = selectsMainCheckout ? [main, worktree] : [worktree]
+        cleanup.scanResults = cleanupResults(selected)
+        cleanup.scannerSelection = Set(selected.map(\.id))
+        cleanup.requestCleanUp(in: .all)
+        let task = Task { await cleanup.performCleanUp() }
+        try await waitUntil { await removal.isPending }
+        #expect(await removal.entries.map(\.id) == (selectsMainCheckout ? [main.id] : [worktree.id]))
+        await removal.finish(.init(removedCount: 1, trashedCount: 1))
+        await task.value
+        #expect(cleanup.cleanupOutcome?.skippedWorktrees == (selectsMainCheckout ? [worktree.id] : []))
+    }
+
     @Test("A changed worktree also protects a selected parent", arguments: [false, true])
     func changedWorktreeParent(selectedParent: Bool) async throws {
         var worktree = cleanupEntry("changed-worktree")

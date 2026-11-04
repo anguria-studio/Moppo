@@ -134,10 +134,12 @@ Cleanup has the All and Safe to Remove tabs. The [user guide](user-guide.md) des
 | The status pill reports one result in a fixed order. | In use, uncommitted changes, unpushed commits, has local files, could not verify, safe to remove. |
 | A merge check first reads the saved remote default branch. | A confirmed merge includes all readable ignored files in removal. |
 | Without saved history, Moppo asks GitHub through the installed GitHub CLI. | The merged pull request must match the exact commit and the current default branch, including squash merges. |
+| GitHub also reports an open pull request for the exact commit. | The row shows the pull request number. An open pull request does not confirm a merge. |
 | GitHub requests send repository names and commit identifiers only. | Up to 20 commits for each request, two repositories at once, five seconds for each request, ten seconds for each repository. |
 | Successful GitHub results stay in memory until Moppo quits or the cache exceeds 2,048 entries. | Failed results expire after 30 seconds and pause repeated requests for 30 seconds. |
-| A branch compares with its upstream, and a detached worktree with all remote-tracking branches. | A branch without an upstream, or incomplete history, has unknown push status. |
+| A branch compares with its upstream, and other worktrees with all remote-tracking branches. | A branch without an upstream passes only when remote-tracking branches contain all of its commits. Incomplete history has unknown push status. |
 | Ignored files stay under review without a confirmed merge. | Verified caches, dependency stores with reinstall evidence, Finder metadata, and Xcode window state count as regenerable. |
+| An ignored file needs no review when the main checkout has an identical copy at the same path. | Both files must be regular files of 1 MiB or less. If the plan also removes the copy, Cleanup keeps the worktree. |
 | A generated Xcode project needs a tracked specification and an installed XcodeGen. | Moppo generates a comparison project in a private temporary folder, with file, size, and time limits. |
 | Generated-file checks use bounded reads. | They never execute project code. |
 | The open-file check covers the user's visible processes. | It cannot identify every inactive tool session. Close the owning tool before removal. |

@@ -87,6 +87,9 @@ Select the parent folder to review removal of the worktrees and other files toge
 Moppo blocks separate removal of the **Other files** row because its folder path also contains the worktrees.
 Worktrees inside protected groups keep their protection.
 **Safe to remove** means all checks passed during the latest scan or requested check.
+A **PR #number open** badge means that GitHub has the worktree commit in an open pull request.
+Until the merge, Moppo shows the ignored files that exist only on this Mac.
+An ignored file needs no review when the main checkout has an identical copy, such as a copied `.env.local` file.
 The review dialog shows those completed results without starting another check.
 Select **Check Again** to update the results.
 Moppo checks again before removal because files and running processes can change.
