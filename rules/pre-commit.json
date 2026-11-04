@@ -2,6 +2,10 @@
   "id": "pre-commit",
   "name": "pre-commit",
   "section": "python",
+  "versionCommand": [
+    "pre-commit",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.cache/pre-commit",

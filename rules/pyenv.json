@@ -2,6 +2,10 @@
   "id": "pyenv",
   "name": "pyenv",
   "section": "python",
+  "versionCommand": [
+    "pyenv",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.pyenv",

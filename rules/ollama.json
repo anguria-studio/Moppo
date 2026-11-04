@@ -10,6 +10,10 @@
     "case": "ollama",
     "name": "Ollama"
   },
+  "versionCommand": [
+    "ollama",
+    "--version"
+  ],
   "removalRules": "Protected inventory. Moppo cannot verify complete model ownership or active models.",
   "storage": [
     {

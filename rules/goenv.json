@@ -2,6 +2,10 @@
   "id": "goenv",
   "name": "goenv",
   "section": "go",
+  "versionCommand": [
+    "goenv",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.goenv",

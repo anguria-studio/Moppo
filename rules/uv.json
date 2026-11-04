@@ -2,6 +2,10 @@
   "id": "uv",
   "name": "uv",
   "section": "python",
+  "versionCommand": [
+    "uv",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.cache/uv",

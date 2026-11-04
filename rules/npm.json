@@ -2,6 +2,10 @@
   "id": "npm",
   "name": "npm",
   "section": "javascript",
+  "versionCommand": [
+    "npm",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.npm/_cacache",

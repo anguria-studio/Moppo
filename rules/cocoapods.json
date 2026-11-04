@@ -2,6 +2,10 @@
   "id": "cocoapods",
   "name": "CocoaPods",
   "section": "swift",
+  "versionCommand": [
+    "pod",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/CocoaPods",

@@ -10,6 +10,10 @@
     "case": "claudeCode",
     "name": "Claude Code"
   },
+  "versionCommand": [
+    "claude",
+    "--version"
+  ],
   "removalRules": "Conversations, memories, attachments, file history, installed versions, and other files stay protected. Linked Git worktrees use the existing review controls.",
   "note": "The native installers keep each installed version in `versions`. `~/.local/bin` links to the active one.",
   "storage": [

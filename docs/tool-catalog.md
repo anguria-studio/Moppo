@@ -58,6 +58,11 @@ Do not do these steps on a Mac with real work.
 6. Run the restore command. Record whether the tool works again and whether it needs a network connection.
 7. Change the Status to the date, the tool version, and the macOS version.
 8. If a step fails, change the type to a more protective type and record the reason.
+9. Write a layout manifest with `python3 scripts/manifest.py`, and run `python3 scripts/rules.py audit --manifest` with it.
+10. Add a rule or a row for each path that the audit lists.
+
+The rows in this catalog come from `rules/`. Change a row in its tool file, then run `python3 scripts/rules.py generate`.
+See the [tool rule registry](tool-rules.md) for the format.
 
 ## Go
 

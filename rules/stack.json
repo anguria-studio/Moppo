@@ -2,6 +2,10 @@
   "id": "stack",
   "name": "Stack",
   "section": "elixir-haskell",
+  "versionCommand": [
+    "stack",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.stack",

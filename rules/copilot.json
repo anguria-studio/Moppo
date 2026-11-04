@@ -11,6 +11,10 @@
     "case": "copilot",
     "name": "GitHub Copilot"
   },
+  "versionCommand": [
+    "copilot",
+    "--version"
+  ],
   "removalRules": "Protected inventory. Sessions, plugins, logs, settings, and unknown files stay protected.",
   "storage": [
     {

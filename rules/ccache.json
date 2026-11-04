@@ -2,6 +2,10 @@
   "id": "ccache",
   "name": "ccache",
   "section": "c-cpp",
+  "versionCommand": [
+    "ccache",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/ccache",

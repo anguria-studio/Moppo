@@ -446,6 +446,9 @@ Use disposable data for removal and uninstall checks.
 Compare the resulting files, protection decisions, allocated bytes, and task behavior.
 Keep conversation content and credentials out of published evidence.
 Record results and untested cases in [issue #216](https://github.com/anguria-studio/Moppo/issues/216).
+Write a layout manifest with `python3 scripts/manifest.py`, and run `python3 scripts/rules.py audit --manifest` with it.
+The audit lists each tool that is newer than its verification and each path that no rule covers.
+The tables in this document come from `rules/`. See the [tool rule registry](tool-rules.md).
 
 A temporary CLI experiment tested Codex `0.162.0-alpha.17.2` and Claude Code `2.1.283` on 20 October 2026.
 It verified Codex executable discovery, active session protection, archived session deletion, Claude Code storage protection, and allocated totals.

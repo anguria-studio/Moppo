@@ -14,6 +14,10 @@
   "bundleIdentifiers": [
     "ai.opencode.desktop"
   ],
+  "versionCommand": [
+    "opencode",
+    "--version"
+  ],
   "removalRules": "Protected inventory. The session database, snapshots, logs, and settings stay protected.",
   "verified": {
     "date": "2026-11-03",

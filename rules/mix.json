@@ -2,6 +2,10 @@
   "id": "mix",
   "name": "Mix",
   "section": "elixir-haskell",
+  "versionCommand": [
+    "mix",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.mix",

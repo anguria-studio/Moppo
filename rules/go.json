@@ -2,6 +2,10 @@
   "id": "go",
   "name": "Go",
   "section": "go",
+  "versionCommand": [
+    "go",
+    "version"
+  ],
   "storage": [
     {
       "path": "~/go/pkg/mod",
