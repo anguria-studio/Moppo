@@ -27,3 +27,17 @@ extension DocumentsFilesScanner {
         return DocumentsFilesScanner(home: home, projectActivity: reader)
     }
 }
+
+/// Writes a launchd job file with only the keys that connect it to an application.
+/// `associated` is a `String` or a `[String]`, as both forms occur.
+@discardableResult
+func writeLaunchItem(at url: URL, program: String, associated: Any? = nil) throws -> URL {
+    var plist: [String: Any] = [
+        "Label": url.deletingPathExtension().lastPathComponent,
+        "ProgramArguments": [program, "--service"],
+    ]
+    if let associated { plist["AssociatedBundleIdentifiers"] = associated }
+    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: url)
+    return url
+}
