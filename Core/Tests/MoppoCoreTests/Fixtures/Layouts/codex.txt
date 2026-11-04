@@ -1,19 +1,26 @@
 ~/.cache/codex-runtimes/codex-primary-runtime/
 ~/.cache/codex-runtimes/codex-primary-runtime/dependencies/
 ~/.cache/codex-runtimes/codex-primary-runtime/plugins/
+~/.codex/.codex-global-state.json
 ~/.codex/.tmp/
 ~/.codex/.tmp/bundled-marketplaces/
 ~/.codex/.tmp/marketplaces/
 ~/.codex/.tmp/plugins/
 ~/.codex/app-server-control/
 ~/.codex/app-server-daemon/
+~/.codex/auth.json
 ~/.codex/cache/
 ~/.codex/cache/codex_apps_server_info/
 ~/.codex/cache/codex_apps_tools/
 ~/.codex/cache/remote_plugin_catalog/
 ~/.codex/computer-use/
 ~/.codex/computer-use/Codex Computer Use.app/
+~/.codex/config.toml
+~/.codex/goals_1.sqlite
+~/.codex/history.jsonl
 ~/.codex/ipc/
+~/.codex/logs_2.sqlite
+~/.codex/memories_1.sqlite
 ~/.codex/packages/
 ~/.codex/packages/app-server-daemon/
 ~/.codex/packages/standalone/
@@ -23,6 +30,8 @@
 ~/.codex/plugins/.remote-plugin-install-staging/
 ~/.codex/plugins/cache/
 ~/.codex/project-metadata-locks/
+~/.codex/queue_1.sqlite
+~/.codex/session_index.jsonl
 ~/.codex/sessions/
 ~/.codex/sessions/2026/
 ~/.codex/shell_snapshots/
@@ -30,7 +39,9 @@
 ~/.codex/skills/.system/
 ~/.codex/sqlite/
 ~/.codex/sqlite/codex.db
+~/.codex/state_5.sqlite
 ~/.codex/thread-writer-locks/
+~/.codex/thread_history_1.sqlite
 ~/.codex/tmp/
 ~/.codex/tmp/arg0-macos/
 ~/.codex/tui-thread-reference-capabilities/

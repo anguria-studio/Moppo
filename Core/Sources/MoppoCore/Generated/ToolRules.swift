@@ -155,6 +155,7 @@ extension ApplicationDataFolders {
 extension AIToolStorage {
     /// AI tool storage. Each root comes from a rule with `"table": "aiToolStorage"`. A rule below a root is one of its parts.
     static let roots: [Root] = [
+        // Sockets, lock files, markers, temporary folders, the daemon state, shell snapshots, and the companion files of a database or a backup stay with the root. The Git worktree review names each worktree in `worktrees`.
         Root(path: ".codex", name: "Codex task data", section: .init(owner: .codex, title: "Task data", summary: "Settings, attachments, plugins, and worktrees."), parts: [
             Part(path: "sessions", name: "Codex sessions", explanation: "Saved conversations and task history. Use Codex to manage these files."),
             Part(path: "archived_sessions", name: "Codex archived sessions", explanation: "Archived conversations can contain task history. Use Codex to manage these files."),
@@ -163,7 +164,25 @@ extension AIToolStorage {
             Part(path: "memories", name: "Codex memories", explanation: "Persistent memories and supporting files remain protected. Session deletion does not select this folder."),
             Part(path: "plugins", name: "Codex plugins", explanation: "Installed plugins and their files. Use Codex to manage plugins."),
             Part(path: "cache", name: "Codex other cache files", explanation: "The folder name does not prove that removal is safe. Moppo keeps these files protected."),
-            Part(path: ".tmp", name: "Codex temporary files", explanation: "These files can belong to active tasks. Moppo keeps them protected.")
+            Part(path: ".tmp", name: "Codex temporary files", explanation: "These files can belong to active tasks. Moppo keeps them protected."),
+            Part(path: "skills", name: "Codex skills", explanation: "Installed skills and the bundled system skills. Use Codex to manage skills."),
+            Part(path: "packages", name: "Codex installed packages", explanation: "Codex releases for the background server and the standalone installer. Codex updates and prunes them."),
+            Part(path: "computer-use", name: "Codex computer use helper", explanation: "The helper application and settings for Computer Use. Use Codex to install or remove the plugin."),
+            Part(path: "vendor_imports", name: "Codex recommended skills cache", explanation: "A copy of the curated skills repository for recommended skills. Codex refreshes it, so Moppo keeps it protected."),
+            Part(path: "visualizations", name: "Codex visualizations", explanation: "Visualizations created in tasks, in one folder for each conversation. These files can be the only local copies."),
+            Part(path: "pets", name: "Codex custom pets", explanation: "Custom pet manifests and sprite sheets for the terminal. These files can be the only local copies."),
+            Part(path: "sqlite", name: "Codex desktop catalog", explanation: "The conversation catalog of the Codex desktop application, with its write-ahead log. Use Codex to manage conversations."),
+            Part(path: "config.toml", name: "Codex settings", explanation: "User-level settings, profiles, and feature flags. Use Codex to change them."),
+            Part(path: "auth.json", name: "Codex credentials", explanation: "Cached sign-in tokens. Treat this file like a password. Use Codex to sign out."),
+            Part(path: "history.jsonl", name: "Codex message history", explanation: "Messages that you typed, one record on each line. Codex trims the file at its size limit."),
+            Part(path: "session_index.jsonl", name: "Codex session names", explanation: "Names of saved conversations, in an append-only index. Use Codex to rename conversations."),
+            Part(path: ".codex-global-state.json", name: "Codex desktop projects", explanation: "Projects, their folders, and their conversation lists for the Codex desktop application. Codex keeps a backup beside it."),
+            Part(path: "state_5.sqlite", name: "Codex state database", explanation: "Conversation titles, archive state, projects, and child relationships. Session deletion removes rows only through Codex."),
+            Part(path: "thread_history_1.sqlite", name: "Codex thread history database", explanation: "Paginated conversation history. Codex cannot rebuild this database after a loss."),
+            Part(path: "memories_1.sqlite", name: "Codex memories database", explanation: "Raw memories from earlier conversations and their consolidation progress. Use Codex to delete memories."),
+            Part(path: "goals_1.sqlite", name: "Codex goals database", explanation: "Goals that conversations track and their deferrals. Moppo never edits this database."),
+            Part(path: "queue_1.sqlite", name: "Codex queue database", explanation: "Queued messages that wait for a conversation. Moppo never edits this database."),
+            Part(path: "logs_2.sqlite", name: "Codex logs database", explanation: "Diagnostic logs of the last ten days, within a budget of 64 MiB. Codex prunes them.")
         ]),
         Root(path: ".cache/codex-runtimes", name: "Codex downloaded runtimes", section: .init(owner: .codex, title: "Downloaded tools", summary: "Downloaded runtimes used to run tasks.")),
         Root(path: "Library/Application Support/Codex", name: "ChatGPT desktop data", section: .init(owner: .chatGPT, title: "Desktop data", summary: "Desktop profiles, settings, and caches."), curationIdentifier: "com.openai.codex"),

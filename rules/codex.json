@@ -29,7 +29,8 @@
       "section": {
         "title": "Task data",
         "summary": "Settings, attachments, plugins, and worktrees."
-      }
+      },
+      "comment": "Sockets, lock files, markers, temporary folders, the daemon state, shell snapshots, and the companion files of a database or a backup stay with the root. The Git worktree review names each worktree in `worktrees`."
     },
     {
       "path": "~/.codex/sessions",
@@ -102,6 +103,179 @@
       "treatment": "protect",
       "name": "Codex temporary files",
       "explanation": "These files can belong to active tasks. Moppo keeps them protected."
+    },
+    {
+      "path": "~/.codex/skills",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex skills",
+      "explanation": "Installed skills and the bundled system skills. Use Codex to manage skills.",
+      "comment": "Codex writes its embedded system skills into `skills/.system` at startup and reads user skills from the folder."
+    },
+    {
+      "path": "~/.codex/packages",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex installed packages",
+      "explanation": "Codex releases for the background server and the standalone installer. Codex updates and prunes them.",
+      "comment": "`packages/app-server-daemon` and `packages/standalone` hold `releases`, a `current` link, and the selection history."
+    },
+    {
+      "path": "~/.codex/computer-use",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex computer use helper",
+      "explanation": "The helper application and settings for Computer Use. Use Codex to install or remove the plugin.",
+      "comment": "The desktop application installs `Codex Computer Use.app` and `config.json` here."
+    },
+    {
+      "path": "~/.codex/vendor_imports",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex recommended skills cache",
+      "explanation": "A copy of the curated skills repository for recommended skills. Codex refreshes it, so Moppo keeps it protected.",
+      "comment": "The recommended skills refresh clones `openai/skills` into this folder and keeps `skills-curated-cache.json` beside it."
+    },
+    {
+      "path": "~/.codex/visualizations",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex visualizations",
+      "explanation": "Visualizations created in tasks, in one folder for each conversation. These files can be the only local copies."
+    },
+    {
+      "path": "~/.codex/pets",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex custom pets",
+      "explanation": "Custom pet manifests and sprite sheets for the terminal. These files can be the only local copies.",
+      "comment": "A custom pet is `pets/<name>/pet.json` with its sprite sheet."
+    },
+    {
+      "path": "~/.codex/sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex desktop catalog",
+      "explanation": "The conversation catalog of the Codex desktop application, with its write-ahead log. Use Codex to manage conversations.",
+      "comment": "The desktop application keeps `codex.db` here. The command-line databases sit at the top of the folder."
+    },
+    {
+      "path": "~/.codex/config.toml",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex settings",
+      "explanation": "User-level settings, profiles, and feature flags. Use Codex to change them."
+    },
+    {
+      "path": "~/.codex/auth.json",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex credentials",
+      "explanation": "Cached sign-in tokens. Treat this file like a password. Use Codex to sign out.",
+      "comment": "`auth.lock` beside it serializes writes and stays with the root."
+    },
+    {
+      "path": "~/.codex/history.jsonl",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex message history",
+      "explanation": "Messages that you typed, one record on each line. Codex trims the file at its size limit."
+    },
+    {
+      "path": "~/.codex/session_index.jsonl",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex session names",
+      "explanation": "Names of saved conversations, in an append-only index. Use Codex to rename conversations.",
+      "comment": "`session_index.jsonl.lock` beside it serializes rewrites and stays with the root."
+    },
+    {
+      "path": "~/.codex/.codex-global-state.json",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex desktop projects",
+      "explanation": "Projects, their folders, and their conversation lists for the Codex desktop application. Codex keeps a backup beside it.",
+      "comment": "The desktop application writes this file and `.codex-global-state.json.bak`. The backup stays with the root."
+    },
+    {
+      "path": "~/.codex/state_5.sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex state database",
+      "explanation": "Conversation titles, archive state, projects, and child relationships. Session deletion removes rows only through Codex.",
+      "note": "Codex names each database with a schema version, such as `state_5.sqlite`, so the name changes when the schema changes.",
+      "comment": "The `-shm` and `-wal` files beside each database belong to the open database and stay with the root."
+    },
+    {
+      "path": "~/.codex/thread_history_1.sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex thread history database",
+      "explanation": "Paginated conversation history. Codex cannot rebuild this database after a loss."
+    },
+    {
+      "path": "~/.codex/memories_1.sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex memories database",
+      "explanation": "Raw memories from earlier conversations and their consolidation progress. Use Codex to delete memories."
+    },
+    {
+      "path": "~/.codex/goals_1.sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex goals database",
+      "explanation": "Goals that conversations track and their deferrals. Moppo never edits this database."
+    },
+    {
+      "path": "~/.codex/queue_1.sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex queue database",
+      "explanation": "Queued messages that wait for a conversation. Moppo never edits this database."
+    },
+    {
+      "path": "~/.codex/logs_2.sqlite",
+      "type": "userData",
+      "table": "aiToolStorage",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "name": "Codex logs database",
+      "explanation": "Diagnostic logs of the last ten days, within a budget of 64 MiB. Codex prunes them."
     },
     {
       "path": "~/.cache/codex-runtimes",
