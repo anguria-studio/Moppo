@@ -1,0 +1,27 @@
+~/Library/Application Support/anythingllm-desktop/Cache/
+~/Library/Application Support/anythingllm-desktop/Cache/Cache_Data/
+~/Library/Application Support/anythingllm-desktop/Code Cache/
+~/Library/Application Support/anythingllm-desktop/Code Cache/js/
+~/Library/Application Support/anythingllm-desktop/Code Cache/wasm/
+~/Library/Application Support/anythingllm-desktop/DawnGraphiteCache/
+~/Library/Application Support/anythingllm-desktop/DawnWebGPUCache/
+~/Library/Application Support/anythingllm-desktop/GPUCache/
+~/Library/Application Support/anythingllm-desktop/Local Storage/
+~/Library/Application Support/anythingllm-desktop/Local Storage/leveldb/
+~/Library/Application Support/anythingllm-desktop/Session Storage/
+~/Library/Application Support/anythingllm-desktop/Shared Dictionary/
+~/Library/Application Support/anythingllm-desktop/Shared Dictionary/cache/
+~/Library/Application Support/anythingllm-desktop/blob_storage/
+~/Library/Application Support/anythingllm-desktop/storage/
+~/Library/Application Support/anythingllm-desktop/storage/.prisma/
+~/Library/Application Support/anythingllm-desktop/storage/anythingllm.db
+~/Library/Application Support/anythingllm-desktop/storage/comkey/
+~/Library/Application Support/anythingllm-desktop/storage/documents/
+~/Library/Application Support/anythingllm-desktop/storage/engines/
+~/Library/Application Support/anythingllm-desktop/storage/hotdir/
+~/Library/Application Support/anythingllm-desktop/storage/lancedb/
+~/Library/Application Support/anythingllm-desktop/storage/lemond/
+~/Library/Application Support/anythingllm-desktop/storage/logs/
+~/Library/Application Support/anythingllm-desktop/storage/models/
+~/Library/Application Support/anythingllm-desktop/storage/tmp/
+~/Library/Application Support/anythingllm-desktop/storage/vector-cache/

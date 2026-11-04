@@ -2,6 +2,10 @@
   "id": "rustup",
   "name": "rustup",
   "section": "rust",
+  "versionCommand": [
+    "rustup",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.rustup",

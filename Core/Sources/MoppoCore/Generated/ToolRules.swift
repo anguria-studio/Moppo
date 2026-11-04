@@ -288,8 +288,8 @@ extension ApplicationsScanner {
     /// Apps whose layout the Electron rule does not describe. Each curation comes from a rule with
     /// `"table": "curations"`, or from a curated AI tool root. The caches below it are the regenerable paths.
     static let curations: [String: AppDataCuration] = [
-        "com.google.Chrome": AppDataCuration(root: "Library/Application Support/Google/Chrome", regenerable: ["OptGuideOnDeviceModel", "OptGuideOnDeviceClassifierModel", "optimization_guide_model_store", "component_crx_cache", "SODA", "SODALanguagePacks", "screen_ai", "WasmTtsEngine", "GrShaderCache", "ShaderCache", "Crashpad", "Default/Code Cache", "Default/GPUCache", "Profile */Code Cache", "Profile */GPUCache"], remainderName: "Chrome profiles and settings"),
         "com.microsoft.VSCode": AppDataCuration(root: "Library/Application Support/Code", regenerable: electronRegenerable + ["CachedData", "CachedExtensions", "CachedExtensionVSIXs", "CachedProfilesData", "CachedConfigurations"], remainderName: "Visual Studio Code settings and data"),
+        "com.google.Chrome": AppDataCuration(root: "Library/Application Support/Google/Chrome", regenerable: ["OptGuideOnDeviceModel", "OptGuideOnDeviceClassifierModel", "optimization_guide_model_store", "component_crx_cache", "SODA", "SODALanguagePacks", "screen_ai", "WasmTtsEngine", "GrShaderCache", "ShaderCache", "Crashpad", "Default/Code Cache", "Default/GPUCache", "Profile */Code Cache", "Profile */GPUCache"], remainderName: "Chrome profiles and settings"),
         "com.figma.Desktop": AppDataCuration(root: "Library/Application Support/Figma", regenerable: ["DesktopProfile/*/Cache", "DesktopProfile/*/Code Cache", "DesktopProfile/*/GPUCache", "DesktopProfile/*/Crashpad"], remainderName: "Figma settings and data"),
         "org.ferdium.ferdium-app": AppDataCuration(root: "Library/Application Support/Ferdium", regenerable: electronRegenerable + ["Partitions/*/Cache", "Partitions/*/Code Cache", "Partitions/*/GPUCache"], remainderName: "Ferdium accounts and settings"),
         "org.torproject.torbrowser": AppDataCuration(root: "Library/Application Support/TorBrowser-Data", regenerable: ["Browser/Caches"], remainderName: "Tor Browser profile and settings"),
@@ -299,6 +299,33 @@ extension ApplicationsScanner {
         "com.anysphere.sand": AppDataCuration(root: "Library/Application Support/Grok Bot", regenerable: electronRegenerable + ["Partitions/*/Cache", "Partitions/*/Code Cache", "Partitions/*/GPUCache", "Partitions/*/DawnWebGPUCache", "Partitions/*/DawnGraphiteCache", "Partitions/*/DawnCache", "v8-code-cache"], remainderName: "Grok Bot settings and data"),
         // Antigravity desktop 2.28.1 uses this identifier and support folder. The evidence does not verify its cache folders, so no path counts as regenerable.
         "com.google.antigravity": AppDataCuration(root: "Library/Application Support/Antigravity", regenerable: [], remainderName: "Antigravity settings and data")
+    ]
+}
+
+extension LocalModelStores {
+    // Each path comes from a rule with `"table": "localModelStores"`. A `store` names the constant that its reader uses.
+    /// Home dot folders that the model readers claim whole.
+    public static let homeDotFolders: Set<String> = [".ollama", ".lmstudio"]
+    /// Children of `~/.cache` that the model readers claim whole.
+    public static let dotCacheFolders: Set<String> = ["huggingface", "lm-studio", "whisper"]
+    /// Folders that the model readers claim in part, with the claimed child names.
+    public static let partlyClaimedFolders: [String: Set<String>] = [".cache/torch": ["hub"], ".keras": ["models", "datasets"]]
+    static let huggingFaceStores: [String] = [".cache/huggingface"]
+    static let lmStudioStores: [String] = [".lmstudio", ".cache/lm-studio"]
+    static let pyTorchHubStores: [String] = [".cache/torch/hub"]
+    static let whisperStores: [String] = [".cache/whisper"]
+    static let kerasStores: [String] = [".keras/models", ".keras/datasets"]
+    static let gpt4AllStores: [String] = ["Library/Application Support/nomic.ai/GPT4All"]
+}
+
+extension EditorExtensionStores {
+    /// VS Code–family editors. Each editor comes from a rule with `"table": "editorExtensionStores"`.
+    public static let editors: [Editor] = [
+        Editor(name: "Visual Studio Code", dotFolder: ".vscode", bundleIdentifier: "com.microsoft.VSCode"),
+        Editor(name: "VS Code Insiders", dotFolder: ".vscode-insiders", bundleIdentifier: "com.microsoft.VSCodeInsiders"),
+        Editor(name: "VSCodium", dotFolder: ".vscode-oss", bundleIdentifier: "com.vscodium"),
+        Editor(name: "Cursor", dotFolder: ".cursor", bundleIdentifier: "com.todesktop.230313mzl4w4u92"),
+        Editor(name: "Windsurf", dotFolder: ".windsurf", bundleIdentifier: "com.exafunction.windsurf")
     ]
 }
 

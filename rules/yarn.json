@@ -2,6 +2,10 @@
   "id": "yarn",
   "name": "Yarn",
   "section": "javascript",
+  "versionCommand": [
+    "yarn",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/Yarn",

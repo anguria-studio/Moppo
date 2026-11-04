@@ -4,12 +4,19 @@
 Usage:
   rules.py generate   Write the generated Swift file and the document tables.
   rules.py check      Fail when a generated file differs from the registry.
+  rules.py audit      List tools that are newer than their verification, rules without
+                      verification, old verifications, and, with --manifest, paths that
+                      no rule covers.
 
 See docs/tool-rules.md for the file format.
 """
 import argparse
+import datetime
 import json
+import plistlib
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,11 +38,11 @@ OWNERS = {
 }
 TREATMENTS = {"offer", "review", "protect"}
 TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders",
-          "aiToolStorage", "curations"}
+          "aiToolStorage", "curations", "localModelStores", "editorExtensionStores"}
 FORMATS = {"catalog", "aiCoverage", "bundleIdentifiers"}
 AI_COVERAGE_HEADER = "| Tool | Default paths | Removal rules |\n| --- | --- | --- |"
 BUNDLE_HEADER = "| Tool | Bundle identifier |\n| --- | --- |"
-CHECKS = {"goModuleCache": "packageManagerCaches"}
+CHECKS = {"goModuleCache": "packageManagerCaches", "editorObsolete": "editorExtensionStores"}
 HOME_TABLES = {"toolHomeFolders", "toolHomeLocations"}
 COVERAGE = {
     "row": "Row",
@@ -94,6 +101,13 @@ def validate(sections, tools):
                 if not tools[tool_id].get("bundleIdentifiers") or not tools[tool_id].get("verified", {}).get("tool"):
                     raise RuleError(f"{tool_id}.json: a bundle identifier row needs bundleIdentifiers and verified.tool")
     listed = {tool_id for section in sections.values() for tool_id in section["tools"]}
+    placements = {}
+    for section_id, section in sections.items():
+        for tool_id in section["tools"]:
+            key = (tool_id, section.get("format", "catalog"))
+            if key in placements:
+                raise RuleError(f"sections.json: {tool_id!r} is in {placements[key]!r} and {section_id!r}, which have the same format")
+            placements[key] = section_id
     for tool in tools.values():
         validate_tool(tool, sections, listed)
     validate_overlaps([(tool, storage) for tool in tools.values() for storage in tool["storage"]])
@@ -113,6 +127,12 @@ def validate_tool(tool, sections, listed):
     identifiers = tool.get("bundleIdentifiers", [])
     if not isinstance(identifiers, list) or not all(isinstance(value, str) and value for value in identifiers):
         raise RuleError(f"{name}: bundleIdentifiers must be a list of strings")
+    command = tool.get("versionCommand")
+    if command is not None:
+        if not isinstance(command, list) or not 1 <= len(command) <= 3 or not all(isinstance(part, str) for part in command) \
+                or not re.match(r"^[a-z][a-z0-9.+-]*$", command[0]) \
+                or not all(re.match(r"^(-{1,2}[a-z][a-z-]*|[a-z][a-z.-]*)$", part) for part in command[1:]):
+            raise RuleError(f"{name}: versionCommand is an executable name and up to two plain arguments")
     for key in ("aiTool", "owner"):
         if key in tool and not (isinstance(tool[key], dict) and tool[key].get("case") and tool[key].get("rawValue" if key == "aiTool" else "name")):
             raise RuleError(f"{name}: {key} needs case and {'rawValue' if key == 'aiTool' else 'name'}")
@@ -185,6 +205,19 @@ def validate_storage(name, storage, catalog=True):
                 raise RuleError(f"{where}: a curation needs the name of its locked remainder")
             if treatment == "review":
                 raise RuleError(f"{where}: a curation cache is offered, not reviewed")
+        if table == "localModelStores":
+            for path in paths:
+                if model_claim(path) is None and storage.get("claimed", True):
+                    raise RuleError(f"{where}: a model store outside a home dot folder or ~/.cache needs \"claimed\": false")
+            if storage.get("store") and not re.match(r"^[a-z][A-Za-z0-9]*$", storage["store"]):
+                raise RuleError(f"{where}: store is a Swift constant name")
+        if table == "editorExtensionStores":
+            if storage.get("check") != "editorObsolete" or treatment != "offer" or not storage.get("name"):
+                raise RuleError(f"{where}: an editor store is offered with check editorObsolete and the editor name")
+            for path in paths:
+                parts = components(path)
+                if len(parts) != 3 or parts[2] != "extensions" or not parts[1].startswith("."):
+                    raise RuleError(f"{where}: an editor store is ~/.<editor>/extensions")
         if table == "packageManagerCaches" and not storage.get("name"):
             raise RuleError(f"{where}: a package cache needs the row name")
         if "check" in storage and CHECKS.get(storage["check"]) != table:
@@ -192,9 +225,9 @@ def validate_storage(name, storage, catalog=True):
         if storage["type"] == "userData" and treatment != "protect":
             raise RuleError(f"{where}: user data is never offered")
         if treatment != "protect":
-            # A package cache or a curation cache is offered by its path. The scanner does not read a marker in it.
+            # A package cache or a curation cache is offered by its path, and a model reader checks its own layout.
             if not storage.get("identifiedBy") and not storage.get("check") \
-                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations"):
+                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations", "localModelStores"):
                 raise RuleError(f"{where}: an offered path needs identifiedBy or check")
             if catalog and "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
                 raise RuleError(f"{where}: an offered path needs a verified record, or a status that starts with Not verified")
@@ -282,6 +315,18 @@ def ai_root_of(part_path, roots):
     """The nearest AI root above a part path."""
     above = [root_path for root_path in roots if covers(root_path, part_path) and root_path != part_path]
     return max(above, key=lambda root_path: len(components(root_path)))
+
+
+def model_claim(path):
+    """How `LocalModelStores` claims a path: a whole home dot folder, a whole `~/.cache` child, or part of a folder."""
+    parts = components(path)[1:]   # Without the `~`.
+    if not parts or not parts[0].startswith("."):
+        return None
+    if len(parts) == 1:
+        return ("home", parts[0])
+    if len(parts) == 2 and parts[0] == ".cache":
+        return ("cache", parts[1])
+    return ("part", "/".join(parts[:-1]), parts[-1])
 
 
 def storage_paths(storage):
@@ -744,6 +789,47 @@ public enum ToolIcons {{
 """
 
 
+def render_model_stores(sections, tools):
+    home, cache, part, stores = [], [], {}, {}
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "localModelStores":
+            continue
+        for path in storage_paths(storage):
+            if storage.get("claimed", True):
+                claim = model_claim(path)
+                if claim[0] == "home":
+                    home.append(claim[1])
+                elif claim[0] == "cache":
+                    cache.append(claim[1])
+                else:
+                    part.setdefault(claim[1], []).append(claim[2])
+            if storage.get("store"):
+                stores.setdefault(storage["store"], []).append(swift_base(path)[1])
+    part_lines = ", ".join(f"{swift_string(folder)}: [{', '.join(swift_string(c) for c in children)}]" for folder, children in part.items())
+    store_lines = "\n".join(f"    static let {name}Stores: [String] = {swift_list(paths)}" for name, paths in stores.items())
+    return f"""    /// Home dot folders that the model readers claim whole.
+    public static let homeDotFolders: Set<String> = [{', '.join(swift_string(n) for n in home)}]
+    /// Children of `~/.cache` that the model readers claim whole.
+    public static let dotCacheFolders: Set<String> = [{', '.join(swift_string(n) for n in cache)}]
+    /// Folders that the model readers claim in part, with the claimed child names.
+    public static let partlyClaimedFolders: [String: Set<String>] = [{part_lines or ':'}]
+{store_lines}"""
+
+
+def render_editors(sections, tools):
+    lines = []
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "editorExtensionStores":
+            continue
+        for path in storage_paths(storage):
+            dot_folder = components(path)[1]
+            lines.append(f"        Editor(name: {swift_string(storage['name'])}, dotFolder: {swift_string(dot_folder)}, "
+                         f"bundleIdentifier: {swift_string(tool['bundleIdentifiers'][0])}),")
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
 def render_swift(sections, tools):
     return f"""// Generated by scripts/rules.py from rules/*.json. Do not edit this file.
 // Change a rule in rules/<tool>.json, then run `python3 scripts/rules.py generate`.
@@ -798,7 +884,160 @@ extension ApplicationsScanner {{
 {render_curations(sections, tools)}
     ]
 }}
+
+extension LocalModelStores {{
+    // Each path comes from a rule with `"table": "localModelStores"`. A `store` names the constant that its reader uses.
+{render_model_stores(sections, tools)}
+}}
+
+extension EditorExtensionStores {{
+    /// VS Code–family editors. Each editor comes from a rule with `"table": "editorExtensionStores"`.
+    public static let editors: [Editor] = [
+{render_editors(sections, tools)}
+    ]
+}}
 {render_enums(sections, tools)}"""
+
+
+# MARK: - Audit
+
+VERSION = re.compile(r"\d+(?:\.\d+)+")
+APPLICATION_FOLDERS = [Path("/Applications"), Path.home() / "Applications"]
+
+
+def version_in(text):
+    """The first version number in a text, as a tuple of integers, or None."""
+    match = VERSION.search(text or "")
+    return tuple(int(part) for part in match.group(0).split(".")) if match else None
+
+
+def installed_applications(folders=None):
+    """Bundle identifier to version, read from the `Info.plist` of each application bundle."""
+    versions = {}
+    for folder in folders or APPLICATION_FOLDERS:
+        for bundle in sorted(folder.glob("*.app")) if folder.is_dir() else []:
+            info = bundle / "Contents" / "Info.plist"
+            try:
+                plist = plistlib.loads(info.read_bytes())
+            except (OSError, plistlib.InvalidFileException, ValueError):
+                continue
+            identifier, version = plist.get("CFBundleIdentifier"), plist.get("CFBundleShortVersionString")
+            if identifier and version:
+                versions.setdefault(identifier, str(version))
+    return versions
+
+
+def command_version(command, which=shutil.which, run=subprocess.run):
+    """The version that a tool's command prints, or None when the tool is absent or silent."""
+    executable = which(command[0])
+    if not executable:
+        return None
+    try:
+        result = run([executable] + command[1:], capture_output=True, text=True, timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (result.stdout or "") + (result.stderr or "")
+
+
+def verifications(tool):
+    """Each verification of a tool: date and version tuple, newest first."""
+    records = [tool["verified"]] if tool.get("verified") else []
+    records += [storage["verified"] for storage in tool["storage"] if storage.get("verified")]
+    found = [(datetime.date.fromisoformat(record["date"]), version_in(record.get("tool"))) for record in records]
+    return sorted(found, key=lambda item: item[0], reverse=True)
+
+
+def unverified_rules(tool):
+    """Offered rules of a tool with no verification record."""
+    return [path for storage in tool["storage"] if "table" in storage and storage["treatment"] != "protect"
+            and not storage.get("verified") for path in storage_paths(storage)]
+
+
+def uncovered_paths(lines, tools):
+    """Manifest entries directly below a root with deeper rules, where no deeper rule names the entry.
+
+    A root with no rule is one line. A root whose rule has no deeper rule covers everything below it.
+    """
+    rule_paths = [path for tool in tools.values() for storage in tool["storage"] if "table" in storage
+                  for path in storage_paths(storage)]
+    roots, children = [], {}
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        entry = json.loads(line)
+        if "root" not in entry or entry.get("summary") or entry.get("missing"):
+            continue
+        root = entry["root"]
+        if root not in roots:
+            roots.append(root)
+        if "path" in entry and "/" not in entry["path"]:
+            children.setdefault(root, []).append(entry["path"])
+    report = []
+    for root in roots:
+        covering = [path for path in rule_paths if covers(path, root)]
+        if not covering:
+            report.append((root, None))
+            continue
+        deeper = [path for path in rule_paths if covers(root, path) and components(path) != components(root)]
+        if not deeper:
+            continue
+        for child in children.get(root, []):
+            full = root.rstrip("/") + "/" + child
+            if not any(covers(path, full) or covers(full, path) for path in deeper):
+                report.append((root, child))
+    return report
+
+
+def audit(sections, tools, applications=None, which=shutil.which, run=subprocess.run, manifest=None,
+          today=None, older_than=180):
+    """The audit report: newer tools, unverified rules, old verifications, and uncovered manifest paths."""
+    applications = installed_applications() if applications is None else applications
+    today = today or datetime.date.today()
+    report = {"newer": [], "unverified": [], "old": [], "uncovered": [], "unknown": []}
+    for _, tool, _ in rows(sections, tools):
+        if any(entry[0] == tool["id"] for entry in report["unverified"] + report["old"] + report["newer"] + report["unknown"]):
+            continue
+        checks = verifications(tool)
+        installed = None
+        for identifier in tool.get("bundleIdentifiers", []):
+            if identifier in applications:
+                installed = version_in(applications[identifier])
+        if installed is None and tool.get("versionCommand"):
+            installed = version_in(command_version(tool["versionCommand"], which, run))
+        if installed is not None:
+            verified = [version for _, version in checks if version]
+            if not verified:
+                report["unknown"].append((tool["id"], ".".join(map(str, installed))))
+            elif installed > max(verified):
+                report["newer"].append((tool["id"], ".".join(map(str, installed)), ".".join(map(str, max(verified)))))
+        for path in unverified_rules(tool):
+            report["unverified"].append((tool["id"], path))
+        if checks and (today - checks[0][0]).days > older_than:
+            report["old"].append((tool["id"], checks[0][0].isoformat()))
+    if manifest is not None:
+        report["uncovered"] = uncovered_paths(manifest, tools)
+    return report
+
+
+def format_audit(report):
+    lines = []
+    if report["newer"]:
+        lines.append("Tools that are newer than their verification:")
+        lines += [f"  {tool}: installed {installed}, verified {verified}" for tool, installed, verified in report["newer"]]
+    if report["unknown"]:
+        lines.append("Installed tools with no version in their verification:")
+        lines += [f"  {tool}: installed {installed}" for tool, installed in report["unknown"]]
+    if report["unverified"]:
+        lines.append("Offered rules without a verification record:")
+        lines += [f"  {tool}: {path}" for tool, path in report["unverified"]]
+    if report["old"]:
+        lines.append("Tools whose last verification is old:")
+        lines += [f"  {tool}: {date}" for tool, date in report["old"]]
+    if report["uncovered"]:
+        lines.append("Manifest paths that no rule covers:")
+        lines += [f"  {root}: no rule" if child is None else f"  {root}/{child}" for root, child in report["uncovered"]]
+    return "\n".join(lines) if lines else "Nothing to report."
 
 
 # MARK: - Commands
@@ -828,11 +1067,17 @@ def check(root=ROOT):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["generate", "check"])
+    parser.add_argument("command", choices=["generate", "check", "audit"])
+    parser.add_argument("--manifest", type=Path, help="A JSON Lines layout manifest from scripts/manifest.py")
+    parser.add_argument("--older-than", type=int, default=180, help="Days after which a verification is old")
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "generate":
             generate()
+        elif arguments.command == "audit":
+            sections, tools = load()
+            manifest = arguments.manifest.read_text().splitlines() if arguments.manifest else None
+            print(format_audit(audit(sections, tools, manifest=manifest, older_than=arguments.older_than)))
         else:
             stale = check()
             for path in stale:

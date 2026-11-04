@@ -1,0 +1,9 @@
+~/.openclaw/agents/
+~/.openclaw/agents/main/
+~/.openclaw/migration/
+~/.openclaw/plugin-skills/
+~/.openclaw/state/
+~/.openclaw/tmp/
+~/.openclaw/tmp/openclaw-501/
+~/.openclaw/workspace/
+~/.openclaw/workspace/.git/

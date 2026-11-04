@@ -2,6 +2,10 @@
   "id": "bun",
   "name": "Bun",
   "section": "javascript",
+  "versionCommand": [
+    "bun",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.bun/install/cache",

@@ -1,0 +1,8 @@
+~/Library/Application Support/superwhisper/agent/
+~/Library/Application Support/superwhisper/agent/inbox/
+~/Library/Application Support/superwhisper/database/
+~/superwhisper/models/
+~/superwhisper/modes/
+~/superwhisper/recordings/
+~/superwhisper/settings/
+~/superwhisper/settings/settings.json

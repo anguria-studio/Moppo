@@ -11,6 +11,10 @@
     "case": "gemini",
     "name": "Gemini"
   },
+  "versionCommand": [
+    "gemini",
+    "--version"
+  ],
   "removalRules": "Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected.",
   "note": "Gemini CLI and Antigravity share `~/.gemini`. One root counts each byte once.",
   "storage": [

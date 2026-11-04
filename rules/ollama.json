@@ -10,12 +10,19 @@
     "case": "ollama",
     "name": "Ollama"
   },
+  "versionCommand": [
+    "ollama",
+    "--version"
+  ],
   "removalRules": "Protected inventory. Moppo cannot verify complete model ownership or active models.",
   "storage": [
     {
       "path": "~/.ollama",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "note": "`~/.ollama` whole would offer the user's `id_ed25519` with the models, so no category lists it."
     }
   ]
 }

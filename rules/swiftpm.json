@@ -2,6 +2,10 @@
   "id": "swiftpm",
   "name": "Swift Package Manager",
   "section": "swift",
+  "versionCommand": [
+    "swift",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/org.swift.swiftpm",

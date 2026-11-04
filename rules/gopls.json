@@ -2,6 +2,10 @@
   "id": "gopls",
   "name": "gopls",
   "section": "go",
+  "versionCommand": [
+    "gopls",
+    "version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/gopls",

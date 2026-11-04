@@ -2,6 +2,10 @@
   "id": "composer",
   "name": "Composer",
   "section": "php",
+  "versionCommand": [
+    "composer",
+    "--version"
+  ],
   "storage": [
     {
       "paths": [

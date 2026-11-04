@@ -2,6 +2,10 @@
   "id": "pip",
   "name": "pip",
   "section": "python",
+  "versionCommand": [
+    "pip3",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/pip",

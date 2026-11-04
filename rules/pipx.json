@@ -2,6 +2,10 @@
   "id": "pipx",
   "name": "pipx",
   "section": "python",
+  "versionCommand": [
+    "pipx",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Application Support/pipx/venvs",

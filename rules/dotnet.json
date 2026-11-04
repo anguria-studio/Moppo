@@ -2,6 +2,10 @@
   "id": "dotnet",
   "name": ".NET SDK",
   "section": "dotnet",
+  "versionCommand": [
+    "dotnet",
+    "--version"
+  ],
   "storage": [
     {
       "path": "/usr/local/share/dotnet/sdk/<version>",

@@ -1,0 +1,7 @@
+~/.local/share/opencode/log/
+~/.local/share/opencode/opencode.db
+~/.local/share/opencode/repos/
+~/.local/share/opencode/shell/
+~/.local/share/opencode/shell/global/
+~/.local/share/opencode/snapshot/
+~/.local/share/opencode/snapshot/global/

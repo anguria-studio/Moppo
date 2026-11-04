@@ -2,6 +2,10 @@
   "id": "maven",
   "name": "Maven",
   "section": "java",
+  "versionCommand": [
+    "mvn",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.m2",

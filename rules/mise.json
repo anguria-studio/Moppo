@@ -2,6 +2,10 @@
   "id": "mise",
   "name": "mise",
   "section": "version-managers",
+  "versionCommand": [
+    "mise",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.local/share/mise",

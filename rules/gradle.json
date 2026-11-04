@@ -2,6 +2,10 @@
   "id": "gradle",
   "name": "Gradle",
   "section": "java",
+  "versionCommand": [
+    "gradle",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.gradle/daemon",

@@ -58,6 +58,11 @@ Do not do these steps on a Mac with real work.
 6. Run the restore command. Record whether the tool works again and whether it needs a network connection.
 7. Change the Status to the date, the tool version, and the macOS version.
 8. If a step fails, change the type to a more protective type and record the reason.
+9. Write a layout manifest with `python3 scripts/manifest.py`, and run `python3 scripts/rules.py audit --manifest` with it.
+10. Add a rule or a row for each path that the audit lists.
+
+The rows in this catalog come from `rules/`. Change a row in its tool file, then run `python3 scripts/rules.py generate`.
+See the [tool rule registry](tool-rules.md) for the format.
 
 ## Go
 
@@ -494,6 +499,28 @@ Moppo offers the Homebrew download cache by its path. Old formula versions are s
 | `~/Library/Caches/Homebrew` | Download | Folder name | Trash | Next `brew install`. A network connection is necessary. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 <!-- rules:end homebrew -->
 
+## Editors
+
+A VS Code–family editor keeps every extension version in one folder.
+Moppo offers only the versions that the editor marked for removal in its `.obsolete` record, or a `.vsctmp` folder from an interrupted removal.
+The VS Code rows also hold its desktop caches, because one tool has one section.
+
+<!-- rules:begin editors -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Application Support/Code` | User data | Bundle identifier `com.microsoft.VSCode` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedData` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedExtensions` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedExtensionVSIXs` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedProfilesData` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/Library/Application Support/Code/CachedConfigurations` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
+| `~/.vscode/extensions` | Installed | `.obsolete` record or a `.vsctmp` folder in the store | Trash the versions that the editor marked for removal | The editor installs an extension again | Row | Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use. |
+| `~/.vscode-insiders/extensions` | Installed | `.obsolete` record or a `.vsctmp` folder in the store | Trash the versions that the editor marked for removal | The editor installs an extension again | Row | Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use. |
+| `~/.vscode-oss/extensions` | Installed | `.obsolete` record or a `.vsctmp` folder in the store | Trash the versions that the editor marked for removal | The editor installs an extension again | Row | Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use. |
+
+VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder. The editor's own record decides which extension versions are obsolete, never the version number. A pinned older version makes the highest version the wrong guess. So do profiles that share the folder.
+<!-- rules:end editors -->
+
 ## Desktop application caches
 
 These applications keep caches in a support folder with user data beside them.
@@ -519,12 +546,6 @@ Every Electron application also gets its Chromium caches offered. The rules here
 | `~/Library/Application Support/Google/Chrome/Default/GPUCache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Application Support/Google/Chrome/Profile */Code Cache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Application Support/Google/Chrome/Profile */GPUCache` | Cache | Chrome layout | Trash | Next launch. Chrome rebuilds compiled script, shader caches, and on-device models. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
-| `~/Library/Application Support/Code` | User data | Bundle identifier `com.microsoft.VSCode` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
-| `~/Library/Application Support/Code/CachedData` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
-| `~/Library/Application Support/Code/CachedExtensions` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
-| `~/Library/Application Support/Code/CachedExtensionVSIXs` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
-| `~/Library/Application Support/Code/CachedProfilesData` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
-| `~/Library/Application Support/Code/CachedConfigurations` | Cache | VS Code layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Application Support/Figma` | User data | Bundle identifier `com.figma.Desktop` | Never offer whole. Moppo offers the caches below it. | Not possible | Protected | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Application Support/Figma/DesktopProfile/*/Cache` | Cache | Figma layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 | `~/Library/Application Support/Figma/DesktopProfile/*/Code Cache` | Cache | Figma layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
@@ -538,7 +559,6 @@ Every Electron application also gets its Chromium caches offered. The rules here
 | `~/Library/Application Support/TorBrowser-Data/Browser/Caches` | Cache | Tor Browser layout | Trash | Next launch. | Row | Not verified. The rule is older than the catalog. No test Mac removed the folder. |
 
 Nothing under `Service Worker` is a row. `Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. Removal of the caches with a live registration leaves Chrome pointing at resources that are gone. `Shared Dictionary` is withheld too. A running Chrome holds its index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.
-VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder.
 Figma keeps one Chromium profile for each desktop engine version. Old engine caches often hold most of the folder. The files beside them and the bundled agents are installation and user state.
 Ferdium has normal Electron caches at the root and a Chromium partition for each configured messaging service. Recipes, configuration, cookies, and sessions remain protected.
 Tor Browser separates disposable browser caches from the profile and the Tor keys. The whole profile root is never a cache.

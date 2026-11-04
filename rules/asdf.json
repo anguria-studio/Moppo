@@ -2,6 +2,10 @@
   "id": "asdf",
   "name": "asdf",
   "section": "version-managers",
+  "versionCommand": [
+    "asdf",
+    "version"
+  ],
   "storage": [
     {
       "path": "~/.asdf",

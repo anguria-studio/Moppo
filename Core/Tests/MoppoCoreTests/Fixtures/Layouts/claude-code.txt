@@ -1,0 +1,16 @@
+~/.claude/backups/
+~/.claude/cache/
+~/.claude/cache/model-catalog/
+~/.claude/downloads/
+~/.claude/plugins/
+~/.claude/plugins/marketplaces/
+~/.claude/plugins/store/
+~/.claude/plugins/synced/
+~/.claude/projects/
+~/.claude/session-env/
+~/.claude/sessions/
+~/.claude/settings.json
+~/.claude/shell-snapshots/
+~/.claude/skills/
+~/.claude/skills/synced/
+~/.local/share/claude/versions/

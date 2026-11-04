@@ -1,0 +1,6 @@
+~/.cache/huggingface/hub/
+~/.cache/huggingface/hub/.locks/
+~/.cache/huggingface/hub/blobs/
+~/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct-GGUF/
+~/.cache/huggingface/xet/
+~/.cache/huggingface/xet/logs/

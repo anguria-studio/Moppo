@@ -1,4 +1,5 @@
 """Check the rule registry generator."""
+import datetime
 import importlib.util
 import json
 from pathlib import Path
@@ -48,6 +49,10 @@ class ValidationTests(unittest.TestCase):
 
     def test_accepts_a_complete_rule(self):
         RULES.validate(SECTIONS, {"mysql": tool()})
+
+    def test_a_tool_is_in_one_section_of_a_format(self):
+        sections = {"databases": SECTIONS["databases"], "other": {**SECTIONS["databases"], "title": "Other"}}
+        self.rejects("same format", {"mysql": tool()}, sections)
 
     def test_section_must_list_each_tool(self):
         self.rejects("does not list this tool", {"mysql": tool(), "redis": tool(id="redis", name="Redis")})
@@ -218,6 +223,91 @@ class AITableTests(unittest.TestCase):
         tools["claude-code"]["aiTool"]["rawValue"] = "Other"
         with self.assertRaises(RULES.RuleError):
             RULES.render_swift(self.SECTIONS, tools)
+
+
+class StoreTests(unittest.TestCase):
+    def test_model_stores_and_editors(self):
+        sections = {"ai-tools": {"title": "Coverage", "document": "docs/ai-storage.md", "format": "aiCoverage", "tools": ["whisper", "vscode"]}}
+        tools = {
+            "whisper": {"id": "whisper", "name": "Whisper", "section": "ai-tools", "removalRules": "One row for each model file.",
+                        "aiTool": {"case": "whisper", "rawValue": "Whisper"}, "owner": {"case": "whisper", "name": "Whisper"},
+                        "storage": [
+                            {"path": "~/.cache/whisper", "type": "download", "table": "localModelStores", "owner": "aiTools",
+                             "treatment": "review", "store": "whisper"},
+                            {"path": "~/.ollama", "type": "download", "table": "localModelStores", "owner": "aiTools", "treatment": "protect"},
+                            {"path": "~/.keras/models", "type": "download", "table": "localModelStores", "owner": "aiTools",
+                             "treatment": "review", "store": "keras"},
+                            {"path": "~/Library/Application Support/nomic.ai/GPT4All", "type": "download", "table": "localModelStores",
+                             "owner": "aiTools", "treatment": "review", "store": "gpt4All", "claimed": False},
+                        ]},
+            "vscode": {"id": "vscode", "name": "Visual Studio Code", "section": "ai-tools", "removalRules": "Old versions.",
+                       "bundleIdentifiers": ["com.microsoft.VSCode"],
+                       "storage": [{"path": "~/.vscode/extensions", "type": "installed", "table": "editorExtensionStores",
+                                    "owner": "packageManagers", "treatment": "offer", "check": "editorObsolete", "name": "Visual Studio Code"}]},
+        }
+        RULES.validate(sections, tools)
+        swift = RULES.render_swift(sections, tools)
+        self.assertIn('public static let homeDotFolders: Set<String> = [".ollama"]', swift)
+        self.assertIn('public static let dotCacheFolders: Set<String> = ["whisper"]', swift)
+        self.assertIn('public static let partlyClaimedFolders: [String: Set<String>] = [".keras": ["models"]]', swift)
+        self.assertIn('static let whisperStores: [String] = [".cache/whisper"]', swift)
+        self.assertIn('static let gpt4AllStores: [String] = ["Library/Application Support/nomic.ai/GPT4All"]', swift)
+        self.assertIn('Editor(name: "Visual Studio Code", dotFolder: ".vscode", bundleIdentifier: "com.microsoft.VSCode")', swift)
+        tools["whisper"]["storage"][3].pop("claimed")
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, tools)
+        tools["whisper"]["storage"][3]["claimed"] = False
+        tools["vscode"]["storage"][0]["path"] = "~/.vscode"
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, tools)
+
+
+class AuditTests(unittest.TestCase):
+    def tools(self):
+        go = tool(id="go", name="Go", versionCommand=["go", "version"], storage=[
+            storage(path="~/go/pkg/mod", type="download", table="packageManagerCaches", owner="packageManagers", treatment="review",
+                    name="Go module cache", identifiedBy=None, check="goModuleCache", caveat="Permanent.",
+                    verified={"date": "2026-11-02", "tool": "Go 1.27.3", "macos": "27.2"}),
+            storage(path="~/go/pkg/mod/cache", type="cache", table="packageManagerCaches", owner="packageManagers", treatment="offer",
+                    name="Go download cache", identifiedBy=None, verified=None, status="Not verified. Old rule."),
+        ])
+        app = tool(id="claude-desktop", name="Claude", bundleIdentifiers=["com.anthropic.claudefordesktop"],
+                   verified={"date": "2026-05-01", "kind": "found", "tool": "Claude 2.31", "macos": "27.2"},
+                   storage=[storage(path="~/Library/Application Support/Claude", name="Claude data", verified=None, status="Found.")])
+        return {"go": go, "claude-desktop": app}
+
+    def test_report(self):
+        sections = {"databases": {**SECTIONS["databases"], "tools": ["go", "claude-desktop"]}}
+        tools = self.tools()
+        RULES.validate(sections, tools)
+        report = RULES.audit(sections, tools, applications={"com.anthropic.claudefordesktop": "2.40.1"},
+                             which=lambda name: "/usr/bin/go" if name == "go" else None,
+                             run=lambda *_, **__: type("R", (), {"stdout": "go version go1.28.0 darwin/arm64", "stderr": ""})(),
+                             today=datetime.date(2026, 11, 4),
+                             manifest=['{"root": "~/go/pkg/mod", "path": "cache", "type": "dir"}',
+                                       '{"root": "~/go/pkg/mod", "path": "github.com", "type": "dir"}',
+                                       '{"root": "~/.unknown", "path": "x", "type": "file"}',
+                                       '{"root": "~/go/pkg/mod", "summary": true}'])
+        self.assertEqual(report["newer"], [("go", "1.28.0", "1.27.3"), ("claude-desktop", "2.40.1", "2.31")])
+        self.assertEqual(report["unverified"], [("go", "~/go/pkg/mod/cache")])
+        self.assertEqual(report["old"], [("claude-desktop", "2026-05-01")])
+        self.assertEqual(report["uncovered"], [("~/go/pkg/mod", "github.com"), ("~/.unknown", None)])
+        text = RULES.format_audit(report)
+        self.assertIn("  go: installed 1.28.0, verified 1.27.3", text)
+        self.assertIn("  ~/go/pkg/mod/github.com", text)
+        self.assertIn("  ~/.unknown: no rule", text)
+        self.assertEqual(RULES.format_audit({"newer": [], "unverified": [], "old": [], "uncovered": [], "unknown": []}), "Nothing to report.")
+
+    def test_version_command_shape(self):
+        for bad in (["go version"], ["/usr/bin/go"], ["go", "version; rm"], ["go", "a", "b", "c"], "go"):
+            with self.assertRaises(RULES.RuleError):
+                RULES.validate(SECTIONS, {"mysql": tool(versionCommand=bad)})
+        RULES.validate(SECTIONS, {"mysql": tool(versionCommand=["mysql", "--version"])})
+
+    def test_absent_tool_has_no_version(self):
+        self.assertIsNone(RULES.command_version(["nothing-here", "--version"], which=lambda name: None))
+        self.assertIsNone(RULES.version_in(None))
+        self.assertEqual(RULES.version_in("Python 3.12.6"), (3, 12, 6))
 
 
 class RenderingTests(unittest.TestCase):

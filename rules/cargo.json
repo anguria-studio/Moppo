@@ -2,6 +2,10 @@
   "id": "cargo",
   "name": "Cargo",
   "section": "rust",
+  "versionCommand": [
+    "cargo",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.cargo/registry",

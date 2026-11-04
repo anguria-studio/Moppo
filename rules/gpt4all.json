@@ -14,12 +14,17 @@
   "bundleIdentifiers": [
     "gpt4all"
   ],
-  "removalRules": "One row for each model file. Settings, chats, and LocalDocs databases stay outside removal targets.",
+  "removalRules": "One row for each `.gguf` model file. Settings, chats, and LocalDocs databases stay outside removal targets.",
   "storage": [
     {
-      "path": "~/Library/Application Support/nomic.ai/GPT4All/*.gguf",
+      "path": "~/Library/Application Support/nomic.ai/GPT4All",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "gpt4All",
+      "claimed": false,
+      "note": "Each `.gguf` file is one model. Settings, chats, and LocalDocs databases stay outside removal targets. GPT4All can use another download folder, which Moppo does not read."
     }
   ]
 }

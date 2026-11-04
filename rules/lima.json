@@ -2,6 +2,10 @@
   "id": "lima",
   "name": "Lima",
   "section": "containers",
+  "versionCommand": [
+    "limactl",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.lima",
