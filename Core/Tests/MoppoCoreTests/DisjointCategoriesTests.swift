@@ -113,6 +113,16 @@ struct DisjointCategoriesTests {
         )
     }
 
+    /// Hidden Data skips a folder in these lists before it checks the protected tool folders.
+    /// A name in both would make the protection rule unused.
+    @Test("no protected tool folder is a folder that Hidden Data skips")
+    func protectedToolFoldersReachHiddenData() {
+        let skipped = HiddenDataScanner.dotDirectorySkipList.union(AIToolStorage.homeDotFolders)
+            .union(LocalModelStores.homeDotFolders).union(EditorExtensionStores.homeDotFolders)
+            .union(AIToolStorage.partlyClaimedFolders.keys).union(LocalModelStores.partlyClaimedFolders.keys)
+        #expect(ToolHomeFolders.names.isDisjoint(with: skipped))
+    }
+
     /// System Caches lists the children of `~/.cache`, and Hidden Data lists home dot-folders.
     /// Each lists a partly claimed folder child by child, so the folder must be one of those
     /// rows, and no whole claim may cover it.

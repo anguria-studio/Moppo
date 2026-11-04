@@ -631,6 +631,12 @@ Read the catalog before you add a scanner rule or a protection rule for develope
 Add a rule only from a row with a `Verified` status.
 The AI storage document has priority for AI tool paths.
 
+`ToolHomeFolders` lists home folders that contain toolchains, virtual machines, or credentials.
+Hidden & System Data shows each of these folders with its size and refuses its removal.
+It offers a cache in such a folder only when the catalog verified a Trash move.
+The tool layout must also be present.
+A folder name alone is not evidence.
+
 ## Scanner rows and Git worktrees
 
 Cleanup has two tabs: All and Safe to Remove.
