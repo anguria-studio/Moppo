@@ -72,6 +72,7 @@ public struct ApplicationsScanner: CategoryScanner {
             in: applicationDirectories, checkCancellation: { try Task.checkCancellation() }
         )
             .union(context.registeredApplicationBundleIdentifiers)
+        let databaseFolders = DatabaseStorage.locations(home: home)
 
         for directory in applicationDirectories {
             guard (try? fileManager.contentsOfDirectory(atPath: directory.path)) != nil else {
@@ -208,6 +209,13 @@ public struct ApplicationsScanner: CategoryScanner {
                 for index in children.indices
                 where !Self.isUsageTrace(children[index]) && children[index].soundLibrary == nil {
                     children[index].protectionReason = .userData
+                }
+                // Database files stay. The row shows their size, and no authorization removes them.
+                for index in children.indices {
+                    guard let database = DatabaseStorage.location(overlapping: children[index].url, in: databaseFolders)
+                    else { continue }
+                    children[index].protectionReason = .inventory
+                    children[index].protectionExplanation = database.explanation
                 }
 
                 // A running app's caches stay listed and removable, but are not

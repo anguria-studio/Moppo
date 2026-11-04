@@ -28,6 +28,9 @@ struct ApplicationDataFoldersTests {
           "superwhisper/settings/settings.json", "superwhisper/modes/default.json"])
     ]
 
+    /// DBeaver keeps database connections. Moppo never offers its folder. See `DatabaseStorage`.
+    static let databaseApps: Set<String> = ["DBeaver"]
+
     private final class Sandbox {
         let home: URL
         let applications: URL
@@ -88,7 +91,7 @@ struct ApplicationDataFoldersTests {
         let removed = try await sandbox.coordinator().scan()
         let leftovers = try #require(removed.categories.first { $0.categoryID == .applicationLeftovers })
         var expectedBytes: Int64 = 0
-        for layout in Self.layouts {
+        for layout in Self.layouts where !Self.databaseApps.contains(layout.app) {
             let group = try #require(leftovers.entries.first {
                 $0.removalAction == .orphanedApplication(bundleIdentifier: layout.identifier)
             }, "\(layout.app)")
@@ -96,7 +99,7 @@ struct ApplicationDataFoldersTests {
             #expect(group.children.allSatisfy { $0.protectionReason == .userData }, "\(layout.app)")
             for folder in layout.folders { expectedBytes += try await measurer.measure(sandbox.url(folder)).allocatedBytes }
         }
-        #expect(leftovers.entries.count == Self.layouts.count)
+        #expect(leftovers.entries.count == Self.layouts.count - Self.databaseApps.count)
         #expect(leftovers.safeToRemoveBytes == 0)
         // AI Tools does not list a folder that a leftover group lists.
         #expect(removed.categories.first { $0.categoryID == .aiTools }?.entries.isEmpty != false)
@@ -113,13 +116,14 @@ struct ApplicationDataFoldersTests {
                 // AI Tools shows the folders that it claims. The application row shows the others.
                 let child = row.children.first { $0.url == folder }
                 #expect((child == nil) == claimed.contains(folder.path), "\(folder.path)")
-                #expect(child.map { $0.protectionReason == .userData } ?? true, "\(folder.path)")
+                let reason: FileEntry.ProtectionReason = Self.databaseApps.contains(layout.app) ? .inventory : .userData
+                #expect(child.map { $0.protectionReason == reason } ?? true, "\(folder.path)")
             }
         }
         #expect(applications.safeToRemoveBytes == 0)
     }
 
-    @Test("App Uninstaller lists each folder as user data")
+    @Test("App Uninstaller lists each folder as user data, and keeps database folders")
     func uninstallReviewListsFolders() async throws {
         let sandbox = try Sandbox()
         try sandbox.layouts()
@@ -128,6 +132,11 @@ struct ApplicationDataFoldersTests {
             let plan = try await sandbox.pathPlanner().plan(
                 applicationURL: sandbox.applications.appendingPathComponent("\(layout.app).app")
             )
+            if Self.databaseApps.contains(layout.app) {
+                #expect(plan.preservedPaths == layout.folders.map(sandbox.url), "\(layout.app)")
+                #expect(!plan.items.contains { layout.folders.map(sandbox.url).contains($0.url) })
+                continue
+            }
             for folder in layout.folders.map(sandbox.url) {
                 let item = try #require(plan.items.first { $0.url == folder }, "\(folder.path)")
                 #expect(item.content == .userData)

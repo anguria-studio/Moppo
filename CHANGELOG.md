@@ -27,6 +27,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show the size of each protected folder. Offer only the caches in it that the developer tool catalog verified.
 - Connect data folders that use another name to AnythingLLM, Cherry Studio, Stability Matrix, VoiceInk, T3 Code, DBeaver, and Superwhisper.
 - Show these folders as user data with their application, in App Uninstaller, and in Application Leftovers after an uninstall.
+- Show Homebrew database data folders as protected Hidden & System Data rows with their sizes.
+- This applies to PostgreSQL, MySQL, MongoDB, Redis, OpenSearch, and Elasticsearch.
+- Show `~/Library/DBeaverData` as protected data with DBeaver. Without DBeaver, Hidden & System Data shows it.
+- Show the sizes of the protected Postgres.app and DBngin data folders under their applications.
+- Keep the Postgres.app, DBngin, and DBeaver data folders in App Uninstaller and Application Leftovers.
+- Moppo never offers database data, MySQL binary logs, or the data folder of an older PostgreSQL version.
 
 ### Command line and agents
 

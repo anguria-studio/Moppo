@@ -431,6 +431,20 @@ struct AppUninstallPlannerTests {
         #expect(plan.preservedPaths == [cache])
     }
 
+    @Test("a support folder with database files is preserved and disclosed")
+    func databaseDataIsPreserved() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("DBngin", identifier: "com.tinyapp.DBngin")
+        let support = try sandbox.write("Library/Application Support/com.tinyapp.DBngin/Engines/postgresql/A1/PG_VERSION")
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let cache = try sandbox.write("Library/Caches/com.tinyapp.DBngin/Cache.db").deletingLastPathComponent()
+
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+
+        #expect(plan.items.map(\.url) == [app, cache])
+        #expect(plan.preservedPaths == [support])
+    }
+
     @Test("the app bundle is always first, before protected data")
     func removalOrderStartsWithApplication() async throws {
         let sandbox = try Sandbox()

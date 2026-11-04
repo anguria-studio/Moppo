@@ -199,6 +199,7 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
         var preserved: [URL] = []
         var claimedPaths = Set<String>()
         var unreadableCount = candidateScan.unreadableCount
+        let databaseFolders = DatabaseStorage.locations(home: pathPlanner.home)
 
         for candidate in candidates {
             try Task.checkCancellation()
@@ -214,7 +215,9 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
                 continue
             }
 
-            guard pathPlanner.candidateIsSafe(url), !context.isExcluded(url) else {
+            guard pathPlanner.candidateIsSafe(url), !context.isExcluded(url),
+                  DatabaseStorage.location(overlapping: url, in: databaseFolders) == nil
+            else {
                 preserved.append(url)
                 continue
             }

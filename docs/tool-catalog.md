@@ -331,25 +331,29 @@ Only the tool can remove its own logs and old data safely.
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | No | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
-| `~/Library/Application Support/Postgres/var-<version>` | User data | Postgres.app installed and `PG_VERSION` file | Never offer | Not possible | Row, protected | Verified 2026-11-02, Postgres.app 2.9.6 with PostgreSQL 18, macOS 27.2 |
-| `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and `DBEngines.plist` in `Data` | Never offer | Not possible | Row, protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
+| `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
+| `~/Library/Application Support/Postgres/var-<version>` | User data | Postgres.app installed and `PG_VERSION` file | Never offer | Not possible | Applications, protected | Verified 2026-11-02, Postgres.app 2.9.6 with PostgreSQL 18, macOS 27.2 |
+| `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION` | Never offer | Not possible | Applications, protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
 | `/Users/Shared/DBngin/<engine>/<version>` | Installed | DBngin installed. A `bin` folder with the server programs. | DBngin, after review | DBngin downloads the version again | No | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
-| `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | No | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
-| MySQL binary logs in the data folder | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | No | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
-| `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | No | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
-| `/opt/homebrew/var/db/redis` | User data | `dump.rdb` or `appendonly` files | Never offer | Not possible | No | Verified 2026-11-02, Redis 8.10.3, macOS 27.2 |
-| `/opt/homebrew/var/lib/opensearch` | User data | OpenSearch layout | Never offer | Not possible | No | Verified 2026-11-02, OpenSearch 3.9.0, macOS 27.2 |
-| `/opt/homebrew/var/lib/elasticsearch` | User data | Elasticsearch layout | Never offer | Not possible | No | Not verified. Homebrew core has no Elasticsearch formula. |
+| `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
+| MySQL binary logs in the data folder | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected in the MySQL data row | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
+| `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
+| `/opt/homebrew/var/db/redis` | User data | `dump.rdb` or `appendonly` files | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, Redis 8.10.3, macOS 27.2 |
+| `/opt/homebrew/var/lib/opensearch` | User data | `nodes/<number>/_state` folder | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, OpenSearch 3.9.0, macOS 27.2 |
+| `/opt/homebrew/var/lib/elasticsearch` | User data | `nodes/<number>/_state` or `_state` folder | Never offer | Not possible | Hidden & System Data, protected | Not verified. Homebrew core has no Elasticsearch formula. |
 | `/opt/homebrew/var/log` | Logs | Service log files | Trash after review, when the service does not run | Not possible | No | Verified 2026-11-03, Redis 8.10.3, macOS 27.2 |
 | `<project>/*.sqlite`, `<project>/*.sqlite3`, `<project>/*.db` | User data | `SQLite format 3` header | Never offer | Not possible | No | Verified 2026-11-03, SQLite 3.54.0, macOS 27.2 |
-| `~/Library/DBeaverData` | User data | DBeaver installed and `workspace6/General/.dbeaver/data-sources.json` | Never offer | Not possible | No | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
+| `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Applications, protected. Hidden & System Data, protected, without DBeaver | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
 
 Database client applications such as TablePlus and DBeaver store connections and scripts.
 Treat their data folders as user data.
 DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
-Moppo shows the Postgres.app and DBngin data folders under their applications as protected user data.
-Moppo does not show `~/Library/DBeaverData` with DBeaver, because the folder is not in `~/Library/Application Support`.
+Moppo shows the Postgres.app and DBngin data folders under their applications as protected rows with their sizes.
+App Uninstaller and Application Leftovers keep these folders. Moppo does not offer them for removal.
+Moppo shows `~/Library/DBeaverData` as protected data with DBeaver. App Uninstaller and Application Leftovers keep it.
+Without DBeaver, Moppo shows the folder in Hidden & System Data.
+Moppo protects a data folder only when the recognition file exists. A folder name alone does not identify a database.
+On an Intel Mac, the Homebrew folders are in `/usr/local/var`.
 Older PostgreSQL data folders can remain after an upgrade.
 Do not offer them until a person confirms that the new version contains the data.
 MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.
@@ -360,7 +364,8 @@ Redis wrote a new log file at its next start. The old log did not come back.
 A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database.
 A file with a `.db` name and no SQLite header is not a SQLite database.
 Moppo shows a project folder with SQLite files as a Documents and Files row that needs review. It does not show the database files as rows.
-Moppo does not list the other data folders in this section today. No rule protects them yet.
+Moppo shows the Homebrew data folders as protected Hidden & System Data rows with their sizes.
+Moppo does not show the SQLite files, `/Users/Shared/DBngin`, or `/opt/homebrew/var/log` as rows.
 The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
 
 ## Rows that remain not verified

@@ -293,6 +293,17 @@ struct CleanupPlanTests {
         #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
     }
 
+    @Test func databaseDataRefusesPlansFromActualScannerOutput() async throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let files = try ["homebrew/var/mysql/ibdata1", "homebrew/var/mysql/binlog.000001", "homebrew/var/mysql/binlog.index"]
+            .map { try f.file($0) }
+        let scanner = HiddenDataScanner(home: f.root, homebrewPrefixes: [f.root.appendingPathComponent("homebrew")])
+        let row = try await expectProtectedScannerRow(f, named: "MySQL data", scanner: scanner).row
+        #expect(row.detail?.contains("MySQL database files") == true)
+        #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
+    }
+
     @Test func lmStudioSymbolicImportRefusesHubPlansFromActualScannerOutput() async throws {
         let f = try Fixture()
         defer { try? FileManager.default.removeItem(at: f.root) }

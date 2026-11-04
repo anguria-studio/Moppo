@@ -33,9 +33,17 @@ public struct HiddenDataScanner: CategoryScanner {
     public let id: CategoryID = .hiddenSystemData
 
     private let home: URL
+    /// Homebrew prefixes that can hold database data folders. See `DatabaseStorage`.
+    private let homebrewPrefixes: [URL]
 
-    public init(home: URL = URL(fileURLWithPath: NSHomeDirectory())) {
+    public init() {
+        self.init(home: URL(fileURLWithPath: NSHomeDirectory()), homebrewPrefixes: DatabaseStorage.homebrewPrefixes)
+    }
+
+    /// A fixture home reads no Homebrew prefix unless the caller supplies one.
+    public init(home: URL, homebrewPrefixes: [URL] = []) {
         self.home = home
+        self.homebrewPrefixes = homebrewPrefixes
     }
 
     // MARK: - Thresholds
@@ -159,6 +167,10 @@ public struct HiddenDataScanner: CategoryScanner {
                                        minimumBytes: Threshold.any, isRegenerable: true,
                                        context: context, to: &found)
         }
+
+        // Database folders are protected rows. The archive sweep does not walk into them.
+        context.onPhase?("Measuring database data")
+        try await appendDatabaseFolders(context: context, to: &found, claiming: &claimed)
 
         // 8. Large hidden dot-directories in $HOME.
         context.onPhase?("Measuring hidden files")
@@ -300,6 +312,28 @@ public struct HiddenDataScanner: CategoryScanner {
         ), context: context)
         if entry.displayBytes >= Threshold.hiddenDirectory || !entry.children.isEmpty {
             found.entries.append(entry)
+        }
+    }
+
+    /// Lists each recognized database folder with its size. Moppo never offers these rows.
+    /// An application row lists the data of Postgres.app and DBngin.
+    private func appendDatabaseFolders(
+        context: ScanContext,
+        to found: inout Found,
+        claiming claimed: inout [String]
+    ) async throws {
+        for location in DatabaseStorage.locations(home: home, homebrewPrefixes: homebrewPrefixes) {
+            try Task.checkCancellation()
+            claimed.append(location.url.path)
+            guard !location.root.listedWithApplication, !context.isExcluded(location.url) else { continue }
+            let measurement = try await context.measurer.measure(location.url)
+            found.unreadableCount += measurement.unreadableCount
+            found.entries.append(FileEntry(
+                url: location.url, displayName: location.displayName, kind: .folder,
+                allocatedBytes: measurement.allocatedBytes, lastOpened: lastOpenedDate(for: location.url),
+                protectionReason: .inventory, protectionExplanation: location.explanation,
+                childCount: (try? FileManager.default.contentsOfDirectory(atPath: location.url.path))?.count
+            ))
         }
     }
 
