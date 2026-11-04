@@ -186,7 +186,8 @@ public struct HiddenDataScanner: CategoryScanner {
         found.entries += cloudResult.entries
         found.unreadableCount += cloudResult.unreadableCount
 
-        found.entries.sort { $0.allocatedBytes > $1.allocatedBytes }
+        // A locked tool folder keeps only its remainder in `allocatedBytes`. Sort by the size that the row shows.
+        found.entries.sort { $0.displayBytes > $1.displayBytes }
         let total = found.entries.reduce(Int64(0)) { $0 + $1.displayBytes }
 
         return ScanCategoryResult(
@@ -277,14 +278,23 @@ public struct HiddenDataScanner: CategoryScanner {
 
             claimed.append(child.path)
             guard !context.isExcluded(child) else { continue }
+            if let tool = ToolHomeFolders.folder(named: name) {
+                try await appendToolFolder(child, tool, displayName: nil, context: context, to: &found)
+                continue
+            }
             // AI Tools claims part of some folders, such as `~/.keras/models`. List the
             // other folders inside. Loose files, such as `keras.json`, are settings.
             let folders = LocalModelStores.unclaimedChildren(of: child, home: home).map { children in
                 children.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true }
             }
             for folder in folders ?? [child] {
-                try await appendHiddenDirectory(folder, displayName: folders == nil ? nil : name + "/" + folder.lastPathComponent,
-                                                context: context, to: &found)
+                let displayName = folders == nil ? nil : name + "/" + folder.lastPathComponent
+                if let displayName, let tool = ToolHomeFolders.folder(named: displayName) {
+                    guard !context.isExcluded(folder) else { continue }
+                    try await appendToolFolder(folder, tool, displayName: displayName, context: context, to: &found)
+                } else {
+                    try await appendHiddenDirectory(folder, displayName: displayName, context: context, to: &found)
+                }
             }
         }
     }
@@ -325,6 +335,37 @@ public struct HiddenDataScanner: CategoryScanner {
                 childCount: (try? FileManager.default.contentsOfDirectory(atPath: location.url.path))?.count
             ))
         }
+    }
+
+    /// Shows a toolchain, virtual machine, or credential folder with its size and locks it.
+    /// Verified caches in the folder are separate rows. See `ToolHomeFolders`.
+    private func appendToolFolder(
+        _ url: URL, _ folder: ToolHomeFolders.Folder, displayName: String?, context: ScanContext, to found: inout Found
+    ) async throws {
+        let caches = ToolHomeFolders.offeredCaches(of: folder, in: url)
+        let measurements = try await context.measurer.measure(url, retaining: caches.map(\.url))
+        let total = measurements[url.standardizedFileURL] ?? .zero
+        found.unreadableCount += total.unreadableCount
+        guard total.allocatedBytes >= Threshold.hiddenDirectory else { return }
+
+        var entry = FileEntry(
+            url: url, displayName: displayName, kind: .folder, allocatedBytes: total.allocatedBytes,
+            lastOpened: lastOpenedDate(for: url), protectionReason: .inventory, protectionExplanation: folder.explanation
+        )
+        for (cacheURL, cache) in caches {
+            guard !context.isExcluded(cacheURL), let size = measurements[cacheURL.standardizedFileURL],
+                  size.allocatedBytes > 0, size.allocatedBytes <= entry.allocatedBytes,
+                  size.unreadableCount == 0, !size.containsProtectedPattern
+            else { continue }
+            let isDirectory = (try? cacheURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            entry.allocatedBytes -= size.allocatedBytes
+            entry.children.append(FileEntry(
+                url: cacheURL, kind: cache.isRegenerable ? .cache : (isDirectory ? .folder : .file),
+                allocatedBytes: size.allocatedBytes, lastOpened: lastOpenedDate(for: cacheURL),
+                isRegenerable: cache.isRegenerable, safetyCaveat: cache.caveat
+            ))
+        }
+        found.entries.append(entry)
     }
 
     private func appendLargeArchives(

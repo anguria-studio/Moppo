@@ -40,7 +40,7 @@ When a path can contain more than one type, use the most protective type.
 | Type | One type from the table above. |
 | Recognition | The evidence that identifies the tool. A folder name alone is not evidence. |
 | Removal | `Trash` for a normal Trash move. Otherwise, the tool command. |
-| Moppo today | `Row` for a dedicated row. `Caches` for the general cache scan of `~/Library/Caches`, `~/Library/Logs`, and `~/.cache`. `Hidden` for the general Hidden System Data row of a large home folder. Moppo can move that folder to the Trash after review. `Size` for the storage breakdown only. `No` for no coverage. A ticket number for planned work. |
+| Moppo today | `Row` for a dedicated row. `Caches` for the general cache scan of `~/Library/Caches`, `~/Library/Logs`, and `~/.cache`. `Hidden` for the general Hidden System Data row of a large home folder. Moppo can move that folder to the Trash after review. `Protected` for a Hidden System Data row that shows the folder size and refuses removal. `Size` for the storage breakdown only. `No` for no coverage. A ticket number for planned work. |
 | Status | `Verified` with the date, the tool version, and the macOS version. `Found` when the tests found the path but did not remove it. `Not verified` with the reason. |
 
 Homebrew paths use `/opt/homebrew` on Apple silicon and `/usr/local` on Intel Macs.
@@ -68,9 +68,9 @@ Do not do these steps on a Mac with real work.
 | `~/Library/Caches/gopls` | Cache | Folder name and owner | Trash | Next `gopls` run | Caches | Verified 2026-11-02, gopls 0.24.0, macOS 27.2 |
 | `~/Library/Caches/golangci-lint` | Cache | Folder name and owner | `golangci-lint cache clean` | Next lint run | Caches | Verified 2026-11-02, golangci-lint 2.15.0, macOS 27.2 |
 | `~/go/bin` | Installed | Executable files | Never remove automatically | `go install` | No | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
-| `~/.goenv/versions/<version>` | Installed | `goenv list` | `goenv uninstall <version> --yes` | `goenv install <version> --yes` | Hidden | Verified 2026-11-02, goenv 3.2.2, macOS 27.2 |
-| `~/.goenv/shared/go-mod` | Download | `cache/download` folder inside | Trash | `goenv install <version> --yes`. A network connection is necessary. | Hidden | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
-| `~/.goenv/releases-cache.json` | Cache | goenv layout | Trash | Next `goenv install` | Hidden | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
+| `~/.goenv/versions/<version>` | Installed | `goenv list` | `goenv uninstall <version> --yes` | `goenv install <version> --yes` | Protected | Verified 2026-11-02, goenv 3.2.2, macOS 27.2 |
+| `~/.goenv/shared/go-mod` | Download | `cache/download` folder inside | Trash | `goenv install <version> --yes`. A network connection is necessary. | Row | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
+| `~/.goenv/releases-cache.json` | Cache | goenv layout | Trash | Next `goenv install` | Row | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
 | `<project>/vendor` | Download | `vendor/modules.txt`, `go.mod`, and `go.sum` | Trash, only if Git does not track it | `go mod vendor`. It works without a network connection when the module cache contains the modules. | Row | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
 
 goenv 3 installs default tools, such as `gopls` and `staticcheck`, into each version.
@@ -78,7 +78,7 @@ It keeps their modules in `~/.goenv/shared/go-mod`, 1.1 GiB in the test.
 That folder stays after `goenv uninstall`.
 The installed tools ran after the removal of `~/.goenv/shared/go-mod`.
 `goenv install --list` and `goenv refresh` did not write `releases-cache.json` again. The next `goenv install` wrote it.
-Moppo shows `~/.goenv` as one Hidden System Data row. It can move the complete folder to the Trash after review.
+Moppo shows `~/.goenv` as a protected Hidden System Data row. Moppo offers only `shared/go-mod` and `releases-cache.json` in it.
 `goenv uninstall` without `--yes` asks for confirmation and skips the removal when no terminal answers.
 
 ## Rust
@@ -88,8 +88,8 @@ Moppo shows `~/.goenv` as one Hidden System Data row. It can move the complete f
 | `~/.cargo/registry` | Download | `CACHEDIR.TAG`, and `index`, `cache`, and `src` folders | Trash | Next build. A network connection is necessary. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
 | `~/.cargo/git` | Download | `CACHEDIR.TAG`, and `db` and `checkouts` folders | Trash | Next build. A network connection is necessary. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
 | `~/.cargo/bin` | Installed | Executable files. It also contains the `rustup` proxies. | Never remove automatically | `cargo install` | No | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
-| `~/.rustup/toolchains/<name>` | Installed | `rustup toolchain list` | `rustup toolchain uninstall <name>` | `rustup toolchain install <name>` | Hidden | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
-| `~/.rustup/downloads`, `~/.rustup/tmp` | Cache | Folder location | Trash | Not necessary | Hidden | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
+| `~/.rustup/toolchains/<name>` | Installed | `rustup toolchain list` | `rustup toolchain uninstall <name>` | `rustup toolchain install <name>` | Protected | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
+| `~/.rustup/downloads`, `~/.rustup/tmp` | Cache | Folder location | Trash | Not necessary | Row | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
 | `~/Library/Caches/Mozilla.sccache` | Cache | Folder name | Trash | Next build | Caches | Verified 2026-11-02, sccache 0.19.0, macOS 27.2 |
 | `<project>/target` | Build | `Cargo.lock` beside the folder. `CACHEDIR.TAG` inside. | Trash | `cargo build`. It works without a network connection when the registry contains the crates. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
 
@@ -105,7 +105,7 @@ Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file 
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/Library/Caches/composer` | Download | Folder name | Trash | `composer install`. A network connection is necessary. | Row | Verified 2026-11-02, Composer 2.11.1, macOS 27.2 |
 | `~/.composer/cache`, `~/.cache/composer` | Download | Folder location | Trash | `composer install` | No | Not created by Composer 2.11.1 on macOS 27.2 |
-| `~/.composer/vendor`, `~/.config/composer/vendor` | Installed | `composer global show` | `composer global remove <package>` | `composer global require <package>` | Hidden | Verified 2026-11-02 for `~/.composer/vendor`, Composer 2.11.1, macOS 27.2 |
+| `~/.composer/vendor`, `~/.config/composer/vendor` | Installed | `composer global show` | `composer global remove <package>` | `composer global require <package>` | Protected | Verified 2026-11-02 for `~/.composer/vendor`, Composer 2.11.1, macOS 27.2 |
 | `<project>/vendor` | Download | `vendor/composer/installed.json` and `composer.lock` | Trash, only if Git does not track it | `composer install`. It works without a network connection when the Composer cache contains the packages. | Row | Verified 2026-11-02, Composer 2.11.1, macOS 27.2 |
 | `<project>/storage/framework/cache`, `<project>/storage/framework/views` | Cache | `artisan` file in the project | `php artisan optimize:clear` | Next request | No | Verified 2026-11-02, PHP 8.5.12, macOS 27.2 |
 | `<project>/bootstrap/cache` | Cache | `artisan` file in the project | `php artisan optimize:clear` | Next request | No | Verified 2026-11-02, PHP 8.5.12, macOS 27.2 |
@@ -116,7 +116,7 @@ Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file 
 
 Herd and Valet can contain site settings, certificates, and database services.
 Composer 2.11.1 keeps its home in `~/.composer` and its cache in `~/Library/Caches/composer` on macOS.
-`~/.composer` can contain `auth.json` with registry tokens. Moppo shows it as a Hidden System Data row.
+`~/.composer` can contain `auth.json` with registry tokens. Moppo shows it as a protected Hidden System Data row.
 Moppo shows Laravel and Symfony project folders as general Documents and Files rows. It does not select them.
 Laravel wrote a new log file and a new `storage/logs` folder at the next log entry.
 After a Trash move of the complete folder, `storage/logs/.gitignore` did not come back.
@@ -126,13 +126,13 @@ Moppo 0.6.0 includes the verified `vendor` rows from #256. The scanner hides pro
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.cpanm/work`, `~/.cpanm/build.log` | Cache | Folder location | Trash | Next install | Hidden | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
+| `~/.cpanm/work`, `~/.cpanm/build.log` | Cache | Folder location | Trash | Next install | Row | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
 | `~/perl5/lib/perl5` | Installed | `local::lib` layout | Never remove automatically | `cpanm --local-lib=~/perl5 <module>`. A network connection is necessary. | No | Verified 2026-11-03, cpanm from Homebrew, macOS 27.2 |
 | `~/perl5/perlbrew/perls/<version>` | Installed | `perlbrew list` | `perlbrew uninstall <version>` | `perlbrew install <version>` | No | Verified 2026-11-02, perl-5.44.0 through perlbrew, macOS 27.2 |
 | `~/perl5/perlbrew/build`, `~/perl5/perlbrew/dists` | Cache | perlbrew layout | `perlbrew clean` | Next install | No | Verified 2026-11-02, perlbrew, macOS 27.2 |
-| `~/.plenv/versions/<version>` | Installed | `plenv versions` | `plenv uninstall -f <version>` | `plenv install <version>` | Hidden | Verified 2026-11-03, plenv 2.3.1 with perl-build 1.34 and Perl 5.44.0, macOS 27.2 |
-| `~/.plenv/build` | Cache | plenv layout | Trash | Not necessary | Hidden | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
-| `~/.plenv/cache` | Download | Perl source archives in the plenv layout | Trash | Next `plenv install`. A network connection is necessary. | Hidden | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
+| `~/.plenv/versions/<version>` | Installed | `plenv versions` | `plenv uninstall -f <version>` | `plenv install <version>` | Protected | Verified 2026-11-03, plenv 2.3.1 with perl-build 1.34 and Perl 5.44.0, macOS 27.2 |
+| `~/.plenv/build` | Cache | plenv layout | Trash | Not necessary | Row | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
+| `~/.plenv/cache` | Download | Perl source archives in the plenv layout | Trash | Next `plenv install`. A network connection is necessary. | Row | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
 | `<project>/local` | Download | `cpanfile.snapshot` beside the folder | Trash, only if Git does not track it | `carton install` | No | Verified 2026-11-02, Carton, macOS 27.2 |
 
 After one Perl build, `~/perl5/perlbrew/build` used 229 MiB. `perlbrew clean` removed it.
@@ -149,7 +149,7 @@ In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.pyenv/versions/<version>` | Installed | `pyenv versions` | `pyenv uninstall -f <version>` | `pyenv install <version>` | Hidden | Verified 2026-11-02, pyenv 2.8.14, macOS 27.2 |
+| `~/.pyenv/versions/<version>` | Installed | `pyenv versions` | `pyenv uninstall -f <version>` | `pyenv install <version>` | Protected | Verified 2026-11-02, pyenv 2.8.14, macOS 27.2 |
 | `~/miniconda3/pkgs`, `~/anaconda3/pkgs`, `~/miniforge3/pkgs` | Download | `conda info` | `conda clean --all` | Next install | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
 | `~/miniconda3/envs/<name>` and equivalent folders | Installed | `conda env list` | `conda env remove --name <name>` after review | `conda env create` from an environment file | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
 | `~/Library/Caches/pypoetry/virtualenvs` | Installed | Poetry layout | Trash after review | `poetry install` with `poetry.lock` | No | Verified 2026-11-02, Poetry 2.5.1, macOS 27.2 |
@@ -172,13 +172,13 @@ Moppo has a row for the Bundler cache in `~/.bundle/cache`.
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.local/share/gem` | Installed | `gem list` | `gem uninstall --user-install <gem>` | `gem install --user-install <gem>` | No | Verified 2026-11-02, RubyGems 3.5.22, macOS 27.2 |
 | `~/.gem` | Installed | `gem list` | `gem uninstall <gem>` | `gem install <gem>` | No | Not created by RubyGems 3.5.22 |
-| `~/.rbenv/versions/<version>` | Installed | `rbenv versions` | `rbenv uninstall -f <version>` | `rbenv install <version>` | Hidden | Verified 2026-11-02, Ruby 3.3.13 through rbenv, macOS 27.2 |
-| `~/.rvm/rubies/<version>` | Installed | `rvm list` | `rvm remove <version>` | `rvm install <version>` | Hidden | Verified 2026-11-03, RVM 1.29.12-next with Ruby 3.3.13, macOS 27.2 |
-| `~/.rvm/archives`, `~/.rvm/src` | Cache | RVM layout | `rvm cleanup all` | Next install. A network connection is necessary. | Hidden | Verified 2026-11-03, RVM 1.29.12-next, macOS 27.2 |
-| `~/.rubies/<version>` | Installed | chruby lists the folder | Trash after review | `ruby-install ruby <version>` | Hidden | Verified 2026-11-03, chruby 0.3.9 and ruby-install 0.10.2, macOS 27.2 |
+| `~/.rbenv/versions/<version>` | Installed | `rbenv versions` | `rbenv uninstall -f <version>` | `rbenv install <version>` | Protected | Verified 2026-11-02, Ruby 3.3.13 through rbenv, macOS 27.2 |
+| `~/.rvm/rubies/<version>` | Installed | `rvm list` | `rvm remove <version>` | `rvm install <version>` | Protected | Verified 2026-11-03, RVM 1.29.12-next with Ruby 3.3.13, macOS 27.2 |
+| `~/.rvm/archives`, `~/.rvm/src` | Cache | RVM layout | `rvm cleanup all` | Next install. A network connection is necessary. | Protected | Verified 2026-11-03, RVM 1.29.12-next, macOS 27.2 |
+| `~/.rubies/<version>` | Installed | chruby lists the folder | Trash after review | `ruby-install ruby <version>` | Protected | Verified 2026-11-03, chruby 0.3.9 and ruby-install 0.10.2, macOS 27.2 |
 | `~/src/ruby-<version>`, `~/src/ruby-<version>.tar.xz` | Cache | ruby-install layout and a matching folder in `~/.rubies` | Trash | Not necessary | No | Verified 2026-11-03, ruby-install 0.10.2, macOS 27.2 |
 | `~/.cache/ruby-install` | Cache | Folder location | Trash | Next `ruby-install` run | Caches | Verified 2026-11-03, ruby-install 0.10.2, macOS 27.2 |
-| `~/.gnupg` | User data | GnuPG layout | Never offer | Not possible | No | Found 2026-11-03, GnuPG 2.5.24, macOS 27.2 |
+| `~/.gnupg` | User data | GnuPG layout | Never offer | Not possible | Protected | Found 2026-11-03, GnuPG 2.5.24, macOS 27.2 |
 | `<project>/vendor/bundle` | Download | `Gemfile.lock` beside `vendor`, and `BUNDLE_PATH` in `.bundle/config` | Trash, only if Git does not track it | `bundle install`. A network connection is necessary. | Row | Verified 2026-11-02, Bundler 2.5.22, macOS 27.2 |
 
 RubyGems 3.5 writes `--user-install` gems to `~/.local/share/gem`, not to `~/.gem`.
@@ -197,19 +197,19 @@ In the 2026-11-02 test, Moppo offered `~/.gradle/caches` and `~/Library/Caches/C
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.m2/repository` | Download | Maven layout | Trash | Next Maven build. A network connection is necessary. | Hidden | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
+| `~/.m2/repository` | Download | Maven layout | Trash | Next Maven build. A network connection is necessary. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
 | `~/.gradle/daemon` | Logs | Gradle layout | Trash when no Gradle daemon runs | Next build | No | Verified 2026-11-02, Gradle 9.8.2, macOS 27.2 |
-| `~/.sbt/boot` | Download | sbt layout | Trash | Not necessary for sbt 2 | Hidden | Verified 2026-11-02, sbt 2.0.12, macOS 27.2 |
+| `~/.sbt/boot` | Download | sbt layout | Trash | Not necessary for sbt 2 | Row | Verified 2026-11-02, sbt 2.0.12, macOS 27.2 |
 | `~/Library/Caches/Coursier` | Download | Folder name | Trash | Next sbt run. A network connection is necessary. | Row | Verified 2026-11-03, sbt 2.0.12, macOS 27.2 |
-| `~/.sdkman/candidates/<tool>/<version>` | Installed | `sdk list` | `sdk uninstall <tool> <version>` | `sdk install <tool> <version>` | Hidden | Verified 2026-11-02, jbang 0.143.0 through SDKMAN, macOS 27.2 |
-| `~/.sdkman/tmp` | Cache | SDKMAN layout | `sdk flush` | Next install | Hidden | Verified 2026-11-02, macOS 27.2 |
-| `~/.sdkman/archives` | Cache | SDKMAN layout | `sdk flush` | Next install | Hidden | Not created in the 2026-11-02 test |
+| `~/.sdkman/candidates/<tool>/<version>` | Installed | `sdk list` | `sdk uninstall <tool> <version>` | `sdk install <tool> <version>` | Protected | Verified 2026-11-02, jbang 0.143.0 through SDKMAN, macOS 27.2 |
+| `~/.sdkman/tmp` | Cache | SDKMAN layout | `sdk flush` | Next install | Protected | Verified 2026-11-02, macOS 27.2 |
+| `~/.sdkman/archives` | Cache | SDKMAN layout | `sdk flush` | Next install | Protected | Not created in the 2026-11-02 test |
 | `~/.konan` | Download | `dependencies` folder with the Kotlin/Native LLVM and `libffi` | Trash | Next `kotlinc-native` build. A network connection is necessary. | Hidden | Verified 2026-11-03, Kotlin/Native 2.4.21, macOS 27.2 |
 | `<project>/target` | Build | `pom.xml` beside the folder | Trash | `mvn package`. It works without a network connection when the repository contains the dependencies. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
 | `~/Library/Caches/JetBrains/<product><version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. The IDE needs the desktop session. |
 | `~/Library/Application Support/JetBrains/<product><version>` | User data | IDE settings | Never offer | Not possible | No | Not verified. The IDE needs the desktop session. |
 
-`~/.m2` can contain `settings.xml` with repository passwords. Moppo shows all of `~/.m2` as a Hidden System Data row.
+`~/.m2` can contain `settings.xml` with repository passwords. Moppo protects `~/.m2` and offers only `~/.m2/repository` for review.
 sbt 2 compiled after the removal of `~/.sbt/boot` and did not create it again.
 sbt 2 downloaded the 133 MiB Coursier cache again in 6 seconds.
 SDKMAN needs Bash 4 or later. Install a newer Bash before you install SDKMAN on macOS.
@@ -225,8 +225,8 @@ The test did not use the Kotlin Gradle plugin.
 | `~/Library/Android/sdk/ndk/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | No | Verified 2026-11-03, NDK 30.0.16248370, macOS 27.2 |
 | `~/Library/Android/sdk/build-tools/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | No | Verified 2026-11-02, build tools 37.0.0, macOS 27.2 |
 | `~/Library/Android/sdk/emulator` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall emulator` | `sdkmanager emulator` | No | Verified 2026-11-03, emulator 37.2.13, macOS 27.2 |
-| `~/.android/avd` | User data | `avdmanager list avd` | `avdmanager delete avd --name <name>` after review | Create the emulator again | No | Verified 2026-11-02 for an AVD that never started, macOS 27.2 |
-| `~/.android/cache` | Cache | Folder location | Trash | Not necessary | No | Verified 2026-11-02, cmdline-tools from Homebrew, macOS 27.2 |
+| `~/.android/avd` | User data | `avdmanager list avd` | `avdmanager delete avd --name <name>` after review | Create the emulator again | Protected | Verified 2026-11-02 for an AVD that never started, macOS 27.2 |
+| `~/.android/cache` | Cache | Folder location | Trash | Not necessary | Row | Verified 2026-11-02, cmdline-tools from Homebrew, macOS 27.2 |
 | `~/Library/Caches/Google/AndroidStudio<version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. Android Studio needs the desktop session. |
 
 Emulator images contain installed apps and test data. Treat them as user data until verification.
@@ -258,15 +258,15 @@ In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 | --- | --- | --- | --- | --- | --- | --- |
 | `<project>/_build` | Build | `mix.exs` beside the folder | Trash | `mix compile` | #49 | Verified 2026-11-02, Elixir 1.20.5, macOS 27.2 |
 | `<project>/deps` | Download | `mix.lock` beside the folder | Trash | `mix deps.get`. A network connection is necessary. | No | Verified 2026-11-02, Elixir 1.20.5, macOS 27.2 |
-| `~/.mix/archives` | Installed | Mix layout | Never remove automatically | `mix local.hex --force` | No | Verified 2026-11-03, Hex 2.6.0 with Elixir 1.20.5, macOS 27.2 |
-| `~/.ghcup/ghc/<version>` | Installed | `ghcup list` | `ghcup rm ghc <version>` | `ghcup install ghc <version>` | Hidden | Verified 2026-11-02, GHC 9.10.3 through ghcup 0.2.6.2, macOS 27.2 |
-| `~/.ghcup/cache` | Cache | ghcup layout | `ghcup gc --cache` | Next install | Hidden | Verified 2026-11-02, ghcup 0.2.6.2, macOS 27.2 |
+| `~/.mix/archives` | Installed | Mix layout | Never remove automatically | `mix local.hex --force` | Protected | Verified 2026-11-03, Hex 2.6.0 with Elixir 1.20.5, macOS 27.2 |
+| `~/.ghcup/ghc/<version>` | Installed | `ghcup list` | `ghcup rm ghc <version>` | `ghcup install ghc <version>` | Protected | Verified 2026-11-02, GHC 9.10.3 through ghcup 0.2.6.2, macOS 27.2 |
+| `~/.ghcup/cache` | Cache | ghcup layout | `ghcup gc --cache` | Next install | Protected | Verified 2026-11-02, ghcup 0.2.6.2, macOS 27.2 |
 | `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Caches | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `~/.local/state/cabal/store` | Installed | cabal layout | Trash after review | Next build for project dependencies | No | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
-| `~/.stack/programs/<platform>/ghc-<version>` | Installed | Stack layout | Trash after review | Next `stack build`. A network connection is necessary. | Hidden | Verified 2026-11-03, Stack 3.11.1 with GHC 9.10.3, macOS 27.2 |
-| `~/.stack/snapshots` | Build | Stack layout | Trash | Next `stack build` | Hidden | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
-| `~/.stack/pantry`, `~/.stack/setup-exe-cache` | Download | Stack layout | Trash | Next `stack build`. A network connection is necessary. | Hidden | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
-| `~/.stack/config.yaml` | User data | Stack layout | Never offer | Not possible | Hidden | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
+| `~/.stack/programs/<platform>/ghc-<version>` | Installed | Stack layout | Trash after review | Next `stack build`. A network connection is necessary. | Protected | Verified 2026-11-03, Stack 3.11.1 with GHC 9.10.3, macOS 27.2 |
+| `~/.stack/snapshots` | Build | Stack layout | Trash | Next `stack build` | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
+| `~/.stack/pantry`, `~/.stack/setup-exe-cache` | Download | Stack layout | Trash | Next `stack build`. A network connection is necessary. | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
+| `~/.stack/config.yaml` | User data | Stack layout | Never offer | Not possible | Protected | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `<project>/dist-newstyle` | Build | `.cabal` file beside the folder | Trash | `cabal build` | No | Verified 2026-11-02, cabal 3.16.1.0, macOS 27.2 |
 | `<project>/.stack-work` | Build | `stack.yaml` beside the folder | Trash | `stack build` | No | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 
@@ -286,13 +286,13 @@ Stack wrote a new default `config.yaml` after a Trash move of `~/.stack`. The us
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.asdf/installs/<tool>/<version>` | Installed | `asdf list` | `asdf uninstall <tool> <version>` | `asdf install <tool> <version>` | Hidden | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
-| `~/.asdf/downloads` | Cache | asdf layout | Trash | Next install | Hidden | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
+| `~/.asdf/installs/<tool>/<version>` | Installed | `asdf list` | `asdf uninstall <tool> <version>` | `asdf install <tool> <version>` | Protected | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
+| `~/.asdf/downloads` | Cache | asdf layout | Trash | Next install | Row | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
 | `~/.local/share/mise/installs/<tool>/<version>` | Installed | `mise ls` | `mise uninstall <tool>@<version>` | `mise install <tool>@<version>` | No | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 | `~/Library/Caches/mise` | Cache | Folder name | `mise cache clear` | Next install | Caches | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 
 Keep each version that a `.tool-versions` or `mise.toml` file in a project names.
-Moppo shows `~/.asdf` as a Hidden System Data row when it is larger than 5 MiB.
+Moppo shows `~/.asdf` as a protected Hidden System Data row when it is larger than 5 MiB. Moppo offers only `~/.asdf/downloads` in it.
 Moppo does not scan `~/.local`, so it does not show mise installations.
 
 ## Container and virtual machine tools
@@ -301,10 +301,10 @@ Moppo reviews Docker images and the Docker build cache through Docker.
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.colima` | User data | Colima installed | `colima delete` after review | Not possible for volumes after `colima delete --data` | Hidden | Verified 2026-11-02, Colima 0.10.3, macOS 27.2 |
-| `~/.colima/_lima/_disks/<profile>` | User data | Colima layout | `colima delete --data` after review | Not possible | Hidden | Verified 2026-11-02, Colima 0.10.3, macOS 27.2 |
-| `~/.lima/<instance>` | User data | `limactl list` | `limactl delete <instance>` after review | Not possible | Hidden | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
-| `~/.lima/_config` | User data | Lima layout. It contains the `user` SSH key. | Never offer | Not possible | Hidden | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
+| `~/.colima` | User data | Colima installed | `colima delete` after review | Not possible for volumes after `colima delete --data` | Protected | Verified 2026-11-02, Colima 0.10.3, macOS 27.2 |
+| `~/.colima/_lima/_disks/<profile>` | User data | Colima layout | `colima delete --data` after review | Not possible | Protected | Verified 2026-11-02, Colima 0.10.3, macOS 27.2 |
+| `~/.lima/<instance>` | User data | `limactl list` | `limactl delete <instance>` after review | Not possible | Protected | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
+| `~/.lima/_config` | User data | Lima layout. It contains the `user` SSH key. | Never offer | Not possible | Protected | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/Library/Caches/lima` | Download | `download/by-url-sha256` folder inside | Trash | Next `limactl start` of a new instance. A network connection is necessary. | Caches | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/.orbstack` | User data | OrbStack installed | OrbStack settings after review | Not possible for volumes | No | Not verified. The OrbStack app needs a first start in the desktop session. |
 | `~/.local/share/containers/podman/machine` | User data | Podman installed | `podman machine rm` after review | Not possible for volumes | No | Verified 2026-11-02, Podman 6.1.4, macOS 27.2 |

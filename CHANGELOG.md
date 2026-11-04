@@ -23,6 +23,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
 - Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
 - Show the other folders in `~/.config` as separate Hidden & System Data rows.
+- Protect toolchain, virtual machine, and credential folders in Hidden & System Data, such as `~/.rustup`, `~/.colima`, and `~/.aws`.
+- Show the size of each protected folder. Offer only the caches in it that the developer tool catalog verified.
 - Show Homebrew database data folders as protected Hidden & System Data rows with their sizes.
 - This applies to PostgreSQL, MySQL, MongoDB, Redis, OpenSearch, and Elasticsearch.
 - Show `~/Library/DBeaverData` as a protected Hidden & System Data row.

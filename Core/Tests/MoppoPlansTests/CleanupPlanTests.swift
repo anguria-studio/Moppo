@@ -9,8 +9,7 @@ struct CleanupPlanTests {
         let scans: ScanStore
         let plans: PlanStore
         let history: RemovalLog
-        let configuration = ScanConfiguration(enabledCategories: [.aiTools, .hiddenSystemData],
-                                              excludedPatterns: ["*.keychain-db"])
+        let configuration = ScanConfiguration(enabledCategories: [.aiTools], excludedPatterns: ["*.keychain-db"])
 
         init() throws {
             root = FileManager.default.temporaryDirectory.appendingPathComponent("moppo-plans-" + UUID().uuidString)
@@ -216,26 +215,48 @@ struct CleanupPlanTests {
         }
     }
 
-    /// Scans `f.root` with the AI Tools scanner, or with `scanner`, and checks that a plan for `name` is refused.
-    private func expectProtectedScannerRow(_ f: Fixture, named name: String,
-                                           scanner: (any CategoryScanner)? = nil) async throws -> ScanReport.Item {
+    /// Scans `f.root` with a scanner and checks that a plan for `name` is refused.
+    @discardableResult
+    private func expectProtectedScannerRow(
+        _ f: Fixture, named name: String, scanner: (any CategoryScanner)? = nil
+    ) async throws -> (row: ScanReport.Item, report: ScanReport, service: CleanupPlanService) {
         let scanner = scanner ?? AIToolsScanner(home: f.root, applications: f.root.appendingPathComponent("Applications"))
         let scan: CleanupPlanService.Scanner = { _ in
             let category = try await scanner.scan(context: ScanContext())
             return ScanResults(categories: [category], startedAt: Date(), finishedAt: Date())
         }
-        let report = ScanReport(results: try await scan(f.configuration), configuration: f.configuration)
+        let configuration = ScanConfiguration(enabledCategories: [scanner.id], excludedPatterns: f.configuration.excludedPatterns)
+        let report = ScanReport(results: try await scan(configuration), configuration: configuration)
         try f.scans.save(report)
         let row = try #require(report.items.first { $0.name == name })
         #expect(row.eligibility == "protected")
         #expect(row.protection == "inventory" && !row.safeToRemove)
         let service = CleanupPlanService(scans: f.scans, plans: f.plans,
-            configuration: { f.configuration }, scanner: scan)
+            configuration: { configuration }, scanner: scan)
         await #expect(throws: PlanValidationError.protectedItem) {
             try await f.create(report, using: service, ids: [row.id])
         }
         #expect(!FileManager.default.fileExists(atPath: f.plans.directory.path))
-        return row
+        return (row, report, service)
+    }
+
+    @Test("a Hidden Data tool folder refuses a plan, and its verified cache can enter one")
+    func toolFolderRefusesPlansFromActualScannerOutput() async throws {
+        let f = try Fixture()
+        defer { try? FileManager.default.removeItem(at: f.root) }
+        let toolchain = f.root.appendingPathComponent(".rustup/toolchains/stable-aarch64-apple-darwin/lib/librustc_driver.dylib")
+        try FileManager.default.createDirectory(at: toolchain.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(count: 6 * 1024 * 1024).write(to: toolchain)
+        _ = try f.file(".rustup/settings.toml")
+        _ = try f.file(".rustup/downloads/9f2c.partial")
+        let (row, report, service) = try await expectProtectedScannerRow(
+            f, named: ".rustup", scanner: HiddenDataScanner(home: f.root))
+        #expect(FileManager.default.fileExists(atPath: toolchain.path))
+
+        let cache = try #require(report.items.first { $0.parentId == row.id && $0.name == "downloads" })
+        #expect(cache.eligibility == "review_required")
+        let review = try await f.create(report, using: service, ids: [cache.id])
+        #expect(review.items.map(\.path) == [cache.path])
     }
 
     @Test func ollamaInventoryRefusesPlansFromActualScannerOutput() async throws {
@@ -278,7 +299,7 @@ struct CleanupPlanTests {
         let files = try ["homebrew/var/mysql/ibdata1", "homebrew/var/mysql/binlog.000001", "homebrew/var/mysql/binlog.index"]
             .map { try f.file($0) }
         let scanner = HiddenDataScanner(home: f.root, homebrewPrefixes: [f.root.appendingPathComponent("homebrew")])
-        let row = try await expectProtectedScannerRow(f, named: "MySQL data", scanner: scanner)
+        let row = try await expectProtectedScannerRow(f, named: "MySQL data", scanner: scanner).row
         #expect(row.detail?.contains("MySQL database files") == true)
         #expect(files.allSatisfy { FileManager.default.fileExists(atPath: $0.url.path) })
     }
@@ -296,7 +317,7 @@ struct CleanupPlanTests {
         try FileManager.default.createSymbolicLink(atPath: snapshot.path, withDestinationPath: "../../blobs/9217f5db")
         try FileManager.default.createSymbolicLink(at: imported, withDestinationURL: snapshot)
 
-        let row = try await expectProtectedScannerRow(f, named: "Qwen/Qwen2.5-0.5B-Instruct-GGUF")
+        let row = try await expectProtectedScannerRow(f, named: "Qwen/Qwen2.5-0.5B-Instruct-GGUF").row
         #expect(row.detail?.contains("LM Studio") == true)
         #expect(FileManager.default.fileExists(atPath: blob.url.path))
     }
