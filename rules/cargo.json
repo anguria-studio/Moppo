@@ -1,0 +1,59 @@
+{
+  "id": "cargo",
+  "name": "Cargo",
+  "section": "rust",
+  "storage": [
+    {
+      "path": "~/.cargo/registry",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`CACHEDIR.TAG`, and `index`, `cache`, and `src` folders",
+      "removal": "Trash",
+      "restore": "Next build. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Cargo 1.99.1"
+      }
+    },
+    {
+      "path": "~/.cargo/git",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`CACHEDIR.TAG`, and `db` and `checkouts` folders",
+      "removal": "Trash",
+      "restore": "Next build. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Cargo 1.99.1"
+      }
+    },
+    {
+      "path": "~/.cargo/bin",
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "Executable files. It also contains the `rustup` proxies.",
+      "removal": "Never remove automatically",
+      "restore": "`cargo install`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Cargo 1.99.1"
+      }
+    },
+    {
+      "path": "<project>/target",
+      "type": "build",
+      "coverage": "row",
+      "recognition": "`Cargo.lock` beside the folder. `CACHEDIR.TAG` inside.",
+      "removal": "Trash",
+      "restore": "`cargo build`. It works without a network connection when the registry contains the crates.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Cargo 1.99.1"
+      }
+    }
+  ]
+}

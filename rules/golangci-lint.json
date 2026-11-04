@@ -1,0 +1,20 @@
+{
+  "id": "golangci-lint",
+  "name": "golangci-lint",
+  "section": "go",
+  "storage": [
+    {
+      "path": "~/Library/Caches/golangci-lint",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Folder name and owner",
+      "removal": "`golangci-lint cache clean`",
+      "restore": "Next lint run",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "golangci-lint 2.15.0"
+      }
+    }
+  ]
+}

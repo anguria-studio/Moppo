@@ -1,0 +1,66 @@
+{
+  "id": "plenv",
+  "name": "plenv",
+  "section": "perl",
+  "storage": [
+    {
+      "path": "~/.plenv",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "plenv keeps the installed Perl versions here. Use plenv uninstall to remove a version.",
+      "recognition": "`versions`",
+      "removal": "Never offer. Use `plenv uninstall` for a version.",
+      "restore": "`plenv install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "versions"
+      ]
+    },
+    {
+      "path": "~/.plenv/versions/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`plenv versions`",
+      "removal": "`plenv uninstall -f <version>`",
+      "restore": "`plenv install <version>`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "plenv 2.3.1 with perl-build 1.34 and Perl 5.44.0"
+      }
+    },
+    {
+      "path": "~/.plenv/build",
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "offer",
+      "recognition": "plenv layout",
+      "removal": "Trash",
+      "restore": "Not necessary",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "plenv 2.3.1"
+      }
+    },
+    {
+      "path": "~/.plenv/cache",
+      "type": "download",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "caveat": "The next plenv install downloads it again. A network connection is necessary.",
+      "recognition": "Perl source archives in the plenv layout",
+      "removal": "Trash",
+      "restore": "Next `plenv install`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "plenv 2.3.1"
+      }
+    }
+  ]
+}

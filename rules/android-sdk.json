@@ -1,0 +1,78 @@
+{
+  "id": "android-sdk",
+  "name": "Android SDK",
+  "section": "android",
+  "storage": [
+    {
+      "path": "~/Library/Android/sdk",
+      "type": "installed",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "The Android SDK keeps build tools, platforms, system images, the NDK, and the emulator here. Use sdkmanager --uninstall to remove a package.",
+      "recognition": "`.knownPackages`, `platform-tools`, `build-tools`, or `cmdline-tools`",
+      "removal": "Never offer. Use `sdkmanager --uninstall` for a package.",
+      "restore": "`sdkmanager <package>`",
+      "status": "Not verified. #350 checked the protection on the test Mac. No test removed the folder.",
+      "name": "Android SDK",
+      "identifiedBy": [
+        ".knownPackages",
+        "platform-tools",
+        "build-tools",
+        "cmdline-tools"
+      ]
+    },
+    {
+      "path": "~/Library/Android/sdk/system-images",
+      "type": "download",
+      "coverage": "protected",
+      "recognition": "`sdkmanager --list_installed`",
+      "removal": "`sdkmanager --uninstall <package>`",
+      "restore": "`sdkmanager <package>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "system image android-36 arm64"
+      }
+    },
+    {
+      "path": "~/Library/Android/sdk/ndk/<version>",
+      "type": "download",
+      "coverage": "protected",
+      "recognition": "`sdkmanager --list_installed`",
+      "removal": "`sdkmanager --uninstall <package>`",
+      "restore": "`sdkmanager <package>`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "NDK 30.0.16248370"
+      }
+    },
+    {
+      "path": "~/Library/Android/sdk/build-tools/<version>",
+      "type": "download",
+      "coverage": "protected",
+      "recognition": "`sdkmanager --list_installed`",
+      "removal": "`sdkmanager --uninstall <package>`",
+      "restore": "`sdkmanager <package>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "build tools 37.0.0"
+      }
+    },
+    {
+      "path": "~/Library/Android/sdk/emulator",
+      "type": "download",
+      "coverage": "protected",
+      "recognition": "`sdkmanager --list_installed`",
+      "removal": "`sdkmanager --uninstall emulator`",
+      "restore": "`sdkmanager emulator`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "emulator 37.2.13"
+      }
+    }
+  ]
+}

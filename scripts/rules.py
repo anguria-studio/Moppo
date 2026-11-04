@@ -30,7 +30,8 @@ OWNERS = {
     "applications", "applicationLeftovers", "documentsAndFiles",
 }
 TREATMENTS = {"offer", "review", "protect"}
-TABLES = {"databaseStorage"}
+TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations"}
+HOME_TABLES = {"toolHomeFolders", "toolHomeLocations"}
 COVERAGE = {
     "row": "Row",
     "protected": "Protected",
@@ -39,7 +40,7 @@ COVERAGE = {
     "size": "Size",
     "no": "No",
 }
-PATH_PREFIXES = ("~/", "/opt/homebrew/", "/Users/Shared/", "/Applications/", "<project>/")
+PATH_PREFIXES = ("~/", "/opt/homebrew/", "/usr/local/", "/Users/Shared/", "/Applications/", "<project>/")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 TICKET = re.compile(r"^#\d+$")
 TABLE_HEADER = (
@@ -124,27 +125,37 @@ def validate_storage(name, storage):
             raise RuleError(f"{where}: owner must be one of {', '.join(sorted(OWNERS))}")
         if storage.get("treatment") not in TREATMENTS:
             raise RuleError(f"{where}: treatment must be one of {', '.join(sorted(TREATMENTS))}")
-        if not storage.get("name"):
+        table, treatment = storage["table"], storage["treatment"]
+        is_folder = table in HOME_TABLES and treatment == "protect"
+        if not storage.get("name") and (table == "databaseStorage" or table == "toolHomeLocations" and is_folder):
             raise RuleError(f"{where}: a rule needs the row name")
-        if storage["type"] == "userData" and storage["treatment"] != "protect":
+        if is_folder and not storage.get("explanation"):
+            raise RuleError(f"{where}: a protected folder needs an explanation")
+        if table == "toolHomeLocations" and is_folder and not storage.get("identifiedBy"):
+            raise RuleError(f"{where}: a location needs identifiedBy")
+        if table in HOME_TABLES and treatment != "protect":
+            if len(storage.get("identifiedBy", [])) > 1:
+                raise RuleError(f"{where}: a cache has at most one identifiedBy item")
+            if treatment == "review" and not storage.get("caveat"):
+                raise RuleError(f"{where}: a cache that needs review needs a caveat")
+        if storage["type"] == "userData" and treatment != "protect":
             raise RuleError(f"{where}: user data is never offered")
-        if storage["treatment"] != "protect":
-            if not storage.get("identifiedBy") and not storage.get("check"):
+        if treatment != "protect":
+            if not storage.get("identifiedBy") and not storage.get("check") and table not in HOME_TABLES:
                 raise RuleError(f"{where}: an offered path needs identifiedBy or check")
-            if "verified" not in storage:
-                raise RuleError(f"{where}: an offered path needs a verified record")
+            if "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
+                raise RuleError(f"{where}: an offered path needs a verified record, or a status that starts with Not verified")
     else:
         coverage = storage.get("coverage")
         if coverage not in COVERAGE and not (isinstance(coverage, str) and TICKET.match(coverage)):
             raise RuleError(f"{where}: coverage must be a ticket number or one of {', '.join(sorted(COVERAGE))}")
-    if not isinstance(storage.get("identifiedBy", []), list):
-        raise RuleError(f"{where}: identifiedBy must be a list")
+    for key in ("identifiedBy", "layout"):
+        if not isinstance(storage.get(key, []), list):
+            raise RuleError(f"{where}: {key} must be a list")
     if "verified" in storage:
         verified = storage["verified"]
         if not DATE.match(str(verified.get("date", ""))):
             raise RuleError(f"{where}: verified.date must be YYYY-MM-DD")
-        if not verified.get("tool"):
-            raise RuleError(f"{where}: verified.tool names the tool and its version")
         if verified.get("kind", "verified") not in ("verified", "found"):
             raise RuleError(f"{where}: verified.kind is verified or found")
     elif not storage.get("status"):
@@ -156,6 +167,8 @@ def validate_overlaps(entries):
     seen = {}
     for tool, storage in entries:
         for path in storage_paths(storage):
+            if path.startswith("<project>/"):
+                continue   # Several tools document the same project folder, such as `vendor`.
             key = tuple(components(path))
             if key in seen:
                 raise RuleError(f"{tool['id']}.json: {path} is also in {seen[key]}.json")
@@ -169,6 +182,18 @@ def validate_overlaps(entries):
             if other["treatment"] == "protect" and covers(path, other_path):
                 raise RuleError(
                     f"{tool['id']}.json: {path} is offered, but {other_path} in {other_tool['id']}.json is protected")
+        if storage["table"] in HOME_TABLES:
+            folder_of(storage, path, rules)
+
+
+def folder_of(cache, path, rules):
+    """The protected folder of the same table that holds a cache. Exactly one must exist."""
+    folders = [(folder, folder_path) for _, folder, folder_path in rules
+               if folder["table"] == cache["table"] and folder["treatment"] == "protect"
+               and covers(folder_path, path) and folder_path != path]
+    if len(folders) != 1:
+        raise RuleError(f"{path}: a {cache['table']} cache needs one protected folder above it, found {len(folders)}")
+    return folders[0]
 
 
 def storage_paths(storage):
@@ -214,7 +239,9 @@ def status_text(storage):
     first = f"{verified.get('kind', 'verified').capitalize()} {verified['date']}"
     if verified.get("scope"):
         first += " " + verified["scope"]
-    parts = [first, verified["tool"]]
+    parts = [first]
+    if verified.get("tool"):
+        parts.append(verified["tool"])
     if verified.get("macos"):
         parts.append(f"macOS {verified['macos']}")
     text = ", ".join(parts)
@@ -314,6 +341,68 @@ def render_database_roots(sections, tools):
     return "\n".join(lines)
 
 
+def swift_optional(value):
+    return swift_string(value) if value else "nil"
+
+
+def render_caches(folder_storage, folder_path, table, sections, tools):
+    """The `Cache` literals of the offered paths inside one protected folder."""
+    caches = []
+    for _, _, storage in rows(sections, tools):
+        if storage.get("table") != table or storage["treatment"] == "protect":
+            continue
+        for path in storage_paths(storage):
+            if not covers(folder_path, path) or path == folder_path:
+                continue
+            relative = re.sub(r"<[^>]+>", "*", path[len(folder_path) + 1:])
+            marker = (storage.get("identifiedBy") or [None])[0]
+            caches.append(
+                f"Cache(path: {swift_string(relative)}, marker: {swift_optional(marker)}, "
+                f"isRegenerable: {'true' if storage['treatment'] == 'offer' else 'false'}, "
+                f"caveat: {swift_optional(storage.get('caveat'))})"
+            )
+    return "[" + ", ".join(caches) + "]"
+
+
+def render_tool_home_folders(sections, tools):
+    lines = []
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "toolHomeFolders" or storage["treatment"] != "protect":
+            continue
+        for path in storage_paths(storage):
+            _, relative = swift_base(path)
+            if storage.get("note"):
+                lines.append(f"        // {storage['note']}")
+            lines.append(
+                f"        Folder(name: {swift_string(relative)}, explanation: {swift_string(storage['explanation'])}, "
+                f"layout: {swift_list(storage.get('layout', []))}, "
+                f"caches: {render_caches(storage, path, 'toolHomeFolders', sections, tools)}),"
+            )
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
+def render_tool_home_locations(sections, tools):
+    lines = []
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "toolHomeLocations" or storage["treatment"] != "protect":
+            continue
+        for path in storage_paths(storage):
+            base, relative = swift_base(path)
+            if storage.get("note"):
+                lines.append(f"        // {storage['note']}")
+            lines.append(
+                f"        Location(path: {swift_string(relative)}, name: {swift_string(storage['name'])}, base: {base}, "
+                f"identifiedBy: {swift_list(storage['identifiedBy'])}, explanation: {swift_string(storage['explanation'])}, "
+                f"layout: {swift_list(storage.get('layout', []))}, "
+                f"caches: {render_caches(storage, path, 'toolHomeLocations', sections, tools)}),"
+            )
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
 def render_swift(sections, tools):
     return f"""// Generated by scripts/rules.py from rules/*.json. Do not edit this file.
 // Change a rule in rules/<tool>.json, then run `python3 scripts/rules.py generate`.
@@ -322,6 +411,19 @@ extension DatabaseStorage {{
     /// Database data folders. Each root comes from a rule with `"table": "databaseStorage"`.
     static let roots: [Root] = [
 {render_database_roots(sections, tools)}
+    ]
+}}
+
+extension ToolHomeFolders {{
+    /// Protected home folders. Each folder comes from a rule with `"table": "toolHomeFolders"`.
+    /// The caches in a folder come from the offered rules below its path.
+    static let all: [Folder] = [
+{render_tool_home_folders(sections, tools)}
+    ]
+
+    /// Tool storage outside the listed folders. Each location comes from a rule with `"table": "toolHomeLocations"`.
+    static let locations: [Location] = [
+{render_tool_home_locations(sections, tools)}
     ]
 }}
 """

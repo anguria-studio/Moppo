@@ -1,0 +1,49 @@
+{
+  "id": "mise",
+  "name": "mise",
+  "section": "version-managers",
+  "storage": [
+    {
+      "path": "~/.local/share/mise",
+      "type": "installed",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "mise keeps the installed tool versions here. Use mise uninstall to remove a version.",
+      "recognition": "`installs` folder",
+      "removal": "Never offer. Use `mise uninstall` for a version.",
+      "restore": "`mise install`",
+      "status": "Not verified. #350 checked the protection on the test Mac. No test removed the folder.",
+      "name": "mise tool versions",
+      "identifiedBy": [
+        "installs"
+      ]
+    },
+    {
+      "path": "~/.local/share/mise/installs/<tool>/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`mise ls`",
+      "removal": "`mise uninstall <tool>@<version>`",
+      "restore": "`mise install <tool>@<version>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "mise 2026.10.25"
+      }
+    },
+    {
+      "path": "~/Library/Caches/mise",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Folder name",
+      "removal": "`mise cache clear`",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "mise 2026.10.25"
+      }
+    }
+  ]
+}

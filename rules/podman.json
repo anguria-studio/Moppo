@@ -1,0 +1,52 @@
+{
+  "id": "podman",
+  "name": "Podman",
+  "section": "containers",
+  "storage": [
+    {
+      "path": "~/.local/share/containers/podman/machine",
+      "type": "userData",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "Podman machines",
+      "identifiedBy": [
+        "machine.pub",
+        "applehv",
+        "libkrun"
+      ],
+      "layout": [
+        "machine.pub"
+      ],
+      "explanation": "Podman keeps its virtual machines, their disks, and an SSH key here. Use podman machine rm after review.",
+      "recognition": "Podman installed",
+      "removal": "`podman machine rm` after review",
+      "restore": "Not possible for volumes",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Podman 6.1.4"
+      },
+      "note": "Podman 6.1 keeps the machine disks and the machine SSH key here."
+    },
+    {
+      "path": "~/.local/share/containers/podman/machine/applehv/cache",
+      "type": "download",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "review",
+      "identifiedBy": [
+        "*.raw.zst"
+      ],
+      "caveat": "The next podman machine init downloads it again. A network connection is necessary.",
+      "recognition": "Podman layout",
+      "removal": "Trash",
+      "restore": "`podman machine init`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Podman 6.1.4"
+      }
+    }
+  ]
+}

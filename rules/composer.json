@@ -1,0 +1,77 @@
+{
+  "id": "composer",
+  "name": "Composer",
+  "section": "php",
+  "storage": [
+    {
+      "paths": [
+        "~/.composer",
+        "~/.config/composer"
+      ],
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Composer keeps global packages and settings here. auth.json can contain registry tokens.",
+      "recognition": "Folder name",
+      "removal": "Never offer. `auth.json` can contain registry tokens.",
+      "restore": "Not possible",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/Library/Caches/composer",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "`composer install`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Composer 2.11.1"
+      }
+    },
+    {
+      "paths": [
+        "~/.composer/cache",
+        "~/.cache/composer"
+      ],
+      "type": "download",
+      "coverage": "no",
+      "recognition": "Folder location",
+      "removal": "Trash",
+      "restore": "`composer install`",
+      "status": "Not created by Composer 2.11.1 on macOS 27.2"
+    },
+    {
+      "paths": [
+        "~/.composer/vendor",
+        "~/.config/composer/vendor"
+      ],
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`composer global show`",
+      "removal": "`composer global remove <package>`",
+      "restore": "`composer global require <package>`",
+      "verified": {
+        "date": "2026-11-02",
+        "scope": "for `~/.composer/vendor`",
+        "macos": "27.2",
+        "tool": "Composer 2.11.1"
+      }
+    },
+    {
+      "path": "<project>/vendor",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "`vendor/composer/installed.json` and `composer.lock`",
+      "removal": "Trash, only if Git does not track it",
+      "restore": "`composer install`. It works without a network connection when the Composer cache contains the packages.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Composer 2.11.1"
+      }
+    }
+  ]
+}

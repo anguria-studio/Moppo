@@ -1,0 +1,19 @@
+{
+  "id": "ssh",
+  "name": "SSH",
+  "section": "credentials",
+  "storage": [
+    {
+      "path": "~/.ssh",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "SSH keeps your keys and settings here.",
+      "recognition": "Keys and `config`",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The rule protects the folder by name. No test removed it."
+    }
+  ]
+}

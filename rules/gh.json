@@ -1,0 +1,19 @@
+{
+  "id": "gh",
+  "name": "GitHub CLI",
+  "section": "credentials",
+  "storage": [
+    {
+      "path": "~/.config/gh",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "The GitHub CLI keeps its settings and sign-in tokens here.",
+      "recognition": "`hosts.yml` with sign-in tokens",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The rule protects the folder by name. No test removed it."
+    }
+  ]
+}

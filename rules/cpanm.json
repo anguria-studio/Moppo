@@ -1,0 +1,63 @@
+{
+  "id": "cpanm",
+  "name": "cpanm",
+  "section": "perl",
+  "storage": [
+    {
+      "path": "~/.cpanm",
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "cpanm keeps build files and links to them here. Only the work folder can be removed.",
+      "recognition": "`latest-build` link",
+      "removal": "Never offer whole. Moppo offers `work` as a row.",
+      "restore": "Next install",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "latest-build"
+      ]
+    },
+    {
+      "path": "~/.cpanm/work",
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "offer",
+      "recognition": "`latest-build` link in `~/.cpanm`",
+      "removal": "Trash",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "cpanm from Homebrew"
+      }
+    },
+    {
+      "path": "~/.cpanm/build.log",
+      "type": "cache",
+      "coverage": "protected",
+      "recognition": "Folder location",
+      "removal": "Trash",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "cpanm from Homebrew"
+      }
+    },
+    {
+      "path": "~/perl5/lib/perl5",
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "`local::lib` layout",
+      "removal": "Never remove automatically",
+      "restore": "`cpanm --local-lib=~/perl5 <module>`. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "cpanm from Homebrew"
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "id": "lima",
+  "name": "Lima",
+  "section": "containers",
+  "storage": [
+    {
+      "path": "~/.lima",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Lima keeps its virtual machines and its SSH key here. Use limactl delete after review.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `limactl delete` after review.",
+      "restore": "Not possible",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.lima/<instance>",
+      "type": "userData",
+      "coverage": "protected",
+      "recognition": "`limactl list`",
+      "removal": "`limactl delete <instance>` after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Lima 2.2.1"
+      }
+    },
+    {
+      "path": "~/.lima/_config",
+      "type": "userData",
+      "coverage": "protected",
+      "recognition": "Lima layout. It contains the `user` SSH key.",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Lima 2.2.1"
+      }
+    },
+    {
+      "path": "~/Library/Caches/lima",
+      "type": "download",
+      "coverage": "caches",
+      "recognition": "`download/by-url-sha256` folder inside",
+      "removal": "Trash",
+      "restore": "Next `limactl start` of a new instance. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Lima 2.2.1"
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "id": "laravel",
+  "name": "Laravel",
+  "section": "php",
+  "storage": [
+    {
+      "paths": [
+        "<project>/storage/framework/cache",
+        "<project>/storage/framework/views"
+      ],
+      "type": "cache",
+      "coverage": "no",
+      "recognition": "`artisan` file in the project",
+      "removal": "`php artisan optimize:clear`",
+      "restore": "Next request",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "PHP 8.5.12"
+      }
+    },
+    {
+      "path": "<project>/bootstrap/cache",
+      "type": "cache",
+      "coverage": "no",
+      "recognition": "`artisan` file in the project",
+      "removal": "`php artisan optimize:clear`",
+      "restore": "Next request",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "PHP 8.5.12"
+      }
+    },
+    {
+      "path": "<project>/storage/logs/*.log",
+      "type": "logs",
+      "coverage": "no",
+      "recognition": "`artisan` file in the project",
+      "removal": "Trash the log files after review. Keep the folder.",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "Laravel 13.39.0, PHP 8.5.12"
+      }
+    }
+  ]
+}

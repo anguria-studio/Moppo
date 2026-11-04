@@ -69,13 +69,22 @@ class ValidationTests(unittest.TestCase):
         cache = storage(path="~/.cache/example", type="cache", identifiedBy=[], verified=None, status="Not verified.")
         self.rejects("needs identifiedBy or check", {"mysql": tool(storage=[storage(), {**cache, "treatment": "offer"}])})
         cache["identifiedBy"] = ["CACHEDIR.TAG"]
-        self.rejects("needs a verified record", {"mysql": tool(storage=[storage(), {**cache, "treatment": "offer"}])})
+        # A status that starts with "Not verified" records the gap. Any other text is not evidence.
+        RULES.validate(SECTIONS, {"mysql": tool(storage=[storage(), {**cache, "treatment": "offer"}])})
+        self.rejects("needs a verified record", {"mysql": tool(storage=[storage(), {**cache, "treatment": "offer", "status": "Unknown."}])})
 
     def test_a_path_has_one_owner(self):
         self.rejects("is also in", {
             "mysql": tool(),
             "mariadb": tool(id="mariadb", name="MariaDB", storage=[storage(name="MariaDB data")]),
         }, {"databases": {**SECTIONS["databases"], "tools": ["mysql", "mariadb"]}})
+
+    def test_project_folders_may_repeat_across_tools(self):
+        vendor = storage(path="<project>/vendor", type="download", table=None, owner=None, treatment=None, coverage="row")
+        RULES.validate({"databases": {**SECTIONS["databases"], "tools": ["mysql", "mariadb"]}}, {
+            "mysql": tool(storage=[storage(), vendor]),
+            "mariadb": tool(id="mariadb", name="MariaDB", storage=[dict(vendor)]),
+        })
 
     def test_an_offered_folder_never_holds_protected_data(self):
         offered = storage(path="/opt/homebrew/var", type="cache", treatment="offer", identifiedBy=["x"], name="Var")
@@ -113,6 +122,7 @@ class RenderingTests(unittest.TestCase):
                                                 "tool": "PostgreSQL 18.6", "macos": "27.2"})),
             "Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2")
         self.assertEqual(RULES.status_text(storage(verified=None, status="Not verified.")), "Not verified.")
+        self.assertEqual(RULES.status_text(storage(verified={"date": "2026-11-02", "macos": "27.2"})), "Verified 2026-11-02, macOS 27.2")
 
     def test_coverage_text(self):
         self.assertEqual(RULES.coverage_text(storage()), "Protected")
@@ -139,7 +149,8 @@ class RenderingTests(unittest.TestCase):
                       'identifiedBy: ["ibdata1", "mysql/"], tool: "MySQL", contents: "PostgreSQL data files", '
                       "listedWithApplication: true),", swift)
         self.assertIn('Root(path: "Library/Application Support/Postgres/var-*", name: "MySQL data", base: .home, ', swift)
-        self.assertTrue(swift.rstrip().endswith("listedWithApplication: true)\n    ]\n}"))
+        self.assertIn("listedWithApplication: true)\n    ]\n}\n\nextension ToolHomeFolders {", swift)
+        self.assertIn("static let all: [Folder] = [\n\n    ]", swift)
 
     def test_swift_strings_are_escaped(self):
         self.assertEqual(RULES.swift_string('a "quoted" \\ path'), '"a \\"quoted\\" \\\\ path"')

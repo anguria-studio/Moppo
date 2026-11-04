@@ -1,0 +1,19 @@
+{
+  "id": "azure",
+  "name": "Azure CLI",
+  "section": "credentials",
+  "storage": [
+    {
+      "path": "~/.azure",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "The Azure CLI keeps settings and sign-in tokens here.",
+      "recognition": "Azure CLI layout",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The rule protects the folder by name. No test removed it."
+    }
+  ]
+}

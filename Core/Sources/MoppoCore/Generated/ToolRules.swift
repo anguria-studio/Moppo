@@ -18,3 +18,53 @@ extension DatabaseStorage {
         Root(path: "Library/DBeaverData", name: "DBeaver data", base: .home, identifiedBy: ["workspace6/*/.dbeaver/data-sources.json"], tool: "DBeaver", contents: "DBeaver connections, scripts, and settings", listedWithApplication: false)
     ]
 }
+
+extension ToolHomeFolders {
+    /// Protected home folders. Each folder comes from a rule with `"table": "toolHomeFolders"`.
+    /// The caches in a folder come from the offered rules below its path.
+    static let all: [Folder] = [
+        Folder(name: ".goenv", explanation: "goenv keeps the installed Go versions here. Use goenv uninstall to remove a version.", layout: ["versions", "shims"], caches: [Cache(path: "shared/go-mod", marker: "cache/download", isRegenerable: false, caveat: "The next goenv install downloads it again. A network connection is necessary."), Cache(path: "releases-cache.json", marker: nil, isRegenerable: true, caveat: nil)]),
+        Folder(name: ".rustup", explanation: "rustup keeps the Rust toolchains here. Use rustup toolchain uninstall to remove a toolchain.", layout: ["settings.toml", "toolchains"], caches: [Cache(path: "downloads", marker: nil, isRegenerable: true, caveat: nil), Cache(path: "tmp", marker: nil, isRegenerable: true, caveat: nil)]),
+        Folder(name: ".composer", explanation: "Composer keeps global packages and settings here. auth.json can contain registry tokens.", layout: [], caches: []),
+        Folder(name: ".config/composer", explanation: "Composer keeps global packages and settings here. auth.json can contain registry tokens.", layout: [], caches: []),
+        Folder(name: ".cpanm", explanation: "cpanm keeps build files and links to them here. Only the work folder can be removed.", layout: ["latest-build"], caches: [Cache(path: "work", marker: nil, isRegenerable: true, caveat: nil)]),
+        Folder(name: ".plenv", explanation: "plenv keeps the installed Perl versions here. Use plenv uninstall to remove a version.", layout: ["versions"], caches: [Cache(path: "build", marker: nil, isRegenerable: true, caveat: nil), Cache(path: "cache", marker: nil, isRegenerable: false, caveat: "The next plenv install downloads it again. A network connection is necessary.")]),
+        Folder(name: ".pyenv", explanation: "pyenv keeps the installed Python versions here. Use pyenv uninstall to remove a version.", layout: [], caches: []),
+        Folder(name: ".rbenv", explanation: "rbenv keeps the installed Ruby versions here. Use rbenv uninstall to remove a version.", layout: [], caches: []),
+        Folder(name: ".rvm", explanation: "RVM keeps Ruby versions and gems here. Use rvm remove or rvm cleanup all.", layout: [], caches: []),
+        Folder(name: ".rubies", explanation: "chruby uses the Ruby versions here. Projects can need these versions.", layout: [], caches: []),
+        Folder(name: ".gnupg", explanation: "GnuPG keeps your keys and settings here.", layout: [], caches: []),
+        Folder(name: ".m2", explanation: "Maven keeps downloads and settings here. settings.xml can contain repository passwords.", layout: [], caches: [Cache(path: "repository", marker: ".meta", isRegenerable: false, caveat: "Maven downloads it again. Artifacts from mvn install do not come back.")]),
+        Folder(name: ".sbt", explanation: "sbt keeps settings, plugins, and downloads here. Only the boot folder can be removed.", layout: ["1.0"], caches: [Cache(path: "boot", marker: nil, isRegenerable: false, caveat: "sbt 1 downloads it again. A network connection is necessary.")]),
+        Folder(name: ".sdkman", explanation: "SDKMAN keeps the installed JVM tools here. Use sdk uninstall or sdk flush to remove them.", layout: [], caches: []),
+        Folder(name: ".android", explanation: "Android tools keep emulators and adb keys here. Use avdmanager to delete an emulator.", layout: [], caches: [Cache(path: "cache", marker: nil, isRegenerable: true, caveat: nil)]),
+        Folder(name: ".mix", explanation: "Mix keeps installed archives, such as Hex, here.", layout: [], caches: []),
+        Folder(name: ".ghcup", explanation: "ghcup keeps GHC, cabal, and other Haskell tools here. Use ghcup rm or ghcup gc to remove them.", layout: [], caches: []),
+        Folder(name: ".stack", explanation: "Stack keeps GHC versions, package indexes, and your config.yaml settings here.", layout: ["config.yaml", "stack.sqlite3"], caches: [Cache(path: "snapshots", marker: nil, isRegenerable: false, caveat: "The next stack build makes it again."), Cache(path: "pantry", marker: nil, isRegenerable: false, caveat: "The next stack build downloads it again. A network connection is necessary."), Cache(path: "setup-exe-cache", marker: nil, isRegenerable: false, caveat: "The next stack build downloads it again. A network connection is necessary.")]),
+        Folder(name: ".asdf", explanation: "asdf keeps the installed tool versions here. Use asdf uninstall to remove a version.", layout: ["installs", "plugins"], caches: [Cache(path: "downloads", marker: nil, isRegenerable: true, caveat: nil)]),
+        Folder(name: ".colima", explanation: "Colima keeps its virtual machines and container data disks here. Use colima delete after review.", layout: [], caches: []),
+        Folder(name: ".lima", explanation: "Lima keeps its virtual machines and its SSH key here. Use limactl delete after review.", layout: [], caches: []),
+        Folder(name: ".aws", explanation: "The AWS tools keep settings, credentials, and sign-in tokens here.", layout: [], caches: []),
+        Folder(name: ".azure", explanation: "The Azure CLI keeps settings and sign-in tokens here.", layout: [], caches: []),
+        Folder(name: ".config/gcloud", explanation: "The Google Cloud CLI keeps its settings and credentials here.", layout: [], caches: []),
+        Folder(name: ".config/gh", explanation: "The GitHub CLI keeps its settings and sign-in tokens here.", layout: [], caches: []),
+        Folder(name: ".docker", explanation: "Docker keeps its settings here. config.json can contain registry credentials.", layout: [], caches: []),
+        Folder(name: ".kube", explanation: "kubectl keeps cluster settings and credentials here.", layout: [], caches: []),
+        Folder(name: ".ssh", explanation: "SSH keeps your keys and settings here.", layout: [], caches: [])
+    ]
+
+    /// Tool storage outside the listed folders. Each location comes from a rule with `"table": "toolHomeLocations"`.
+    static let locations: [Location] = [
+        Location(path: ".local/share/gem", name: "RubyGems user gems", base: .home, identifiedBy: ["ruby/*/specifications"], explanation: "RubyGems keeps the gems from gem install --user-install here. Use gem uninstall --user-install to remove a gem.", layout: [], caches: []),
+        Location(path: "Library/Android/sdk", name: "Android SDK", base: .home, identifiedBy: [".knownPackages", "platform-tools", "build-tools", "cmdline-tools"], explanation: "The Android SDK keeps build tools, platforms, system images, the NDK, and the emulator here. Use sdkmanager --uninstall to remove a package.", layout: [], caches: []),
+        Location(path: ".local/share/NuGet", name: "NuGet data", base: .home, identifiedBy: ["http-cache", "Migrations"], explanation: "NuGet keeps its HTTP cache here. Use dotnet nuget locals http-cache --clear to remove the cache.", layout: [], caches: []),
+        Location(path: ".local/state/cabal", name: "cabal package store", base: .home, identifiedBy: ["store/ghc-*"], explanation: "cabal keeps built packages here. Projects and programs from cabal install can need them.", layout: [], caches: []),
+        Location(path: ".local/share/mise", name: "mise tool versions", base: .home, identifiedBy: ["installs"], explanation: "mise keeps the installed tool versions here. Use mise uninstall to remove a version.", layout: [], caches: []),
+        // Podman 6.1 keeps the machine disks and the machine SSH key here.
+        Location(path: ".local/share/containers/podman/machine", name: "Podman machines", base: .home, identifiedBy: ["machine.pub", "applehv", "libkrun"], explanation: "Podman keeps its virtual machines, their disks, and an SSH key here. Use podman machine rm after review.", layout: ["machine.pub"], caches: [Cache(path: "applehv/cache", marker: "*.raw.zst", isRegenerable: false, caveat: "The next podman machine init downloads it again. A network connection is necessary.")]),
+        // DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`.
+        Location(path: "DBngin", name: "DBngin server versions", base: .sharedFolder, identifiedBy: ["*/*/bin"], explanation: "DBngin keeps its database server versions here. Use DBngin to remove a version.", layout: [], caches: []),
+        // The #216 checks found an ai-coustics audio model here. No application identified it as its own.
+        Location(path: "Library/Application Support/multimodal-models", name: "ai-coustics audio models", base: .home, identifiedBy: ["ai-coustics/*/*.aicmodel"], explanation: "An application keeps ai-coustics audio models here. Moppo cannot identify the application, so it keeps the models protected.", layout: [], caches: [])
+    ]
+}

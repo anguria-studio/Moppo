@@ -1,0 +1,19 @@
+{
+  "id": "docker-cli",
+  "name": "Docker",
+  "section": "credentials",
+  "storage": [
+    {
+      "path": "~/.docker",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Docker keeps its settings here. config.json can contain registry credentials.",
+      "recognition": "`config.json` with registry credentials",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The rule protects the folder by name. No test removed it."
+    }
+  ]
+}

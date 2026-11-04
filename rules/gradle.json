@@ -1,0 +1,20 @@
+{
+  "id": "gradle",
+  "name": "Gradle",
+  "section": "java",
+  "storage": [
+    {
+      "path": "~/.gradle/daemon",
+      "type": "logs",
+      "coverage": "no",
+      "recognition": "Gradle layout",
+      "removal": "Trash when no Gradle daemon runs",
+      "restore": "Next build",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "Gradle 9.8.2"
+      }
+    }
+  ]
+}

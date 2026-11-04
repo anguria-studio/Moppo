@@ -1,0 +1,16 @@
+{
+  "id": "herd",
+  "name": "Herd",
+  "section": "php",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Herd",
+      "type": "userData",
+      "coverage": "no",
+      "recognition": "Herd installed",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. The Herd app needs the desktop session."
+    }
+  ]
+}
