@@ -125,7 +125,7 @@ public struct SystemCachesScanner: CategoryScanner {
     /// `DisjointCategoriesTests`: a name missing here is offered twice, a stale name
     /// here is offered by nobody.
     static let packageManagerOwnedDotCacheNames: Set<String> = [
-        "uv", "yarn", "ms-playwright"
+        "uv", "yarn", "ms-playwright", "cabal"
     ]
 
     /// Whether a child is called regenerable.

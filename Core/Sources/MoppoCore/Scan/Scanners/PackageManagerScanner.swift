@@ -61,6 +61,8 @@ public struct PackageManagerScanner: CategoryScanner {
         /// underneath, so several roots may share a tool name without ambiguity.
         let label: String
         let components: [String]
+        /// A download that the tool does not restore by itself. The row needs review and shows this text.
+        var reviewCaveat: String? = nil
 
         func url(relativeTo home: URL) -> URL {
             components.reduce(home) { $0.appendingPathComponent($1) }
@@ -162,6 +164,10 @@ public struct PackageManagerScanner: CategoryScanner {
         CacheRoot(label: "NuGet packages", components: [".nuget", "packages"]),
         CacheRoot(label: "Hex packages", components: [".hex", "packages"]),
         CacheRoot(label: "Cabal packages", components: [".cabal", "packages"]),
+        // cabal 3.16 uses the XDG layout and does not create `~/.cabal` (#323). Without this
+        // folder, a build fails until `cabal update` downloads the package index again.
+        CacheRoot(label: "Cabal packages (XDG)", components: [".cache", "cabal"],
+                  reviewCaveat: "cabal update downloads it again. A network connection is necessary."),
         // `~/.pub-cache/bin` and `global_packages` are what `pub global activate`
         // installed, so the two download folders are named and the root is not.
         CacheRoot(label: "Dart pub cache", components: [".pub-cache", "hosted"]),
@@ -281,7 +287,8 @@ public struct PackageManagerScanner: CategoryScanner {
                 kind: .cache,
                 allocatedBytes: measured.allocatedBytes,
                 lastOpened: lastOpened,
-                isRegenerable: true,
+                isRegenerable: root.reviewCaveat == nil,
+                safetyCaveat: root.reviewCaveat,
                 childCount: (try? FileManager.default.contentsOfDirectory(atPath: url.path))?.count
             ))
             totalBytes += measured.allocatedBytes
