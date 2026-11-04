@@ -1,0 +1,43 @@
+{
+  "id": "mysql",
+  "name": "MySQL",
+  "section": "databases",
+  "note": "MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.",
+  "storage": [
+    {
+      "path": "/opt/homebrew/var/mysql",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "MySQL data",
+      "identifiedBy": [
+        "ibdata1",
+        "mysql/"
+      ],
+      "recognition": "`ibdata1` or `mysql` folder",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "MySQL 26.10",
+        "macos": "27.2"
+      },
+      "note": "The MySQL data folder also holds the binary logs."
+    },
+    {
+      "path": "/opt/homebrew/var/mysql/binlog.<number>",
+      "type": "userData",
+      "coverage": "protected",
+      "recognition": "`binlog.<number>` files and `binlog.index`",
+      "removal": "`PURGE BINARY LOGS` in MySQL after review",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "tool": "MySQL 26.10",
+        "macos": "27.2"
+      },
+      "note": "`PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows. Binary logs can be necessary for replication and for recovery to a point in time."
+    }
+  ]
+}

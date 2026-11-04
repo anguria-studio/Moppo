@@ -1,0 +1,188 @@
+"""Check the rule registry generator."""
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+
+SPEC = importlib.util.spec_from_file_location("rules", Path(__file__).with_name("rules.py"))
+RULES = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(RULES)
+
+
+def storage(**changes):
+    entry = {
+        "path": "/opt/homebrew/var/mysql",
+        "type": "userData",
+        "table": "databaseStorage",
+        "owner": "hiddenSystemData",
+        "treatment": "protect",
+        "name": "MySQL data",
+        "identifiedBy": ["ibdata1", "mysql/"],
+        "recognition": "`ibdata1` or `mysql` folder",
+        "removal": "Never offer",
+        "restore": "Not possible",
+        "verified": {"date": "2026-11-02", "tool": "MySQL 26.10", "macos": "27.2"},
+    }
+    entry.update(changes)
+    for key in [key for key, value in entry.items() if value is None]:
+        del entry[key]
+    return entry
+
+
+def tool(**changes):
+    entry = {"id": "mysql", "name": "MySQL", "section": "databases", "storage": [storage()]}
+    entry.update(changes)
+    return entry
+
+
+SECTIONS = {"databases": {"title": "Databases", "document": "docs/tool-catalog.md", "tools": ["mysql"]}}
+
+
+class ValidationTests(unittest.TestCase):
+    def rejects(self, message, tools=None, sections=SECTIONS):
+        with self.assertRaises(RULES.RuleError) as raised:
+            RULES.validate(sections, tools if tools is not None else {"mysql": tool()})
+        self.assertIn(message, str(raised.exception))
+
+    def test_accepts_a_complete_rule(self):
+        RULES.validate(SECTIONS, {"mysql": tool()})
+
+    def test_section_must_list_each_tool(self):
+        self.rejects("does not list this tool", {"mysql": tool(), "redis": tool(id="redis", name="Redis")})
+
+    def test_unknown_values(self):
+        self.rejects("type must be", {"mysql": tool(storage=[storage(type="junk")])})
+        self.rejects("owner must be", {"mysql": tool(storage=[storage(owner="junk")])})
+        self.rejects("treatment must be", {"mysql": tool(storage=[storage(treatment="junk")])})
+        self.rejects("table must be", {"mysql": tool(storage=[storage(table="junk")])})
+        self.rejects("coverage must be", {"mysql": tool(storage=[storage(table=None, owner=None, treatment=None, coverage="junk")])})
+
+    def test_a_rule_computes_its_coverage(self):
+        self.rejects("Remove coverage", {"mysql": tool(storage=[storage(coverage="no")])})
+
+    def test_user_data_is_never_offered(self):
+        self.rejects("never offered", {"mysql": tool(storage=[storage(treatment="offer")])})
+
+    def test_an_offered_path_needs_evidence(self):
+        cache = storage(path="~/.cache/example", type="cache", identifiedBy=[], verified=None, status="Not verified.")
+        self.rejects("needs identifiedBy or check", {"mysql": tool(storage=[storage(), {**cache, "treatment": "offer"}])})
+        cache["identifiedBy"] = ["CACHEDIR.TAG"]
+        self.rejects("needs a verified record", {"mysql": tool(storage=[storage(), {**cache, "treatment": "offer"}])})
+
+    def test_a_path_has_one_owner(self):
+        self.rejects("is also in", {
+            "mysql": tool(),
+            "mariadb": tool(id="mariadb", name="MariaDB", storage=[storage(name="MariaDB data")]),
+        }, {"databases": {**SECTIONS["databases"], "tools": ["mysql", "mariadb"]}})
+
+    def test_an_offered_folder_never_holds_protected_data(self):
+        offered = storage(path="/opt/homebrew/var", type="cache", treatment="offer", identifiedBy=["x"], name="Var")
+        self.rejects("is protected", {"mysql": tool(storage=[storage(), offered])})
+
+    def test_placeholders_match_one_component(self):
+        self.assertTrue(RULES.covers("/opt/homebrew/var/postgresql@<version>", "/opt/homebrew/var/postgresql@*/base"))
+        self.assertTrue(RULES.covers("~/.rustup", "~/.rustup/toolchains/<name>"))
+        self.assertFalse(RULES.covers("~/.rustup/toolchains", "~/.rustup"))
+        self.assertFalse(RULES.covers("~/.cabal", "~/.cache/cabal"))
+
+    def test_verified_record(self):
+        self.rejects("verified.date", {"mysql": tool(storage=[storage(verified={"date": "yesterday", "tool": "x"})])})
+        self.rejects("needs verified or status", {"mysql": tool(storage=[storage(verified=None)])})
+
+
+class RenderingTests(unittest.TestCase):
+    def test_row_text(self):
+        section = RULES.render_section("databases", SECTIONS, {"mysql": tool()})
+        self.assertIn(
+            "| `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible "
+            "| Protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |",
+            section,
+        )
+        self.assertTrue(section.startswith("<!-- rules:begin databases -->\n| Path |"))
+        self.assertTrue(section.endswith("<!-- rules:end databases -->"))
+
+    def test_status_text(self):
+        self.assertEqual(
+            RULES.status_text(storage(verified={"date": "2026-11-02", "kind": "found", "tool": "DBngin 27.0.2"},
+                                      status="Not verified. The app needs the desktop session.")),
+            "Found 2026-11-02, DBngin 27.0.2. Not verified. The app needs the desktop session.")
+        self.assertEqual(
+            RULES.status_text(storage(verified={"date": "2026-11-02", "scope": "for `postgresql@18`",
+                                                "tool": "PostgreSQL 18.6", "macos": "27.2"})),
+            "Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2")
+        self.assertEqual(RULES.status_text(storage(verified=None, status="Not verified.")), "Not verified.")
+
+    def test_coverage_text(self):
+        self.assertEqual(RULES.coverage_text(storage()), "Protected")
+        self.assertEqual(RULES.coverage_text(storage(treatment="review", type="download")), "Row")
+        self.assertEqual(RULES.coverage_text(storage(table=None, owner=None, treatment=None, coverage="caches")), "Caches")
+        self.assertEqual(RULES.coverage_text(storage(table=None, owner=None, treatment=None, coverage="#49")), "#49")
+
+    def test_notes_follow_the_table(self):
+        tools = {"mysql": tool(note="MySQL keeps its error log in the data folder.",
+                               storage=[storage(note="The data folder also holds the binary logs.")])}
+        section = RULES.render_section("databases", SECTIONS, tools)
+        self.assertTrue(section.endswith(
+            "|\n\nThe data folder also holds the binary logs.\nMySQL keeps its error log in the data folder.\n"
+            "<!-- rules:end databases -->"))
+
+    def test_swift_roots(self):
+        tools = {"mysql": tool(storage=[
+            storage(paths=["/opt/homebrew/var/postgresql@<version>", "~/Library/Application Support/Postgres/var-<version>"],
+                    path=None, owner="applications", contents="PostgreSQL data files", note="Also an older version.")])}
+        swift = RULES.render_swift(SECTIONS, tools)
+        self.assertIn("// Generated by scripts/rules.py", swift)
+        self.assertIn("        // Also an older version.\n"
+                      '        Root(path: "var/postgresql@*", name: "MySQL data", base: .homebrew, '
+                      'identifiedBy: ["ibdata1", "mysql/"], tool: "MySQL", contents: "PostgreSQL data files", '
+                      "listedWithApplication: true),", swift)
+        self.assertIn('Root(path: "Library/Application Support/Postgres/var-*", name: "MySQL data", base: .home, ', swift)
+        self.assertTrue(swift.rstrip().endswith("listedWithApplication: true)\n    ]\n}"))
+
+    def test_swift_strings_are_escaped(self):
+        self.assertEqual(RULES.swift_string('a "quoted" \\ path'), '"a \\"quoted\\" \\\\ path"')
+
+    def test_markers_must_exist_once(self):
+        with self.assertRaises(RULES.RuleError):
+            RULES.apply_section("no markers", "databases", "x")
+        text = "before\n<!-- rules:begin databases -->\nold\n<!-- rules:end databases -->\nafter\n"
+        self.assertEqual(RULES.apply_section(text, "databases", "NEW"), "before\nNEW\nafter\n")
+
+
+class CommandTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="moppo-rules-test-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        (self.root / "rules").mkdir()
+        (self.root / "docs").mkdir()
+        (self.root / "rules/sections.json").write_text(json.dumps(SECTIONS))
+        (self.root / "rules/mysql.json").write_text(json.dumps(tool()))
+        (self.root / "docs/tool-catalog.md").write_text(
+            "# Catalog\n\n<!-- rules:begin databases -->\nstale\n<!-- rules:end databases -->\n")
+
+    def test_generate_writes_and_check_passes(self):
+        self.assertEqual(len(RULES.check(self.root)), 2)
+        RULES.generate(self.root)
+        self.assertEqual(RULES.check(self.root), [])
+        self.assertIn("| `/opt/homebrew/var/mysql` |", (self.root / "docs/tool-catalog.md").read_text())
+        self.assertIn("MySQL data", (self.root / RULES.GENERATED_SWIFT).read_text())
+
+    def test_check_finds_a_stale_file(self):
+        RULES.generate(self.root)
+        # The row name is in the Swift table only. The recognition text is in the document only.
+        (self.root / "rules/mysql.json").write_text(json.dumps(tool(storage=[storage(name="MariaDB data")])))
+        self.assertEqual([str(path) for path in RULES.check(self.root)], [str(RULES.GENERATED_SWIFT)])
+        (self.root / "rules/mysql.json").write_text(json.dumps(tool(storage=[storage(recognition="`ibdata1` file")])))
+        self.assertEqual([str(path) for path in RULES.check(self.root)], ["docs/tool-catalog.md"])
+
+    def test_a_tool_file_name_is_its_id(self):
+        (self.root / "rules/wrong.json").write_text(json.dumps(tool()))
+        with self.assertRaises(RULES.RuleError):
+            RULES.load(self.root / "rules")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,25 @@
+{
+  "id": "sqlite",
+  "name": "SQLite",
+  "section": "databases",
+  "storage": [
+    {
+      "paths": [
+        "<project>/*.sqlite",
+        "<project>/*.sqlite3",
+        "<project>/*.db"
+      ],
+      "type": "userData",
+      "coverage": "no",
+      "recognition": "`SQLite format 3` header",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-03",
+        "tool": "SQLite 3.54.0",
+        "macos": "27.2"
+      },
+      "note": "A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database. A file with a `.db` name and no SQLite header is not a SQLite database."
+    }
+  ]
+}

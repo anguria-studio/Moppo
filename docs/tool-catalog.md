@@ -354,6 +354,7 @@ Database files are user data. Moppo must never offer them for removal.
 If you remove a file while the server runs, you can damage the database.
 Only the tool can remove its own logs and old data safely.
 
+<!-- rules:begin databases -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | Protected | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
@@ -361,7 +362,7 @@ Only the tool can remove its own logs and old data safely.
 | `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION` | Never offer | Not possible | Protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
 | `/Users/Shared/DBngin/<engine>/<version>` | Installed | DBngin installed. A `bin` folder with the server programs. | DBngin, after review | DBngin downloads the version again | Protected | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
 | `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | Protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
-| MySQL binary logs in the data folder | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected in the MySQL data row | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
+| `/opt/homebrew/var/mysql/binlog.<number>` | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
 | `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | Protected | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
 | `/opt/homebrew/var/db/redis` | User data | `dump.rdb` or `appendonly` files | Never offer | Not possible | Protected | Verified 2026-11-02, Redis 8.10.3, macOS 27.2 |
 | `/opt/homebrew/var/lib/opensearch` | User data | `nodes/<number>/_state` folder | Never offer | Not possible | Protected | Verified 2026-11-02, OpenSearch 3.9.0, macOS 27.2 |
@@ -370,29 +371,29 @@ Only the tool can remove its own logs and old data safely.
 | `<project>/*.sqlite`, `<project>/*.sqlite3`, `<project>/*.db` | User data | `SQLite format 3` header | Never offer | Not possible | No | Verified 2026-11-03, SQLite 3.54.0, macOS 27.2 |
 | `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Protected | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
 
+`postgresql@<version>` also matches the data folder of an older version. Do not offer it until a person confirms that the new version contains the data.
+DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
+The MySQL data folder also holds the binary logs.
+`PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows. Binary logs can be necessary for replication and for recovery to a point in time.
+MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.
+MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
+OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
+Redis wrote a new log file at its next start. The old log did not come back.
+A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database. A file with a `.db` name and no SQLite header is not a SQLite database.
+<!-- rules:end databases -->
+
 Database client applications such as TablePlus and DBeaver store connections and scripts.
 Treat their data folders as user data.
-DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
 Moppo shows the Postgres.app and DBngin data folders under their applications as protected rows with their sizes.
 App Uninstaller and Application Leftovers keep these folders. Moppo does not offer them for removal.
 Moppo shows `~/Library/DBeaverData` as protected data with DBeaver. App Uninstaller and Application Leftovers keep it.
 Without DBeaver, Moppo shows the folder in Hidden & System Data.
 Moppo protects a data folder only when the recognition file exists. A folder name alone does not identify a database.
 On an Intel Mac, the Homebrew folders are in `/usr/local/var`.
-Older PostgreSQL data folders can remain after an upgrade.
-Do not offer them until a person confirms that the new version contains the data.
-MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.
-`PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows.
-Binary logs can be necessary for replication and for recovery to a point in time.
-MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
-Redis wrote a new log file at its next start. The old log did not come back.
-A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database.
-A file with a `.db` name and no SQLite header is not a SQLite database.
 Moppo shows a project folder with SQLite files as a Documents and Files row that needs review. It does not show the database files as rows.
 Moppo shows the Homebrew data folders as protected Hidden & System Data rows with their sizes.
 Moppo shows `/Users/Shared/DBngin` as a protected Hidden & System Data row when a version folder contains `bin`.
 Moppo does not show the SQLite files or `/opt/homebrew/var/log` as rows.
-The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
 
 ## Rows that remain not verified
 

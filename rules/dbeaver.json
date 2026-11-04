@@ -1,0 +1,27 @@
+{
+  "id": "dbeaver",
+  "name": "DBeaver",
+  "section": "databases",
+  "storage": [
+    {
+      "path": "~/Library/DBeaverData",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "DBeaver data",
+      "identifiedBy": [
+        "workspace6/*/.dbeaver/data-sources.json"
+      ],
+      "recognition": "`workspace6/<project>/.dbeaver/data-sources.json`",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "DBeaver 26.2.4",
+        "macos": "27.2"
+      },
+      "contents": "DBeaver connections, scripts, and settings"
+    }
+  ]
+}

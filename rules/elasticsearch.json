@@ -1,0 +1,23 @@
+{
+  "id": "elasticsearch",
+  "name": "Elasticsearch",
+  "section": "databases",
+  "storage": [
+    {
+      "path": "/opt/homebrew/var/lib/elasticsearch",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "Elasticsearch data",
+      "identifiedBy": [
+        "nodes/*/_state/",
+        "_state/"
+      ],
+      "recognition": "`nodes/<number>/_state` or `_state` folder",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. Homebrew core has no Elasticsearch formula."
+    }
+  ]
+}

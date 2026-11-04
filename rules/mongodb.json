@@ -1,0 +1,27 @@
+{
+  "id": "mongodb",
+  "name": "MongoDB",
+  "section": "databases",
+  "note": "MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.",
+  "storage": [
+    {
+      "path": "/opt/homebrew/var/mongodb",
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "MongoDB data",
+      "identifiedBy": [
+        "WiredTiger*"
+      ],
+      "recognition": "`WiredTiger` files",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "tool": "MongoDB 9.0.4",
+        "macos": "27.2"
+      }
+    }
+  ]
+}
