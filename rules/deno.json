@@ -2,6 +2,10 @@
   "id": "deno",
   "name": "Deno",
   "section": "javascript",
+  "versionCommand": [
+    "deno",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/deno",

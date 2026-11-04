@@ -2,6 +2,10 @@
   "id": "plenv",
   "name": "plenv",
   "section": "perl",
+  "versionCommand": [
+    "plenv",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.plenv",

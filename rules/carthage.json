@@ -2,6 +2,10 @@
   "id": "carthage",
   "name": "Carthage",
   "section": "swift",
+  "versionCommand": [
+    "carthage",
+    "version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/org.carthage.CarthageKit",

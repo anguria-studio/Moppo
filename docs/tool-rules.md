@@ -91,6 +91,32 @@ The generator refuses to write when a rule breaks one of these rules:
 The `Moppo today` column comes from the rule: `Protected` for `protect`, and `Row` for `offer` and `review`.
 A row without a rule shows its `coverage`.
 
+## Audit
+
+```sh
+python3 scripts/rules.py audit
+python3 scripts/rules.py audit --manifest layout.jsonl --older-than 90
+```
+
+The audit reads the installed version of each tool and compares it with the verification records in its file.
+A desktop application gives its version through its `bundleIdentifiers` and `Info.plist` in `/Applications` or `~/Applications`.
+A command-line tool gives it through its `versionCommand`: an executable name and up to two plain arguments.
+The audit runs only that executable from `PATH`, with no shell, and a ten second limit.
+
+The report lists:
+
+- Tools that are newer than their last verification.
+- Installed tools whose verification records no version.
+- Offered rules without a verification record.
+- Tools whose last verification is older than `--older-than` days. The default is 180.
+- With `--manifest`, paths that no rule covers.
+
+`scripts/manifest.py` writes a layout manifest of one or more folders: names, types, and sizes, with no contents.
+Run it on a test Mac after a tool update, then run the audit with the manifest.
+The audit lists each manifest root with no rule.
+For a root whose rule has deeper rules, such as parts or caches, it lists each child that no deeper rule names.
+Run the audit before each release and after each test rental. Record the result in the release ticket.
+
 ## Tables
 
 | Table | Swift | Contents |

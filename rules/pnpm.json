@@ -2,6 +2,10 @@
   "id": "pnpm",
   "name": "pnpm",
   "section": "javascript",
+  "versionCommand": [
+    "pnpm",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/pnpm/store",

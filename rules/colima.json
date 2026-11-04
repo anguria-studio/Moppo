@@ -2,6 +2,10 @@
   "id": "colima",
   "name": "Colima",
   "section": "containers",
+  "versionCommand": [
+    "colima",
+    "version"
+  ],
   "storage": [
     {
       "path": "~/.colima",

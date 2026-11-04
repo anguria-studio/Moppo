@@ -2,6 +2,10 @@
   "id": "homebrew",
   "name": "Homebrew",
   "section": "homebrew",
+  "versionCommand": [
+    "brew",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/Homebrew",

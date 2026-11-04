@@ -2,6 +2,10 @@
   "id": "cpanm",
   "name": "cpanm",
   "section": "perl",
+  "versionCommand": [
+    "cpanm",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.cpanm",

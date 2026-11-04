@@ -11,6 +11,10 @@
     "case": "codex",
     "name": "Codex"
   },
+  "versionCommand": [
+    "codex",
+    "--version"
+  ],
   "removalRules": "Archived and inactive sessions require deletion review. Active sessions and other storage stay protected. Linked Git worktrees retain their review controls.",
   "storage": [
     {

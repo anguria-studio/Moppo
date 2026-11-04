@@ -2,6 +2,10 @@
   "id": "podman",
   "name": "Podman",
   "section": "containers",
+  "versionCommand": [
+    "podman",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.local/share/containers/podman/machine",

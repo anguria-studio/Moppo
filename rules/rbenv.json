@@ -2,6 +2,10 @@
   "id": "rbenv",
   "name": "rbenv",
   "section": "ruby",
+  "versionCommand": [
+    "rbenv",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.rbenv",

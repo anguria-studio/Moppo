@@ -2,6 +2,10 @@
   "id": "poetry",
   "name": "Poetry",
   "section": "python",
+  "versionCommand": [
+    "poetry",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/pypoetry/virtualenvs",

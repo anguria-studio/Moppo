@@ -2,6 +2,10 @@
   "id": "ghcup",
   "name": "ghcup",
   "section": "elixir-haskell",
+  "versionCommand": [
+    "ghcup",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.ghcup",

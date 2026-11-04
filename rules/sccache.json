@@ -2,6 +2,10 @@
   "id": "sccache",
   "name": "sccache",
   "section": "rust",
+  "versionCommand": [
+    "sccache",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/Library/Caches/Mozilla.sccache",

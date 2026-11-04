@@ -2,6 +2,10 @@
   "id": "conda",
   "name": "conda",
   "section": "python",
+  "versionCommand": [
+    "conda",
+    "--version"
+  ],
   "storage": [
     {
       "paths": [

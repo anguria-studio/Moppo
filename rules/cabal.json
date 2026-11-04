@@ -2,6 +2,10 @@
   "id": "cabal",
   "name": "cabal",
   "section": "elixir-haskell",
+  "versionCommand": [
+    "cabal",
+    "--version"
+  ],
   "storage": [
     {
       "path": "~/.local/state/cabal",

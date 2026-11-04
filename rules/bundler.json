@@ -2,6 +2,10 @@
   "id": "bundler",
   "name": "Bundler",
   "section": "ruby",
+  "versionCommand": [
+    "bundle",
+    "--version"
+  ],
   "storage": [
     {
       "path": "<project>/vendor/bundle",
