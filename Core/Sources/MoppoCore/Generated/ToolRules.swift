@@ -34,6 +34,8 @@ extension ToolHomeFolders {
         Folder(name: ".rvm", explanation: "RVM keeps Ruby versions and gems here. Use rvm remove or rvm cleanup all.", layout: [], caches: []),
         Folder(name: ".rubies", explanation: "chruby uses the Ruby versions here. Projects can need these versions.", layout: [], caches: []),
         Folder(name: ".gnupg", explanation: "GnuPG keeps your keys and settings here.", layout: [], caches: []),
+        // `bundle config set --global` writes to `~/.bundle/config`, which can hold a gem server credential. A credential is a `BUNDLE_<HOST>` key, such as `BUNDLE_RUBYGEMS__PKG__GITHUB__COM`. `plugin` holds Bundler plugins.
+        Folder(name: ".bundle", explanation: "Bundler keeps global settings and plugins here. config can contain gem server credentials.", layout: [], caches: [Cache(path: "cache", marker: nil, isRegenerable: true, caveat: nil)]),
         Folder(name: ".m2", explanation: "Maven keeps downloads and settings here. settings.xml can contain repository passwords.", layout: [], caches: [Cache(path: "repository", marker: ".meta", isRegenerable: false, caveat: "Maven downloads it again. Artifacts from mvn install do not come back.")]),
         Folder(name: ".sbt", explanation: "sbt keeps settings, plugins, and downloads here. Only the boot folder can be removed.", layout: ["1.0"], caches: [Cache(path: "boot", marker: nil, isRegenerable: false, caveat: "sbt 1 downloads it again. A network connection is necessary.")]),
         Folder(name: ".sdkman", explanation: "SDKMAN keeps the installed JVM tools here. Use sdk uninstall or sdk flush to remove them.", layout: [], caches: []),
@@ -84,7 +86,6 @@ extension PackageManagerScanner {
         // uv links or clones environments out of this cache, so they survive its removal. `uv cache clean` is the tool's own instruction.
         CacheRoot(label: "uv cache", components: [".cache", "uv"]),
         CacheRoot(label: "Pipenv cache", components: ["Library", "Caches", "pipenv"]),
-        CacheRoot(label: "Bundler cache", components: [".bundle", "cache"]),
         CacheRoot(label: "Gradle cache", components: [".gradle", "caches"]),
         // The Gradle wrapper keeps a full distribution for each project-pinned version under `dists`.
         CacheRoot(label: "Gradle distributions", components: [".gradle", "wrapper", "dists"]),
