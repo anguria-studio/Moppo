@@ -650,7 +650,7 @@ AI tool storage, such as `~/.local/share/claude`, is in AI Tools.
 When you change a rule, change its document row in the same pull request.
 
 The [tool rule registry](tool-rules.md) in `rules/` holds the catalog rows and the AI storage rows.
-It generates the Swift tables for databases, home folders, package caches, application data folders, AI tools, and curations.
+It generates the Swift tables for databases, home folders, package caches, application data folders, AI tools, curations, model stores, and editors.
 It also generates the AI tool enums, the icon identifiers, and the tables in both documents.
 Change a rule in `rules/<tool>.json`, then run `python3 scripts/rules.py generate`.
 

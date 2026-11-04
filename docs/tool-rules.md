@@ -65,6 +65,8 @@ A tool in an `aiCoverage` section needs no catalog cells.
 | `curated` | For an AI tool root. `true` when the desktop application curation applies, with its `remainderName`. |
 | `electronCaches` | For a curation root. `true` when Moppo also offers the Chromium caches at the top of the folder. |
 | `reviewsWorktrees` | For an AI tool root. `false` when Git worktree review does not run inside it. |
+| `store` | For a model store. The name of the Swift constant that holds the store paths, such as `whisper`. |
+| `claimed` | For a model store. `false` when no category claims the path. |
 | `coverage` | Without `table`. The `Moppo today` value: `row`, `protected`, `caches`, `hidden`, `size`, `no`, or a ticket number. |
 | `identifiedBy` | Paths in the folder that identify the tool. One is sufficient. A glob component matches any child. A final `/` requires a folder. For a cache in a home folder, the one item that identifies its layout. |
 | `layout` | For a protected home folder or location. Items that must all exist before Moppo offers a cache in it. |
@@ -101,7 +103,12 @@ A row without a rule shows its `coverage`.
 | `aiToolStorage` | `AIToolStorage.roots` | Protected AI tool storage. A rule below a root is one of its parts. The tool needs `owner` and `aiTool`. |
 | `curations` | `ApplicationsScanner.curations` | A support folder with caches beside user data. The protected root locks the remainder. An offered path below it is a regenerable cache. |
 
+| `localModelStores` | `LocalModelStores` claim sets and store paths | Model folders that the readers claim. A `store` names the constant that its reader uses. |
+| `editorExtensionStores` | `EditorExtensionStores.editors` | The `extensions` folder of a VS Code–family editor, with `"check": "editorObsolete"`. |
+
 A curated AI root, with `"curated": true` and a `remainderName`, is also a curation. Its curation caches sit below it.
+A model store path claims a whole home dot folder, a whole child of `~/.cache`, or one child of a folder, by its shape.
+A model store elsewhere, such as the GPT4All folder, needs `"claimed": false`.
 The generator also writes `FileEntry.AITool`, `AIStorageSection.Owner`, and `ToolIcons` from the `aiTool` and `owner` fields of the tool files.
 
 A rule in another table can also set `"applicationData": true`.

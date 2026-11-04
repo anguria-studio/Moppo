@@ -151,7 +151,7 @@ struct RuleDocumentTests {
         + LocalModelStores.dotCacheFolders.map { "~/.cache/" + $0 }
         + LocalModelStores.partlyClaimedFolders.flatMap { folder, children in children.map { "~/" + folder + "/" + $0 } }
         + LocalModelStores.lmStudioStores.map { "~/" + $0 }
-        + ["~/" + LocalModelStores.gpt4AllStore]
+        + LocalModelStores.gpt4AllStores.map { "~/" + $0 }
 
     // MARK: - Matching
 
@@ -273,9 +273,10 @@ struct RuleDocumentTests {
 
     // MARK: - AI storage
 
-    @Test("each AI Tools default path is an AI storage root, a model store, or an application data folder")
+    @Test("each AI Tools default path is an AI storage root, a model store, an application data folder, or an editor store")
     func aiStoragePathsHaveRules() throws {
-        let tables: Set<String> = ["AIToolStorage.roots", "LocalModelStores", "ApplicationDataFolders.byBundleIdentifier"]
+        let tables: Set<String> = ["AIToolStorage.roots", "LocalModelStores", "ApplicationDataFolders.byBundleIdentifier",
+                                   "EditorExtensionStores.editors"]
         for entry in try Self.aiStoragePaths() {
             let covered = Self.rules(covering: entry.path).filter { tables.contains($0.table) }
             #expect(!covered.isEmpty, "line \(entry.line): \(entry.tool) names \(entry.path), which no root claims")

@@ -15,12 +15,19 @@
     {
       "path": "~/.keras/models",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "keras"
     },
     {
       "path": "~/.keras/datasets",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "keras",
+      "note": "`~/.keras` also holds `keras.json` settings, which no rule offers."
     }
   ]
 }

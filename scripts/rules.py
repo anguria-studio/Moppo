@@ -31,11 +31,11 @@ OWNERS = {
 }
 TREATMENTS = {"offer", "review", "protect"}
 TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders",
-          "aiToolStorage", "curations"}
+          "aiToolStorage", "curations", "localModelStores", "editorExtensionStores"}
 FORMATS = {"catalog", "aiCoverage", "bundleIdentifiers"}
 AI_COVERAGE_HEADER = "| Tool | Default paths | Removal rules |\n| --- | --- | --- |"
 BUNDLE_HEADER = "| Tool | Bundle identifier |\n| --- | --- |"
-CHECKS = {"goModuleCache": "packageManagerCaches"}
+CHECKS = {"goModuleCache": "packageManagerCaches", "editorObsolete": "editorExtensionStores"}
 HOME_TABLES = {"toolHomeFolders", "toolHomeLocations"}
 COVERAGE = {
     "row": "Row",
@@ -94,6 +94,13 @@ def validate(sections, tools):
                 if not tools[tool_id].get("bundleIdentifiers") or not tools[tool_id].get("verified", {}).get("tool"):
                     raise RuleError(f"{tool_id}.json: a bundle identifier row needs bundleIdentifiers and verified.tool")
     listed = {tool_id for section in sections.values() for tool_id in section["tools"]}
+    placements = {}
+    for section_id, section in sections.items():
+        for tool_id in section["tools"]:
+            key = (tool_id, section.get("format", "catalog"))
+            if key in placements:
+                raise RuleError(f"sections.json: {tool_id!r} is in {placements[key]!r} and {section_id!r}, which have the same format")
+            placements[key] = section_id
     for tool in tools.values():
         validate_tool(tool, sections, listed)
     validate_overlaps([(tool, storage) for tool in tools.values() for storage in tool["storage"]])
@@ -185,6 +192,19 @@ def validate_storage(name, storage, catalog=True):
                 raise RuleError(f"{where}: a curation needs the name of its locked remainder")
             if treatment == "review":
                 raise RuleError(f"{where}: a curation cache is offered, not reviewed")
+        if table == "localModelStores":
+            for path in paths:
+                if model_claim(path) is None and storage.get("claimed", True):
+                    raise RuleError(f"{where}: a model store outside a home dot folder or ~/.cache needs \"claimed\": false")
+            if storage.get("store") and not re.match(r"^[a-z][A-Za-z0-9]*$", storage["store"]):
+                raise RuleError(f"{where}: store is a Swift constant name")
+        if table == "editorExtensionStores":
+            if storage.get("check") != "editorObsolete" or treatment != "offer" or not storage.get("name"):
+                raise RuleError(f"{where}: an editor store is offered with check editorObsolete and the editor name")
+            for path in paths:
+                parts = components(path)
+                if len(parts) != 3 or parts[2] != "extensions" or not parts[1].startswith("."):
+                    raise RuleError(f"{where}: an editor store is ~/.<editor>/extensions")
         if table == "packageManagerCaches" and not storage.get("name"):
             raise RuleError(f"{where}: a package cache needs the row name")
         if "check" in storage and CHECKS.get(storage["check"]) != table:
@@ -192,9 +212,9 @@ def validate_storage(name, storage, catalog=True):
         if storage["type"] == "userData" and treatment != "protect":
             raise RuleError(f"{where}: user data is never offered")
         if treatment != "protect":
-            # A package cache or a curation cache is offered by its path. The scanner does not read a marker in it.
+            # A package cache or a curation cache is offered by its path, and a model reader checks its own layout.
             if not storage.get("identifiedBy") and not storage.get("check") \
-                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations"):
+                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations", "localModelStores"):
                 raise RuleError(f"{where}: an offered path needs identifiedBy or check")
             if catalog and "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
                 raise RuleError(f"{where}: an offered path needs a verified record, or a status that starts with Not verified")
@@ -282,6 +302,18 @@ def ai_root_of(part_path, roots):
     """The nearest AI root above a part path."""
     above = [root_path for root_path in roots if covers(root_path, part_path) and root_path != part_path]
     return max(above, key=lambda root_path: len(components(root_path)))
+
+
+def model_claim(path):
+    """How `LocalModelStores` claims a path: a whole home dot folder, a whole `~/.cache` child, or part of a folder."""
+    parts = components(path)[1:]   # Without the `~`.
+    if not parts or not parts[0].startswith("."):
+        return None
+    if len(parts) == 1:
+        return ("home", parts[0])
+    if len(parts) == 2 and parts[0] == ".cache":
+        return ("cache", parts[1])
+    return ("part", "/".join(parts[:-1]), parts[-1])
 
 
 def storage_paths(storage):
@@ -744,6 +776,47 @@ public enum ToolIcons {{
 """
 
 
+def render_model_stores(sections, tools):
+    home, cache, part, stores = [], [], {}, {}
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "localModelStores":
+            continue
+        for path in storage_paths(storage):
+            if storage.get("claimed", True):
+                claim = model_claim(path)
+                if claim[0] == "home":
+                    home.append(claim[1])
+                elif claim[0] == "cache":
+                    cache.append(claim[1])
+                else:
+                    part.setdefault(claim[1], []).append(claim[2])
+            if storage.get("store"):
+                stores.setdefault(storage["store"], []).append(swift_base(path)[1])
+    part_lines = ", ".join(f"{swift_string(folder)}: [{', '.join(swift_string(c) for c in children)}]" for folder, children in part.items())
+    store_lines = "\n".join(f"    static let {name}Stores: [String] = {swift_list(paths)}" for name, paths in stores.items())
+    return f"""    /// Home dot folders that the model readers claim whole.
+    public static let homeDotFolders: Set<String> = [{', '.join(swift_string(n) for n in home)}]
+    /// Children of `~/.cache` that the model readers claim whole.
+    public static let dotCacheFolders: Set<String> = [{', '.join(swift_string(n) for n in cache)}]
+    /// Folders that the model readers claim in part, with the claimed child names.
+    public static let partlyClaimedFolders: [String: Set<String>] = [{part_lines or ':'}]
+{store_lines}"""
+
+
+def render_editors(sections, tools):
+    lines = []
+    for _, tool, storage in rows(sections, tools):
+        if storage.get("table") != "editorExtensionStores":
+            continue
+        for path in storage_paths(storage):
+            dot_folder = components(path)[1]
+            lines.append(f"        Editor(name: {swift_string(storage['name'])}, dotFolder: {swift_string(dot_folder)}, "
+                         f"bundleIdentifier: {swift_string(tool['bundleIdentifiers'][0])}),")
+    if lines:
+        lines[-1] = lines[-1].rstrip(",")
+    return "\n".join(lines)
+
+
 def render_swift(sections, tools):
     return f"""// Generated by scripts/rules.py from rules/*.json. Do not edit this file.
 // Change a rule in rules/<tool>.json, then run `python3 scripts/rules.py generate`.
@@ -796,6 +869,18 @@ extension ApplicationsScanner {{
     /// `"table": "curations"`, or from a curated AI tool root. The caches below it are the regenerable paths.
     static let curations: [String: AppDataCuration] = [
 {render_curations(sections, tools)}
+    ]
+}}
+
+extension LocalModelStores {{
+    // Each path comes from a rule with `"table": "localModelStores"`. A `store` names the constant that its reader uses.
+{render_model_stores(sections, tools)}
+}}
+
+extension EditorExtensionStores {{
+    /// VS Code–family editors. Each editor comes from a rule with `"table": "editorExtensionStores"`.
+    public static let editors: [Editor] = [
+{render_editors(sections, tools)}
     ]
 }}
 {render_enums(sections, tools)}"""

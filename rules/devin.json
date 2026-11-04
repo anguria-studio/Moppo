@@ -119,6 +119,15 @@
         "summary": "Devin CLI settings."
       },
       "explanation": "Settings remain protected. Use Devin CLI to manage them."
+    },
+    {
+      "path": "~/.windsurf/extensions",
+      "type": "installed",
+      "table": "editorExtensionStores",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Windsurf",
+      "check": "editorObsolete"
     }
   ]
 }

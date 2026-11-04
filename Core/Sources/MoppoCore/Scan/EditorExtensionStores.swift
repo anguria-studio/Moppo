@@ -45,17 +45,7 @@ public enum EditorExtensionStores {
         public let bundleIdentifier: String
     }
 
-    public static let editors: [Editor] = [
-        Editor(name: "Visual Studio Code", dotFolder: ".vscode",
-               bundleIdentifier: "com.microsoft.VSCode"),
-        Editor(name: "VS Code Insiders", dotFolder: ".vscode-insiders",
-               bundleIdentifier: "com.microsoft.VSCodeInsiders"),
-        Editor(name: "VSCodium", dotFolder: ".vscode-oss", bundleIdentifier: "com.vscodium"),
-        Editor(name: "Cursor", dotFolder: ".cursor",
-               bundleIdentifier: "com.todesktop.230313mzl4w4u92"),
-        Editor(name: "Windsurf", dotFolder: ".windsurf",
-               bundleIdentifier: "com.exafunction.windsurf"),
-    ]
+    // `editors` is in `Generated/ToolRules.swift`. Each editor comes from a tool file in `rules/`.
 
     /// Home dot-folders this reader speaks for. Hidden & System Data lists large
     /// dot-folders whole, and `~/.vscode` whole is an offer to delete every

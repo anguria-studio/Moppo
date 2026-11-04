@@ -184,12 +184,20 @@
       "homebrew"
     ]
   },
+  "editors": {
+    "title": "Editors",
+    "document": "docs/tool-catalog.md",
+    "tools": [
+      "vscode",
+      "vscode-insiders",
+      "vscodium"
+    ]
+  },
   "application-caches": {
     "title": "Desktop application caches",
     "document": "docs/tool-catalog.md",
     "tools": [
       "chrome",
-      "vscode",
       "figma",
       "ferdium",
       "tor-browser"

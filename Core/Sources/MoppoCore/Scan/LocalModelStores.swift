@@ -34,19 +34,7 @@ public enum LocalModelStores {
         return huggingFace(home: home, context: context) + plain.filter { !context.isExcluded($0.primary) }
     }
 
-    /// Home-relative folders these readers speak for. Whoever lists dot-folders or
-    /// `~/.cache` whole must leave them alone, or the same bytes are offered twice —
-    /// and `~/.ollama` whole would offer the user's `id_ed25519` with the models.
-    public static let homeDotFolders: Set<String> = [".ollama", ".lmstudio"]
-    public static let dotCacheFolders: Set<String> = ["huggingface", "lm-studio", "whisper"]
-
-    /// Home-relative folders that these readers claim only in part, with the claimed child names.
-    /// A category that lists such a folder lists its other children instead.
-    /// `~/.cache/torch` also holds compiler caches, and `~/.keras` holds `keras.json` settings.
-    public static let partlyClaimedFolders: [String: Set<String>] = [
-        ".cache/torch": ["hub"],
-        ".keras": ["models", "datasets"]
-    ]
+    // The claim sets and the store paths are in `Generated/ToolRules.swift`. Change a rule in `rules/<tool>.json`.
 
     /// Every path that AI Tools claims for local models.
     public static func claimedPaths(home: URL) -> [String] {
@@ -87,7 +75,8 @@ public enum LocalModelStores {
     /// The hub carries `CACHEDIR.TAG`: the tool itself declares all of this a cache.
     /// The worst a wrong reading can cost is a download.
     static func huggingFace(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
-        let hub = home.appendingPathComponent(".cache/huggingface/hub", isDirectory: true)
+        guard let store = huggingFaceStores.first else { return [] }
+        let hub = home.appendingPathComponent(store, isDirectory: true).appendingPathComponent("hub", isDirectory: true)
         let sharedStore = hub.appendingPathComponent("blobs", isDirectory: true)
             .standardizedFileURL.path
         let fm = FileManager.default
@@ -150,7 +139,7 @@ public enum LocalModelStores {
     /// and `~/.cache/lm-studio/models` on installs from before it moved.
     static func lmStudio(home: URL) -> [LocalModel] {
         lmStudioStores.flatMap { relative -> [LocalModel] in
-            let store = home.appendingPathComponent(relative, isDirectory: true)
+            let store = home.appendingPathComponent(relative, isDirectory: true).appendingPathComponent("models", isDirectory: true)
             return directoryNames(store).flatMap { publisher -> [LocalModel] in
                 let publisherURL = store.appendingPathComponent(publisher, isDirectory: true)
                 return directoryNames(publisherURL).compactMap { repository in
@@ -163,16 +152,14 @@ public enum LocalModelStores {
         .sorted { $0.name < $1.name }
     }
 
-    static let lmStudioStores = [".lmstudio/models", ".cache/lm-studio/models"]
-    static let gpt4AllStore = "Library/Application Support/nomic.ai/GPT4All"
-
     // MARK: - Stores of plain files
 
     /// `~/.cache/torch/hub` holds weight files in `checkpoints/` and one folder for each
     /// downloaded repository, named `<owner>_<repository>_<ref>`. GitHub owner names
     /// contain no underscore. A ref with an underscore keeps its first part in the name.
     static func pyTorchHub(home: URL) -> [LocalModel] {
-        let hub = home.appendingPathComponent(".cache/torch/hub", isDirectory: true)
+        guard let store = pyTorchHubStores.first else { return [] }
+        let hub = home.appendingPathComponent(store, isDirectory: true)
         let checkpoints = hub.appendingPathComponent("checkpoints", isDirectory: true)
         let weights = directoryNames(checkpoints).map { checkpoints.appendingPathComponent($0) }
             .filter(isRegularFile)
@@ -189,7 +176,8 @@ public enum LocalModelStores {
 
     /// `~/.cache/whisper/<name>.pt`. Each file is one model.
     static func whisper(home: URL) -> [LocalModel] {
-        let store = home.appendingPathComponent(".cache/whisper", isDirectory: true)
+        guard let relative = whisperStores.first else { return [] }
+        let store = home.appendingPathComponent(relative, isDirectory: true)
         return directoryNames(store).filter { $0.hasSuffix(".pt") }
             .map { store.appendingPathComponent($0) }
             .filter(isRegularFile)
@@ -200,9 +188,9 @@ public enum LocalModelStores {
     /// `~/.keras/models/<item>` and `~/.keras/datasets/<item>`. An item is a file or an
     /// extracted folder. `~/.keras/keras.json` holds settings and is never read.
     static func keras(home: URL) -> [LocalModel] {
-        let root = home.appendingPathComponent(".keras", isDirectory: true)
-        return [("models", ""), ("datasets", "dataset ")].flatMap { folder, prefix -> [LocalModel] in
-            let store = root.appendingPathComponent(folder, isDirectory: true)
+        return kerasStores.flatMap { relative -> [LocalModel] in
+            let store = home.appendingPathComponent(relative, isDirectory: true)
+            let prefix = store.lastPathComponent == "datasets" ? "dataset " : ""
             return directoryNames(store).map { store.appendingPathComponent($0) }
                 .filter { isRegularFile($0) || isDirectory($0) }
                 .map { plainModel($0, name: prefix + $0.lastPathComponent, runtime: "Keras") }
@@ -215,7 +203,8 @@ public enum LocalModelStores {
     /// GPT4All can use another download folder. Its `modelPath` setting changed its name
     /// in GPT4All 2.4.11, so Moppo reads only the default folder. Issue #66 records this gap.
     static func gpt4All(home: URL) -> [LocalModel] {
-        let store = home.appendingPathComponent(gpt4AllStore, isDirectory: true)
+        guard let relative = gpt4AllStores.first else { return [] }
+        let store = home.appendingPathComponent(relative, isDirectory: true)
         return directoryNames(store).filter { $0.lowercased().hasSuffix(".gguf") }
             .map { store.appendingPathComponent($0) }
             .filter(isRegularFile)
@@ -253,7 +242,7 @@ public enum LocalModelStores {
     static func lmStudioLinks(home: URL, entryLimit: Int = linkEntryLimit) -> ExternalLinks {
         var links = ExternalLinks()
         let fm = FileManager.default
-        var pending = [".lmstudio", ".cache/lm-studio"].map {
+        var pending = lmStudioStores.map {
             home.appendingPathComponent($0, isDirectory: true).resolvingSymlinksInPath()
         }
         var visited: Set<String> = []

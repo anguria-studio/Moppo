@@ -15,7 +15,11 @@
     {
       "path": "~/.cache/huggingface",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "huggingFace",
+      "note": "The hub inside carries `CACHEDIR.TAG`. The reader handles the classic layout and the shared blob layout."
     }
   ]
 }

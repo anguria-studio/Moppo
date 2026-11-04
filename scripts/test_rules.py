@@ -49,6 +49,10 @@ class ValidationTests(unittest.TestCase):
     def test_accepts_a_complete_rule(self):
         RULES.validate(SECTIONS, {"mysql": tool()})
 
+    def test_a_tool_is_in_one_section_of_a_format(self):
+        sections = {"databases": SECTIONS["databases"], "other": {**SECTIONS["databases"], "title": "Other"}}
+        self.rejects("same format", {"mysql": tool()}, sections)
+
     def test_section_must_list_each_tool(self):
         self.rejects("does not list this tool", {"mysql": tool(), "redis": tool(id="redis", name="Redis")})
 
@@ -218,6 +222,43 @@ class AITableTests(unittest.TestCase):
         tools["claude-code"]["aiTool"]["rawValue"] = "Other"
         with self.assertRaises(RULES.RuleError):
             RULES.render_swift(self.SECTIONS, tools)
+
+
+class StoreTests(unittest.TestCase):
+    def test_model_stores_and_editors(self):
+        sections = {"ai-tools": {"title": "Coverage", "document": "docs/ai-storage.md", "format": "aiCoverage", "tools": ["whisper", "vscode"]}}
+        tools = {
+            "whisper": {"id": "whisper", "name": "Whisper", "section": "ai-tools", "removalRules": "One row for each model file.",
+                        "aiTool": {"case": "whisper", "rawValue": "Whisper"}, "owner": {"case": "whisper", "name": "Whisper"},
+                        "storage": [
+                            {"path": "~/.cache/whisper", "type": "download", "table": "localModelStores", "owner": "aiTools",
+                             "treatment": "review", "store": "whisper"},
+                            {"path": "~/.ollama", "type": "download", "table": "localModelStores", "owner": "aiTools", "treatment": "protect"},
+                            {"path": "~/.keras/models", "type": "download", "table": "localModelStores", "owner": "aiTools",
+                             "treatment": "review", "store": "keras"},
+                            {"path": "~/Library/Application Support/nomic.ai/GPT4All", "type": "download", "table": "localModelStores",
+                             "owner": "aiTools", "treatment": "review", "store": "gpt4All", "claimed": False},
+                        ]},
+            "vscode": {"id": "vscode", "name": "Visual Studio Code", "section": "ai-tools", "removalRules": "Old versions.",
+                       "bundleIdentifiers": ["com.microsoft.VSCode"],
+                       "storage": [{"path": "~/.vscode/extensions", "type": "installed", "table": "editorExtensionStores",
+                                    "owner": "packageManagers", "treatment": "offer", "check": "editorObsolete", "name": "Visual Studio Code"}]},
+        }
+        RULES.validate(sections, tools)
+        swift = RULES.render_swift(sections, tools)
+        self.assertIn('public static let homeDotFolders: Set<String> = [".ollama"]', swift)
+        self.assertIn('public static let dotCacheFolders: Set<String> = ["whisper"]', swift)
+        self.assertIn('public static let partlyClaimedFolders: [String: Set<String>] = [".keras": ["models"]]', swift)
+        self.assertIn('static let whisperStores: [String] = [".cache/whisper"]', swift)
+        self.assertIn('static let gpt4AllStores: [String] = ["Library/Application Support/nomic.ai/GPT4All"]', swift)
+        self.assertIn('Editor(name: "Visual Studio Code", dotFolder: ".vscode", bundleIdentifier: "com.microsoft.VSCode")', swift)
+        tools["whisper"]["storage"][3].pop("claimed")
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, tools)
+        tools["whisper"]["storage"][3]["claimed"] = False
+        tools["vscode"]["storage"][0]["path"] = "~/.vscode"
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, tools)
 
 
 class RenderingTests(unittest.TestCase):

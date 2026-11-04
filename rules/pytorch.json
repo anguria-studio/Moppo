@@ -10,17 +10,16 @@
     "case": "pyTorch",
     "name": "PyTorch"
   },
-  "removalRules": "One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs.",
+  "removalRules": "One row for each weight file in `checkpoints` and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs.",
   "storage": [
     {
-      "path": "~/.cache/torch/hub/checkpoints",
+      "path": "~/.cache/torch/hub",
       "type": "download",
-      "coverage": "protected"
-    },
-    {
-      "path": "~/.cache/torch/hub/<owner>_<repository>_<ref>",
-      "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "pyTorchHub",
+      "note": "`~/.cache/torch/hub` holds weight files in `checkpoints` and one folder for each downloaded repository. Other folders in `~/.cache/torch` are compiler caches."
     }
   ]
 }
