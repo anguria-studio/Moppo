@@ -64,4 +64,4 @@ Headings use these bundle identifiers to show the application icon:
 <!-- rules:end ai-identifiers -->
 
 If an application is absent, the heading uses the icon that the inventory checks took from its signed application.
-GitHub Copilot CLI and OpenClaw have no desktop application, so their headings use a generic icon.
+GitHub Copilot CLI has no icon, so its heading shows a neutral symbol.
