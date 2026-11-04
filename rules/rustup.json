@@ -1,0 +1,54 @@
+{
+  "id": "rustup",
+  "name": "rustup",
+  "section": "rust",
+  "storage": [
+    {
+      "path": "~/.rustup",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "rustup keeps the Rust toolchains here. Use rustup toolchain uninstall to remove a toolchain.",
+      "recognition": "`settings.toml` and `toolchains`",
+      "removal": "Never offer. Use `rustup toolchain uninstall` for a toolchain.",
+      "restore": "`rustup toolchain install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder.",
+      "layout": [
+        "settings.toml",
+        "toolchains"
+      ]
+    },
+    {
+      "path": "~/.rustup/toolchains/<name>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`rustup toolchain list`",
+      "removal": "`rustup toolchain uninstall <name>`",
+      "restore": "`rustup toolchain install <name>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "rustup 1.29.2"
+      }
+    },
+    {
+      "paths": [
+        "~/.rustup/downloads",
+        "~/.rustup/tmp"
+      ],
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "offer",
+      "recognition": "Folder location",
+      "removal": "Trash",
+      "restore": "Not necessary",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "rustup 1.29.2"
+      }
+    }
+  ]
+}

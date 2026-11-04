@@ -1,0 +1,36 @@
+{
+  "id": "ruby-install",
+  "name": "ruby-install",
+  "section": "ruby",
+  "storage": [
+    {
+      "paths": [
+        "~/src/ruby-<version>",
+        "~/src/ruby-<version>.tar.xz"
+      ],
+      "type": "cache",
+      "coverage": "no",
+      "recognition": "ruby-install layout and a matching folder in `~/.rubies`",
+      "removal": "Trash",
+      "restore": "Not necessary",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "ruby-install 0.10.2"
+      }
+    },
+    {
+      "path": "~/.cache/ruby-install",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Folder location",
+      "removal": "Trash",
+      "restore": "Next `ruby-install` run",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "ruby-install 0.10.2"
+      }
+    }
+  ]
+}

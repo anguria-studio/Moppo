@@ -1,0 +1,43 @@
+{
+  "id": "conda",
+  "name": "conda",
+  "section": "python",
+  "storage": [
+    {
+      "paths": [
+        "~/miniconda3/pkgs",
+        "~/anaconda3/pkgs",
+        "~/miniforge3/pkgs"
+      ],
+      "type": "download",
+      "coverage": "no",
+      "recognition": "`conda info`",
+      "removal": "`conda clean --all`",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "scope": "for `~/miniforge3`",
+        "macos": "27.2",
+        "tool": "conda 26.9.4"
+      }
+    },
+    {
+      "paths": [
+        "~/miniconda3/envs/<name>",
+        "~/anaconda3/envs/<name>",
+        "~/miniforge3/envs/<name>"
+      ],
+      "type": "installed",
+      "coverage": "no",
+      "recognition": "`conda env list`",
+      "removal": "`conda env remove --name <name>` after review",
+      "restore": "`conda env create` from an environment file",
+      "verified": {
+        "date": "2026-11-02",
+        "scope": "for `~/miniforge3`",
+        "macos": "27.2",
+        "tool": "conda 26.9.4"
+      }
+    }
+  ]
+}

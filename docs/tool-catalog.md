@@ -61,17 +61,20 @@ Do not do these steps on a Mac with real work.
 
 ## Go
 
+<!-- rules:begin go -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/go/pkg/mod` | Download | `cache/download` folder inside. Folders and files are read-only. | `go clean -modcache` | `go mod download`. A network connection is necessary. | Row | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
 | `~/Library/Caches/go-build` | Cache | `README` and hashed folders | Trash | Next build, without a network connection | Row | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
+| `~/go/bin` | Installed | Executable files | Never remove automatically | `go install` | No | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
+| `<project>/vendor` | Download | `vendor/modules.txt`, `go.mod`, and `go.sum` | Trash, only if Git does not track it | `go mod vendor`. It works without a network connection when the module cache contains the modules. | Row | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
 | `~/Library/Caches/gopls` | Cache | Folder name and owner | Trash | Next `gopls` run | Caches | Verified 2026-11-02, gopls 0.24.0, macOS 27.2 |
 | `~/Library/Caches/golangci-lint` | Cache | Folder name and owner | `golangci-lint cache clean` | Next lint run | Caches | Verified 2026-11-02, golangci-lint 2.15.0, macOS 27.2 |
-| `~/go/bin` | Installed | Executable files | Never remove automatically | `go install` | No | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
+| `~/.goenv` | Installed | `versions` and `shims` | Never offer. Use `goenv uninstall` for a version. | `goenv install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.goenv/versions/<version>` | Installed | `goenv list` | `goenv uninstall <version> --yes` | `goenv install <version> --yes` | Protected | Verified 2026-11-02, goenv 3.2.2, macOS 27.2 |
 | `~/.goenv/shared/go-mod` | Download | `cache/download` folder inside | Trash | `goenv install <version> --yes`. A network connection is necessary. | Row | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
 | `~/.goenv/releases-cache.json` | Cache | goenv layout | Trash | Next `goenv install` | Row | Verified 2026-11-03, goenv 3.2.2, macOS 27.2 |
-| `<project>/vendor` | Download | `vendor/modules.txt`, `go.mod`, and `go.sum` | Trash, only if Git does not track it | `go mod vendor`. It works without a network connection when the module cache contains the modules. | Row | Verified 2026-11-02, Go 1.27.3, macOS 27.2 |
+<!-- rules:end go -->
 
 goenv 3 installs default tools, such as `gopls` and `staticcheck`, into each version.
 It keeps their modules in `~/.goenv/shared/go-mod`, 1.1 GiB in the test.
@@ -83,15 +86,18 @@ Moppo shows `~/.goenv` as a protected Hidden System Data row. Moppo offers only 
 
 ## Rust
 
+<!-- rules:begin rust -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.cargo/registry` | Download | `CACHEDIR.TAG`, and `index`, `cache`, and `src` folders | Trash | Next build. A network connection is necessary. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
 | `~/.cargo/git` | Download | `CACHEDIR.TAG`, and `db` and `checkouts` folders | Trash | Next build. A network connection is necessary. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
 | `~/.cargo/bin` | Installed | Executable files. It also contains the `rustup` proxies. | Never remove automatically | `cargo install` | No | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
+| `<project>/target` | Build | `Cargo.lock` beside the folder. `CACHEDIR.TAG` inside. | Trash | `cargo build`. It works without a network connection when the registry contains the crates. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
+| `~/.rustup` | Installed | `settings.toml` and `toolchains` | Never offer. Use `rustup toolchain uninstall` for a toolchain. | `rustup toolchain install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.rustup/toolchains/<name>` | Installed | `rustup toolchain list` | `rustup toolchain uninstall <name>` | `rustup toolchain install <name>` | Protected | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
 | `~/.rustup/downloads`, `~/.rustup/tmp` | Cache | Folder location | Trash | Not necessary | Row | Verified 2026-11-02, rustup 1.29.2, macOS 27.2 |
 | `~/Library/Caches/Mozilla.sccache` | Cache | Folder name | Trash | Next build | Caches | Verified 2026-11-02, sccache 0.19.0, macOS 27.2 |
-| `<project>/target` | Build | `Cargo.lock` beside the folder. `CACHEDIR.TAG` inside. | Trash | `cargo build`. It works without a network connection when the registry contains the crates. | Row | Verified 2026-11-02, Cargo 1.99.1, macOS 27.2 |
+<!-- rules:end rust -->
 
 Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file names.
 
@@ -101,8 +107,10 @@ Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file 
 
 ## PHP
 
+<!-- rules:begin php -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.composer`, `~/.config/composer` | User data | Folder name | Never offer. `auth.json` can contain registry tokens. | Not possible | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/Library/Caches/composer` | Download | Folder name | Trash | `composer install`. A network connection is necessary. | Row | Verified 2026-11-02, Composer 2.11.1, macOS 27.2 |
 | `~/.composer/cache`, `~/.cache/composer` | Download | Folder location | Trash | `composer install` | No | Not created by Composer 2.11.1 on macOS 27.2 |
 | `~/.composer/vendor`, `~/.config/composer/vendor` | Installed | `composer global show` | `composer global remove <package>` | `composer global require <package>` | Protected | Verified 2026-11-02 for `~/.composer/vendor`, Composer 2.11.1, macOS 27.2 |
@@ -113,6 +121,7 @@ Keep the default toolchain and each toolchain that a `rust-toolchain.toml` file 
 | `<project>/var/cache` | Cache | `bin/console` and `symfony.lock` | `php bin/console cache:clear` | The command builds the cache again. | No | Verified 2026-11-02, PHP 8.5.12, macOS 27.2 |
 | `~/Library/Application Support/Herd` | User data | Herd installed | Never offer | Not possible | No | Not verified. The Herd app needs the desktop session. |
 | `~/.config/valet` | User data | Valet installed | Never offer | Not possible | No | Not verified. `valet install` changes the DNS resolver and the `sudoers` file. |
+<!-- rules:end php -->
 
 Herd and Valet can contain site settings, certificates, and database services.
 Composer 2.11.1 keeps its home in `~/.composer` and its cache in `~/Library/Caches/composer` on macOS.
@@ -124,17 +133,21 @@ Moppo 0.6.0 includes the verified `vendor` rows from #256. The scanner hides pro
 
 ## Perl
 
+<!-- rules:begin perl -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.cpanm` | Cache | `latest-build` link | Never offer whole. Moppo offers `work` as a row. | Next install | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.cpanm/work` | Cache | `latest-build` link in `~/.cpanm` | Trash | Next install | Row | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
 | `~/.cpanm/build.log` | Cache | Folder location | Trash | Next install | Protected | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
 | `~/perl5/lib/perl5` | Installed | `local::lib` layout | Never remove automatically | `cpanm --local-lib=~/perl5 <module>`. A network connection is necessary. | No | Verified 2026-11-03, cpanm from Homebrew, macOS 27.2 |
 | `~/perl5/perlbrew/perls/<version>` | Installed | `perlbrew list` | `perlbrew uninstall <version>` | `perlbrew install <version>` | No | Verified 2026-11-02, perl-5.44.0 through perlbrew, macOS 27.2 |
 | `~/perl5/perlbrew/build`, `~/perl5/perlbrew/dists` | Cache | perlbrew layout | `perlbrew clean` | Next install | No | Verified 2026-11-02, perlbrew, macOS 27.2 |
+| `~/.plenv` | Installed | `versions` | Never offer. Use `plenv uninstall` for a version. | `plenv install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.plenv/versions/<version>` | Installed | `plenv versions` | `plenv uninstall -f <version>` | `plenv install <version>` | Protected | Verified 2026-11-03, plenv 2.3.1 with perl-build 1.34 and Perl 5.44.0, macOS 27.2 |
 | `~/.plenv/build` | Cache | plenv layout | Trash | Not necessary | Row | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
 | `~/.plenv/cache` | Download | Perl source archives in the plenv layout | Trash | Next `plenv install`. A network connection is necessary. | Row | Verified 2026-11-03, plenv 2.3.1, macOS 27.2 |
 | `<project>/local` | Download | `cpanfile.snapshot` beside the folder | Trash, only if Git does not track it | `carton install` | No | Verified 2026-11-02, Carton, macOS 27.2 |
+<!-- rules:end perl -->
 
 After one Perl build, `~/perl5/perlbrew/build` used 229 MiB. `perlbrew clean` removed it.
 After one Perl build, `~/.plenv/build` used 229 MiB and `~/.plenv/cache` used 20 MiB. Perl ran after their removal.
@@ -149,15 +162,18 @@ Moppo has rows for the pip, uv, Poetry, and Pipenv caches.
 Project `.venv` folders, `__pycache__`, and tagged analysis caches also have rows.
 In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/pypoetry/cache`, and `~/Library/Caches/pypoetry/artifacts`.
 
+<!-- rules:begin python -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.pyenv` | Installed | Folder name | Never offer. Use `pyenv uninstall` for a version. | `pyenv install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.pyenv/versions/<version>` | Installed | `pyenv versions` | `pyenv uninstall -f <version>` | `pyenv install <version>` | Protected | Verified 2026-11-02, pyenv 2.8.14, macOS 27.2 |
 | `~/miniconda3/pkgs`, `~/anaconda3/pkgs`, `~/miniforge3/pkgs` | Download | `conda info` | `conda clean --all` | Next install | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
-| `~/miniconda3/envs/<name>` and equivalent folders | Installed | `conda env list` | `conda env remove --name <name>` after review | `conda env create` from an environment file | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
+| `~/miniconda3/envs/<name>`, `~/anaconda3/envs/<name>`, `~/miniforge3/envs/<name>` | Installed | `conda env list` | `conda env remove --name <name>` after review | `conda env create` from an environment file | No | Verified 2026-11-02 for `~/miniforge3`, conda 26.9.4, macOS 27.2 |
 | `~/Library/Caches/pypoetry/virtualenvs` | Installed | Poetry layout | Trash after review | `poetry install` with `poetry.lock` | No | Verified 2026-11-02, Poetry 2.5.1, macOS 27.2 |
 | `~/Library/Application Support/pipx/venvs` | Installed | `pipx list` | `pipx uninstall <package>` | `pipx install <package>` | No | Verified 2026-11-02, pipx 1.18.11, macOS 27.2 |
-| `~/.cache/pre-commit` | Cache | Folder location | `pre-commit clean` | Next hook run. A network connection is necessary. | Caches | Verified 2026-11-02, pre-commit 4.7.0, macOS 27.2 |
 | `~/Library/Logs/pipx` | Logs | Folder location | Trash after review | Not possible | Caches | Verified 2026-11-03, pipx 1.18.11, macOS 27.2 |
+| `~/.cache/pre-commit` | Cache | Folder location | `pre-commit clean` | Next hook run. A network connection is necessary. | Caches | Verified 2026-11-02, pre-commit 4.7.0, macOS 27.2 |
+<!-- rules:end python -->
 
 pipx 1.18 uses `~/Library/Application Support/pipx` on macOS. The path `~/.local/pipx` is from older pipx versions.
 pipx creates `~/Library/Logs/pipx` again at the next command. The old logs do not come back.
@@ -170,18 +186,23 @@ pyenv can build Python 3.12 only with OpenSSL 3. When Homebrew has OpenSSL 4, se
 
 Moppo has a row for the Bundler cache in `~/.bundle/cache`.
 
+<!-- rules:begin ruby -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.local/share/gem` | Installed | `gem list` | `gem uninstall --user-install <gem>` | `gem install --user-install <gem>` | Protected | Verified 2026-11-02, RubyGems 3.5.22, macOS 27.2 |
 | `~/.gem` | Installed | `gem list` | `gem uninstall <gem>` | `gem install <gem>` | No | Not created by RubyGems 3.5.22 |
+| `~/.rbenv` | Installed | Folder name | Never offer. Use `rbenv uninstall` for a version. | `rbenv install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.rbenv/versions/<version>` | Installed | `rbenv versions` | `rbenv uninstall -f <version>` | `rbenv install <version>` | Protected | Verified 2026-11-02, Ruby 3.3.13 through rbenv, macOS 27.2 |
+| `~/.rvm` | Installed | Folder name | Never offer. Use `rvm remove` or `rvm cleanup all`. | `rvm install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.rvm/rubies/<version>` | Installed | `rvm list` | `rvm remove <version>` | `rvm install <version>` | Protected | Verified 2026-11-03, RVM 1.29.12-next with Ruby 3.3.13, macOS 27.2 |
 | `~/.rvm/archives`, `~/.rvm/src` | Cache | RVM layout | `rvm cleanup all` | Next install. A network connection is necessary. | Protected | Verified 2026-11-03, RVM 1.29.12-next, macOS 27.2 |
+| `~/.rubies` | Installed | Folder name | Never offer. Projects can need these versions. | `ruby-install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.rubies/<version>` | Installed | chruby lists the folder | Trash after review | `ruby-install ruby <version>` | Protected | Verified 2026-11-03, chruby 0.3.9 and ruby-install 0.10.2, macOS 27.2 |
 | `~/src/ruby-<version>`, `~/src/ruby-<version>.tar.xz` | Cache | ruby-install layout and a matching folder in `~/.rubies` | Trash | Not necessary | No | Verified 2026-11-03, ruby-install 0.10.2, macOS 27.2 |
 | `~/.cache/ruby-install` | Cache | Folder location | Trash | Next `ruby-install` run | Caches | Verified 2026-11-03, ruby-install 0.10.2, macOS 27.2 |
 | `~/.gnupg` | User data | GnuPG layout | Never offer | Not possible | Protected | Found 2026-11-03, GnuPG 2.5.24, macOS 27.2 |
 | `<project>/vendor/bundle` | Download | `Gemfile.lock` beside `vendor`, and `BUNDLE_PATH` in `.bundle/config` | Trash, only if Git does not track it | `bundle install`. A network connection is necessary. | Row | Verified 2026-11-02, Bundler 2.5.22, macOS 27.2 |
+<!-- rules:end ruby -->
 
 RubyGems 3.5 writes `--user-install` gems to `~/.local/share/gem`, not to `~/.gem`.
 Moppo offers the `vendor` folder only when it contains only `bundle`. A `vendor/cache` folder from `bundle cache` keeps it protected.
@@ -197,19 +218,26 @@ Moppo does not show `~/src`. The general hidden folder row includes only hidden 
 Moppo has rows for the Gradle caches, Gradle distributions, Ivy, and Coursier.
 In the 2026-11-02 test, Moppo offered `~/.gradle/caches` and `~/Library/Caches/Coursier`.
 
+<!-- rules:begin java -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.m2` | User data | Folder name | Never offer whole. Moppo offers `repository` for review. | Not possible for `settings.xml` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.m2/repository` | Download | Maven layout | Trash | Next Maven build. A network connection is necessary. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
+| `<project>/target` | Build | `pom.xml` beside the folder | Trash | `mvn package`. It works without a network connection when the repository contains the dependencies. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
 | `~/.gradle/daemon` | Logs | Gradle layout | Trash when no Gradle daemon runs | Next build | No | Verified 2026-11-02, Gradle 9.8.2, macOS 27.2 |
+| `~/.sbt` | User data | `1.0` folder | Never offer whole. Moppo offers `boot` as a row. | Not possible for settings and plugins | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.sbt/boot` | Download | sbt layout | Trash | Not necessary for sbt 2 | Row | Verified 2026-11-02, sbt 2.0.12, macOS 27.2 |
 | `~/Library/Caches/Coursier` | Download | Folder name | Trash | Next sbt run. A network connection is necessary. | Row | Verified 2026-11-03, sbt 2.0.12, macOS 27.2 |
+| `~/.sdkman` | Installed | Folder name | Never offer. Use `sdk uninstall` or `sdk flush`. | `sdk install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.sdkman/candidates/<tool>/<version>` | Installed | `sdk list` | `sdk uninstall <tool> <version>` | `sdk install <tool> <version>` | Protected | Verified 2026-11-02, jbang 0.143.0 through SDKMAN, macOS 27.2 |
 | `~/.sdkman/tmp` | Cache | SDKMAN layout | `sdk flush` | Next install | Protected | Verified 2026-11-02, macOS 27.2 |
 | `~/.sdkman/archives` | Cache | SDKMAN layout | `sdk flush` | Next install | Protected | Not created in the 2026-11-02 test |
 | `~/.konan` | Download | `dependencies` folder with the Kotlin/Native LLVM and `libffi` | Trash | Next `kotlinc-native` build. A network connection is necessary. | Hidden | Verified 2026-11-03, Kotlin/Native 2.4.21, macOS 27.2 |
-| `<project>/target` | Build | `pom.xml` beside the folder | Trash | `mvn package`. It works without a network connection when the repository contains the dependencies. | Row | Verified 2026-11-02, Maven 3.10.0, macOS 27.2 |
 | `~/Library/Caches/JetBrains/<product><version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. The IDE needs the desktop session. |
 | `~/Library/Application Support/JetBrains/<product><version>` | User data | IDE settings | Never offer | Not possible | No | Not verified. The IDE needs the desktop session. |
+
+Maven 3.10 writes `.meta` in its repository. An older layout gets no offer.
+<!-- rules:end java -->
 
 `~/.m2` can contain `settings.xml` with repository passwords. Moppo protects `~/.m2` and offers only `~/.m2/repository` for review.
 sbt 2 compiled after the removal of `~/.sbt/boot` and did not create it again.
@@ -221,15 +249,19 @@ The test did not use the Kotlin Gradle plugin.
 
 ## Android
 
+<!-- rules:begin android -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Android/sdk` | Installed | `.knownPackages`, `platform-tools`, `build-tools`, or `cmdline-tools` | Never offer. Use `sdkmanager --uninstall` for a package. | `sdkmanager <package>` | Protected | Not verified. #350 checked the protection on the test Mac. No test removed the folder. |
 | `~/Library/Android/sdk/system-images` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | Protected | Verified 2026-11-02, system image android-36 arm64, macOS 27.2 |
 | `~/Library/Android/sdk/ndk/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | Protected | Verified 2026-11-03, NDK 30.0.16248370, macOS 27.2 |
 | `~/Library/Android/sdk/build-tools/<version>` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall <package>` | `sdkmanager <package>` | Protected | Verified 2026-11-02, build tools 37.0.0, macOS 27.2 |
 | `~/Library/Android/sdk/emulator` | Download | `sdkmanager --list_installed` | `sdkmanager --uninstall emulator` | `sdkmanager emulator` | Protected | Verified 2026-11-03, emulator 37.2.13, macOS 27.2 |
+| `~/.android` | User data | Folder name | Never offer whole. Use `avdmanager` for an emulator. Moppo offers `cache` as a row. | Not possible for adb keys | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.android/avd` | User data | `avdmanager list avd` | `avdmanager delete avd --name <name>` after review | Create the emulator again | Protected | Verified 2026-11-02 for an AVD that never started, macOS 27.2 |
 | `~/.android/cache` | Cache | Folder location | Trash | Not necessary | Row | Verified 2026-11-02, cmdline-tools from Homebrew, macOS 27.2 |
 | `~/Library/Caches/Google/AndroidStudio<version>` | Cache | Older version than the installed IDE | Trash | Next IDE start | Caches | Not verified. Android Studio needs the desktop session. |
+<!-- rules:end android -->
 
 Emulator images contain installed apps and test data. Treat them as user data until verification.
 The tested AVD never started, so it contained no apps or data.
@@ -243,12 +275,15 @@ The Homebrew `avdmanager` does not find an SDK in `~/Library/Android/sdk`. Use `
 
 Moppo has a row for NuGet packages in `~/.nuget/packages`.
 
+<!-- rules:begin dotnet -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.local/share/NuGet` | Cache | `http-cache` or `Migrations` folder | Never offer. Use `dotnet nuget locals http-cache --clear`. | Next restore | Protected | Not verified. #350 checked the protection on the test Mac. No test removed the folder. |
 | `~/.nuget/packages` | Download | `dotnet nuget locals global-packages --list` | Trash | Next restore. A network connection is necessary. | Row | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
 | `~/.local/share/NuGet/http-cache` | Cache | `dotnet nuget locals http-cache --list` | `dotnet nuget locals http-cache --clear` | Next restore | Protected | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
 | `/usr/local/share/dotnet/sdk/<version>` | Installed | `dotnet --list-sdks` | Official uninstall tool after review | Install the SDK again | No | Found 2026-11-02, .NET SDK 10.0.403. Not verified. The uninstall tool needs administrator rights. |
 | `<project>/bin`, `<project>/obj` | Build | `.csproj` or `.fsproj` beside the folders | Trash | `dotnet build` | #49 | Verified 2026-11-02, .NET SDK 10.0.403, macOS 27.2 |
+<!-- rules:end dotnet -->
 
 The Homebrew `dotnet-sdk` cask installs the SDK in `/usr/local/share/dotnet`, also on Apple silicon.
 Moppo shows `~/.local/share/NuGet` as a protected Hidden System Data row at any size. It does not offer the HTTP cache, because the catalog verified only the `dotnet` command.
@@ -258,21 +293,27 @@ Moppo shows `~/.local/share/NuGet` as a protected Hidden System Data row at any 
 Moppo has rows for Hex packages and Cabal packages.
 In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 
+<!-- rules:begin elixir-haskell -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.mix` | Installed | Folder name | Never offer. Use `mix archive.uninstall`. | `mix local.hex --force` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `<project>/_build` | Build | `mix.exs` beside the folder | Trash | `mix compile` | #49 | Verified 2026-11-02, Elixir 1.20.5, macOS 27.2 |
 | `<project>/deps` | Download | `mix.lock` beside the folder | Trash | `mix deps.get`. A network connection is necessary. | No | Verified 2026-11-02, Elixir 1.20.5, macOS 27.2 |
 | `~/.mix/archives` | Installed | Mix layout | Never remove automatically | `mix local.hex --force` | Protected | Verified 2026-11-03, Hex 2.6.0 with Elixir 1.20.5, macOS 27.2 |
+| `~/.ghcup` | Installed | Folder name | Never offer. Use `ghcup rm` or `ghcup gc`. | `ghcup install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.ghcup/ghc/<version>` | Installed | `ghcup list` | `ghcup rm ghc <version>` | `ghcup install ghc <version>` | Protected | Verified 2026-11-02, GHC 9.10.3 through ghcup 0.2.6.2, macOS 27.2 |
 | `~/.ghcup/cache` | Cache | ghcup layout | `ghcup gc --cache` | Next install | Protected | Verified 2026-11-02, ghcup 0.2.6.2, macOS 27.2 |
+| `~/.local/state/cabal` | Installed | `store/ghc-<version>` folder | Never offer. Projects and programs from `cabal install` can need the store. | Next build | Protected | Not verified. #350 checked the protection on the test Mac. No test removed the folder. |
 | `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Row | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `~/.local/state/cabal/store` | Installed | cabal layout | Trash after review | Next build for project dependencies | Protected | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
+| `<project>/dist-newstyle` | Build | `.cabal` file beside the folder | Trash | `cabal build` | No | Verified 2026-11-02, cabal 3.16.1.0, macOS 27.2 |
+| `~/.stack` | Installed | `config.yaml` and `stack.sqlite3` | Never offer whole. Moppo offers `snapshots`, `pantry`, and `setup-exe-cache` as rows. | Not possible for `config.yaml` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.stack/programs/<platform>/ghc-<version>` | Installed | Stack layout | Trash after review | Next `stack build`. A network connection is necessary. | Protected | Verified 2026-11-03, Stack 3.11.1 with GHC 9.10.3, macOS 27.2 |
 | `~/.stack/snapshots` | Build | Stack layout | Trash | Next `stack build` | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `~/.stack/pantry`, `~/.stack/setup-exe-cache` | Download | Stack layout | Trash | Next `stack build`. A network connection is necessary. | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
 | `~/.stack/config.yaml` | User data | Stack layout | Never offer | Not possible | Protected | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
-| `<project>/dist-newstyle` | Build | `.cabal` file beside the folder | Trash | `cabal build` | No | Verified 2026-11-02, cabal 3.16.1.0, macOS 27.2 |
 | `<project>/.stack-work` | Build | `stack.yaml` beside the folder | Trash | `stack build` | No | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
+<!-- rules:end elixir-haskell -->
 
 cabal 3.16 uses the XDG layout on macOS. It did not create `~/.cabal`.
 Moppo shows `~/.cache/cabal` as the `Cabal packages (XDG)` row in Package Manager Caches. The row needs review. It used 1.1 GiB in this test.
@@ -289,12 +330,16 @@ Stack wrote a new default `config.yaml` after a Trash move of `~/.stack`. The us
 
 ## Version managers for more than one language
 
+<!-- rules:begin version-managers -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
+| `~/.asdf` | Installed | `installs` and `plugins` | Never offer whole. Use `asdf uninstall` for a version. Moppo offers `downloads` as a row. | `asdf install` | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.asdf/installs/<tool>/<version>` | Installed | `asdf list` | `asdf uninstall <tool> <version>` | `asdf install <tool> <version>` | Protected | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
 | `~/.asdf/downloads` | Cache | asdf layout | Trash | Next install | Row | Verified 2026-11-02, asdf 0.20.2, macOS 27.2 |
+| `~/.local/share/mise` | Installed | `installs` folder | Never offer. Use `mise uninstall` for a version. | `mise install` | Protected | Not verified. #350 checked the protection on the test Mac. No test removed the folder. |
 | `~/.local/share/mise/installs/<tool>/<version>` | Installed | `mise ls` | `mise uninstall <tool>@<version>` | `mise install <tool>@<version>` | Protected | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
 | `~/Library/Caches/mise` | Cache | Folder name | `mise cache clear` | Next install | Caches | Verified 2026-11-02, mise 2026.10.25, macOS 27.2 |
+<!-- rules:end version-managers -->
 
 Keep each version that a `.tool-versions` or `mise.toml` file in a project names.
 Moppo shows `~/.asdf` as a protected Hidden System Data row when it is larger than 5 MiB. Moppo offers only `~/.asdf/downloads` in it.
@@ -304,16 +349,21 @@ Moppo shows `~/.local/share/mise` as a protected Hidden System Data row when it 
 
 Moppo reviews Docker images and the Docker build cache through Docker.
 
+<!-- rules:begin containers -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.colima` | User data | Colima installed | `colima delete` after review | Not possible for volumes after `colima delete --data` | Protected | Verified 2026-11-02, Colima 0.10.3, macOS 27.2 |
 | `~/.colima/_lima/_disks/<profile>` | User data | Colima layout | `colima delete --data` after review | Not possible | Protected | Verified 2026-11-02, Colima 0.10.3, macOS 27.2 |
+| `~/.lima` | User data | Folder name | Never offer. Use `limactl delete` after review. | Not possible | Protected | Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder. |
 | `~/.lima/<instance>` | User data | `limactl list` | `limactl delete <instance>` after review | Not possible | Protected | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/.lima/_config` | User data | Lima layout. It contains the `user` SSH key. | Never offer | Not possible | Protected | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/Library/Caches/lima` | Download | `download/by-url-sha256` folder inside | Trash | Next `limactl start` of a new instance. A network connection is necessary. | Caches | Verified 2026-11-03, Lima 2.2.1, macOS 27.2 |
 | `~/.orbstack` | User data | OrbStack installed | OrbStack settings after review | Not possible for volumes | No | Not verified. The OrbStack app needs a first start in the desktop session. |
 | `~/.local/share/containers/podman/machine` | User data | Podman installed | `podman machine rm` after review | Not possible for volumes | Protected | Verified 2026-11-02, Podman 6.1.4, macOS 27.2 |
 | `~/.local/share/containers/podman/machine/applehv/cache` | Download | Podman layout | Trash | `podman machine init`. A network connection is necessary. | Row | Verified 2026-11-03, Podman 6.1.4, macOS 27.2 |
+
+Podman 6.1 keeps the machine disks and the machine SSH key here.
+<!-- rules:end containers -->
 
 Virtual machine disks can contain container volumes and databases. Moppo must not move them to the Trash.
 
@@ -335,6 +385,7 @@ Moppo offers `applehv/cache` only when `machine.pub` and a `.raw.zst` image iden
 These folders hold sign-in tokens, keys, and cluster settings. Moppo must never offer them.
 The #321 rules protect them by name. Protection by name removes nothing, so the name is enough evidence for it.
 
+<!-- rules:begin credentials -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `~/.aws` | User data | `config` and `credentials` files | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
@@ -344,6 +395,7 @@ The #321 rules protect them by name. Protection by name removes nothing, so the 
 | `~/.docker` | User data | `config.json` with registry credentials | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
 | `~/.kube` | User data | `config` file with cluster credentials | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
 | `~/.ssh` | User data | Keys and `config` | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+<!-- rules:end credentials -->
 
 `~/.gnupg` is in the Ruby section, because the RVM install created it.
 Hidden & System Data lists the other folders in `~/.config` as separate rows.
@@ -354,14 +406,15 @@ Database files are user data. Moppo must never offer them for removal.
 If you remove a file while the server runs, you can damage the database.
 Only the tool can remove its own logs and old data safely.
 
+<!-- rules:begin databases -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | Protected | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
 | `~/Library/Application Support/Postgres/var-<version>` | User data | Postgres.app installed and `PG_VERSION` file | Never offer | Not possible | Protected | Verified 2026-11-02, Postgres.app 2.9.6 with PostgreSQL 18, macOS 27.2 |
 | `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION` | Never offer | Not possible | Protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
-| `/Users/Shared/DBngin/<engine>/<version>` | Installed | DBngin installed. A `bin` folder with the server programs. | DBngin, after review | DBngin downloads the version again | Protected | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
+| `/Users/Shared/DBngin` | Installed | DBngin installed. A `bin` folder in a version folder. | DBngin, after review | DBngin downloads the version again | Protected | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
 | `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | Protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
-| MySQL binary logs in the data folder | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected in the MySQL data row | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
+| `/opt/homebrew/var/mysql/binlog.<number>` | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
 | `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | Protected | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
 | `/opt/homebrew/var/db/redis` | User data | `dump.rdb` or `appendonly` files | Never offer | Not possible | Protected | Verified 2026-11-02, Redis 8.10.3, macOS 27.2 |
 | `/opt/homebrew/var/lib/opensearch` | User data | `nodes/<number>/_state` folder | Never offer | Not possible | Protected | Verified 2026-11-02, OpenSearch 3.9.0, macOS 27.2 |
@@ -370,29 +423,42 @@ Only the tool can remove its own logs and old data safely.
 | `<project>/*.sqlite`, `<project>/*.sqlite3`, `<project>/*.db` | User data | `SQLite format 3` header | Never offer | Not possible | No | Verified 2026-11-03, SQLite 3.54.0, macOS 27.2 |
 | `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Protected | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
 
+`postgresql@<version>` also matches the data folder of an older version. Do not offer it until a person confirms that the new version contains the data.
+DBngin 27 keeps each server version in `<engine>/<version>` with its programs in `bin`.
+DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
+The MySQL data folder also holds the binary logs.
+`PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows. Binary logs can be necessary for replication and for recovery to a point in time.
+MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.
+MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
+OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
+Redis wrote a new log file at its next start. The old log did not come back.
+A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database. A file with a `.db` name and no SQLite header is not a SQLite database.
+<!-- rules:end databases -->
+
 Database client applications such as TablePlus and DBeaver store connections and scripts.
 Treat their data folders as user data.
-DBngin keeps server data in `~/Library/Application Support/com.tinyapp.DBngin/Engines` and server versions in `/Users/Shared/DBngin`.
 Moppo shows the Postgres.app and DBngin data folders under their applications as protected rows with their sizes.
 App Uninstaller and Application Leftovers keep these folders. Moppo does not offer them for removal.
 Moppo shows `~/Library/DBeaverData` as protected data with DBeaver. App Uninstaller and Application Leftovers keep it.
 Without DBeaver, Moppo shows the folder in Hidden & System Data.
 Moppo protects a data folder only when the recognition file exists. A folder name alone does not identify a database.
 On an Intel Mac, the Homebrew folders are in `/usr/local/var`.
-Older PostgreSQL data folders can remain after an upgrade.
-Do not offer them until a person confirms that the new version contains the data.
-MySQL writes its error log as `<host name>.err` in its data folder, not in `/opt/homebrew/var/log`.
-`PURGE BINARY LOGS` removed the older binary logs. The test table kept its rows.
-Binary logs can be necessary for replication and for recovery to a point in time.
-MongoDB writes logs to `/opt/homebrew/var/log/mongodb`. OpenSearch writes logs to `/opt/homebrew/var/log/opensearch`.
-Redis wrote a new log file at its next start. The old log did not come back.
-A SQLite database in WAL mode also has `-wal` and `-shm` files. Treat them as part of the database.
-A file with a `.db` name and no SQLite header is not a SQLite database.
 Moppo shows a project folder with SQLite files as a Documents and Files row that needs review. It does not show the database files as rows.
 Moppo shows the Homebrew data folders as protected Hidden & System Data rows with their sizes.
 Moppo shows `/Users/Shared/DBngin` as a protected Hidden & System Data row when a version folder contains `bin`.
 Moppo does not show the SQLite files or `/opt/homebrew/var/log` as rows.
-The MongoDB formula needs `brew trust` for two formulae from the `mongodb/brew` tap.
+
+## Other tool storage
+
+These folders belong to tools that no section above covers.
+
+<!-- rules:begin other -->
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/Library/Application Support/multimodal-models` | Download | `ai-coustics/<name>/<model>.aicmodel` files | Never offer | Not possible | Protected | Found 2026-11-03. Not verified. No application identified the folder. #350 checked the protection on the test Mac. |
+
+The #216 checks found an ai-coustics audio model here. No application identified it as its own.
+<!-- rules:end other -->
 
 ## Rows that remain not verified
 

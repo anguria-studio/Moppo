@@ -1,0 +1,62 @@
+{
+  "id": "cabal",
+  "name": "cabal",
+  "section": "elixir-haskell",
+  "storage": [
+    {
+      "path": "~/.local/state/cabal",
+      "type": "installed",
+      "table": "toolHomeLocations",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "cabal keeps built packages here. Projects and programs from cabal install can need them.",
+      "recognition": "`store/ghc-<version>` folder",
+      "removal": "Never offer. Projects and programs from `cabal install` can need the store.",
+      "restore": "Next build",
+      "status": "Not verified. #350 checked the protection on the test Mac. No test removed the folder.",
+      "name": "cabal package store",
+      "identifiedBy": [
+        "store/ghc-*"
+      ]
+    },
+    {
+      "path": "~/.cache/cabal",
+      "type": "download",
+      "coverage": "row",
+      "recognition": "cabal layout",
+      "removal": "Trash after review",
+      "restore": "`cabal update` and the next build. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "cabal 3.16.1.0"
+      }
+    },
+    {
+      "path": "~/.local/state/cabal/store",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "cabal layout",
+      "removal": "Trash after review",
+      "restore": "Next build for project dependencies",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "cabal 3.16.1.0"
+      }
+    },
+    {
+      "path": "<project>/dist-newstyle",
+      "type": "build",
+      "coverage": "no",
+      "recognition": "`.cabal` file beside the folder",
+      "removal": "Trash",
+      "restore": "`cabal build`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "cabal 3.16.1.0"
+      }
+    }
+  ]
+}

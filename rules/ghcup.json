@@ -1,0 +1,45 @@
+{
+  "id": "ghcup",
+  "name": "ghcup",
+  "section": "elixir-haskell",
+  "storage": [
+    {
+      "path": "~/.ghcup",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "ghcup keeps GHC, cabal, and other Haskell tools here. Use ghcup rm or ghcup gc to remove them.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `ghcup rm` or `ghcup gc`.",
+      "restore": "`ghcup install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.ghcup/ghc/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`ghcup list`",
+      "removal": "`ghcup rm ghc <version>`",
+      "restore": "`ghcup install ghc <version>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "GHC 9.10.3 through ghcup 0.2.6.2"
+      }
+    },
+    {
+      "path": "~/.ghcup/cache",
+      "type": "cache",
+      "coverage": "protected",
+      "recognition": "ghcup layout",
+      "removal": "`ghcup gc --cache`",
+      "restore": "Next install",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "ghcup 0.2.6.2"
+      }
+    }
+  ]
+}

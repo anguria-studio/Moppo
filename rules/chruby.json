@@ -1,0 +1,32 @@
+{
+  "id": "chruby",
+  "name": "chruby",
+  "section": "ruby",
+  "storage": [
+    {
+      "path": "~/.rubies",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "chruby uses the Ruby versions here. Projects can need these versions.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Projects can need these versions.",
+      "restore": "`ruby-install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.rubies/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "chruby lists the folder",
+      "removal": "Trash after review",
+      "restore": "`ruby-install ruby <version>`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "chruby 0.3.9 and ruby-install 0.10.2"
+      }
+    }
+  ]
+}

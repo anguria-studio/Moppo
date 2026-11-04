@@ -1,0 +1,32 @@
+{
+  "id": "pyenv",
+  "name": "pyenv",
+  "section": "python",
+  "storage": [
+    {
+      "path": "~/.pyenv",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "pyenv keeps the installed Python versions here. Use pyenv uninstall to remove a version.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `pyenv uninstall` for a version.",
+      "restore": "`pyenv install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.pyenv/versions/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`pyenv versions`",
+      "removal": "`pyenv uninstall -f <version>`",
+      "restore": "`pyenv install <version>`",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "pyenv 2.8.14"
+      }
+    }
+  ]
+}

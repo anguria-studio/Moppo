@@ -1,0 +1,48 @@
+{
+  "id": "rvm",
+  "name": "RVM",
+  "section": "ruby",
+  "storage": [
+    {
+      "path": "~/.rvm",
+      "type": "installed",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "RVM keeps Ruby versions and gems here. Use rvm remove or rvm cleanup all.",
+      "recognition": "Folder name",
+      "removal": "Never offer. Use `rvm remove` or `rvm cleanup all`.",
+      "restore": "`rvm install`",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.rvm/rubies/<version>",
+      "type": "installed",
+      "coverage": "protected",
+      "recognition": "`rvm list`",
+      "removal": "`rvm remove <version>`",
+      "restore": "`rvm install <version>`",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "RVM 1.29.12-next with Ruby 3.3.13"
+      }
+    },
+    {
+      "paths": [
+        "~/.rvm/archives",
+        "~/.rvm/src"
+      ],
+      "type": "cache",
+      "coverage": "protected",
+      "recognition": "RVM layout",
+      "removal": "`rvm cleanup all`",
+      "restore": "Next install. A network connection is necessary.",
+      "verified": {
+        "date": "2026-11-03",
+        "macos": "27.2",
+        "tool": "RVM 1.29.12-next"
+      }
+    }
+  ]
+}

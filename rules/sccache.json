@@ -1,0 +1,20 @@
+{
+  "id": "sccache",
+  "name": "sccache",
+  "section": "rust",
+  "storage": [
+    {
+      "path": "~/Library/Caches/Mozilla.sccache",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Folder name",
+      "removal": "Trash",
+      "restore": "Next build",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "sccache 0.19.0"
+      }
+    }
+  ]
+}

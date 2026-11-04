@@ -1,0 +1,16 @@
+{
+  "id": "valet",
+  "name": "Valet",
+  "section": "php",
+  "storage": [
+    {
+      "path": "~/.config/valet",
+      "type": "userData",
+      "coverage": "no",
+      "recognition": "Valet installed",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "status": "Not verified. `valet install` changes the DNS resolver and the `sudoers` file."
+    }
+  ]
+}

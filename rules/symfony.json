@@ -1,0 +1,20 @@
+{
+  "id": "symfony",
+  "name": "Symfony",
+  "section": "php",
+  "storage": [
+    {
+      "path": "<project>/var/cache",
+      "type": "cache",
+      "coverage": "no",
+      "recognition": "`bin/console` and `symfony.lock`",
+      "removal": "`php bin/console cache:clear`",
+      "restore": "The command builds the cache again.",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "PHP 8.5.12"
+      }
+    }
+  ]
+}

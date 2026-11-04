@@ -1,0 +1,47 @@
+{
+  "id": "android-tools",
+  "name": "Android tools",
+  "section": "android",
+  "storage": [
+    {
+      "path": "~/.android",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Android tools keep emulators and adb keys here. Use avdmanager to delete an emulator.",
+      "recognition": "Folder name",
+      "removal": "Never offer whole. Use `avdmanager` for an emulator. Moppo offers `cache` as a row.",
+      "restore": "Not possible for adb keys",
+      "status": "Not verified. #342 checked the protection of these folders on the test Mac. No test removed the folder."
+    },
+    {
+      "path": "~/.android/avd",
+      "type": "userData",
+      "coverage": "protected",
+      "recognition": "`avdmanager list avd`",
+      "removal": "`avdmanager delete avd --name <name>` after review",
+      "restore": "Create the emulator again",
+      "verified": {
+        "date": "2026-11-02",
+        "scope": "for an AVD that never started",
+        "macos": "27.2"
+      }
+    },
+    {
+      "path": "~/.android/cache",
+      "type": "cache",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "offer",
+      "recognition": "Folder location",
+      "removal": "Trash",
+      "restore": "Not necessary",
+      "verified": {
+        "date": "2026-11-02",
+        "macos": "27.2",
+        "tool": "cmdline-tools from Homebrew"
+      }
+    }
+  ]
+}

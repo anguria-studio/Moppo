@@ -1,0 +1,31 @@
+{
+  "id": "postgresql",
+  "name": "PostgreSQL",
+  "section": "databases",
+  "storage": [
+    {
+      "paths": [
+        "/opt/homebrew/var/postgresql@<version>",
+        "/opt/homebrew/var/postgres"
+      ],
+      "type": "userData",
+      "table": "databaseStorage",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "name": "PostgreSQL data",
+      "identifiedBy": [
+        "PG_VERSION"
+      ],
+      "recognition": "`PG_VERSION` file",
+      "removal": "Never offer",
+      "restore": "Not possible",
+      "verified": {
+        "date": "2026-11-02",
+        "scope": "for `postgresql@18`",
+        "tool": "PostgreSQL 18.6",
+        "macos": "27.2"
+      },
+      "note": "`postgresql@<version>` also matches the data folder of an older version. Do not offer it until a person confirms that the new version contains the data."
+    }
+  ]
+}
