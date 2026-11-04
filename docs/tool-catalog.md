@@ -40,7 +40,7 @@ When a path can contain more than one type, use the most protective type.
 | Type | One type from the table above. |
 | Recognition | The evidence that identifies the tool. A folder name alone is not evidence. |
 | Removal | `Trash` for a normal Trash move. Otherwise, the tool command. |
-| Moppo today | `Row` for a dedicated row. `Caches` for the general cache scan of `~/Library/Caches`, `~/Library/Logs`, and `~/.cache`. `Hidden` for the general Hidden System Data row of a large home folder. Moppo can move that folder to the Trash after review. `Protected` for a Hidden System Data row that shows the folder size and refuses removal. `Size` for the storage breakdown only. `No` for no coverage. A ticket number for planned work. |
+| Moppo today | `Row` for a dedicated row. `Caches` for the general cache scan of `~/Library/Caches`, `~/Library/Logs`, and `~/.cache`. `Hidden` for the general Hidden System Data row of a large home folder. Moppo can move that folder to the Trash after review. `Protected` for a row that shows the size and refuses removal. Hidden & System Data or an application shows the row. A path in such a row is also `Protected`. `Size` for the storage breakdown only. `No` for no coverage. A ticket number for planned work. |
 | Status | `Verified` with the date, the tool version, and the macOS version. `Found` when the tests found the path but did not remove it. `Not verified` with the reason. |
 
 Homebrew paths use `/opt/homebrew` on Apple silicon and `/usr/local` on Intel Macs.
@@ -126,7 +126,8 @@ Moppo 0.6.0 includes the verified `vendor` rows from #256. The scanner hides pro
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `~/.cpanm/work`, `~/.cpanm/build.log` | Cache | Folder location | Trash | Next install | Row | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
+| `~/.cpanm/work` | Cache | `latest-build` link in `~/.cpanm` | Trash | Next install | Row | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
+| `~/.cpanm/build.log` | Cache | Folder location | Trash | Next install | Protected | Verified 2026-11-02, cpanm from Homebrew, macOS 27.2 |
 | `~/perl5/lib/perl5` | Installed | `local::lib` layout | Never remove automatically | `cpanm --local-lib=~/perl5 <module>`. A network connection is necessary. | No | Verified 2026-11-03, cpanm from Homebrew, macOS 27.2 |
 | `~/perl5/perlbrew/perls/<version>` | Installed | `perlbrew list` | `perlbrew uninstall <version>` | `perlbrew install <version>` | No | Verified 2026-11-02, perl-5.44.0 through perlbrew, macOS 27.2 |
 | `~/perl5/perlbrew/build`, `~/perl5/perlbrew/dists` | Cache | perlbrew layout | `perlbrew clean` | Next install | No | Verified 2026-11-02, perlbrew, macOS 27.2 |
@@ -140,6 +141,7 @@ After one Perl build, `~/.plenv/build` used 229 MiB and `~/.plenv/cache` used 20
 `carton` stopped after the removal of `~/perl5/lib/perl5`. `cpanm` restored the modules.
 The Perl in macOS has its own copy of some modules, such as `Try::Tiny`. Test a removal with a module that only `~/perl5` contains.
 Moppo does not show `~/perl5`. The general hidden folder row includes only hidden folders.
+Moppo offers `~/.cpanm/work` as a row. The `build.log` file stays in the protected `~/.cpanm` row.
 
 ## Python
 
@@ -155,7 +157,7 @@ In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/
 | `~/Library/Caches/pypoetry/virtualenvs` | Installed | Poetry layout | Trash after review | `poetry install` with `poetry.lock` | No | Verified 2026-11-02, Poetry 2.5.1, macOS 27.2 |
 | `~/Library/Application Support/pipx/venvs` | Installed | `pipx list` | `pipx uninstall <package>` | `pipx install <package>` | No | Verified 2026-11-02, pipx 1.18.11, macOS 27.2 |
 | `~/.cache/pre-commit` | Cache | Folder location | `pre-commit clean` | Next hook run. A network connection is necessary. | Caches | Verified 2026-11-02, pre-commit 4.7.0, macOS 27.2 |
-| `~/Library/Logs/pipx` | Logs | Folder location | Trash after review | Not possible | Caches, review required | Verified 2026-11-03, pipx 1.18.11, macOS 27.2 |
+| `~/Library/Logs/pipx` | Logs | Folder location | Trash after review | Not possible | Caches | Verified 2026-11-03, pipx 1.18.11, macOS 27.2 |
 
 pipx 1.18 uses `~/Library/Application Support/pipx` on macOS. The path `~/.local/pipx` is from older pipx versions.
 pipx creates `~/Library/Logs/pipx` again at the next command. The old logs do not come back.
@@ -263,7 +265,7 @@ In the 2026-11-02 test, Moppo offered `~/.hex/packages`.
 | `~/.mix/archives` | Installed | Mix layout | Never remove automatically | `mix local.hex --force` | Protected | Verified 2026-11-03, Hex 2.6.0 with Elixir 1.20.5, macOS 27.2 |
 | `~/.ghcup/ghc/<version>` | Installed | `ghcup list` | `ghcup rm ghc <version>` | `ghcup install ghc <version>` | Protected | Verified 2026-11-02, GHC 9.10.3 through ghcup 0.2.6.2, macOS 27.2 |
 | `~/.ghcup/cache` | Cache | ghcup layout | `ghcup gc --cache` | Next install | Protected | Verified 2026-11-02, ghcup 0.2.6.2, macOS 27.2 |
-| `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Row, review required | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
+| `~/.cache/cabal` | Download | cabal layout | Trash after review | `cabal update` and the next build. A network connection is necessary. | Row | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `~/.local/state/cabal/store` | Installed | cabal layout | Trash after review | Next build for project dependencies | Protected | Verified 2026-11-03, cabal 3.16.1.0, macOS 27.2 |
 | `~/.stack/programs/<platform>/ghc-<version>` | Installed | Stack layout | Trash after review | Next `stack build`. A network connection is necessary. | Protected | Verified 2026-11-03, Stack 3.11.1 with GHC 9.10.3, macOS 27.2 |
 | `~/.stack/snapshots` | Build | Stack layout | Trash | Next `stack build` | Row | Verified 2026-11-03, Stack 3.11.1, macOS 27.2 |
@@ -328,6 +330,24 @@ The Podman machine used 7.8 GiB in the test. Moppo shows it as a protected Hidde
 The `machine` and `machine.pub` files are the SSH key of the machine.
 Moppo offers `applehv/cache` only when `machine.pub` and a `.raw.zst` image identify the Podman layout.
 
+## Credentials and cloud tools
+
+These folders hold sign-in tokens, keys, and cluster settings. Moppo must never offer them.
+The #321 rules protect them by name. Protection by name removes nothing, so the name is enough evidence for it.
+
+| Path | Type | Recognition | Removal | Restore | Moppo today | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `~/.aws` | User data | `config` and `credentials` files | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+| `~/.azure` | User data | Azure CLI layout | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+| `~/.config/gcloud` | User data | Google Cloud CLI layout | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+| `~/.config/gh` | User data | `hosts.yml` with sign-in tokens | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+| `~/.docker` | User data | `config.json` with registry credentials | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+| `~/.kube` | User data | `config` file with cluster credentials | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+| `~/.ssh` | User data | Keys and `config` | Never offer | Not possible | Protected | Not verified. The rule protects the folder by name. No test removed it. |
+
+`~/.gnupg` is in the Ruby section, because the RVM install created it.
+Hidden & System Data lists the other folders in `~/.config` as separate rows.
+
 ## Databases
 
 Database files are user data. Moppo must never offer them for removal.
@@ -336,19 +356,19 @@ Only the tool can remove its own logs and old data safely.
 
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
-| `~/Library/Application Support/Postgres/var-<version>` | User data | Postgres.app installed and `PG_VERSION` file | Never offer | Not possible | Applications, protected | Verified 2026-11-02, Postgres.app 2.9.6 with PostgreSQL 18, macOS 27.2 |
-| `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION` | Never offer | Not possible | Applications, protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
+| `/opt/homebrew/var/postgresql@<version>`, `/opt/homebrew/var/postgres` | User data | `PG_VERSION` file | Never offer | Not possible | Protected | Verified 2026-11-02 for `postgresql@18`, PostgreSQL 18.6, macOS 27.2 |
+| `~/Library/Application Support/Postgres/var-<version>` | User data | Postgres.app installed and `PG_VERSION` file | Never offer | Not possible | Protected | Verified 2026-11-02, Postgres.app 2.9.6 with PostgreSQL 18, macOS 27.2 |
+| `~/Library/Application Support/com.tinyapp.DBngin/Engines/<engine>/<id>` | User data | DBngin installed and a database file in the engine folder, such as `ibdata1` or `PG_VERSION` | Never offer | Not possible | Protected | Verified 2026-11-02, DBngin 27.0.2 with MySQL 9.7.2, macOS 27.2 |
 | `/Users/Shared/DBngin/<engine>/<version>` | Installed | DBngin installed. A `bin` folder with the server programs. | DBngin, after review | DBngin downloads the version again | Protected | Found 2026-11-02, DBngin 27.0.2. Not verified. Removal and restore need the DBngin app in the desktop session. |
-| `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
+| `/opt/homebrew/var/mysql` | User data | `ibdata1` or `mysql` folder | Never offer | Not possible | Protected | Verified 2026-11-02, MySQL 26.10, macOS 27.2 |
 | MySQL binary logs in the data folder | User data | `binlog.<number>` files and `binlog.index` | `PURGE BINARY LOGS` in MySQL after review | Not possible | Protected in the MySQL data row | Verified 2026-11-03, MySQL 26.10, macOS 27.2 |
-| `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
-| `/opt/homebrew/var/db/redis` | User data | `dump.rdb` or `appendonly` files | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, Redis 8.10.3, macOS 27.2 |
-| `/opt/homebrew/var/lib/opensearch` | User data | `nodes/<number>/_state` folder | Never offer | Not possible | Hidden & System Data, protected | Verified 2026-11-02, OpenSearch 3.9.0, macOS 27.2 |
-| `/opt/homebrew/var/lib/elasticsearch` | User data | `nodes/<number>/_state` or `_state` folder | Never offer | Not possible | Hidden & System Data, protected | Not verified. Homebrew core has no Elasticsearch formula. |
+| `/opt/homebrew/var/mongodb` | User data | `WiredTiger` files | Never offer | Not possible | Protected | Verified 2026-11-02, MongoDB 9.0.4, macOS 27.2 |
+| `/opt/homebrew/var/db/redis` | User data | `dump.rdb` or `appendonly` files | Never offer | Not possible | Protected | Verified 2026-11-02, Redis 8.10.3, macOS 27.2 |
+| `/opt/homebrew/var/lib/opensearch` | User data | `nodes/<number>/_state` folder | Never offer | Not possible | Protected | Verified 2026-11-02, OpenSearch 3.9.0, macOS 27.2 |
+| `/opt/homebrew/var/lib/elasticsearch` | User data | `nodes/<number>/_state` or `_state` folder | Never offer | Not possible | Protected | Not verified. Homebrew core has no Elasticsearch formula. |
 | `/opt/homebrew/var/log` | Logs | Service log files | Trash after review, when the service does not run | Not possible | No | Verified 2026-11-03, Redis 8.10.3, macOS 27.2 |
 | `<project>/*.sqlite`, `<project>/*.sqlite3`, `<project>/*.db` | User data | `SQLite format 3` header | Never offer | Not possible | No | Verified 2026-11-03, SQLite 3.54.0, macOS 27.2 |
-| `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Applications, protected. Hidden & System Data, protected, without DBeaver | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
+| `~/Library/DBeaverData` | User data | `workspace6/<project>/.dbeaver/data-sources.json` | Never offer | Not possible | Protected | Verified 2026-11-02, DBeaver 26.2.4, macOS 27.2 |
 
 Database client applications such as TablePlus and DBeaver store connections and scripts.
 Treat their data folders as user data.

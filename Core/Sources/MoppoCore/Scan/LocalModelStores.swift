@@ -164,6 +164,7 @@ public enum LocalModelStores {
     }
 
     static let lmStudioStores = [".lmstudio/models", ".cache/lm-studio/models"]
+    static let gpt4AllStore = "Library/Application Support/nomic.ai/GPT4All"
 
     // MARK: - Stores of plain files
 
@@ -214,7 +215,7 @@ public enum LocalModelStores {
     /// GPT4All can use another download folder. Its `modelPath` setting changed its name
     /// in GPT4All 2.4.11, so Moppo reads only the default folder. Issue #66 records this gap.
     static func gpt4All(home: URL) -> [LocalModel] {
-        let store = home.appendingPathComponent("Library/Application Support/nomic.ai/GPT4All", isDirectory: true)
+        let store = home.appendingPathComponent(gpt4AllStore, isDirectory: true)
         return directoryNames(store).filter { $0.lowercased().hasSuffix(".gguf") }
             .map { store.appendingPathComponent($0) }
             .filter(isRegularFile)
