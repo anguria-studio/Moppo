@@ -21,16 +21,16 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | ChatGPT desktop | `~/Library/Application Support/Codex` | Verified Chromium caches are selectable. Profiles and other files stay protected. |
 | Claude Code | `~/.claude`, `~/.local/share/claude` | Conversations, memories, attachments, file history, installed versions, and other files stay protected. Linked Git worktrees use the existing review controls. |
 | Claude desktop | `~/Library/Application Support/Claude` | Verified Chromium caches are selectable. VM disks, runtime downloads, local sessions, and other files stay protected. |
-| Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/.local/share/cursor-agent`, `~/Library/Application Support/Cursor` | CLI conversations, CLI versions, and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
+| Cursor | `~/.cursor/projects`, `~/.cursor/chats`, `~/.cursor/worktrees`, `~/.local/share/cursor-agent`, `~/Library/Application Support/Cursor`, `~/.cursor/extensions` | CLI conversations, CLI versions, and workspace state stay protected. Verified Electron caches and linked Git worktrees use the existing review controls. |
 | Grok Bot | `~/.grokbot`, `~/Library/Application Support/Grok Bot` | Verified Chromium caches and V8 compiled code caches are selectable. Local computer credentials, settings, staged attachments, and session state stay protected. |
 | T3 Code | `~/Library/Application Support/t3code-v2`, `~/.t3` | Application data, scratch projects, downloaded tools, caches, worktrees, desktop data, and unknown files stay protected. |
 | Ollama | `~/.ollama` | Protected inventory. Moppo cannot verify complete model ownership or active models. |
 | Hugging Face | `~/.cache/huggingface` | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
 | LM Studio | `~/.lmstudio`, `~/.cache/lm-studio` | Model rows retain shared-file grouping. They require review and are not disposable caches. Shared, linked, or open model files stay protected. |
-| PyTorch | `~/.cache/torch/hub/checkpoints`, `~/.cache/torch/hub/<owner>_<repository>_<ref>` | One row for each weight file and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs. |
-| Whisper | `~/.cache/whisper/*.pt` | One row for each model file. |
+| PyTorch | `~/.cache/torch/hub` | One row for each weight file in `checkpoints` and each downloaded repository. Other folders in `~/.cache/torch` stay in System Caches & Logs. |
+| Whisper | `~/.cache/whisper` | One row for each `.pt` model file. |
 | Keras | `~/.keras/models`, `~/.keras/datasets` | One row for each model or dataset. Other folders in `~/.keras` stay in Hidden & System Data. Moppo never offers `keras.json`. |
-| GPT4All | `~/Library/Application Support/nomic.ai/GPT4All/*.gguf` | One row for each model file. Settings, chats, and LocalDocs databases stay outside removal targets. |
+| GPT4All | `~/Library/Application Support/nomic.ai/GPT4All` | One row for each `.gguf` model file. Settings, chats, and LocalDocs databases stay outside removal targets. |
 | Gemini CLI | `~/.gemini` | Protected inventory. The shared folder counts once. Credentials, settings, history, installed tools, cache folders, and unknown files stay protected. |
 | Antigravity | `~/Library/Application Support/Antigravity` | Protected inventory. The desktop support folder stays protected, including its cache folders. |
 | GitHub Copilot CLI | `~/.copilot` | Protected inventory. Sessions, plugins, logs, settings, and unknown files stay protected. |
@@ -38,7 +38,7 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 | Goose | `~/.local/share/goose`, `~/.local/state/goose`, `~/.config/goose` | Protected inventory. Sessions, the model catalog, request logs, sign-in data, and keys stay protected. |
 | OpenClaw | `~/.openclaw` | Protected inventory. Agent sessions, the workspace, state databases, and settings stay protected. |
 | Kiro | `~/.kiro`, `~/.kiro-shared` | Protected inventory. Sessions, logs, and shared state stay protected. |
-| Devin | `~/.codeium`, `~/.devin`, `~/.devin-shared`, `~/.local/share/devin`, `~/.config/devin` | Protected inventory. Memories, rules, conversations, CLI sessions, and settings stay protected. |
+| Devin | `~/.codeium`, `~/.devin`, `~/.devin-shared`, `~/.local/share/devin`, `~/.config/devin`, `~/.windsurf/extensions` | Protected inventory. Memories, rules, conversations, CLI sessions, and settings stay protected. |
 | AnythingLLM | `~/Library/Application Support/anythingllm-desktop` | Protected inventory. Documents, vector data, models, engines, keys, and cache folders stay protected. |
 | Cherry Studio | `~/Library/Application Support/CherryStudio`, `~/.cherrystudio` | Protected inventory. Downloaded tools, the library, toolchains, credentials, and cache folders stay protected. |
 | Comfy Desktop | `~/ComfyUI-Installs`, `~/ComfyUI-Shared` | Protected inventory. Models, outputs, workflows, custom nodes, and Python environments stay protected. |
@@ -46,6 +46,13 @@ If you disable AI Tools, its home data and model stores remain outside generic c
 
 The native installers keep each installed version in `versions`. `~/.local/bin` links to the active one.
 T3 Code 0.1.6, team ARK85ZXQ4Z. The application sets this folder. Its package name is `t3code`. `~/.t3` is not here: the T3 Code command-line server also uses it.
+`~/.ollama` whole would offer the user's `id_ed25519` with the models, so no category lists it.
+The hub inside carries `CACHEDIR.TAG`. The reader handles the classic layout and the shared blob layout.
+Installs from before LM Studio moved its models use `~/.cache/lm-studio/models`.
+`~/.cache/torch/hub` holds weight files in `checkpoints` and one folder for each downloaded repository. Other folders in `~/.cache/torch` are compiler caches.
+Each `.pt` file is one model.
+`~/.keras` also holds `keras.json` settings, which no rule offers.
+Each `.gguf` file is one model. Settings, chats, and LocalDocs databases stay outside removal targets. GPT4All can use another download folder, which Moppo does not read.
 Gemini CLI and Antigravity share `~/.gemini`. One root counts each byte once.
 Antigravity desktop 2.28.1 uses this identifier and support folder. The evidence does not verify its cache folders, so no path counts as regenerable.
 Devin Desktop, Windsurf, and Codeium extensions can share `~/.codeium`.

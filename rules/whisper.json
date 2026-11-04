@@ -10,12 +10,16 @@
     "case": "whisper",
     "name": "Whisper"
   },
-  "removalRules": "One row for each model file.",
+  "removalRules": "One row for each `.pt` model file.",
   "storage": [
     {
-      "path": "~/.cache/whisper/*.pt",
+      "path": "~/.cache/whisper",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "whisper",
+      "note": "Each `.pt` file is one model."
     }
   ]
 }

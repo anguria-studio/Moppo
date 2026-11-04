@@ -93,6 +93,15 @@
       "treatment": "protect",
       "name": "Cursor settings and workspace state",
       "explanation": "Chat history, checkpoints, settings, and unsaved files remain protected. Delete individual chats in Cursor."
+    },
+    {
+      "path": "~/.cursor/extensions",
+      "type": "installed",
+      "table": "editorExtensionStores",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Cursor",
+      "check": "editorObsolete"
     }
   ]
 }

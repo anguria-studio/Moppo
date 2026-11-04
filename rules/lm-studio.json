@@ -15,12 +15,19 @@
     {
       "path": "~/.lmstudio",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "lmStudio"
     },
     {
       "path": "~/.cache/lm-studio",
       "type": "download",
-      "coverage": "protected"
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "lmStudio",
+      "note": "Installs from before LM Studio moved its models use `~/.cache/lm-studio/models`."
     }
   ]
 }

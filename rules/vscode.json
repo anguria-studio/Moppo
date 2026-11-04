@@ -5,7 +5,7 @@
   "bundleIdentifiers": [
     "com.microsoft.VSCode"
   ],
-  "note": "VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder.",
+  "note": "VS Code uses the historical product name `Code`, so the generic Electron lookup cannot reach it. `User`, `workspaceStorage`, `History`, and extensions stay in the protected remainder. The editor's own record decides which extension versions are obsolete, never the version number. A pinned older version makes the highest version the wrong guess. So do profiles that share the folder.",
   "storage": [
     {
       "path": "~/Library/Application Support/Code",
@@ -74,6 +74,19 @@
       "removal": "Trash",
       "restore": "Next launch.",
       "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+    },
+    {
+      "path": "~/.vscode/extensions",
+      "type": "installed",
+      "table": "editorExtensionStores",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "Visual Studio Code",
+      "check": "editorObsolete",
+      "recognition": "`.obsolete` record or a `.vsctmp` folder in the store",
+      "removal": "Trash the versions that the editor marked for removal",
+      "restore": "The editor installs an extension again",
+      "status": "Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use."
     }
   ]
 }

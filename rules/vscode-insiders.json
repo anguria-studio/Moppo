@@ -1,0 +1,23 @@
+{
+  "id": "vscode-insiders",
+  "name": "VS Code Insiders",
+  "section": "editors",
+  "bundleIdentifiers": [
+    "com.microsoft.VSCodeInsiders"
+  ],
+  "storage": [
+    {
+      "path": "~/.vscode-insiders/extensions",
+      "type": "installed",
+      "table": "editorExtensionStores",
+      "owner": "packageManagers",
+      "treatment": "offer",
+      "name": "VS Code Insiders",
+      "check": "editorObsolete",
+      "recognition": "`.obsolete` record or a `.vsctmp` folder in the store",
+      "removal": "Trash the versions that the editor marked for removal",
+      "restore": "The editor installs an extension again",
+      "status": "Not verified. The rule reads the editor's own record of versions marked for removal. No test used a store in use."
+    }
+  ]
+}
