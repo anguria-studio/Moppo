@@ -264,7 +264,7 @@ struct GitWorktreeTests {
         }
     }
 
-    @Test("Push checks handle detached worktrees and the configured upstream")
+    @Test("Push checks handle detached worktrees, branches without an upstream, and the configured upstream")
     func unpushedCommits() async throws {
         let sandbox = try Sandbox()
         let repo = try sandbox.repository()
@@ -292,9 +292,14 @@ struct GitWorktreeTests {
         try sandbox.git(["-C", tree.path, "update-ref", "refs/remotes/origin/other", "HEAD"])
         #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .noUnpushedCommits)
         try sandbox.git(["-C", tree.path, "switch", "-c", "task-branch"])
-        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unknown)
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .noUnpushedCommits)
+        try sandbox.git(["-C", tree.path, "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                         "commit", "--allow-empty", "-m", "Branch work"])
+        let noUpstream = try await GitWorktreeDetector.pushStatus(of: tree)
+        #expect(noUpstream.status == .unknown)
+        #expect(noUpstream.reason == "The branch has no upstream, and saved remote branches do not contain 1 of its commits.")
         try sandbox.git(["-C", tree.path, "branch", "--set-upstream-to=origin/main"])
-        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unpushedCommits(1))
+        #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .unpushedCommits(2))
         try sandbox.git(["-C", tree.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
         #expect((try await GitWorktreeDetector.pushStatus(of: tree)).status == .noUnpushedCommits)
         try sandbox.git(["-C", tree.path, "update-ref", "-d", "refs/remotes/origin/main"])
@@ -419,6 +424,33 @@ struct GitWorktreeTests {
         #expect(!changed.isSafeToRemove)
     }
 
+    @Test("An open PR for a pushed branch without an upstream appears in the review without a safe verdict")
+    func openPullRequest() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        try sandbox.git(["-C", repo.path, "remote", "add", "origin", "https://github.com/example/project.git"])
+        try sandbox.file("Documents/Project/.git/info/exclude", text: ".env\n")
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        try sandbox.git(["-C", repo.path, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
+        let tree = try sandbox.worktree("Worktrees/review", repository: repo)
+        try sandbox.git(["-C", tree.path, "switch", "-c", "feature"])
+        try sandbox.git(["-C", tree.path, "-c", "user.name=Test", "-c", "user.email=test@example.com",
+                         "commit", "--allow-empty", "-m", "Feature"])
+        try sandbox.git(["-C", tree.path, "update-ref", "refs/remotes/origin/feature", "HEAD"])
+        try sandbox.file("Worktrees/review/.env", text: "Local settings")
+        let verifier = GitHubMergeVerifier { repository, heads, _ in
+            try Self.githubResponse(repository, heads: heads, state: "OPEN")
+        }
+        let review = try await Self.reviewService(github: verifier).review(tree)
+        #expect(review.pushStatus == .noUnpushedCommits)
+        #expect(review.openPullRequestNumber == 190)
+        #expect(review.mergedInto == nil)
+        #expect(review.mergeIssue == "Pull request #190 is open. GitHub has these commits, but the merge is not complete.")
+        #expect(review.outcome == .hasLocalFiles)
+        try FileManager.default.removeItem(at: tree.appendingPathComponent(".env"))
+        #expect((try await Self.reviewService(github: verifier).review(tree)).isSafeToRemove)
+    }
+
     @Test("GitHub requests group commits and reuse exact commit proofs")
     func githubBatchCache() async throws {
         let repository = try #require(GitHubMergeVerifier.Repository(remoteURL: "git@github.com:Example/Project.git"))
@@ -457,10 +489,10 @@ struct GitWorktreeTests {
     }
 
     enum GitHubResponseChange: CaseIterable {
-        case valid, head, base, repository, open, missingMerge, invalidMerge, partial, object, missingObject, unavailableCommit, incompletePage
+        case valid, head, base, repository, open, openOtherHead, openOtherRepository, missingMerge, invalidMerge, partial, object, missingObject, unavailableCommit, incompletePage
     }
 
-    @Test("GitHub proof requires a complete merged PR for the exact commit", arguments: GitHubResponseChange.allCases)
+    @Test("GitHub proof requires a complete merged PR, and an open PR must have the exact commit", arguments: GitHubResponseChange.allCases)
     func githubProof(change: GitHubResponseChange) throws {
         let repo = try #require(GitHubMergeVerifier.Repository(remoteURL: "https://github.com/example/project"))
         let head = String(repeating: "a", count: 40)
@@ -475,7 +507,11 @@ struct GitWorktreeTests {
         case .head: pull["headRefOid"] = String(repeating: "b", count: 40)
         case .base: pull["baseRefName"] = "release"
         case .repository: pull["repository"] = ["nameWithOwner": "other/repository"]
-        case .open: pull["state"] = "OPEN"; pull["merged"] = false
+        case .open: pull["state"] = "OPEN"; pull["merged"] = false; pull["mergeCommit"] = NSNull()
+        case .openOtherHead:
+            pull["state"] = "OPEN"; pull["merged"] = false; pull["headRefOid"] = String(repeating: "b", count: 40)
+        case .openOtherRepository:
+            pull["state"] = "OPEN"; pull["merged"] = false; pull["repository"] = ["nameWithOwner": "other/repository"]
         case .missingMerge: pull["mergeCommit"] = NSNull()
         case .invalidMerge: pull["mergeCommit"] = ["oid": "--invalid"]
         case .partial: root["errors"] = [["message": "Partial response"]]
@@ -493,6 +529,8 @@ struct GitWorktreeTests {
         let results = GitHubMergeVerifier.parse(try JSONSerialization.data(withJSONObject: root), repository: repo, requests: [request])
         if change == .valid {
             #expect(results[request] == .verified(.init(number: 190, mergeCommit: String(repeating: "f", count: 40), baseBranch: "main")))
+        } else if change == .open {
+            #expect(results[request] == .open(190))
         } else {
             guard case .unavailable(let reason) = results[request] else { Issue.record("Invalid proof was accepted"); return }
             #expect(!reason.isEmpty)
@@ -598,11 +636,12 @@ struct GitWorktreeTests {
     }
 
     private static func githubResponse(_ repository: GitHubMergeVerifier.Repository, heads: [String],
-                                       mergeCommit: String = String(repeating: "f", count: 40), base: String = "main", headOverride: String? = nil) throws -> Data {
+                                       mergeCommit: String = String(repeating: "f", count: 40), base: String = "main", headOverride: String? = nil,
+                                       state: String = "MERGED") throws -> Data {
         var repo: [String: Any] = ["nameWithOwner": repository.fullName, "defaultBranchRef": ["name": base]]
         for (index, head) in heads.enumerated() {
             repo["c\(index)"] = ["oid": head, "associatedPullRequests": [
-                "nodes": [["number": 190, "state": "MERGED", "merged": true, "headRefOid": headOverride ?? head,
+                "nodes": [["number": 190, "state": state, "merged": state == "MERGED", "headRefOid": headOverride ?? head,
                     "baseRefName": base, "mergeCommit": ["oid": mergeCommit], "repository": ["nameWithOwner": repository.fullName]]],
                 "pageInfo": ["hasNextPage": false]
             ]]
@@ -719,6 +758,57 @@ struct GitWorktreeTests {
         #expect(locked.locks == .found("locked"))
         #expect(!locked.isSafeToRemove)
         #expect(locked.outcome == .inUse)
+    }
+
+    @Test("An ignored file passes only with an identical regular file at the same path in the main checkout")
+    func mainCheckoutCopies() async throws {
+        let sandbox = try Sandbox()
+        let repo = try sandbox.repository()
+        try sandbox.git(["-C", repo.path, "update-ref", "refs/remotes/origin/main", "HEAD"])
+        try sandbox.file("Documents/Project/.git/info/exclude", text: ".env\ntemp/\nlarge.bin\n")
+        let tree = try sandbox.worktree("Worktrees/copy", repository: repo)
+        try sandbox.file("Documents/Project/.env", text: "KEY=value\n")
+        try sandbox.file("Worktrees/copy/.env", text: "KEY=value\n")
+        let copied = try await Self.reviewService().review(tree)
+        #expect(copied.copiedIgnoredFiles.map(\.path) == [".env"])
+        #expect(copied.localIgnoredFiles.isEmpty)
+        #expect(copied.isSafeToRemove)
+        #expect(!copied.ignoringCopies(within: [repo]).isSafeToRemove)
+        #expect(!copied.ignoringCopies(within: [repo.appendingPathComponent(".env")]).isSafeToRemove)
+        #expect(copied.ignoringCopies(within: [tree, repo.appendingPathComponent("other")]).isSafeToRemove)
+
+        try sandbox.file("Worktrees/copy/.env", text: "KEY=other\n")
+        #expect((try await Self.reviewService().review(tree)).outcome == .hasLocalFiles)
+        try sandbox.file("Worktrees/copy/.env", text: "KEY=value\n")
+        try FileManager.default.removeItem(at: repo.appendingPathComponent(".env"))
+        #expect((try await Self.reviewService().review(tree)).outcome == .hasLocalFiles)
+        try sandbox.file("Documents/Project/shared.env", text: "KEY=value\n")
+        try FileManager.default.createSymbolicLink(atPath: repo.appendingPathComponent(".env").path, withDestinationPath: "shared.env")
+        #expect((try await Self.reviewService().review(tree)).outcome == .hasLocalFiles)
+        try FileManager.default.removeItem(at: repo.appendingPathComponent(".env"))
+        try sandbox.file("Documents/Project/.env", text: "KEY=value\n")
+        #expect((try await Self.reviewService().review(tree)).isSafeToRemove)
+
+        try sandbox.file("Documents/Project/temp/notes.txt", text: "Notes")
+        try sandbox.file("Worktrees/copy/temp/notes.txt", text: "Notes")
+        let folder = try await Self.reviewService().review(tree)
+        #expect(folder.localIgnoredFiles.map(\.path) == ["temp/"])
+        try FileManager.default.removeItem(at: tree.appendingPathComponent("temp"))
+        let large = String(repeating: "x", count: 1_048_577)
+        try sandbox.file("Documents/Project/large.bin", text: large)
+        try sandbox.file("Worktrees/copy/large.bin", text: large)
+        #expect((try await Self.reviewService().review(tree)).localIgnoredFiles.map(\.path) == ["large.bin"])
+    }
+
+    @Test("The main checkout comes from the first worktree record and excludes bare repositories and the worktree itself")
+    func mainCheckoutRecords() {
+        let tree = URL(fileURLWithPath: "/tmp/tree", isDirectory: true)
+        func record(_ text: String) -> Data { Data(text.replacingOccurrences(of: "|", with: "\0").utf8) }
+        #expect(GitWorktreeReviewService.mainCheckout(in: record("worktree /tmp/main|HEAD abc|branch refs/heads/main||worktree /tmp/tree|"),
+            excluding: tree)?.path == "/tmp/main")
+        #expect(GitWorktreeReviewService.mainCheckout(in: record("worktree /tmp/main.git|bare||worktree /tmp/tree|"), excluding: tree) == nil)
+        #expect(GitWorktreeReviewService.mainCheckout(in: record("worktree /tmp/tree|HEAD abc||"), excluding: tree) == nil)
+        #expect(GitWorktreeReviewService.mainCheckout(in: Data(), excluding: tree) == nil)
     }
 
     @Test("Ignored cache files inherit verified roots in fresh and shared reviews")
