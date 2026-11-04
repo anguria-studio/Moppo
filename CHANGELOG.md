@@ -25,6 +25,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show the other folders in `~/.config` as separate Hidden & System Data rows.
 - Protect toolchain, virtual machine, and credential folders in Hidden & System Data, such as `~/.rustup`, `~/.colima`, and `~/.aws`.
 - Show the size of each protected folder. Offer only the caches in it that the developer tool catalog verified.
+- Connect data folders that use another name to AnythingLLM, Cherry Studio, Stability Matrix, VoiceInk, T3 Code, DBeaver, and Superwhisper.
+- Show these folders as user data with their application, in App Uninstaller, and in Application Leftovers after an uninstall.
 
 ### Command line and agents
 
