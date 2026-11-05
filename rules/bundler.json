@@ -21,13 +21,26 @@
       }
     },
     {
+      "path": "~/.bundle",
+      "type": "userData",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
+      "treatment": "protect",
+      "explanation": "Bundler keeps global settings and plugins here. config can contain gem server credentials.",
+      "recognition": "Folder name",
+      "removal": "Never offer whole. `config` can contain gem server credentials. Moppo offers `cache` as a row.",
+      "restore": "Not possible for gem server credentials",
+      "status": "Not verified. No test removed the folder.",
+      "note": "`bundle config set --global` writes to `~/.bundle/config`, which can hold a gem server credential.",
+      "comment": "A credential is a `BUNDLE_<HOST>` key, such as `BUNDLE_RUBYGEMS__PKG__GITHUB__COM`. `plugin` holds Bundler plugins."
+    },
+    {
       "path": "~/.bundle/cache",
       "type": "download",
-      "table": "packageManagerCaches",
-      "owner": "packageManagers",
+      "table": "toolHomeFolders",
+      "owner": "hiddenSystemData",
       "treatment": "offer",
-      "name": "Bundler cache",
-      "recognition": "Folder name",
+      "recognition": "Folder location",
       "removal": "Trash",
       "restore": "Next `bundle install`. A network connection is necessary.",
       "verified": {
