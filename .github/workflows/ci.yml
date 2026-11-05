@@ -138,6 +138,15 @@ jobs:
           if [ -d "$RUNNER_TEMP/MoppoAppTests.xcresult" ]; then
             xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/MoppoAppTests.xcresult"
           fi
+      # TEMPORARY for #381: print the crash report of the test process.
+      - name: Print crash reports
+        if: failure()
+        run: |
+          for report in "$HOME"/Library/Logs/DiagnosticReports/*.ips; do
+            [ -f "$report" ] || continue
+            echo "===== $report"
+            head -c 200000 "$report"
+          done
 
   # Branch protection requires this check name. It passes only when every
   # other job passes, or when the tests were skipped for documentation changes.
