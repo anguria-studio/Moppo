@@ -133,7 +133,7 @@ struct ApplicationDataFoldersTests {
                 applicationURL: sandbox.applications.appendingPathComponent("\(layout.app).app")
             )
             if Self.databaseApps.contains(layout.app) {
-                #expect(plan.preservedPaths == layout.folders.map(sandbox.url), "\(layout.app)")
+                #expect(plan.preservedPaths.map(\.url) == layout.folders.map(sandbox.url), "\(layout.app)")
                 #expect(!plan.items.contains { layout.folders.map(sandbox.url).contains($0.url) })
                 continue
             }
@@ -146,6 +146,7 @@ struct ApplicationDataFoldersTests {
                 ))
             }
             #expect(plan.preservedPaths.isEmpty, "\(layout.app)")
+            #expect(plan.reviewTitle == "Complete uninstall", "\(layout.app)")
         }
     }
 

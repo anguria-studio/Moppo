@@ -53,6 +53,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Connect a launch file to its application only by its program path or its `AssociatedBundleIdentifiers` key.
 - Connect the Comet updater agent to Comet, because `Comet.app` contains the updater that the agent names.
 - Show **Stopping the removal** when you cancel a removal. Earlier versions showed **Stopping the wait**.
+- Name each path that App Uninstaller keeps on disk, with its size and reason. Earlier versions showed a number.
+- Show **Partial uninstall** when some related paths stay on disk. Earlier versions showed **Complete uninstall**.
 
 ## [0.6.0] - 2026-11-02
 

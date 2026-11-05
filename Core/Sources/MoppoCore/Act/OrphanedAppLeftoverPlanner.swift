@@ -249,7 +249,7 @@ public struct OrphanedAppLeftoverPlanner: Sendable {
                 guard let identifier = item.ownerBundleIdentifier else { continue }
                 itemsByIdentifier[identifier, default: []].append(item)
             }
-            preserved.append(contentsOf: content.preservedPaths)
+            preserved.append(contentsOf: content.preservedPaths.map(\.url))
             unreadableCount += content.unreadableCount
         }
 

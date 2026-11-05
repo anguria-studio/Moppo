@@ -8,6 +8,61 @@ import Foundation
 /// Cleanup checks each path again before it moves any item.
 public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
 
+    /// A related path that the uninstall keeps on disk.
+    public struct PreservedPath: Sendable, Equatable, Identifiable {
+        public enum Reason: Sendable, Equatable, CaseIterable {
+            case excluded
+            case protectedContent
+            case databaseData
+            case sharedGroupContainer
+            case unverifiedLocation
+            case sharedSoundContent
+            case unlistedSoundContent
+            case unreadable
+
+            /// The review shows this text below the path.
+            public var explanation: String {
+                switch self {
+                case .excluded:
+                    "Your exclusion list includes this path or an item in it."
+                case .protectedContent:
+                    "This folder holds protected items, such as a keychain or a disk image."
+                case .databaseData:
+                    "This folder holds database data."
+                case .sharedGroupContainer:
+                    "Other applications can use this group container."
+                case .unverifiedLocation:
+                    "Moppo cannot verify that this location is safe to remove."
+                case .sharedSoundContent:
+                    "Another installed application uses this sound content."
+                case .unlistedSoundContent:
+                    "This folder holds files that the installer receipt does not list."
+                case .unreadable:
+                    "Moppo cannot read all items in this folder."
+                }
+            }
+        }
+
+        public var id: String { url.path }
+        public let url: URL
+        public let reason: Reason
+        /// Nil when Moppo does not measure the path, such as an excluded path,
+        /// or when Moppo cannot read any item in it.
+        public let allocatedBytes: Int64?
+
+        public init(url: URL, reason: Reason, allocatedBytes: Int64? = nil) {
+            self.url = url
+            self.reason = reason
+            self.allocatedBytes = allocatedBytes
+        }
+
+        init(url: URL, reason: Reason, measurement: SizeMeasurement) {
+            let nothingRead = measurement.allocatedBytes == 0 && measurement.unreadableCount > 0
+            self.init(url: url, reason: reason,
+                      allocatedBytes: nothingRead ? nil : measurement.allocatedBytes)
+        }
+    }
+
     public struct ManagedPackage: Sendable, Equatable {
         public enum Manager: String, Sendable {
             case homebrew = "Homebrew"
@@ -117,10 +172,10 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
     public var installerPackage: InstallerReceipts.Package?
     /// Sound content stays unless the user requests its separate removal.
     public var soundLibraryItems: [Item] = []
-    /// Candidate roots suppressed by an explicit exclusion or protected glob,
-    /// plus shared group containers that cannot be attributed to one app safely.
-    /// They are never included in the uninstall plan and are named in the UI.
-    public var preservedPaths: [URL]
+    /// Related paths that stay on disk, such as excluded paths, protected content,
+    /// database data, and shared group containers. The plan never removes them.
+    /// The review names each one with its reason.
+    public var preservedPaths: [PreservedPath]
     public var soundLibraryUnreadableCount = 0
 
     let candidateBundleIdentifiers: Set<String>
@@ -138,6 +193,26 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         bundleIdentifier == nil || candidateBundleIdentifiers.isEmpty
     }
     public var protectedItems: [Item] { items.filter(\.isProtectedUserData) }
+
+    /// The review heading. A plan that keeps related paths on disk is not complete.
+    public var reviewTitle: String {
+        if isApplicationOnly { return "Application-only uninstall" }
+        return preservedPaths.isEmpty ? "Complete uninstall" : "Partial uninstall"
+    }
+
+    public var reviewDetail: String {
+        if isApplicationOnly {
+            return "Moppo cannot identify related files safely. Removal includes only the application."
+        }
+        let removal = protectedItems.isEmpty
+            ? "Every verified related file below will move to the Trash."
+            : "Every verified related file below will move to the Trash, including profiles and settings."
+        switch preservedPaths.count {
+        case 0: return removal
+        case 1: return removal + " 1 related path stays on disk."
+        case let count: return removal + " \(count) related paths stay on disk."
+        }
+    }
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.allocatedBytes } }
 
     /// Mandatory app first, then every related item. If the bundle cannot
@@ -162,7 +237,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         bundleIdentifier: String?,
         items: [Item],
         managedPackage: ManagedPackage?,
-        preservedPaths: [URL],
+        preservedPaths: [PreservedPath],
         candidateBundleIdentifiers: Set<String>,
         applicationRoots: [URL],
         allowedRelatedRoots: [URL],
@@ -469,7 +544,7 @@ public struct AppUninstallPlanner: Sendable {
         let exclusiveIDs = exclusiveBundleIDs.intersection(candidateIDs)
 
         var items: [AppUninstallPlan.Item] = [applicationItem]
-        var preserved: [URL] = []
+        var preserved: [AppUninstallPlan.PreservedPath] = []
         let databaseFolders = DatabaseStorage.locations(home: home)
         var claimedPaths = Set(items.map(\.id))
 
@@ -477,7 +552,11 @@ public struct AppUninstallPlanner: Sendable {
         // their names are entitlement-defined, so even a bundle-ID-shaped match is
         // evidence worth showing, not proof of exclusive ownership. Keep these on
         // disk under every scope and disclose them in the review.
-        preserved.append(contentsOf: sharedGroupContainers(for: exclusiveIDs))
+        for container in sharedGroupContainers(for: exclusiveIDs) {
+            preserved.append(try await Self.preservedPath(
+                container, reason: .sharedGroupContainer, context: context
+            ))
+        }
 
         let curation = exclusiveIDs.contains(bundleIdentifier)
             ? ApplicationsScanner.curation(
@@ -493,7 +572,11 @@ public struct AppUninstallPlanner: Sendable {
                 curation, home: home, context: context
             ) {
                 if curated.holdsProtectedContent {
-                    preserved.append(curatedRoot)
+                    preserved.append(try await Self.preservedPath(
+                        curatedRoot,
+                        reason: context.isExcluded(curatedRoot) ? .excluded : .protectedContent,
+                        context: context
+                    ))
                 } else {
                     for entry in curated.entries {
                         let item = AppUninstallPlan.Item(
@@ -522,20 +605,26 @@ public struct AppUninstallPlanner: Sendable {
                 continue
             }
             guard fm.fileExists(atPath: candidate.url.path) else { continue }
-            guard candidateIsSafe(candidate.url),
-                  DatabaseStorage.location(overlapping: candidate.url, in: databaseFolders) == nil
-            else {
-                preserved.append(candidate.url)
+            guard candidateIsSafe(candidate.url) else {
+                preserved.append(.init(url: candidate.url, reason: .unverifiedLocation))
+                continue
+            }
+            guard DatabaseStorage.location(overlapping: candidate.url, in: databaseFolders) == nil else {
+                preserved.append(try await Self.preservedPath(
+                    candidate.url, reason: .databaseData, context: context
+                ))
                 continue
             }
             guard !context.isExcluded(candidate.url) else {
-                preserved.append(candidate.url)
+                preserved.append(.init(url: candidate.url, reason: .excluded))
                 continue
             }
             let measurement = try await context.measurer.measure(candidate.url)
             guard measurement.allocatedBytes > 0 else { continue }
             guard !measurement.containsProtectedPattern else {
-                preserved.append(candidate.url)
+                preserved.append(.init(
+                    url: candidate.url, reason: .protectedContent, measurement: measurement
+                ))
                 continue
             }
             let item = AppUninstallPlan.Item(
@@ -1176,8 +1265,20 @@ public struct AppUninstallPlanner: Sendable {
             .standardizedFileURL
     }
 
-    private static func deduplicated(_ urls: [URL]) -> [URL] {
+    static func deduplicated(
+        _ paths: [AppUninstallPlan.PreservedPath]
+    ) -> [AppUninstallPlan.PreservedPath] {
         var seen = Set<String>()
-        return urls.filter { seen.insert($0.standardizedFileURL.path).inserted }
+        return paths.filter { seen.insert($0.url.standardizedFileURL.path).inserted }
+    }
+
+    /// Measures a kept path for the review. An excluded path is not measured.
+    static func preservedPath(
+        _ url: URL, reason: AppUninstallPlan.PreservedPath.Reason, context: ScanContext
+    ) async throws -> AppUninstallPlan.PreservedPath {
+        guard reason != .excluded, !context.isExcluded(url), !isSymbolicLink(url) else {
+            return .init(url: url, reason: reason)
+        }
+        return .init(url: url, reason: reason, measurement: try await context.measurer.measure(url))
     }
 }
