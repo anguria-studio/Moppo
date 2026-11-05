@@ -572,10 +572,13 @@ struct AppUninstallerModelTests {
 
     @Test("The removal confirmation counts an opted-in container as protected data, and removal receives it")
     func sharedContainerConfirmation() async throws {
-        let fixture = try RemovalSettingsFixture(confirm: true)
         let remover = HeldUninstallerRemoval()
-        let app = AppModel(settings: fixture.settings, uninstallerRemover: remover)
-        let model = app.uninstaller
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), remover: remover,
+            preferences: { .init(excludedPaths: ["/moppo-fixture/excluded"], confirmBeforeCleanup: true, keepReceipt: false) }
+        )
+        var confirmations: [RemovalConfirmation] = []
+        model.confirmRemoval = { confirmations.append($0); return true }
         let (plan, shared) = sharedContainerPlan(claimants: nil)
         let container = try #require(shared.optInItem)
         model.appUninstallPlan = plan
@@ -583,15 +586,14 @@ struct AppUninstallerModelTests {
         model.confirmSharedContainerOptIn()
 
         model.requestAppUninstall()
-        try await waitUntil { app.pendingRemovalConfirmation != nil }
-        #expect(app.pendingRemovalConfirmation == .trash(
+        try await waitUntil { await remover.requests.count == 1 }
+        #expect(confirmations == [.trash(
             itemCount: plan.items.count + 1, totalBytes: plan.totalBytes + container.allocatedBytes,
             protectedDataCount: plan.protectedItems.count + 1
-        ))
-        app.finishRemovalConfirmation(true)
-        try await waitUntil { await remover.requests.count == 1 }
+        )])
         let request = try #require(await remover.requests.first)
         #expect(request.plan.optedInItems == [container])
+        #expect(request.plan.optInExcludedPaths == ["/moppo-fixture/excluded"])
         await remover.finish(0, CleanupOutcome(removedCount: 2))
         try await waitUntil { !model.isUninstallingApp }
     }
