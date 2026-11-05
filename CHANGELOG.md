@@ -55,6 +55,9 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show **Stopping the removal** when you cancel a removal. Earlier versions showed **Stopping the wait**.
 - Name each path that App Uninstaller keeps on disk, with its size and reason. Earlier versions showed a number.
 - Show **Partial uninstall** when some related paths stay on disk. Earlier versions showed **Complete uninstall**.
+- Remove a group container with its application when no other application claims it in its code signature.
+- Show such a group container as user data in App Uninstaller.
+- Keep a group container on disk when Moppo cannot read all of the code signatures.
 
 ## [0.6.0] - 2026-11-02
 

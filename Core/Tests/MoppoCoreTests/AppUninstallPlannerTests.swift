@@ -61,6 +61,51 @@ struct AppUninstallPlannerTests {
             return url
         }
 
+        /// An application extension in `Contents/PlugIns` of `application`.
+        func appExtension(_ name: String, identifier: String, in application: URL) throws -> URL {
+            let url = application.appendingPathComponent("Contents/PlugIns/\(name).appex", isDirectory: true)
+            let contents = url.appendingPathComponent("Contents", isDirectory: true)
+            try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+            let plist: [String: Any] = [
+                "CFBundleName": name, "CFBundleIdentifier": identifier, "CFBundlePackageType": "XPC!",
+            ]
+            try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+                .write(to: contents.appendingPathComponent("Info.plist"))
+            return url
+        }
+
+        /// Gives `bundle` an executable and signs it ad hoc with the app groups in `groups`.
+        /// Sign nested bundles before the bundle that holds them.
+        func sign(_ bundle: URL, groups: [String]) throws {
+            let name = bundle.deletingPathExtension().lastPathComponent
+            let plistURL = bundle.appendingPathComponent("Contents/Info.plist")
+            var plist = try #require(NSDictionary(contentsOf: plistURL) as? [String: Any])
+            plist["CFBundleExecutable"] = name
+            try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+                .write(to: plistURL)
+            let executables = bundle.appendingPathComponent("Contents/MacOS", isDirectory: true)
+            try FileManager.default.createDirectory(at: executables, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(
+                at: URL(fileURLWithPath: "/usr/bin/true"), to: executables.appendingPathComponent(name)
+            )
+            var arguments = ["--force", "--sign", "-"]
+            if !groups.isEmpty {
+                let entitlements = root.appendingPathComponent("\(UUID().uuidString).entitlements")
+                try PropertyListSerialization.data(
+                    fromPropertyList: ["com.apple.security.application-groups": groups],
+                    format: .xml, options: 0
+                ).write(to: entitlements)
+                arguments += ["--entitlements", entitlements.path]
+            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            process.arguments = arguments + [bundle.path]
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            #expect(process.terminationStatus == 0)
+        }
+
         func planner() -> AppUninstallPlanner {
             AppUninstallPlanner(
                 home: home,
@@ -825,6 +870,134 @@ struct AppUninstallPlannerTests {
         #expect(!paths.contains { $0.contains("com.apple.iWork.Numbers") })
         #expect(!paths.contains { $0.contains("/Group Containers/") })
         #expect(plan.preservedPaths.contains { $0.url.path.contains("group.com.apple.iWork.Pages") })
+    }
+
+    // MARK: App group containers
+
+    @Test("a group container that only the application and its extension claim is protected user data")
+    func exclusiveGroupContainers() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        let share = try sandbox.appExtension("Share", identifier: "com.vendor.editor.share", in: app)
+        try sandbox.sign(share, groups: ["group.com.vendor.editor.shared"])
+        try sandbox.sign(app, groups: ["group.com.vendor.editor"])
+        let containers = try ["group.com.vendor.editor", "group.com.vendor.editor.shared"].map {
+            try sandbox.write("Library/Group Containers/\($0)/shared.db").deletingLastPathComponent()
+        }
+
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+
+        for container in containers {
+            let item = try #require(plan.items.first { $0.id == container.standardizedFileURL.path })
+            #expect(item.isProtectedUserData)
+            #expect(item.category == .containers)
+        }
+        #expect(plan.preservedPaths.isEmpty)
+        #expect(plan.reviewTitle == "Complete uninstall")
+    }
+
+    @Test("a group that another installed application claims stays on disk")
+    func groupClaimedByAnotherApplication() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        try sandbox.sign(app, groups: ["group.com.vendor.editor", "group.com.vendor.editor.family"])
+        let writer = try sandbox.application(
+            "Writer", identifier: "com.vendor.writer", under: sandbox.userApplications
+        )
+        try sandbox.sign(writer, groups: ["group.com.vendor.editor.family"])
+        let own = try sandbox.write("Library/Group Containers/group.com.vendor.editor/shared.db")
+            .deletingLastPathComponent()
+        let family = try sandbox.write("Library/Group Containers/group.com.vendor.editor.family/shared.db")
+            .deletingLastPathComponent()
+
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+
+        #expect(plan.items.contains { $0.id == own.standardizedFileURL.path && $0.isProtectedUserData })
+        #expect(!plan.items.contains { $0.id == family.standardizedFileURL.path })
+        #expect(plan.preservedPaths.map(\.url) == [family.standardizedFileURL])
+        #expect(plan.preservedPaths.first?.reason == .sharedGroupContainer)
+        #expect(plan.reviewTitle == "Partial uninstall")
+    }
+
+    enum MissingGroupEvidence: CaseIterable { case signature, inventory }
+
+    @Test("a group container stays when Moppo cannot read all of the evidence", arguments: MissingGroupEvidence.allCases)
+    func incompleteGroupEvidence(_ missing: MissingGroupEvidence) async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        try sandbox.sign(app, groups: ["group.com.vendor.editor"])
+        let container = try sandbox.write("Library/Group Containers/group.com.vendor.editor/shared.db")
+            .deletingLastPathComponent()
+        let unreadable: URL
+        switch missing {
+        case .signature:
+            let writer = try sandbox.application("Writer", identifier: "com.vendor.writer")
+            try sandbox.sign(writer, groups: [])
+            unreadable = writer.appendingPathComponent("Contents/MacOS/Writer")
+        case .inventory:
+            unreadable = sandbox.applications.appendingPathComponent("Vendor", isDirectory: true)
+            try FileManager.default.createDirectory(at: unreadable, withIntermediateDirectories: true)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: unreadable.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: unreadable.path)
+        }
+
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+
+        #expect(!plan.items.contains { $0.id == container.standardizedFileURL.path })
+        #expect(plan.preservedPaths.map(\.url) == [container.standardizedFileURL])
+        #expect(plan.preservedPaths.first?.reason == .sharedGroupContainer)
+    }
+
+    @Test("an exclusive group container that Moppo cannot read stays on disk with its reason")
+    func unreadableExclusiveGroupContainer() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        try sandbox.sign(app, groups: ["group.com.vendor.editor"])
+        let container = try sandbox.write("Library/Group Containers/group.com.vendor.editor/shared.db")
+            .deletingLastPathComponent()
+        try FileManager.default.setAttributes([.posixPermissions: 0], ofItemAtPath: container.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: container.path)
+        }
+
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+
+        #expect(!plan.items.contains { $0.id == container.standardizedFileURL.path })
+        let kept = try #require(plan.preservedPaths.first)
+        #expect(kept.url == container.standardizedFileURL)
+        #expect(kept.reason == .unreadable)
+        #expect(plan.reviewTitle == "Partial uninstall")
+    }
+
+    @Test("an application that claims the group after the review stops the container removal")
+    func groupOwnerInstalledAfterReview() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        try sandbox.sign(app, groups: ["group.com.vendor.editor"])
+        let container = try sandbox.write("Library/Group Containers/group.com.vendor.editor/shared.db")
+            .deletingLastPathComponent()
+        let plan = try await sandbox.planner().plan(applicationURL: app)
+        #expect(plan.items.contains { $0.id == container.standardizedFileURL.path })
+        let claims = ApplicationGroupClaims.applicationRootsOnly
+        #expect(try await claims.groupsClaimedElsewhere(
+            ["group.com.vendor.editor"], selectedApplication: app,
+            applicationRoots: plan.applicationRoots, identifiers: []
+        ).isEmpty)
+
+        let writer = try sandbox.application("Writer", identifier: "com.vendor.writer")
+        try sandbox.sign(writer, groups: ["group.com.vendor.editor"])
+        // The application is already gone, so the test does not use the real Trash.
+        try FileManager.default.moveItem(at: app, to: sandbox.root.appendingPathComponent("removed-app"))
+        let outcome = try await CleanupService(
+            measureSize: { try await AllocatedSizeMeasurer().measure($0) },
+            log: RemovalLog(directory: sandbox.root.appendingPathComponent("log"))
+        ).uninstall(plan)
+
+        #expect(outcome.removedCount == 0)
+        #expect(outcome.failed == [container.standardizedFileURL.path])
+        #expect(FileManager.default.fileExists(atPath: container.path))
     }
 
     /// Every droplet Shortcuts makes carries `com.apple.shortcuts.droplet`, so what
