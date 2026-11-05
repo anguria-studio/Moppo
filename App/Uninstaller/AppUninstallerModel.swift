@@ -144,14 +144,7 @@ final class AppUninstallerModel {
     @ObservationIgnored private var appUninstallTask: Task<Void, Never>?
     @ObservationIgnored private var appUninstallPlanningID: UUID?
 
-    var appUninstallPlan: AppUninstallPlan? {
-        didSet {
-            // An opt-in applies only to the review in which the user saw the warning.
-            guard appUninstallPlan != oldValue else { return }
-            selectedSharedContainerIDs.removeAll()
-            pendingSharedContainerOptIn = nil
-        }
-    }
+    var appUninstallPlan: AppUninstallPlan?
     var selectedSoundLibraryIDs: Set<String> = []
     /// Shared group containers that the user opted in to remove after the warning.
     private(set) var selectedSharedContainerIDs: Set<String> = []
@@ -252,6 +245,8 @@ final class AppUninstallerModel {
         appUninstallPlanningID = nil
         appUninstallPlan = nil
         selectedSoundLibraryIDs.removeAll()
+        selectedSharedContainerIDs.removeAll()
+        pendingSharedContainerOptIn = nil
         pendingSoundLibraryRemoval = nil
         pendingLeftoverRemoval = nil
         appUninstallError = nil
@@ -490,6 +485,7 @@ final class AppUninstallerModel {
     }
 
     /// The shared group containers that the uninstall removes with the application.
+    /// A selection applies only to the plan in which the user saw the warning.
     var optedInSharedContainers: [AppUninstallPlan.Item] {
         appUninstallPlan?.preservedPaths
             .filter { selectedSharedContainerIDs.contains($0.id) }

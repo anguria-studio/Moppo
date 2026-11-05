@@ -551,6 +551,8 @@ struct AppUninstallerModelTests {
         model.toggleSharedContainer(shared)
         model.confirmSharedContainerOptIn()
         model.appUninstallPlan = uninstallPlan("Replacement")
+        #expect(model.optedInSharedContainers.isEmpty)
+        model.resetAppUninstall()
         #expect(model.selectedSharedContainerIDs.isEmpty)
     }
 
