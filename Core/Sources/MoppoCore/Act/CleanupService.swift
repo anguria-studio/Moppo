@@ -134,6 +134,7 @@ public struct CleanupService: Sendable {
     private let docker: DockerService
     private let toolCommands: ToolCommandRemovalService
     private let registeredApplications: @Sendable (Set<String>) -> Set<String>
+    private let applicationGroupClaims: ApplicationGroupClaims
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
     private let reviewBuildCache: @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement?
     private let reviewVendorFolder: @Sendable (VendorFolder) async throws -> Bool
@@ -147,7 +148,8 @@ public struct CleanupService: Sendable {
         administratorTrash: (@Sendable (AppleSoundLibrary.Inventory) async throws -> URL)? = nil
     ) {
         self.init(measureSize: { try await measurer.measure($0) }, log: log,
-                  registeredApplications: AppleSoundLibrary.registeredOwners, docker: docker,
+                  registeredApplications: AppleSoundLibrary.registeredOwners,
+                  applicationGroupClaims: .live, docker: docker,
                   reviewBuildCache: { try await XcodeBuildCache.measureForRemoval($0, with: measurer) },
                   applicationRemovalFallback: applicationRemovalFallback, administratorTrash: administratorTrash)
     }
@@ -156,6 +158,7 @@ public struct CleanupService: Sendable {
         measureSize: @escaping @Sendable (URL) async throws -> SizeMeasurement,
         log: RemovalLog,
         registeredApplications: @escaping @Sendable (Set<String>) -> Set<String> = { _ in [] },
+        applicationGroupClaims: ApplicationGroupClaims = .applicationRootsOnly,
         docker: DockerService = DockerService(),
         toolCommands: ToolCommandRemovalService = ToolCommandRemovalService(),
         deleteCodexSession: @escaping @Sendable (CodexSessionReview) async throws -> Void = {
@@ -177,6 +180,7 @@ public struct CleanupService: Sendable {
         self.measureSize = measureSize
         self.log = log
         self.registeredApplications = registeredApplications
+        self.applicationGroupClaims = applicationGroupClaims
         self.docker = docker
         self.toolCommands = toolCommands
         self.deleteCodexSession = deleteCodexSession
@@ -600,6 +604,9 @@ public struct CleanupService: Sendable {
         }
 
         var exclusiveBundleIdentifiers: Set<String>?
+        // Read again after the application removal. An application installed after
+        // the review can claim a group, and then its container stays.
+        var exclusiveApplicationGroups: Set<String>?
 
         for (index, item) in removalOrder.enumerated() {
             if includingApplication {
@@ -639,8 +646,26 @@ public struct CleanupService: Sendable {
                     return outcome
                 }
             }
+            if item.applicationGroup != nil, exclusiveApplicationGroups == nil {
+                let groups = Set(removalOrder.compactMap(\.applicationGroup))
+                do {
+                    exclusiveApplicationGroups = groups.subtracting(
+                        try await applicationGroupClaims.groupsClaimedElsewhere(
+                            groups, selectedApplication: plan.applicationURL,
+                            applicationRoots: plan.applicationRoots,
+                            identifiers: plan.candidateBundleIdentifiers
+                        )
+                    )
+                } catch is CancellationError {
+                    for remaining in removalOrder[index...] { recordFailure(remaining) }
+                    return outcome
+                } catch {
+                    exclusiveApplicationGroups = []
+                }
+            }
             guard AppUninstallPlanner.removalIsStillSafe(
-                item, in: plan, exclusiveBundleIdentifiers: exclusiveBundleIdentifiers ?? []
+                item, in: plan, exclusiveBundleIdentifiers: exclusiveBundleIdentifiers ?? [],
+                exclusiveApplicationGroups: exclusiveApplicationGroups ?? []
             ) else {
                 recordFailure(item)
                 // The bundle is the transaction gate. Nothing related moves when

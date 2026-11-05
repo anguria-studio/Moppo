@@ -30,7 +30,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
                 case .databaseData:
                     "This folder holds database data."
                 case .sharedGroupContainer:
-                    "Other applications can use this group container."
+                    "Another application can use this group container, or Moppo cannot read the code signatures."
                 case .unverifiedLocation:
                     "Moppo cannot verify that this location is safe to remove."
                 case .sharedSoundContent:
@@ -112,6 +112,8 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         public let content: Content
         public let allocatedBytes: Int64
         public let ownerBundleIdentifier: String?
+        /// The app group of a group container. Only the selected application claims it.
+        let applicationGroup: String?
         let plannedIdentity: String?
         public let soundLibrary: AppleSoundLibrary.Inventory?
 
@@ -124,6 +126,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             content: Content,
             allocatedBytes: Int64,
             ownerBundleIdentifier: String?,
+            applicationGroup: String? = nil,
             soundLibrary: AppleSoundLibrary.Inventory? = nil
         ) {
             self.url = url.standardizedFileURL
@@ -132,6 +135,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             self.content = content
             self.allocatedBytes = allocatedBytes
             self.ownerBundleIdentifier = ownerBundleIdentifier
+            self.applicationGroup = applicationGroup
             self.plannedIdentity = FileIdentity.of(url)
             self.soundLibrary = soundLibrary
         }
@@ -304,6 +308,7 @@ public struct AppUninstallPlanner: Sendable {
     private let installerReceipts: InstallerReceipts?
     let soundLibraries: AppleSoundLibrary?
     let protectedBundleIdentifiers: Set<String>
+    let applicationGroupClaims: ApplicationGroupClaims
 
     public init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL
@@ -324,7 +329,8 @@ public struct AppUninstallPlanner: Sendable {
                 Bundle.main.bundleIdentifier ?? "com.tommasolaterza.Moppo",
             ],
             installerReceipts: InstallerReceipts(),
-            soundLibraries: AppleSoundLibrary()
+            soundLibraries: AppleSoundLibrary(),
+            applicationGroupClaims: .live
         )
     }
 
@@ -340,7 +346,8 @@ public struct AppUninstallPlanner: Sendable {
         loadHomebrewCatalog: (@Sendable (String) async throws -> Data)? = nil,
         protectedBundleIdentifiers: Set<String> = ["com.tommasolaterza.Moppo"],
         installerReceipts: InstallerReceipts? = nil,
-        soundLibraries: AppleSoundLibrary? = nil
+        soundLibraries: AppleSoundLibrary? = nil,
+        applicationGroupClaims: ApplicationGroupClaims = .applicationRootsOnly
     ) {
         self.home = home.standardizedFileURL
         self.userLibrary = home.appendingPathComponent("Library", isDirectory: true)
@@ -356,6 +363,7 @@ public struct AppUninstallPlanner: Sendable {
         self.protectedBundleIdentifiers = protectedBundleIdentifiers
         self.installerReceipts = installerReceipts
         self.soundLibraries = soundLibraries
+        self.applicationGroupClaims = applicationGroupClaims
     }
 
     public func plan(
@@ -548,14 +556,27 @@ public struct AppUninstallPlanner: Sendable {
         let databaseFolders = DatabaseStorage.locations(home: home)
         var claimedPaths = Set(items.map(\.id))
 
-        // Group containers are allowed to be shared by several applications and
-        // their names are entitlement-defined, so even a bundle-ID-shaped match is
-        // evidence worth showing, not proof of exclusive ownership. Keep these on
-        // disk under every scope and disclose them in the review.
-        for container in sharedGroupContainers(for: exclusiveIDs) {
-            preserved.append(try await Self.preservedPath(
-                container, reason: .sharedGroupContainer, context: context
-            ))
+        // Several applications can share a group container, and an entitlement
+        // defines its name. So a name that matches the identifier is not proof of
+        // exclusive ownership. A container becomes user data only when the
+        // signatures show that this application alone claims its group.
+        // Other containers stay on disk, and the review shows them. Under an Apple
+        // identifier, system services outside any application can claim the group.
+        let groupContainers = groupContainers(for: exclusiveIDs, primary: bundleIdentifier)
+        let exclusiveGroups = scope == .exactIdentifier ? [] : try await exclusiveApplicationGroups(
+            Set(groupContainers.compactMap(\.applicationGroup)), applicationURL: applicationURL,
+            identifiers: bundleIDs.union(candidateIDs)
+                .union(context.registeredApplicationBundleIdentifiers)
+        )
+        var groupCandidates: [Candidate] = []
+        for container in groupContainers {
+            if let group = container.applicationGroup, exclusiveGroups.contains(group) {
+                groupCandidates.append(container)
+            } else {
+                preserved.append(try await Self.preservedPath(
+                    container.url, reason: .sharedGroupContainer, context: context
+                ))
+            }
         }
 
         let curation = exclusiveIDs.contains(bundleIdentifier)
@@ -597,7 +618,7 @@ public struct AppUninstallPlanner: Sendable {
             applicationURL: applicationURL, primary: bundleIdentifier,
             exclusiveIdentifiers: exclusiveBundleIDs
         )
-        for candidate in candidates(for: exclusiveIDs) + launchItems {
+        for candidate in candidates(for: exclusiveIDs) + launchItems + groupCandidates {
             try Task.checkCancellation()
             if let curatedRoot,
                ApplicationsScanner.overlaps(candidate.url.standardizedFileURL.path,
@@ -620,7 +641,14 @@ public struct AppUninstallPlanner: Sendable {
                 continue
             }
             let measurement = try await context.measurer.measure(candidate.url)
-            guard measurement.allocatedBytes > 0 else { continue }
+            guard measurement.allocatedBytes > 0 else {
+                // macOS can deny access to the group container of another application.
+                // The review names the container, because it stays on disk.
+                if candidate.applicationGroup != nil, measurement.unreadableCount > 0 {
+                    preserved.append(.init(url: candidate.url, reason: .unreadable, measurement: measurement))
+                }
+                continue
+            }
             guard !measurement.containsProtectedPattern else {
                 preserved.append(.init(
                     url: candidate.url, reason: .protectedContent, measurement: measurement
@@ -632,7 +660,8 @@ public struct AppUninstallPlanner: Sendable {
                 category: candidate.category,
                 content: candidate.content,
                 allocatedBytes: measurement.allocatedBytes,
-                ownerBundleIdentifier: candidate.ownerBundleIdentifier
+                ownerBundleIdentifier: candidate.ownerBundleIdentifier,
+                applicationGroup: candidate.applicationGroup
             )
             if claimedPaths.insert(item.id).inserted { items.append(item) }
         }
@@ -672,6 +701,7 @@ public struct AppUninstallPlanner: Sendable {
         let category: AppUninstallPlan.Item.Category
         let content: AppUninstallPlan.Item.Content
         let ownerBundleIdentifier: String
+        var applicationGroup: String? = nil
     }
 
     func candidates(for bundleIdentifiers: Set<String>) -> [Candidate] {
@@ -773,15 +803,43 @@ public struct AppUninstallPlanner: Sendable {
         }
     }
 
-    private func sharedGroupContainers(for bundleIdentifiers: Set<String>) -> [URL] {
+    /// Group containers whose name matches one of `bundleIdentifiers`. The folder name is the app group.
+    private func groupContainers(for bundleIdentifiers: Set<String>, primary: String) -> [Candidate] {
         let root = userLibrary.appendingPathComponent("Group Containers", isDirectory: true)
-        return Self.directoryNames(root).compactMap { name in
-            guard bundleIdentifiers.contains(where: { identifier in
+        return Self.directoryNames(root).sorted().compactMap { name in
+            let owners = bundleIdentifiers.filter { identifier in
                 name == identifier
                     || name == "group.\(identifier)"
                     || name.hasPrefix("group.\(identifier).")
-            }) else { return nil }
-            return root.appendingPathComponent(name, isDirectory: true).standardizedFileURL
+            }
+            guard let owner = owners.contains(primary) ? primary : owners.sorted().first else { return nil }
+            return Candidate(
+                url: root.appendingPathComponent(name, isDirectory: true).standardizedFileURL,
+                category: .containers, content: .userData,
+                ownerBundleIdentifier: owner, applicationGroup: name
+            )
+        }
+    }
+
+    /// The groups in `groups` that the application or its code items claim, and no other application claims.
+    /// Empty when a signature or the application inventory cannot be read.
+    private func exclusiveApplicationGroups(
+        _ groups: Set<String>, applicationURL: URL, identifiers: Set<String>
+    ) async throws -> Set<String> {
+        guard !groups.isEmpty else { return [] }
+        do {
+            let claimed = try ApplicationGroupClaims.claimedGroups(
+                in: applicationURL, checkCancellation: Task.checkCancellation
+            ).intersection(groups)
+            guard !claimed.isEmpty else { return [] }
+            return claimed.subtracting(try await applicationGroupClaims.groupsClaimedElsewhere(
+                claimed, selectedApplication: applicationURL,
+                applicationRoots: applicationRoots, identifiers: identifiers
+            ))
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return []
         }
     }
 
@@ -1023,10 +1081,13 @@ public struct AppUninstallPlanner: Sendable {
         return ownership
     }
 
+    /// - Parameter exclusiveApplicationGroups: the app groups that no other application claims now.
+    ///   A group container item without its group in this set stays on disk.
     static func removalIsStillSafe(
         _ item: AppUninstallPlan.Item,
         in plan: AppUninstallPlan,
-        exclusiveBundleIdentifiers: Set<String>
+        exclusiveBundleIdentifiers: Set<String>,
+        exclusiveApplicationGroups: Set<String> = []
     ) -> Bool {
         guard plan.items.contains(where: { $0.id == item.id && $0 == item }) else { return false }
         if let currentIdentity = FileIdentity.of(item.url),
@@ -1040,6 +1101,7 @@ public struct AppUninstallPlanner: Sendable {
                 && Self.isInside(item.url, oneOf: plan.applicationRoots)
                 && !Self.isSymbolicLink(item.url)
         }
+        if let group = item.applicationGroup, !exclusiveApplicationGroups.contains(group) { return false }
         guard let owner = item.ownerBundleIdentifier,
               exclusiveBundleIdentifiers.contains(owner),
               let root = Self.relatedRoot(
