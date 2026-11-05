@@ -49,17 +49,33 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         /// Nil when Moppo does not measure the path, such as an excluded path,
         /// or when Moppo cannot read any item in it.
         public let allocatedBytes: Int64?
+        /// The item that removes this path when the user opts in after a warning.
+        /// Only a shared group container that passes every other check has one.
+        public let optInItem: Item?
+        /// The other applications that claim the group of a shared group container.
+        /// Nil when Moppo cannot read the claims. See `ApplicationGroupClaims.groupsClaimedElsewhere`.
+        public let claimingApplications: [URL]?
 
         public init(url: URL, reason: Reason, allocatedBytes: Int64? = nil) {
             self.url = url
             self.reason = reason
             self.allocatedBytes = allocatedBytes
+            self.optInItem = nil
+            self.claimingApplications = nil
         }
 
         init(url: URL, reason: Reason, measurement: SizeMeasurement) {
             let nothingRead = measurement.allocatedBytes == 0 && measurement.unreadableCount > 0
             self.init(url: url, reason: reason,
                       allocatedBytes: nothingRead ? nil : measurement.allocatedBytes)
+        }
+
+        init(sharedGroupContainer item: Item, claimingApplications: [URL]?) {
+            self.url = item.url
+            self.reason = .sharedGroupContainer
+            self.allocatedBytes = item.allocatedBytes
+            self.optInItem = item
+            self.claimingApplications = claimingApplications
         }
     }
 
@@ -181,8 +197,16 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
     /// The review names each one with its reason.
     public var preservedPaths: [PreservedPath]
     public var soundLibraryUnreadableCount = 0
+    /// Shared group containers that the user chose to remove after the warning.
+    /// Moppo removes them after the application. See `includingSharedGroupContainers(_:context:)`.
+    public private(set) var optedInItems: [Item] = []
+    /// The exclusion rules when the user confirmed the removal. Moppo checks the opted-in items against them again.
+    private(set) var optInExcludedPaths: [String] = []
+    private(set) var optInExcludedPatterns: [String] = []
 
     let candidateBundleIdentifiers: Set<String>
+    /// The home folder of the review. Moppo finds database folders in it again at removal.
+    let home: URL
     let applicationRoots: [URL]
     let allowedRelatedRoots: [URL]
     /// Named data folders outside `allowedRelatedRoots`. See `ApplicationDataFolders`.
@@ -219,6 +243,19 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
     }
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.allocatedBytes } }
 
+    /// A copy of the plan that also removes the selected shared group containers.
+    ///
+    /// Only rows with an `optInItem` can be selected. Other preserved paths stay on disk.
+    /// - Parameter context: the current exclusion rules. Moppo checks them again at removal.
+    public func includingSharedGroupContainers(_ ids: Set<String>, context: ScanContext) -> AppUninstallPlan {
+        var plan = self
+        plan.optedInItems = preservedPaths.filter { ids.contains($0.id) }.compactMap(\.optInItem)
+        guard !plan.optedInItems.isEmpty else { return plan }
+        plan.optInExcludedPaths = context.excludedPaths
+        plan.optInExcludedPatterns = context.excludedPatterns
+        return plan
+    }
+
     /// Mandatory app first, then every related item. If the bundle cannot
     /// move, cleanup aborts before profiles or settings can be touched.
     func removalOrder() -> [Item] {
@@ -243,6 +280,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         managedPackage: ManagedPackage?,
         preservedPaths: [PreservedPath],
         candidateBundleIdentifiers: Set<String>,
+        home: URL,
         applicationRoots: [URL],
         allowedRelatedRoots: [URL],
         allowedRelatedFolders: [URL] = []
@@ -255,6 +293,7 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         self.managedPackage = managedPackage
         self.preservedPaths = preservedPaths
         self.candidateBundleIdentifiers = candidateBundleIdentifiers
+        self.home = home.standardizedFileURL
         self.applicationRoots = applicationRoots.map(\.standardizedFileURL)
         self.allowedRelatedRoots = allowedRelatedRoots.map(\.standardizedFileURL)
         self.allowedRelatedFolders = allowedRelatedFolders.map(\.standardizedFileURL)
@@ -520,6 +559,7 @@ public struct AppUninstallPlanner: Sendable {
                 managedPackage: managedPackage,
                 preservedPaths: [],
                 candidateBundleIdentifiers: [],
+                home: home,
                 applicationRoots: applicationRoots,
                 allowedRelatedRoots: allowedRelatedRoots,
                 allowedRelatedFolders: allowedRelatedFolders
@@ -560,22 +600,23 @@ public struct AppUninstallPlanner: Sendable {
         // defines its name. So a name that matches the identifier is not proof of
         // exclusive ownership. A container becomes user data only when the
         // signatures show that this application alone claims its group.
-        // Other containers stay on disk, and the review shows them. Under an Apple
-        // identifier, system services outside any application can claim the group.
+        // Other containers stay on disk, and the review shows them. The user can
+        // opt in to remove one after a warning. Under an Apple identifier, system
+        // services outside any application can claim the group.
         let groupContainers = groupContainers(for: exclusiveIDs, primary: bundleIdentifier)
-        let exclusiveGroups = scope == .exactIdentifier ? [] : try await exclusiveApplicationGroups(
+        let groupClaims = scope == .exactIdentifier ? .unknown : try await exclusiveApplicationGroups(
             Set(groupContainers.compactMap(\.applicationGroup)), applicationURL: applicationURL,
             identifiers: bundleIDs.union(candidateIDs)
                 .union(context.registeredApplicationBundleIdentifiers)
         )
-        var groupCandidates: [Candidate] = []
+        // A shared container goes through the same checks as an exclusive container below.
+        var sharedContainerPaths = Set<String>()
+        var claimingApplications: [String: [URL]] = [:]
         for container in groupContainers {
-            if let group = container.applicationGroup, exclusiveGroups.contains(group) {
-                groupCandidates.append(container)
-            } else {
-                preserved.append(try await Self.preservedPath(
-                    container.url, reason: .sharedGroupContainer, context: context
-                ))
+            if let group = container.applicationGroup, groupClaims.exclusive.contains(group) { continue }
+            sharedContainerPaths.insert(container.url.path)
+            claimingApplications[container.url.path] = container.applicationGroup.flatMap {
+                groupClaims.claimedElsewhere[$0]
             }
         }
 
@@ -618,8 +659,9 @@ public struct AppUninstallPlanner: Sendable {
             applicationURL: applicationURL, primary: bundleIdentifier,
             exclusiveIdentifiers: exclusiveBundleIDs
         )
-        for candidate in candidates(for: exclusiveIDs) + launchItems + groupCandidates {
+        for candidate in candidates(for: exclusiveIDs) + launchItems + groupContainers {
             try Task.checkCancellation()
+            let isSharedContainer = sharedContainerPaths.contains(candidate.url.path)
             if let curatedRoot,
                ApplicationsScanner.overlaps(candidate.url.standardizedFileURL.path,
                                             curatedRoot.path) {
@@ -641,7 +683,13 @@ public struct AppUninstallPlanner: Sendable {
                 continue
             }
             let measurement = try await context.measurer.measure(candidate.url)
-            guard measurement.allocatedBytes > 0 else {
+            // Moppo cannot look for protected content in an item that it cannot read.
+            // So a shared container that the user can opt in to remove must be fully readable.
+            if isSharedContainer, measurement.unreadableCount > 0 {
+                preserved.append(.init(url: candidate.url, reason: .unreadable, measurement: measurement))
+                continue
+            }
+            guard measurement.allocatedBytes > 0 || isSharedContainer else {
                 // macOS can deny access to the group container of another application.
                 // The review names the container, because it stays on disk.
                 if candidate.applicationGroup != nil, measurement.unreadableCount > 0 {
@@ -663,7 +711,13 @@ public struct AppUninstallPlanner: Sendable {
                 ownerBundleIdentifier: candidate.ownerBundleIdentifier,
                 applicationGroup: candidate.applicationGroup
             )
-            if claimedPaths.insert(item.id).inserted { items.append(item) }
+            if isSharedContainer {
+                preserved.append(.init(
+                    sharedGroupContainer: item, claimingApplications: claimingApplications[candidate.url.path]
+                ))
+            } else if claimedPaths.insert(item.id).inserted {
+                items.append(item)
+            }
         }
 
         let categoryRank = Dictionary(
@@ -688,6 +742,7 @@ public struct AppUninstallPlanner: Sendable {
             managedPackage: managedPackage,
             preservedPaths: Self.deduplicated(preserved),
             candidateBundleIdentifiers: candidateIDs,
+            home: home,
             applicationRoots: applicationRoots,
             allowedRelatedRoots: allowedRelatedRoots,
             allowedRelatedFolders: allowedRelatedFolders
@@ -821,25 +876,35 @@ public struct AppUninstallPlanner: Sendable {
         }
     }
 
-    /// The groups in `groups` that the application or its code items claim, and no other application claims.
-    /// Empty when a signature or the application inventory cannot be read.
+    struct GroupClaims {
+        /// The groups that the application or its code items claim, and no other application claims.
+        var exclusive: Set<String> = []
+        /// The other applications that claim a group. A group that is not a key has no known claims.
+        var claimedElsewhere: [String: [URL]] = [:]
+
+        static let unknown = GroupClaims()
+    }
+
+    /// The claims on the groups in `groups`.
+    /// Unknown when a signature or the application inventory cannot be read.
     private func exclusiveApplicationGroups(
         _ groups: Set<String>, applicationURL: URL, identifiers: Set<String>
-    ) async throws -> Set<String> {
-        guard !groups.isEmpty else { return [] }
+    ) async throws -> GroupClaims {
+        guard !groups.isEmpty else { return .unknown }
         do {
             let claimed = try ApplicationGroupClaims.claimedGroups(
                 in: applicationURL, checkCancellation: Task.checkCancellation
             ).intersection(groups)
-            guard !claimed.isEmpty else { return [] }
-            return claimed.subtracting(try await applicationGroupClaims.groupsClaimedElsewhere(
+            guard !claimed.isEmpty else { return .unknown }
+            let elsewhere = try await applicationGroupClaims.groupsClaimedElsewhere(
                 claimed, selectedApplication: applicationURL,
                 applicationRoots: applicationRoots, identifiers: identifiers
-            ))
+            )
+            return GroupClaims(exclusive: claimed.subtracting(elsewhere.keys), claimedElsewhere: elsewhere)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            return []
+            return .unknown
         }
     }
 
@@ -1102,14 +1167,41 @@ public struct AppUninstallPlanner: Sendable {
                 && !Self.isSymbolicLink(item.url)
         }
         if let group = item.applicationGroup, !exclusiveApplicationGroups.contains(group) { return false }
-        guard let owner = item.ownerBundleIdentifier,
-              exclusiveBundleIdentifiers.contains(owner),
-              let root = Self.relatedRoot(
-                  of: item.url, roots: plan.allowedRelatedRoots, folders: plan.allowedRelatedFolders
-              ),
-              !Self.isSymbolicLink(item.url)
+        guard let owner = item.ownerBundleIdentifier, exclusiveBundleIdentifiers.contains(owner) else { return false }
+        return isSafeLocation(item.url, roots: plan.allowedRelatedRoots, folders: plan.allowedRelatedFolders)
+    }
+
+    /// The checks for a shared group container that the user opted in to remove.
+    ///
+    /// The application must be gone, and the container must be the reviewed folder
+    /// in a safe location. It must not hold database data, an excluded path, protected
+    /// content, or an item that Moppo cannot read. Another application can claim the
+    /// group, because the user accepted that risk after the warning.
+    static func optedInRemovalIsStillSafe(
+        _ item: AppUninstallPlan.Item, in plan: AppUninstallPlan
+    ) async -> Bool {
+        guard plan.optedInItems.contains(item),
+              FileIdentity.isAbsent(plan.applicationURL),
+              let identity = FileIdentity.of(item.url), identity == item.plannedIdentity,
+              isSafeLocation(item.url, roots: plan.allowedRelatedRoots, folders: plan.allowedRelatedFolders),
+              DatabaseStorage.location(overlapping: item.url, in: DatabaseStorage.locations(home: plan.home)) == nil
         else { return false }
-        return !Self.hasSymbolicLinkInParents(of: item.url, through: root)
+        let context = ScanContext(
+            measurer: AllocatedSizeMeasurer(followSymlinks: false),
+            excludedPaths: plan.optInExcludedPaths, excludedPatterns: plan.optInExcludedPatterns
+        )
+        guard !context.isExcluded(item.url),
+              let measurement = try? await context.measurer.measure(item.url)
+        else { return false }
+        return !measurement.containsProtectedPattern && measurement.unreadableCount == 0
+    }
+
+    /// True when `url` is in an allowed location, and it and its parents are not symbolic links.
+    static func isSafeLocation(_ url: URL, roots: [URL], folders: [URL]) -> Bool {
+        guard let root = relatedRoot(of: url, roots: roots, folders: folders), !isSymbolicLink(url) else {
+            return false
+        }
+        return !hasSymbolicLinkInParents(of: url, through: root)
     }
 
     var allowedRelatedRoots: [URL] {
@@ -1127,10 +1219,7 @@ public struct AppUninstallPlanner: Sendable {
     }
 
     func candidateIsSafe(_ url: URL) -> Bool {
-        guard let root = Self.relatedRoot(of: url, roots: allowedRelatedRoots, folders: allowedRelatedFolders),
-              !Self.isSymbolicLink(url)
-        else { return false }
-        return !Self.hasSymbolicLinkInParents(of: url, through: root)
+        Self.isSafeLocation(url, roots: allowedRelatedRoots, folders: allowedRelatedFolders)
     }
 
     /// The folder through which the symbolic link check runs, or nil when `url` is outside the allowed locations.

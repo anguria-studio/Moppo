@@ -62,6 +62,14 @@ struct AppUninstallDetailView: View {
                 onCancel: { model.pendingSoundLibraryRemoval = nil }
             )
         }
+        .alert(item: $model.pendingSharedContainerOptIn) { path in
+            Alert(
+                title: Text("Remove \(path.url.lastPathComponent) with the application?"),
+                message: Text(AppUninstallerModel.sharedContainerWarning(path)),
+                primaryButton: .destructive(Text("Select for Removal"), action: model.confirmSharedContainerOptIn),
+                secondaryButton: .cancel { model.pendingSharedContainerOptIn = nil }
+            )
+        }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityLabel("Application details")
@@ -97,11 +105,13 @@ struct AppUninstallDetailView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 if let plan {
-                    Text(ByteFormatting.string(plan.totalBytes))
+                    let optedIn = model.optedInSharedContainers
+                    let relatedCount = plan.items.count - 1 + optedIn.count
+                    Text(ByteFormatting.string(plan.totalBytes + optedIn.reduce(0) { $0 + $1.allocatedBytes }))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                     Text(plan.isApplicationOnly
                         ? "Application only"
-                        : "\(plan.items.count - 1) related \(plan.items.count == 2 ? "item" : "items")")
+                        : "\(relatedCount) related \(relatedCount == 1 ? "item" : "items")")
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
                 } else {
@@ -393,7 +403,12 @@ struct AppUninstallDetailView: View {
 
             ForEach(Array(paths.enumerated()), id: \.element.id) { index, path in
                 if index > 0 { UninstallerDivider() }
-                UninstallerPreservedRow(path: path)
+                UninstallerPreservedRow(
+                    path: path,
+                    isSelected: model.selectedSharedContainerIDs.contains(path.id),
+                    isEnabled: !model.isBusyWithDisk,
+                    onToggle: { model.toggleSharedContainer(path) }
+                )
             }
         }
     }
@@ -415,11 +430,23 @@ struct AppUninstallDetailView: View {
 }
 
 /// A related path that stays on disk, with the reason.
+/// A shared group container has a checkbox. The user can opt in to remove it after a warning.
 private struct UninstallerPreservedRow: View {
     let path: AppUninstallPlan.PreservedPath
+    let isSelected: Bool
+    let isEnabled: Bool
+    let onToggle: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
+            if path.optInItem != nil {
+                SelectionCheckbox(
+                    title: "Remove \(path.url.lastPathComponent)",
+                    state: isSelected ? .on : .off,
+                    isEnabled: isEnabled, showsTitle: false
+                ) { _ in onToggle() }
+                .fixedSize()
+            }
             Image(nsImage: NSWorkspace.shared.icon(forFile: path.url.path))
                 .resizable()
                 .frame(width: 20, height: 20)
@@ -440,6 +467,11 @@ private struct UninstallerPreservedRow: View {
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if isSelected {
+                    Text("Moves to the Trash after the application.")
+                        .font(.mcCaption)
+                        .foregroundStyle(Token.textColor(.orange))
+                }
             }
 
             Spacer()

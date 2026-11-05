@@ -121,19 +121,21 @@ struct ApplicationGroupClaims: Sendable {
             || ["Headers", "PrivateHeaders"].contains(url.lastPathComponent)
     }
 
-    /// The groups in `groups` that an application other than `selectedApplication` claims.
+    /// The groups in `groups` that an application other than `selectedApplication` claims,
+    /// with the bundle paths of those applications.
     ///
     /// Moppo reads every application in `applicationRoots`. It also reads each
     /// application that Launch Services finds for `identifiers` and for the names
     /// in `groups`. An application in the Trash is not installed.
+    /// The read stops when each group has a claim, so a group can have more claims than the result shows.
     /// - Throws: When the inventory of an application root or a signature cannot be read.
     func groupsClaimedElsewhere(
         _ groups: Set<String>,
         selectedApplication: URL,
         applicationRoots: [URL],
         identifiers: Set<String>
-    ) async throws -> Set<String> {
-        guard !groups.isEmpty else { return [] }
+    ) async throws -> [String: [URL]] {
+        guard !groups.isEmpty else { return [:] }
         let selectedPath = selectedApplication.resolvingSymlinksInPath().standardizedFileURL.path
         var applications = try AppUninstallPlanner.installedApplications(
             in: applicationRoots, fileManager: .default,
@@ -154,29 +156,30 @@ struct ApplicationGroupClaims: Sendable {
             paths.append(path)
         }
         // Xcode alone takes seconds, so the applications are read at the same time.
-        return try await withThrowingTaskGroup(of: Set<String>.self) { group in
+        let claims = try await withThrowingTaskGroup(of: (URL, Set<String>).self) { group in
             var next = 0
             func submit() {
                 guard next < paths.count else { return }
                 let url = URL(fileURLWithPath: paths[next], isDirectory: true)
                 next += 1
                 group.addTask {
-                    try Self.claimedGroups(in: url, checkCancellation: Task.checkCancellation)
-                        .intersection(groups)
+                    (url, try Self.claimedGroups(in: url, checkCancellation: Task.checkCancellation)
+                        .intersection(groups))
                 }
             }
             for _ in 0..<min(ProcessInfo.processInfo.activeProcessorCount, paths.count) { submit() }
-            var claimed = Set<String>()
-            for try await groupsOfOneApplication in group {
-                claimed.formUnion(groupsOfOneApplication)
-                if claimed == groups {
+            var claims: [String: [URL]] = [:]
+            for try await (application, groupsOfOneApplication) in group {
+                for claimed in groupsOfOneApplication { claims[claimed, default: []].append(application) }
+                if claims.count == groups.count {
                     group.cancelAll()
-                    return claimed
+                    return claims
                 }
                 submit()
             }
-            return claimed
+            return claims
         }
+        return claims.mapValues { $0.sorted { $0.path < $1.path } }
     }
 
     /// Application identifiers that a group name can contain.

@@ -523,6 +523,81 @@ struct AppUninstallerModelTests {
         #expect(!model.isShowingAppUninstallDetail)
     }
 
+    @Test("A shared group container checkbox opens a warning first, and other kept paths have no checkbox")
+    func sharedContainerCheckbox() {
+        let model = AppUninstallerModel(operations: OperationCoordinator(), remover: HeldUninstallerRemoval())
+        let (plan, shared) = sharedContainerPlan(claimants: [URL(fileURLWithPath: "/Applications/Writer.app")])
+        let excluded = plan.preservedPaths[0]
+        model.appUninstallPlan = plan
+
+        model.toggleSharedContainer(excluded)
+        #expect(model.pendingSharedContainerOptIn == nil)
+        model.toggleSharedContainer(shared)
+        #expect(model.pendingSharedContainerOptIn == shared)
+        #expect(model.selectedSharedContainerIDs.isEmpty)
+        model.pendingSharedContainerOptIn = nil
+        #expect(model.selectedSharedContainerIDs.isEmpty)
+
+        model.toggleSharedContainer(shared)
+        model.confirmSharedContainerOptIn()
+        #expect(model.pendingSharedContainerOptIn == nil)
+        #expect(model.selectedSharedContainerIDs == [shared.id])
+        #expect(model.optedInSharedContainers == [shared.optInItem])
+        // A clear needs no warning.
+        model.toggleSharedContainer(shared)
+        #expect(model.pendingSharedContainerOptIn == nil)
+        #expect(model.selectedSharedContainerIDs.isEmpty)
+
+        model.toggleSharedContainer(shared)
+        model.confirmSharedContainerOptIn()
+        model.appUninstallPlan = uninstallPlan("Replacement")
+        #expect(model.optedInSharedContainers.isEmpty)
+        model.resetAppUninstall()
+        #expect(model.selectedSharedContainerIDs.isEmpty)
+    }
+
+    @Test("The warning names the other applications, or says that Moppo cannot confirm them", arguments: [false, true])
+    func sharedContainerWarning(_ knowsClaimants: Bool) {
+        let claimants = [URL(fileURLWithPath: "/Applications/Writer.app"), URL(fileURLWithPath: "/Applications/Notes Helper.app")]
+        let (_, shared) = sharedContainerPlan(claimants: knowsClaimants ? claimants : nil)
+        let warning = AppUninstallerModel.sharedContainerWarning(shared)
+        if knowsClaimants {
+            #expect(warning.contains("These applications also use this group container: Writer, Notes Helper."))
+            #expect(!warning.contains("cannot confirm"))
+        } else {
+            #expect(warning.contains("Moppo cannot confirm which applications use this group container."))
+        }
+        #expect(warning.contains("lose their data and settings"))
+    }
+
+    @Test("The removal confirmation counts an opted-in container as protected data, and removal receives it")
+    func sharedContainerConfirmation() async throws {
+        let remover = HeldUninstallerRemoval()
+        let model = AppUninstallerModel(
+            operations: OperationCoordinator(), remover: remover,
+            preferences: { .init(excludedPaths: ["/moppo-fixture/excluded"], confirmBeforeCleanup: true, keepReceipt: false) }
+        )
+        var confirmations: [RemovalConfirmation] = []
+        model.confirmRemoval = { confirmations.append($0); return true }
+        let (plan, shared) = sharedContainerPlan(claimants: nil)
+        let container = try #require(shared.optInItem)
+        model.appUninstallPlan = plan
+        model.toggleSharedContainer(shared)
+        model.confirmSharedContainerOptIn()
+
+        model.requestAppUninstall()
+        try await waitUntil { await remover.requests.count == 1 }
+        #expect(confirmations == [.trash(
+            itemCount: plan.items.count + 1, totalBytes: plan.totalBytes + container.allocatedBytes,
+            protectedDataCount: plan.protectedItems.count + 1
+        )])
+        let request = try #require(await remover.requests.first)
+        #expect(request.plan.optedInItems == [container])
+        #expect(request.plan.optInExcludedPaths == ["/moppo-fixture/excluded"])
+        await remover.finish(0, CleanupOutcome(removedCount: 2))
+        try await waitUntil { !model.isUninstallingApp }
+    }
+
     @Test("A quit refusal retains the review and prevents removal")
     func quitRefusal() async throws {
         let operations = OperationCoordinator()
@@ -1050,8 +1125,26 @@ private func uninstallPlan(_ name: String, at applicationURL: URL? = nil) -> App
         items: [.init(url: url, category: .application, content: .application,
                       allocatedBytes: 64, ownerBundleIdentifier: application.bundleIdentifier)],
         managedPackage: nil, preservedPaths: [], candidateBundleIdentifiers: [application.bundleIdentifier!],
+        home: URL(fileURLWithPath: "/moppo-fixture/home"),
         applicationRoots: [url.deletingLastPathComponent()], allowedRelatedRoots: []
     )
+}
+
+/// A plan with an excluded path and a shared group container that `claimants` also claim.
+private func sharedContainerPlan(claimants: [URL]?) -> (AppUninstallPlan, shared: AppUninstallPlan.PreservedPath) {
+    var plan = uninstallPlan("Editor")
+    let group = "group.org.moppo.Editor"
+    let item = AppUninstallPlan.Item(
+        url: URL(fileURLWithPath: "/moppo-fixture/home/Library/Group Containers/\(group)"),
+        category: .containers, content: .userData, allocatedBytes: 512,
+        ownerBundleIdentifier: plan.bundleIdentifier, applicationGroup: group
+    )
+    let shared = AppUninstallPlan.PreservedPath(sharedGroupContainer: item, claimingApplications: claimants)
+    plan.preservedPaths = [
+        .init(url: URL(fileURLWithPath: "/moppo-fixture/home/Library/Caches/org.moppo.Editor"), reason: .excluded),
+        shared,
+    ]
+    return (plan, shared)
 }
 
 private func leftoverPlan(_ identifier: String) -> OrphanedAppLeftoverPlan {

@@ -58,6 +58,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Remove a group container with its application when no other application claims it in its code signature.
 - Show such a group container as user data in App Uninstaller.
 - Keep a group container on disk when Moppo cannot read all of the code signatures.
+- Add a checkbox to each shared group container in **Stays on Disk**.
+- Remove a selected shared group container with its application. Moppo shows a warning first.
 
 ## [0.6.0] - 2026-11-02
 

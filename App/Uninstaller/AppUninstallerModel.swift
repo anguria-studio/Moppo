@@ -146,6 +146,10 @@ final class AppUninstallerModel {
 
     var appUninstallPlan: AppUninstallPlan?
     var selectedSoundLibraryIDs: Set<String> = []
+    /// Shared group containers that the user opted in to remove after the warning.
+    private(set) var selectedSharedContainerIDs: Set<String> = []
+    /// The shared group container whose warning is open.
+    var pendingSharedContainerOptIn: AppUninstallPlan.PreservedPath?
     struct SoundLibraryRemovalReview: Identifiable {
         let id = UUID()
         let plan: AppUninstallPlan
@@ -241,6 +245,8 @@ final class AppUninstallerModel {
         appUninstallPlanningID = nil
         appUninstallPlan = nil
         selectedSoundLibraryIDs.removeAll()
+        selectedSharedContainerIDs.removeAll()
+        pendingSharedContainerOptIn = nil
         pendingSoundLibraryRemoval = nil
         pendingLeftoverRemoval = nil
         appUninstallError = nil
@@ -462,15 +468,53 @@ final class AppUninstallerModel {
         }
     }
 
+    // MARK: Shared group containers
+
+    /// Clears a checked row at once. A check opens the warning first.
+    func toggleSharedContainer(_ path: AppUninstallPlan.PreservedPath) {
+        guard path.optInItem != nil, appUninstallPlan?.preservedPaths.contains(path) == true,
+              !isBusyWithDisk else { return }
+        if selectedSharedContainerIDs.remove(path.id) == nil { pendingSharedContainerOptIn = path }
+    }
+
+    func confirmSharedContainerOptIn() {
+        guard let path = pendingSharedContainerOptIn else { return }
+        pendingSharedContainerOptIn = nil
+        guard appUninstallPlan?.preservedPaths.contains(path) == true else { return }
+        selectedSharedContainerIDs.insert(path.id)
+    }
+
+    /// The shared group containers that the uninstall removes with the application.
+    /// A selection applies only to the plan in which the user saw the warning.
+    var optedInSharedContainers: [AppUninstallPlan.Item] {
+        appUninstallPlan?.preservedPaths
+            .filter { selectedSharedContainerIDs.contains($0.id) }
+            .compactMap(\.optInItem) ?? []
+    }
+
+    static func sharedContainerWarning(_ path: AppUninstallPlan.PreservedPath) -> String {
+        let risk = "If you remove it, these applications can lose their data and settings."
+        guard let applications = path.claimingApplications, !applications.isEmpty else {
+            return "Moppo cannot confirm which applications use this group container. "
+                + "If you remove it, other applications can lose their data and settings."
+        }
+        let names = applications.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", ")
+        return "These applications also use this group container: \(names). \(risk) "
+            + "Other applications or system services can also use it."
+    }
+
     func requestAppUninstall() {
-        guard let plan = appUninstallPlan,
+        guard let reviewedPlan = appUninstallPlan,
               let operation = operations.begin(.appUninstall) else { return }
         let settings = preferences()
+        let plan = reviewedPlan.includingSharedGroupContainers(selectedSharedContainerIDs, context: makeContext())
+        let optedIn = plan.optedInItems
         startRemoval(operation) { [self] in
             if plan.managedPackage == nil {
                 guard await settings.confirmRemoval(
-                    .trash(itemCount: plan.items.count, totalBytes: plan.totalBytes,
-                           protectedDataCount: plan.protectedItems.count), using: confirmRemoval
+                    .trash(itemCount: plan.items.count + optedIn.count,
+                           totalBytes: plan.totalBytes + optedIn.reduce(0) { $0 + $1.allocatedBytes },
+                           protectedDataCount: plan.protectedItems.count + optedIn.count), using: confirmRemoval
                 ) else {
                     clearAppUninstall()
                     uninstallerTab = .installed
