@@ -45,6 +45,8 @@ public struct RemovalRecord: Sendable, Equatable {
     /// filesystem would not report it.
     public var freedBytes: Int64?
     public var toolCommandResult: ToolCommandRemovalResult?
+    /// True for a shared group container that the user opted in to remove after the warning.
+    public var optedInSharedGroupContainer: Bool
 
     public init(
         timestamp: Date,
@@ -54,7 +56,8 @@ public struct RemovalRecord: Sendable, Equatable {
         trashedPath: String? = nil,
         trashedIdentity: String? = nil,
         freedBytes: Int64? = nil,
-        toolCommandResult: ToolCommandRemovalResult? = nil
+        toolCommandResult: ToolCommandRemovalResult? = nil,
+        optedInSharedGroupContainer: Bool = false
     ) {
         self.timestamp = timestamp
         self.originalPath = originalPath
@@ -64,6 +67,7 @@ public struct RemovalRecord: Sendable, Equatable {
         self.trashedIdentity = trashedIdentity
         self.freedBytes = freedBytes
         self.toolCommandResult = toolCommandResult
+        self.optedInSharedGroupContainer = optedInSharedGroupContainer
     }
 }
 
@@ -224,7 +228,7 @@ public struct RemovalLog: Sendable {
 
     private static let timestampStyle = Date.ISO8601FormatStyle()
 
-    /// `<timestamp> "<original>" <bytes> <disposition> ["<trash path>" [dev:ino] [freed=<n>]]`
+    /// `<timestamp> "<original>" <bytes> <disposition> ["<trash path>" [dev:ino] [freed=<n>] [optIn=sharedGroupContainer]]`
     /// — everything after the disposition is optional, so older lines still parse.
     ///
     /// A permanent deletion has no Trash path but can still carry a freed figure,
@@ -236,15 +240,20 @@ public struct RemovalLog: Sendable {
         let timestamp = record.timestamp.formatted(timestampStyle)
         let path = quote(record.originalPath)
         var line = "\(timestamp) \(path) \(record.bytes) \(record.disposition.rawValue)"
-        guard record.trashedPath != nil || record.freedBytes != nil || record.toolCommandResult != nil else { return line }
+        guard record.trashedPath != nil || record.freedBytes != nil || record.toolCommandResult != nil
+                || record.optedInSharedGroupContainer
+        else { return line }
         line += " " + quote(record.trashedPath ?? "")
         if let identity = record.trashedIdentity { line += " " + identity }
         if let freed = record.freedBytes { line += " freed=\(freed)" }
         if let result = record.toolCommandResult, let data = try? JSONEncoder().encode(result) {
             line += " command=" + data.base64EncodedString()
         }
+        if record.optedInSharedGroupContainer { line += " " + optInToken }
         return line
     }
+
+    private static let optInToken = "optIn=sharedGroupContainer"
 
     static func record(from line: Substring) -> RemovalRecord? {
         guard let firstSpace = line.firstIndex(of: " ") else { return nil }
@@ -262,12 +271,15 @@ public struct RemovalLog: Sendable {
         var trashedIdentity: String?
         var freedBytes: Int64?
         var toolCommandResult: ToolCommandRemovalResult?
+        var optedInSharedGroupContainer = false
         if fields.count == 3, let (trashed, rest) = unquote(fields[2]) {
             // An empty quoted field is a placeholder written by a permanent
             // deletion that still had a freed figure to record; it names no path.
             trashedPath = trashed.isEmpty ? nil : trashed
             for token in rest.split(separator: " ", omittingEmptySubsequences: true) {
-                if token.hasPrefix("freed=") {
+                if token == optInToken {
+                    optedInSharedGroupContainer = true
+                } else if token.hasPrefix("freed=") {
                     freedBytes = Int64(token.dropFirst("freed=".count))
                 } else if token.hasPrefix("command=") {
                     if let data = Data(base64Encoded: String(token.dropFirst("command=".count))) {
@@ -287,7 +299,8 @@ public struct RemovalLog: Sendable {
             trashedPath: trashedPath,
             trashedIdentity: trashedIdentity,
             freedBytes: freedBytes,
-            toolCommandResult: toolCommandResult
+            toolCommandResult: toolCommandResult,
+            optedInSharedGroupContainer: optedInSharedGroupContainer
         )
     }
 

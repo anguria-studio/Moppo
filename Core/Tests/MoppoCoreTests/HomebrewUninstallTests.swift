@@ -329,7 +329,7 @@ struct HomebrewUninstallTests {
                     .init(url: related, category: .support, content: .userData, allocatedBytes: 10, ownerBundleIdentifier: "test.fixture"),
                 ],
                 managedPackage: .init(manager: .homebrew, name: "fixture", executable: "/opt/homebrew/bin/brew"),
-                preservedPaths: [], candidateBundleIdentifiers: ["test.fixture"], applicationRoots: [root], allowedRelatedRoots: [root]
+                preservedPaths: [], candidateBundleIdentifiers: ["test.fixture"], home: root, applicationRoots: [root], allowedRelatedRoots: [root]
             )
         }
 

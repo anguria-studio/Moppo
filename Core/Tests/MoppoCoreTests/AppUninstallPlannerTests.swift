@@ -915,7 +915,10 @@ struct AppUninstallPlannerTests {
         #expect(plan.items.contains { $0.id == own.standardizedFileURL.path && $0.isProtectedUserData })
         #expect(!plan.items.contains { $0.id == family.standardizedFileURL.path })
         #expect(plan.preservedPaths.map(\.url) == [family.standardizedFileURL])
-        #expect(plan.preservedPaths.first?.reason == .sharedGroupContainer)
+        let kept = try #require(plan.preservedPaths.first)
+        #expect(kept.reason == .sharedGroupContainer)
+        #expect(kept.claimingApplications == [writer.standardizedFileURL])
+        #expect(kept.optInItem?.isProtectedUserData == true)
         #expect(plan.reviewTitle == "Partial uninstall")
     }
 
@@ -947,7 +950,10 @@ struct AppUninstallPlannerTests {
 
         #expect(!plan.items.contains { $0.id == container.standardizedFileURL.path })
         #expect(plan.preservedPaths.map(\.url) == [container.standardizedFileURL])
-        #expect(plan.preservedPaths.first?.reason == .sharedGroupContainer)
+        let kept = try #require(plan.preservedPaths.first)
+        #expect(kept.reason == .sharedGroupContainer)
+        #expect(kept.claimingApplications == nil)
+        #expect(kept.optInItem != nil)
     }
 
     @Test("an exclusive group container that Moppo cannot read stays on disk with its reason")
@@ -998,6 +1004,118 @@ struct AppUninstallPlannerTests {
         #expect(outcome.removedCount == 0)
         #expect(outcome.failed == [container.standardizedFileURL.path])
         #expect(FileManager.default.fileExists(atPath: container.path))
+    }
+
+    /// A shared group container, the plan that keeps it, and the log for its removal.
+    private func sharedContainerFixture(
+        _ sandbox: Sandbox, context: ScanContext = ScanContext()
+    ) async throws -> (app: URL, container: URL, plan: AppUninstallPlan, log: RemovalLog) {
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        try sandbox.sign(app, groups: ["group.com.vendor.editor"])
+        let writer = try sandbox.application("Writer", identifier: "com.vendor.writer")
+        try sandbox.sign(writer, groups: ["group.com.vendor.editor"])
+        let container = try sandbox.write("Library/Group Containers/group.com.vendor.editor/shared.db")
+            .deletingLastPathComponent().standardizedFileURL
+        let plan = try await sandbox.planner().plan(applicationURL: app, context: context)
+        #expect(plan.preservedPaths.map(\.url) == [container])
+        // The application is already gone, so only the container can go to the real Trash.
+        try FileManager.default.moveItem(at: app, to: sandbox.root.appendingPathComponent("removed-app"))
+        return (app, container, plan, RemovalLog(directory: sandbox.root.appendingPathComponent("log")))
+    }
+
+    private func discardTrashedItems(in log: RemovalLog) {
+        for record in log.recentEntries() {
+            if let path = record.trashedPath { try? FileManager.default.removeItem(atPath: path) }
+        }
+    }
+
+    @Test("an opted-in shared group container moves to the Trash after the application, and the log records the opt-in")
+    func optedInSharedGroupContainerIsRemoved() async throws {
+        let sandbox = try Sandbox()
+        let fixture = try await sharedContainerFixture(sandbox)
+        defer { discardTrashedItems(in: fixture.log) }
+        let id = try #require(fixture.plan.preservedPaths.first?.id)
+        let plan = fixture.plan.includingSharedGroupContainers([id], context: ScanContext())
+        #expect(plan.optedInItems.map(\.url) == [fixture.container])
+
+        let outcome = try await CleanupService(
+            measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: fixture.log
+        ).uninstall(plan)
+
+        #expect(outcome.failed.isEmpty)
+        #expect(outcome.removedCount == 1)
+        #expect(!FileManager.default.fileExists(atPath: fixture.container.path))
+        let record = try #require(fixture.log.recentEntries().first { $0.originalPath == fixture.container.path })
+        #expect(record.disposition == .trashed)
+        #expect(record.optedInSharedGroupContainer)
+        let line = RemovalLog.line(for: record)
+        #expect(line.hasSuffix(" optIn=sharedGroupContainer"))
+        #expect(RemovalLog.record(from: Substring(line)) == record)
+    }
+
+    @Test("a shared group container that the user did not opt in to remove stays on disk")
+    func sharedGroupContainerWithoutOptInStays() async throws {
+        let sandbox = try Sandbox()
+        let fixture = try await sharedContainerFixture(sandbox)
+        defer { discardTrashedItems(in: fixture.log) }
+        let plan = fixture.plan.includingSharedGroupContainers([], context: ScanContext())
+        #expect(plan.optedInItems.isEmpty)
+
+        let outcome = try await CleanupService(
+            measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: fixture.log
+        ).uninstall(plan)
+
+        #expect(outcome.removedCount == 0)
+        #expect(outcome.failed.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: fixture.container.path))
+        #expect(fixture.log.recentEntries().isEmpty)
+    }
+
+    enum OptInChange: CaseIterable { case excluded, protectedContent }
+
+    @Test("an opted-in shared group container stays when it becomes excluded or holds protected content", arguments: OptInChange.allCases)
+    func optedInSharedGroupContainerStaysAfterAChange(_ change: OptInChange) async throws {
+        let sandbox = try Sandbox()
+        let fixture = try await sharedContainerFixture(sandbox)
+        defer { discardTrashedItems(in: fixture.log) }
+        let id = try #require(fixture.plan.preservedPaths.first?.id)
+        let context: ScanContext
+        switch change {
+        case .excluded:
+            context = ScanContext(excludedPaths: [fixture.container.path])
+        case .protectedContent:
+            context = ScanContext(excludedPatterns: ["*.keychain-db"])
+            try sandbox.write("Library/Group Containers/group.com.vendor.editor/login.keychain-db")
+        }
+        let plan = fixture.plan.includingSharedGroupContainers([id], context: context)
+
+        let outcome = try await CleanupService(
+            measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: fixture.log
+        ).uninstall(plan)
+
+        #expect(outcome.removedCount == 0)
+        #expect(outcome.failed == [fixture.container.path])
+        #expect(FileManager.default.fileExists(atPath: fixture.container.path))
+        let record = try #require(fixture.log.recentEntries().first)
+        #expect(record.disposition == .failed)
+        #expect(record.optedInSharedGroupContainer)
+    }
+
+    @Test("a shared group container that fails another check has that reason and no opt-in")
+    func sharedGroupContainerWithAnotherReasonHasNoOptIn() async throws {
+        let sandbox = try Sandbox()
+        let app = try sandbox.application("Editor", identifier: "com.vendor.editor")
+        let container = try sandbox.write("Library/Group Containers/group.com.vendor.editor/shared.db")
+            .deletingLastPathComponent().standardizedFileURL
+
+        let plan = try await sandbox.planner().plan(
+            applicationURL: app, context: ScanContext(excludedPaths: [container.path])
+        )
+
+        #expect(plan.preservedPaths.map(\.url) == [container])
+        #expect(plan.preservedPaths.first?.reason == .excluded)
+        #expect(plan.preservedPaths.first?.optInItem == nil)
+        #expect(plan.includingSharedGroupContainers([container.path], context: ScanContext()).optedInItems.isEmpty)
     }
 
     /// Every droplet Shortcuts makes carries `com.apple.shortcuts.droplet`, so what

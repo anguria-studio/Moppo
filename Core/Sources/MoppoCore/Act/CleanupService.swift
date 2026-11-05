@@ -569,16 +569,15 @@ public struct CleanupService: Sendable {
         _ plan: AppUninstallPlan,
         keepReceipt: Bool
     ) async -> CleanupOutcome {
-        guard plan.managedPackage != nil else {
-            return CleanupOutcome(failed: plan.items.dropFirst().map { $0.url.path })
-        }
+        let related = (plan.items.dropFirst() + plan.optedInItems).map { $0.url.path }
+        guard plan.managedPackage != nil else { return CleanupOutcome(failed: related) }
         // This mode records cancellation and measurement failures without losing completed results.
         do {
             return try await removeApplicationItems(
                 plan, includingApplication: false, keepReceipt: keepReceipt
             )
         } catch {
-            return CleanupOutcome(failed: plan.items.dropFirst().map { $0.url.path })
+            return CleanupOutcome(failed: related)
         }
     }
 
@@ -590,15 +589,20 @@ public struct CleanupService: Sendable {
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
         var failedSubtrees = Set<String>()
-        let removalOrder = includingApplication ? plan.removalOrder() : Array(plan.removalOrder().dropFirst())
+        // Opted-in shared group containers go last, after the application and its own related files.
+        let fullOrder = plan.removalOrder() + plan.optedInItems
+        let removalOrder = includingApplication ? fullOrder : Array(fullOrder.dropFirst())
         guard !removalOrder.isEmpty else { return outcome }
+        let optedInIDs = Set(plan.optedInItems.map(\.id))
 
         func recordFailure(_ item: AppUninstallPlan.Item, bytes: Int64? = nil) {
             failedSubtrees.insert(item.url.path)
             if !outcome.failed.contains(item.url.path) {
                 outcome.failed.append(item.url.path)
                 if keepReceipt {
-                    try? log.append([Self.failureRecord(for: item.fileEntry, bytes: bytes)])
+                    var record = Self.failureRecord(for: item.fileEntry, bytes: bytes)
+                    record.optedInSharedGroupContainer = optedInIDs.contains(item.id)
+                    try? log.append([record])
                 }
             }
         }
@@ -646,15 +650,24 @@ public struct CleanupService: Sendable {
                     return outcome
                 }
             }
-            if item.applicationGroup != nil, exclusiveApplicationGroups == nil {
-                let groups = Set(removalOrder.compactMap(\.applicationGroup))
+            let isOptedIn = optedInIDs.contains(item.id)
+            if isOptedIn {
+                // The user accepted that another application can claim the group.
+                // Every other check runs again.
+                if FileIdentity.isAbsent(item.url) { continue }
+                guard await AppUninstallPlanner.optedInRemovalIsStillSafe(item, in: plan) else {
+                    recordFailure(item)
+                    continue
+                }
+            } else if item.applicationGroup != nil, exclusiveApplicationGroups == nil {
+                let groups = Set(removalOrder.filter { !optedInIDs.contains($0.id) }.compactMap(\.applicationGroup))
                 do {
                     exclusiveApplicationGroups = groups.subtracting(
                         try await applicationGroupClaims.groupsClaimedElsewhere(
                             groups, selectedApplication: plan.applicationURL,
                             applicationRoots: plan.applicationRoots,
                             identifiers: plan.candidateBundleIdentifiers
-                        )
+                        ).keys
                     )
                 } catch is CancellationError {
                     for remaining in removalOrder[index...] { recordFailure(remaining) }
@@ -663,7 +676,7 @@ public struct CleanupService: Sendable {
                     exclusiveApplicationGroups = []
                 }
             }
-            guard AppUninstallPlanner.removalIsStillSafe(
+            guard isOptedIn || AppUninstallPlanner.removalIsStillSafe(
                 item, in: plan, exclusiveBundleIdentifiers: exclusiveBundleIdentifiers ?? [],
                 exclusiveApplicationGroups: exclusiveApplicationGroups ?? []
             ) else {
@@ -723,7 +736,8 @@ public struct CleanupService: Sendable {
                         bytes: measured,
                         disposition: disposition,
                         trashedPath: landed?.path,
-                        trashedIdentity: landed.flatMap(FileIdentity.of)
+                        trashedIdentity: landed.flatMap(FileIdentity.of),
+                        optedInSharedGroupContainer: isOptedIn
                     )])
                 }
             } catch let error as CocoaError where error.code == .fileNoSuchFile {
