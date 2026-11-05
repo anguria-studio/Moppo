@@ -155,8 +155,6 @@ In the 2026-11-02 test, Moppo offered `~/Library/Caches/pip`, `~/Library/Caches/
 
 ## Ruby
 
-Moppo has a row for the Bundler cache in `~/.bundle/cache`.
-
 <!-- rules:begin ruby -->
 | Path | Type | Recognition | Removal | Restore | Moppo today | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -173,7 +171,10 @@ Moppo has a row for the Bundler cache in `~/.bundle/cache`.
 | `~/.cache/ruby-install` | Cache | Folder location | Trash | Next `ruby-install` run | Caches | Verified 2026-11-03, ruby-install 0.10.2, macOS 27.2 |
 | `~/.gnupg` | User data | GnuPG layout | Never offer | Not possible | Protected | Found 2026-11-03, GnuPG 2.5.24, macOS 27.2 |
 | `<project>/vendor/bundle` | Download | `Gemfile.lock` beside `vendor`, and `BUNDLE_PATH` in `.bundle/config` | Trash, only if Git does not track it | `bundle install`. A network connection is necessary. | Row | Verified 2026-11-04, Bundler 2.5.23, macOS 27.2 |
-| `~/.bundle/cache` | Download | Folder name | Trash | Next `bundle install`. A network connection is necessary. | Row | Verified 2026-11-04, Bundler 2.5.23, macOS 27.2 |
+| `~/.bundle` | User data | Folder name | Never offer whole. `config` can contain gem server credentials. Moppo offers `cache` as a row. | Not possible for gem server credentials | Protected | Not verified. No test removed the folder. |
+| `~/.bundle/cache` | Download | Folder location | Trash | Next `bundle install`. A network connection is necessary. | Row | Verified 2026-11-04, Bundler 2.5.23, macOS 27.2 |
+
+**Bundler.** `bundle config set --global` writes to `~/.bundle/config`, which can hold a gem server credential.
 <!-- rules:end ruby -->
 
 ## Java, Kotlin, and Scala
