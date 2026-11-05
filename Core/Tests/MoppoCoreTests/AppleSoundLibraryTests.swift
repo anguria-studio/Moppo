@@ -187,7 +187,8 @@ struct AppleSoundLibraryTests {
         try box.application("com.apple.logic10")
         let plan = try await box.planner().plan(applicationURL: garageBand)
         #expect(plan.soundLibraryItems.isEmpty)
-        #expect(plan.preservedPaths.contains(box.library.appendingPathComponent("Application Support/Logic")))
+        let logic = box.library.appendingPathComponent("Application Support/Logic")
+        #expect(plan.preservedPaths.first { $0.url == logic }?.reason == .sharedSoundContent)
     }
 
     @Test("Added content, exclusions, protected patterns, and links stay protected")
@@ -200,7 +201,7 @@ struct AppleSoundLibraryTests {
         let custom = try box.content("Application Support/GarageBand/Instrument Library/Sampler/Custom.exs", recognized: false)
         let unknown = try await box.sounds().scan(context: ScanContext(), installedOwners: [])
         #expect(unknown.items.isEmpty)
-        #expect(!unknown.preservedPaths.isEmpty)
+        #expect(unknown.preservedPaths.map(\.reason) == [.unlistedSoundContent])
         try FileManager.default.removeItem(at: custom)
         try FileManager.default.removeItem(at: sample)
         try FileManager.default.createSymbolicLink(at: sample, withDestinationURL: box.root)

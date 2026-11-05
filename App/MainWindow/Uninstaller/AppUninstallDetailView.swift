@@ -178,24 +178,17 @@ struct AppUninstallDetailView: View {
                         .foregroundStyle(Token.textColor(.orange))
                 }
 
-                if !plan.preservedPaths.isEmpty {
-                    Label {
-                        Text(
-                            "\(plan.preservedPaths.count) excluded, protected, or shared "
-                            + (plan.preservedPaths.count == 1 ? "path will" : "paths will")
-                            + " stay on disk."
-                        )
-                    } icon: {
-                        Image(systemName: "shield.lefthalf.filled")
-                    }
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.textColor(.orange))
-                    .help(plan.preservedPaths.map(\.path).joined(separator: "\n"))
-                }
-
                 ForEach(groupedItems(plan), id: \.category) { group in
                     GroupedBox(fill: Token.Fill.cardContent) {
                         itemSection(group.category, items: group.items)
+                            .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
+                    }
+                }
+
+                // After the removal groups, because the heading says the files below move to the Trash.
+                if !plan.preservedPaths.isEmpty {
+                    GroupedBox(fill: Token.Fill.cardContent) {
+                        preservedSection(plan.preservedPaths)
                             .clipShape(RoundedRectangle(cornerRadius: Token.Radius.box))
                     }
                 }
@@ -209,7 +202,7 @@ struct AppUninstallDetailView: View {
         GroupedBox {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Downloaded Sound Content").font(.mcBody.weight(.medium))
-                Text("Complete uninstall keeps this content. Sound removal keeps your application and projects. Projects may need another sound download.")
+                Text("The uninstall keeps this content. Sound removal keeps your application and projects. Projects may need another sound download.")
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
                 ForEach(plan.soundLibraryItems) { item in
@@ -279,25 +272,20 @@ struct AppUninstallDetailView: View {
         GroupedBox {
             HStack(spacing: 12) {
                 Image(systemName: plan.isApplicationOnly
-                    ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    ? "exclamationmark.triangle.fill"
+                    : plan.preservedPaths.isEmpty ? "checkmark.circle.fill" : "shield.lefthalf.filled")
                     .font(.system(size: 17))
-                    .foregroundStyle(plan.isApplicationOnly
+                    .foregroundStyle(plan.isApplicationOnly || !plan.preservedPaths.isEmpty
                         ? Token.textColor(.orange) : Token.color(.green))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(plan.isApplicationOnly
-                        ? "Application-only uninstall" : "Complete uninstall")
+                    Text(plan.reviewTitle)
                         .font(.mcBody.weight(.medium))
                         .foregroundStyle(Token.Text.primary)
-                    Text(
-                        plan.isApplicationOnly
-                            ? "Moppo cannot identify related files safely. Removal includes only the application."
-                            : plan.protectedItems.isEmpty
-                            ? "Every verified related file below will move to the Trash."
-                            : "Every verified related file below will move to the Trash, including profiles and settings."
-                    )
+                    Text(plan.reviewDetail)
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer()
@@ -387,6 +375,29 @@ struct AppUninstallDetailView: View {
         }
     }
 
+    private func preservedSection(_ paths: [AppUninstallPlan.PreservedPath]) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Stays on Disk")
+                    .mcEyebrowStyle()
+                Spacer()
+                Text(ByteFormatting.string(paths.reduce(0) { $0 + ($1.allocatedBytes ?? 0) }))
+                    .font(.mcMonoSmall)
+                    .foregroundStyle(Token.Text.tertiary)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 7)
+            .background(Token.Fill.groupHeader, in: Rectangle())
+
+            UninstallerDivider()
+
+            ForEach(Array(paths.enumerated()), id: \.element.id) { index, path in
+                if index > 0 { UninstallerDivider() }
+                UninstallerPreservedRow(path: path)
+            }
+        }
+    }
+
     // MARK: Helpers
 
     private func categoryTitle(_ category: AppUninstallPlan.Item.Category) -> String {
@@ -400,5 +411,57 @@ struct AppUninstallDetailView: View {
         case .state: "Saved State"
         case .helpers: "Helpers & Launch Items"
         }
+    }
+}
+
+/// A related path that stays on disk, with the reason.
+private struct UninstallerPreservedRow: View {
+    let path: AppUninstallPlan.PreservedPath
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(nsImage: NSWorkspace.shared.icon(forFile: path.url.path))
+                .resizable()
+                .frame(width: 20, height: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(path.url.lastPathComponent)
+                    .font(.mcBody)
+                    .foregroundStyle(Token.Text.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(FileEntry.abbreviate(path.url.path))
+                    .font(.mcMonoSmall)
+                    .foregroundStyle(Token.Text.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                Text(path.reason.explanation)
+                    .font(.mcCaption)
+                    .foregroundStyle(Token.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            Text(path.allocatedBytes.map(ByteFormatting.string) ?? "Size unknown")
+                .font(.mcRowValue)
+                .foregroundStyle(Token.Text.secondary)
+                .fixedSize()
+
+            Button {
+                NSWorkspace.shared.activateFileViewerSelecting([path.url])
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Token.Text.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
+            .accessibilityLabel("Reveal \(path.url.lastPathComponent) in Finder")
+        }
+        .padding(.horizontal, 13)
+        .padding(.vertical, 8)
+        .hoverHighlight()
     }
 }

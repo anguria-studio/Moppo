@@ -212,7 +212,9 @@ struct AppUninstallPlannerTests {
         #expect(paths.contains(launchAgent.path))
         #expect(!paths.contains { $0.contains("editor.helper.plist") })
         #expect(!paths.contains { $0.contains("Group Containers") })
-        #expect(plan.preservedPaths.contains(sharedGroup))
+        let kept = try #require(plan.preservedPaths.first { $0.url == sharedGroup })
+        #expect(kept.reason == .sharedGroupContainer)
+        #expect((kept.allocatedBytes ?? 0) > 0)
         // Old log records do not come back, but logs are not user data.
         let logItem = try #require(plan.items.first { $0.id == logs.standardizedFileURL.path })
         #expect(logItem.content == .logs)
@@ -543,7 +545,23 @@ struct AppUninstallPlannerTests {
         let plan = try await sandbox.planner().plan(applicationURL: app, context: context)
 
         #expect(!plan.items.contains { $0.url == cache })
-        #expect(plan.preservedPaths == [cache])
+        // An excluded path is not measured.
+        #expect(plan.preservedPaths == [.init(url: cache, reason: .excluded)])
+    }
+
+    @Test("a kept path that Moppo cannot read has no size, not 0 B")
+    func unreadablePreservedPathHasNoSize() {
+        let url = URL(fileURLWithPath: "/Library/Group Containers/group.com.vendor.editor")
+        let unread = AppUninstallPlan.PreservedPath(
+            url: url, reason: .sharedGroupContainer,
+            measurement: SizeMeasurement(allocatedBytes: 0, unreadableCount: 1)
+        )
+        let partial = AppUninstallPlan.PreservedPath(
+            url: url, reason: .sharedGroupContainer,
+            measurement: SizeMeasurement(allocatedBytes: 4096, unreadableCount: 1)
+        )
+        #expect(unread.allocatedBytes == nil)
+        #expect(partial.allocatedBytes == 4096)
     }
 
     @Test("a support folder with database files is preserved and disclosed")
@@ -557,7 +575,11 @@ struct AppUninstallPlannerTests {
         let plan = try await sandbox.planner().plan(applicationURL: app)
 
         #expect(plan.items.map(\.url) == [app, cache])
-        #expect(plan.preservedPaths == [support])
+        #expect(plan.preservedPaths.map(\.url) == [support])
+        #expect(plan.preservedPaths.first?.reason == .databaseData)
+        #expect((plan.preservedPaths.first?.allocatedBytes ?? 0) > 0)
+        #expect(plan.reviewTitle == "Partial uninstall")
+        #expect(plan.reviewDetail.hasSuffix(" 1 related path stays on disk."))
     }
 
     @Test("the app bundle is always first, before protected data")
@@ -802,7 +824,7 @@ struct AppUninstallPlannerTests {
         #expect(!paths.contains { $0.contains("com.apple.iWork.Pages.helper") })
         #expect(!paths.contains { $0.contains("com.apple.iWork.Numbers") })
         #expect(!paths.contains { $0.contains("/Group Containers/") })
-        #expect(plan.preservedPaths.contains { $0.path.contains("group.com.apple.iWork.Pages") })
+        #expect(plan.preservedPaths.contains { $0.url.path.contains("group.com.apple.iWork.Pages") })
     }
 
     /// Every droplet Shortcuts makes carries `com.apple.shortcuts.droplet`, so what

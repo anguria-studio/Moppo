@@ -40,7 +40,7 @@ public struct AppleSoundLibrary: Sendable {
 
     struct Result: Sendable {
         var items: [AppUninstallPlan.Item] = []
-        var preservedPaths: [URL] = []
+        var preservedPaths: [AppUninstallPlan.PreservedPath] = []
         var unreadableCount = 0
     }
 
@@ -119,26 +119,51 @@ public struct AppleSoundLibrary: Sendable {
             if let applicationIdentifier {
                 guard root.owners.contains(applicationIdentifier) else { continue }
                 guard owners.subtracting([applicationIdentifier]).isEmpty else {
-                    result.preservedPaths.append(url)
+                    result.preservedPaths.append(try await AppUninstallPlanner.preservedPath(
+                        url, reason: .sharedSoundContent, context: context
+                    ))
                     continue
                 }
             } else if !owners.isEmpty { continue }
-            guard !context.isExcluded(url),
-                  !AppUninstallPlanner.hasSymbolicLinkInParents(of: url, through: systemLibrary)
-            else { result.preservedPaths.append(url); continue }
+            guard !context.isExcluded(url) else {
+                result.preservedPaths.append(.init(url: url, reason: .excluded))
+                continue
+            }
+            guard !AppUninstallPlanner.hasSymbolicLinkInParents(of: url, through: systemLibrary) else {
+                result.preservedPaths.append(.init(url: url, reason: .unverifiedLocation))
+                continue
+            }
             let identities: [String: String]
             do { identities = try Self.identities(in: url) }
             catch is CancellationError { throw CancellationError() }
-            catch { result.unreadableCount += 1; result.preservedPaths.append(url); continue }
+            catch {
+                result.unreadableCount += 1
+                result.preservedPaths.append(.init(url: url, reason: .unreadable))
+                continue
+            }
             // A receipt does not authorize removal of added samples or other unknown files.
             let unknown = identities.keys.contains { !paths.contains($0) && $0 != url.path }
-            guard !unknown else { result.preservedPaths.append(url); continue }
+            guard !unknown else {
+                // Only an uninstall review shows the size. Application Leftovers does not measure it.
+                result.preservedPaths.append(applicationIdentifier == nil
+                    ? .init(url: url, reason: .unlistedSoundContent)
+                    : try await AppUninstallPlanner.preservedPath(
+                        url, reason: .unlistedSoundContent, context: context
+                    ))
+                continue
+            }
             guard identities.values.contains(where: { $0.hasPrefix("file:") }) else { continue }
             let measured = try await context.measurer.measure(url)
             result.unreadableCount += measured.unreadableCount
-            guard measured.allocatedBytes > 0, measured.unreadableCount == 0,
-                  !measured.containsProtectedPattern
-            else { result.preservedPaths.append(url); continue }
+            if measured.containsProtectedPattern || measured.unreadableCount > 0 {
+                result.preservedPaths.append(.init(
+                    url: url,
+                    reason: measured.containsProtectedPattern ? .protectedContent : .unreadable,
+                    measurement: measured
+                ))
+                continue
+            }
+            guard measured.allocatedBytes > 0 else { continue }
             let inventory = Inventory(
                 url: url, ownerIdentifiers: root.owners, permittedOwner: applicationIdentifier,
                 applicationRoots: applicationRoots, libraryRoot: systemLibrary, identities: identities

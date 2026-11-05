@@ -98,7 +98,7 @@ struct HomebrewUninstallFlowTests {
         let plan = try await fixture.planner().plan(applicationURL: fixture.applications["managed"]!, context: context)
         #expect(plan.managedPackage != nil)
         #expect(plan.items.count == 1)
-        #expect(plan.preservedPaths.contains(support))
+        #expect(plan.preservedPaths.map(\.url).contains(support))
     }
 
     @Test("Planning failures remain distinct from removal failures")
