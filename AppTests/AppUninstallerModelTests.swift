@@ -524,8 +524,8 @@ struct AppUninstallerModelTests {
     }
 
     @Test("A shared group container checkbox opens a warning first, and other kept paths have no checkbox")
-    func sharedContainerCheckbox() throws {
-        let model = AppModel(settings: try RemovalSettingsFixture(confirm: true).settings).uninstaller
+    func sharedContainerCheckbox() {
+        let model = AppUninstallerModel(operations: OperationCoordinator(), remover: HeldUninstallerRemoval())
         let (plan, shared) = sharedContainerPlan(claimants: [URL(fileURLWithPath: "/Applications/Writer.app")])
         let excluded = plan.preservedPaths[0]
         model.appUninstallPlan = plan
