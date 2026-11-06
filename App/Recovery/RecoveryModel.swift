@@ -82,7 +82,18 @@ final class RecoveryModel {
         onEvent(.showTrash)
     }
 
-    /// Read every item so sorting, search, and History links use the complete Trash.
+    /// Reuse the last complete read between visits and app activations.
+    func loadTrashIfNeeded() async {
+        guard !Task.isCancelled else { return }
+        if let trashTask {
+            await trashTask.value
+            return
+        }
+        guard trashSummary == nil else { return }
+        await loadTrash()
+    }
+
+    /// Read every item after a known change or a manual refresh.
     func loadTrash() async {
         guard !Task.isCancelled else { return }
         trashTask?.cancel()

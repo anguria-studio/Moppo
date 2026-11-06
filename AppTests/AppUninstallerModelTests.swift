@@ -1081,7 +1081,7 @@ struct AppUninstallerModelTests {
         #expect(recovery.cleanupHistory?.items.allSatisfy { $0.state == .restored } == true)
     }
 
-    @Test("Partial uninstall retains receipts and Put Back clears stale results")
+    @Test("Partial uninstall retains receipts and marks Cleanup results as outdated")
     func receiptRecovery() async throws {
         let fixture = try UninstallerFixture()
         let log = MoppoCore.RemovalLog(directory: fixture.root.appendingPathComponent("logs"))
@@ -1122,7 +1122,8 @@ struct AppUninstallerModelTests {
         #expect(model.appUninstallOutcome?.failed.isEmpty == false)
         #expect(!FileManager.default.fileExists(atPath: fixture.application.path))
         #expect(FileManager.default.fileExists(atPath: fixture.profile.path))
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults != nil)
+        #expect(app.cleanup.showsOutdatedResultsNotice)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.view == .history)
         let receipt = try #require(log.recentEntries().first { $0.disposition == .trashed })
@@ -1132,7 +1133,8 @@ struct AppUninstallerModelTests {
         app.cleanup.scannerSelection = [stale.id]
         await app.recovery.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
         #expect(FileManager.default.fileExists(atPath: fixture.application.path))
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults != nil)
+        #expect(app.cleanup.showsOutdatedResultsNotice)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.recovery.cleanupHistory?.items.first { $0.originalURL.path == receipt.originalPath }?.state == .restored)
         model.planAppUninstall(fixture.application)

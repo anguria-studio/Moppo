@@ -405,7 +405,8 @@ struct StorageExplorerModelTests {
         #expect(app.notice?.title == "The Items Could Not Be Moved")
         #expect(app.activity == nil)
         #expect(!app.isBusyWithDisk)
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults != nil)
+        #expect(app.cleanup.showsOutdatedResultsNotice)
         #expect(model.snapshot == nil)
         #expect(model.needsRefresh)
     }

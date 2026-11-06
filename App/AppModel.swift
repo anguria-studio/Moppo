@@ -634,7 +634,7 @@ final class AppModel {
     private func refreshAfterRemoval(invalidateCleanup: Bool = true, invalidateFileDuplicates: Bool = true) async {
         uninstaller.invalidateDetailCache()
         if invalidateFileDuplicates { fileDuplicates.invalidateResults() }
-        if invalidateCleanup { cleanup.invalidateResults() }
+        if invalidateCleanup { cleanup.markResultsOutdated() }
         // Every cached Explorer level is stale too: a folder measured before a
         // Scanner clean-up came back from the cache with its old figure.
         storageExplorer.invalidateCache()
@@ -851,7 +851,7 @@ final class AppModel {
             if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             fileDuplicates.invalidateResults()
             storageExplorer.invalidateCache()
-            cleanup.invalidateResults()
+            cleanup.markResultsOutdated()
         case .operationFinished:
             activity = nil
         case .failure(let title, let message, let finderURLs):

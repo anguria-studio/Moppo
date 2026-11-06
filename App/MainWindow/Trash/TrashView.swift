@@ -31,7 +31,7 @@ struct TrashView: View {
         .operationResultAnimation(isRunning: !model.hasLoadedTrash && model.trashSummary == nil)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
-            await model.loadTrash()
+            await model.loadTrashIfNeeded()
         }
     }
 

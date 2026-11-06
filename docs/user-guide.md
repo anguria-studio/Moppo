@@ -64,6 +64,25 @@ The **Keep** menu does not change photo duplicates.
 
 ## Cleanup filters and actions
 
+### Scan results
+
+Opening Cleanup starts one scan per app session.
+Moving between views does not start another scan.
+After Put Back, removal in another view, or a scan setting change, Cleanup keeps its results.
+The file list shows a notice about older results.
+The header, filters, and sidebar stay available.
+Select **Scan again** to replace the results with a new scan.
+Select **Continue** to use the existing results until another relevant change.
+Moppo clears earlier removal selections and protected-data approvals when results become outdated.
+Removal safety checks still run before Moppo removes items.
+
+Scheduled scans are off by default. Saved schedules stay in use.
+To set a schedule, use **Settings > General > Scanning > Scan automatically**.
+
+Trash keeps its results between visits and app activations.
+Removal and Put Back refresh the Trash results.
+After a change in Finder, select **Refresh Trash** to update the list and sizes.
+
 ### Filter results
 
 In Cleanup, use **All results** to filter items found by the scan.
