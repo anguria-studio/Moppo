@@ -53,4 +53,61 @@ struct LastOpenedFallbackTests {
         let missing = URL(fileURLWithPath: "/nonexistent-\(UUID().uuidString)")
         #expect(Probe().lastOpenedDate(for: missing) == nil)
     }
+
+    /// Makes a row for each item in one folder, as the category scanners do.
+    private struct FolderProbe: CategoryScanner {
+        let id: CategoryID = .documentsAndFiles
+        let folder: URL
+        func scan(context: ScanContext) async throws -> ScanCategoryResult {
+            var result = ScanCategoryResult.empty(id)
+            for url in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {
+                if let entry = try await makeEntry(url: url, kind: .file, context: context) {
+                    result.entries.append(entry)
+                }
+            }
+            return result
+        }
+    }
+
+    @Test("Spotlight's date is the answer when Spotlight replies in time")
+    func spotlightReplyIsKept() throws {
+        let sandbox = try Sandbox()
+        let file = try sandbox.writeFile("used.bin", bytes: 1024)
+        let used = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let dates = LastOpenedDates { _ in used }
+        #expect(LastOpenedDates.$current.withValue(dates) { Probe().lastOpenedDate(for: file) } == used)
+    }
+
+    @Test("a scan finishes with file dates and waits for one timeout when Spotlight does not reply")
+    func scanFinishesWithoutSpotlight() async throws {
+        let sandbox = try Sandbox()
+        let files = try (1...5).map { try sandbox.writeFile("rows/file\($0).bin", bytes: 2 * 1024 * 1024) }
+        let log = try ScanDiagnostics(directory: sandbox.root.appendingPathComponent("logs"))
+        let release = DispatchSemaphore(value: 0)
+        // Lets the lookup with no reply finish after the test.
+        defer { release.signal() }
+        let dates = LastOpenedDates(timeLimit: .milliseconds(200)) { _ in
+            release.wait()
+            return nil
+        }
+        let coordinator = ScanCoordinator(scanners: [FolderProbe(folder: sandbox.root.appendingPathComponent("rows"))])
+
+        let results = try await ScanDiagnostics.$current.withValue(log.context) {
+            try await LastOpenedDates.$current.withValue(dates) { try await coordinator.scan() }
+        }
+
+        log.flush()
+        let timeouts = try Data(contentsOf: log.fileURL).split(separator: 10).filter {
+            let record = try JSONSerialization.jsonObject(with: Data($0)) as? [String: Any]
+            return record?["event"] as? String == "spotlight_date_timeout"
+        }
+        #expect(timeouts.count == 1, "after one timeout, the scan does not ask Spotlight again")
+        let entries = try #require(results.categories.first?.entries)
+        #expect(entries.count == files.count)
+        for entry in entries {
+            let modified = try entry.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            #expect(entry.lastOpened == modified, "\(entry.url.lastPathComponent) shows its modification date")
+        }
+    }
 }

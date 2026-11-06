@@ -60,6 +60,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Keep a group container on disk when Moppo cannot read all of the code signatures.
 - Add a checkbox to each shared group container in **Stays on Disk**.
 - Remove a selected shared group container with its application. Moppo shows a warning first.
+- Finish a scan when Spotlight does not reply. Earlier versions stopped at the first row.
+- Show the file modification date in **Last opened** when Spotlight does not reply in 2 seconds.
 
 ## [0.6.0] - 2026-11-02
 
