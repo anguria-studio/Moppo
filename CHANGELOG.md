@@ -12,6 +12,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ### Cleanup
 
+- Add **Put Back** to History for items with valid Trash receipts.
+- Add **Put Back Run** to restore all available items from one recorded uninstall or cleanup run.
 - Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.
 - Show each Docker volume as a separate row, with its size, container use, and Docker Compose project.
 - Remove selected Docker volumes that no container uses. Moppo always asks before it removes a volume.

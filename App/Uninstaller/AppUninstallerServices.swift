@@ -66,7 +66,7 @@ protocol AppUninstallRemoving: Sendable {
     ) async throws -> CleanupOutcome
 
     func uninstall(
-        _ plan: AppUninstallPlan, keepReceipt: Bool,
+        _ plan: AppUninstallPlan, keepReceipt: Bool, runID: UUID,
         confirmPermanentRemoval: @escaping @Sendable () async -> Bool
     ) async throws -> CleanupOutcome
 
@@ -75,13 +75,14 @@ protocol AppUninstallRemoving: Sendable {
         bundleIdentifiers: Set<String>,
         itemPaths: Set<String>?,
         registeredApplicationBundleIdentifiers: Set<String>,
-        keepReceipt: Bool
+        keepReceipt: Bool,
+        runID: UUID
     ) async throws -> CleanupOutcome
 }
 
 protocol HomebrewUninstallRemoving: Sendable {
     func uninstall(
-        _ plan: AppUninstallPlan, keepReceipt: Bool
+        _ plan: AppUninstallPlan, keepReceipt: Bool, runID: UUID
     ) async -> HomebrewUninstallOutcome
 }
 

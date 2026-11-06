@@ -421,7 +421,8 @@ final class AppUninstallerModel {
             let outcome = (try? await remover.removeOrphanedAppLeftovers(
                 leftovers, bundleIdentifiers: identifiers, itemPaths: paths,
                 registeredApplicationBundleIdentifiers: registered,
-                keepReceipt: keepReceipt
+                keepReceipt: keepReceipt,
+                runID: UUID()
             )) ?? CleanupOutcome(failed: Array(paths).sorted())
             await refreshLeftovers(afterRemoving: identifiers, wait: true)
             try? await presentation.wait()
@@ -533,7 +534,7 @@ final class AppUninstallerModel {
     }
 
     /// Ask the application and its helpers to quit before removal. Never force termination.
-    private func attemptUninstall(_ plan: AppUninstallPlan, keepReceipt: Bool) async -> UninstallAttempt {
+    private func attemptUninstall(_ plan: AppUninstallPlan, keepReceipt: Bool, runID: UUID = UUID()) async -> UninstallAttempt {
         let applicationName = plan.applicationName
         let applicationOnly = plan.isApplicationOnly
         onEvent(.uninstalling(name: applicationName, applicationOnly: applicationOnly, waiting: false, homebrew: false))
@@ -546,13 +547,13 @@ final class AppUninstallerModel {
         if plan.managedPackage != nil {
             onEvent(.uninstalling(name: applicationName, applicationOnly: true, waiting: false, homebrew: true))
             return .homebrew(await homebrewRemover.uninstall(
-                plan, keepReceipt: keepReceipt
+                plan, keepReceipt: keepReceipt, runID: runID
             ))
         }
 
         do {
             return .finished(try await remover.uninstall(
-                plan, keepReceipt: keepReceipt,
+                plan, keepReceipt: keepReceipt, runID: runID,
                 confirmPermanentRemoval: { [weak self] in
                     await self?.confirmPermanentApplicationRemoval(plan.applicationName) ?? false
                 }
@@ -805,9 +806,10 @@ final class AppUninstallerModel {
 
         var result = BatchUninstallOutcome(setAside: request.setAside)
         var removedAnyItems = false
+        let runID = UUID()
         applicationLoop: for (index, plan) in request.plans.enumerated() {
             let name = plan.applicationName
-            switch await attemptUninstall(plan, keepReceipt: keepReceipt) {
+            switch await attemptUninstall(plan, keepReceipt: keepReceipt, runID: runID) {
             case .stillRunning:
                 result.setAside.append(SetAsideApplication(
                     name: name, reason: "Still running. No files were removed.",

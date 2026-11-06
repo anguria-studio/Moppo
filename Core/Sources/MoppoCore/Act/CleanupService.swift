@@ -206,6 +206,7 @@ public struct CleanupService: Sendable {
     ///   parent ID, cleanup removes the bundle and regenerable children but preserves
     ///   profiles, preferences, containers and other non-regenerable children.
     /// - Parameter expectedIdentities: reviewed identities that must still match.
+    /// - Parameter runID: The identifier shared by all parts of one cleanup run.
     public func remove(
         entries: [FileEntry],
         trashFirst: Bool,
@@ -213,7 +214,8 @@ public struct CleanupService: Sendable {
         userDataRemovalOverrides: Set<FileEntry.ID> = [],
         appDataRemovalOverrides: Set<FileEntry.ID> = [],
         expectedIdentities: [FileEntry.ID: String] = [:],
-        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
+        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:],
+        runID: UUID = UUID()
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
         let hasToolCommands = entries.contains { $0.toolCommand != nil }
@@ -229,7 +231,7 @@ public struct CleanupService: Sendable {
                     }
                     var result = ToolCommandRemovalResult(targetID: skipped.id, name: skipped.displayName, command: command.command)
                     result.failureReason = "Removal stopped before this command ran."
-                    recordToolCommand(result, in: &outcome)
+                    recordToolCommand(result, in: &outcome, runID: runID)
                 }
                 break
             }
@@ -244,7 +246,7 @@ public struct CleanupService: Sendable {
                 let ordinary = await Task.detached {
                     try await self.remove(entries: [entry], trashFirst: trashFirst, keepReceipt: keepReceipt,
                         userDataRemovalOverrides: userDataRemovalOverrides, appDataRemovalOverrides: appDataRemovalOverrides,
-                        expectedIdentities: expectedIdentities)
+                        expectedIdentities: expectedIdentities, runID: runID)
                 }.result
                 switch ordinary {
                 case .success(let result): outcome.merge(result)
@@ -265,7 +267,7 @@ public struct CleanupService: Sendable {
                     blocked.failureReason = "Cleanup History is unavailable. No removal command was run."
                     result = blocked
                 }
-                recordToolCommand(result, in: &outcome)
+                recordToolCommand(result, in: &outcome, runID: runID)
                 continue
             }
 
@@ -275,7 +277,7 @@ public struct CleanupService: Sendable {
             // absorbed. Recent use is information for the user, not a veto.
             if !Self.removalAllowed(entry, userDataRemovalOverrides: userDataRemovalOverrides) {
                 outcome.failed.append(entry.id)
-                if keepReceipt { try? log.append([Self.failureRecord(for: entry)]) }
+                if keepReceipt { try? log.append([Self.failureRecord(for: entry)], runID: runID) }
                 continue
             }
 
@@ -301,7 +303,7 @@ public struct CleanupService: Sendable {
                     try? log.append([RemovalRecord(
                         timestamp: Date(), originalPath: Self.dockerReceiptPath(for: entry),
                         bytes: bytes, disposition: disposition, freedBytes: 0
-                    )])
+                    )], runID: runID)
                 }
                 continue
             }
@@ -323,7 +325,7 @@ public struct CleanupService: Sendable {
                         else { outcome.unreportedFreedCount += 1 }
                         if keepReceipt {
                             try? log.append([RemovalRecord(timestamp: Date(), originalPath: member.url.path,
-                                bytes: bytes, disposition: .deleted, freedBytes: freed)])
+                                bytes: bytes, disposition: .deleted, freedBytes: freed)], runID: runID)
                         }
                     }
                 }
@@ -333,12 +335,12 @@ public struct CleanupService: Sendable {
                 } catch let partial as CodexSessions.PartialDeletion {
                     recordDeleted(partial.members)
                     outcome.failed.append(entry.url.path)
-                    if keepReceipt { try? log.append([Self.failureRecord(for: entry)]) }
+                    if keepReceipt { try? log.append([Self.failureRecord(for: entry)], runID: runID) }
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
                     outcome.failed.append(entry.url.path)
-                    if keepReceipt { try? log.append([Self.failureRecord(for: entry)]) }
+                    if keepReceipt { try? log.append([Self.failureRecord(for: entry)], runID: runID) }
                 }
                 continue
             }
@@ -349,7 +351,7 @@ public struct CleanupService: Sendable {
             var records: [RemovalRecord] = []
             // Save completed removals even if a later measurement stops.
             defer {
-                if keepReceipt { try? log.append(records) }
+                if keepReceipt { try? log.append(records, runID: runID) }
             }
             // Children before the bundle. For an app this list is deliberately
             // narrower unless the parent has its exact destructive override:
@@ -493,7 +495,7 @@ public struct CleanupService: Sendable {
         return outcome
     }
 
-    private func recordToolCommand(_ result: ToolCommandRemovalResult, in outcome: inout CleanupOutcome) {
+    private func recordToolCommand(_ result: ToolCommandRemovalResult, in outcome: inout CleanupOutcome, runID: UUID) {
         var result = result
         outcome.removedBytes += result.removedBytes ?? 0
         outcome.freedBytes += result.freedBytes ?? 0
@@ -510,7 +512,7 @@ public struct CleanupService: Sendable {
             try log.append([RemovalRecord(timestamp: Date(), originalPath: result.targetID,
                 bytes: result.removedBytes ?? 0,
                 disposition: result.status == .completed ? .deleted : .failed,
-                freedBytes: result.freedBytes ?? 0, toolCommandResult: result)])
+                freedBytes: result.freedBytes ?? 0, toolCommandResult: result)], runID: runID)
         } catch {
             result.failureReason = [result.failureReason, "Cleanup History could not save this result."]
                 .compactMap { $0 }.joined(separator: " ")
@@ -547,6 +549,7 @@ public struct CleanupService: Sendable {
     public func uninstall(
         _ plan: AppUninstallPlan,
         keepReceipt: Bool = true,
+        runID: UUID = UUID(),
         confirmPermanentRemoval: @escaping @Sendable () async -> Bool = { false }
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
@@ -555,26 +558,28 @@ public struct CleanupService: Sendable {
             // This filesystem path must never remove a managed application directly.
             outcome.failed = [plan.applicationURL.path]
             if keepReceipt {
-                try? log.append([Self.failureRecord(for: plan.applicationItem.fileEntry)])
+                try? log.append([Self.failureRecord(for: plan.applicationItem.fileEntry)], runID: runID)
             }
             return outcome
         }
         return try await removeApplicationItems(
-            plan, includingApplication: true, keepReceipt: keepReceipt, confirmPermanentRemoval: confirmPermanentRemoval
+            plan, includingApplication: true, keepReceipt: keepReceipt, runID: runID,
+            confirmPermanentRemoval: confirmPermanentRemoval
         )
     }
 
     /// Homebrew must finish package removal before this method can move related data.
     func removeRelatedFilesAfterHomebrew(
         _ plan: AppUninstallPlan,
-        keepReceipt: Bool
+        keepReceipt: Bool,
+        runID: UUID = UUID()
     ) async -> CleanupOutcome {
         let related = (plan.items.dropFirst() + plan.optedInItems).map { $0.url.path }
         guard plan.managedPackage != nil else { return CleanupOutcome(failed: related) }
         // This mode records cancellation and measurement failures without losing completed results.
         do {
             return try await removeApplicationItems(
-                plan, includingApplication: false, keepReceipt: keepReceipt
+                plan, includingApplication: false, keepReceipt: keepReceipt, runID: runID
             )
         } catch {
             return CleanupOutcome(failed: related)
@@ -585,6 +590,7 @@ public struct CleanupService: Sendable {
         _ plan: AppUninstallPlan,
         includingApplication: Bool,
         keepReceipt: Bool,
+        runID: UUID,
         confirmPermanentRemoval: @escaping @Sendable () async -> Bool = { false }
     ) async throws -> CleanupOutcome {
         var outcome = CleanupOutcome()
@@ -602,7 +608,7 @@ public struct CleanupService: Sendable {
                 if keepReceipt {
                     var record = Self.failureRecord(for: item.fileEntry, bytes: bytes)
                     record.optedInSharedGroupContainer = optedInIDs.contains(item.id)
-                    try? log.append([record])
+                    try? log.append([record], runID: runID)
                 }
             }
         }
@@ -738,7 +744,7 @@ public struct CleanupService: Sendable {
                         trashedPath: landed?.path,
                         trashedIdentity: landed.flatMap(FileIdentity.of),
                         optedInSharedGroupContainer: isOptedIn
-                    )])
+                    )], runID: runID)
                 }
             } catch let error as CocoaError where error.code == .fileNoSuchFile {
                 // Finder or an updater removed it after planning. For the app bundle
@@ -765,7 +771,8 @@ public struct CleanupService: Sendable {
         bundleIdentifiers: Set<String>,
         itemPaths: Set<String>? = nil,
         registeredApplicationBundleIdentifiers: Set<String> = [],
-        keepReceipt: Bool = true
+        keepReceipt: Bool = true,
+        runID: UUID = UUID()
     ) async throws -> CleanupOutcome {
         var installed = AppUninstallPlanner.installedBundleIdentifiers(
             in: plan.applicationRoots
@@ -782,7 +789,7 @@ public struct CleanupService: Sendable {
             ) else {
                 outcome.failed.append(item.url.path)
                 if keepReceipt {
-                    try? log.append([Self.failureRecord(for: item.fileEntry)])
+                    try? log.append([Self.failureRecord(for: item.fileEntry)], runID: runID)
                 }
                 continue
             }
@@ -794,7 +801,8 @@ public struct CleanupService: Sendable {
             entries: safeEntries,
             trashFirst: true,
             keepReceipt: keepReceipt,
-            userDataRemovalOverrides: Set(safeEntries.map(\.id))
+            userDataRemovalOverrides: Set(safeEntries.map(\.id)),
+            runID: runID
         )
         outcome.merge(removed)
         return outcome

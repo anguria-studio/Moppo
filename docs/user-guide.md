@@ -230,6 +230,11 @@ If a measurement fails, select **Try Again** or open the setup guide.
 
 APFS clones can share storage. Reported cleanup sizes are upper bounds, not promises of recovered space.
 Put Back needs a saved receipt and an item still in the Trash.
+In **History**, select **Put Back** beside an item to restore it.
+Select a row, then select **Put Back Run** to restore all available items from that uninstall or cleanup run.
+Search and filters do not limit the items that **Put Back Run** restores.
+Older removals support only individual Put Back when their receipts still match the items.
+Moppo checks each item before restoration. It keeps items in the Trash when their original locations contain other files.
 Moppo deletes Time Machine local snapshots only from the Dashboard, after confirmation. Moppo does not delete other APFS snapshots.
 
 ### Confirmation

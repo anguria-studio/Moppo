@@ -147,6 +147,11 @@ final class RecoveryModel {
         await putBack([item])
     }
 
+    func restorableItems(inRunOf item: CleanupHistoryItem) -> [TrashItem] {
+        guard let runID = item.runID else { return [] }
+        return cleanupHistory?.items.filter { $0.runID == runID }.compactMap(\.trashItem) ?? []
+    }
+
     /// Rejects a blocked button or menu attempt before starting an asynchronous task.
     func requestPutBack(_ items: [TrashItem]) {
         guard items.contains(where: \.canPutBack), !operations.explainBlockedAction() else { return }

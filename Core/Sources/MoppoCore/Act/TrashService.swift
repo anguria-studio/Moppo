@@ -13,6 +13,8 @@ public struct TrashItem: Sendable, Identifiable, Equatable {
     /// Whether the Put Back button is enabled — see the policy note on ``TrashService``.
     public var canPutBack: Bool
     public var originalURL: URL?
+    /// Keeps a stale selection from restoring a later removal at the same Trash path.
+    public var trashedIdentity: String?
 
     /// Public so views can build preview fixtures without a Trash on disk.
     public init(
@@ -21,7 +23,8 @@ public struct TrashItem: Sendable, Identifiable, Equatable {
         bytes: Int64,
         deletedAt: Date? = nil,
         canPutBack: Bool = false,
-        originalURL: URL? = nil
+        originalURL: URL? = nil,
+        trashedIdentity: String? = nil
     ) {
         self.id = url.path
         self.url = url
@@ -30,6 +33,7 @@ public struct TrashItem: Sendable, Identifiable, Equatable {
         self.deletedAt = deletedAt
         self.canPutBack = canPutBack
         self.originalURL = originalURL
+        self.trashedIdentity = trashedIdentity
     }
 }
 
@@ -217,7 +221,8 @@ public struct TrashService: Sendable {
                 bytes: bytes,
                 deletedAt: values?.addedToDirectoryDate,
                 canPutBack: receipt != nil,
-                originalURL: receipt.map { URL(fileURLWithPath: $0.originalPath) }
+                originalURL: receipt.map { URL(fileURLWithPath: $0.originalPath) },
+                trashedIdentity: receipt?.trashedIdentity
             ))
         }
 
@@ -287,6 +292,13 @@ public struct TrashService: Sendable {
     public func putBack(_ item: TrashItem) async throws {
         let key = item.url.resolvingSymlinksInPath().path
         guard let record = Self.match(originalPaths()[key], at: item.url) else {
+            throw TrashError.putBackUnavailable(item.id)
+        }
+        if let identity = item.trashedIdentity, identity != record.trashedIdentity {
+            throw TrashError.putBackUnavailable(item.id)
+        }
+        if let original = item.originalURL,
+           original.standardizedFileURL != URL(fileURLWithPath: record.originalPath).standardizedFileURL {
             throw TrashError.putBackUnavailable(item.id)
         }
         let originalPath = record.originalPath

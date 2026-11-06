@@ -892,6 +892,7 @@ final class CleanupModel {
         onEvent(.removalStarted(count: plan.itemCount, bytes: plan.totalBytes))
         presentation.extend(toShow: .deletion(bytes: plan.totalBytes))
         let entries = plan.entries
+        let runID = UUID()
         if !entries.isEmpty {
             let ordinary = (try? await remover.remove(
                 entries: entries,
@@ -900,7 +901,8 @@ final class CleanupModel {
                 userDataRemovalOverrides: plan.userDataRemovalOverrides,
                 appDataRemovalOverrides: [],
                 expectedIdentities: [:],
-                confirmedToolCommands: plan.confirmedToolCommands
+                confirmedToolCommands: plan.confirmedToolCommands,
+                runID: runID
             )) ?? CleanupOutcome(failed: entries.map(\.id))
             outcome.merge(ordinary)
         }
@@ -914,7 +916,8 @@ final class CleanupModel {
                 bundleIdentifiers: plan.orphanedApplicationBundleIdentifiers,
                 itemPaths: plan.orphanedApplicationItemPaths,
                 registeredApplicationBundleIdentifiers: registered,
-                keepReceipt: plan.keepReceipt
+                keepReceipt: plan.keepReceipt,
+                runID: runID
             )) ?? CleanupOutcome(failed: plan.orphanedApplicationItems.map { $0.url.path })
             outcome.merge(orphaned)
         }
@@ -998,7 +1001,7 @@ final class CleanupModel {
         let task = Task { [self] in
             let result = entries.isEmpty ? CleanupOutcome() : (try? await administratorRemover.remove(
                 entries: entries, trashFirst: true, keepReceipt: true, userDataRemovalOverrides: [],
-                appDataRemovalOverrides: [], expectedIdentities: [:], confirmedToolCommands: [:]
+                appDataRemovalOverrides: [], expectedIdentities: [:], confirmedToolCommands: [:], runID: UUID()
             )) ?? CleanupOutcome(failed: entries.map(\.id))
             let succeeded = Set(entries.map(\.id)).subtracting(result.failed)
             var combined = previous
