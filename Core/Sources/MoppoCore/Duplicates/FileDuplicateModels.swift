@@ -26,6 +26,14 @@ public struct DuplicateFile: Sendable, Equatable, Identifiable {
     }
 }
 
+/// Selects the copy that stays in each verified file group.
+public enum DuplicateKeeperRule: Sendable, Equatable, Codable {
+    case oldest
+    case newest
+    case shortestPath
+    case inFolder(URL)
+}
+
 /// Files that matched by size, sampled hash, full hash, and byte comparison.
 public struct FileDuplicateGroup: Sendable, Equatable, Identifiable {
     /// Why this copy is the one that stays. Said only when it is true: Finder's
@@ -33,12 +41,18 @@ public struct FileDuplicateGroup: Sendable, Equatable, Identifiable {
     /// copy that merely sorted first by path is not "the oldest".
     public enum KeeperReason: String, Sendable, Equatable {
         case oldestCopy
+        case newestCopy
+        case shortestPath
+        case inSelectedFolder
         case firstByName
         case chosenByUser
 
         public var label: String {
             switch self {
             case .oldestCopy:   "oldest copy"
+            case .newestCopy:   "newest copy"
+            case .shortestPath: "shortest path"
+            case .inSelectedFolder: "in selected folder"
             case .firstByName:  "first by name"
             case .chosenByUser: "you chose this"
             }
@@ -67,6 +81,16 @@ public struct FileDuplicateGroup: Sendable, Equatable, Identifiable {
 
     public var files: [DuplicateFile] { [keeper] + removable }
     public var count: Int { removable.count + 1 }
+
+    /// Applies a shared rule. Keeps the user's choice.
+    public func applying(_ rule: DuplicateKeeperRule) -> FileDuplicateGroup {
+        guard keeperReason != .chosenByUser else { return self }
+        let (ordered, reason) = DuplicateKeeperOrder.order(files, by: rule)
+        return FileDuplicateGroup(
+            id: id, keeper: ordered[0], keeperReason: reason,
+            removable: Array(ordered.dropFirst()), contentDigest: contentDigest
+        )
+    }
 
     /// The best available upper bound on space recovered by removing every copy.
     public var reclaimableBytes: Int64 {
@@ -100,6 +124,46 @@ public struct FileDuplicateGroup: Sendable, Equatable, Identifiable {
             removable: remaining,
             contentDigest: contentDigest
         )
+    }
+}
+
+enum DuplicateKeeperOrder {
+    static func order(
+        _ files: [DuplicateFile], by rule: DuplicateKeeperRule
+    ) -> ([DuplicateFile], FileDuplicateGroup.KeeperReason) {
+        if case let .inFolder(folder) = rule {
+            let path = folder.standardizedFileURL.path
+            let prefix = path == "/" ? path : path + "/"
+            let matching = files.filter { $0.url.standardizedFileURL.path.hasPrefix(prefix) }
+            guard !matching.isEmpty, matching.count < files.count else { return order(files, by: .oldest) }
+            let other = files.filter { !$0.url.standardizedFileURL.path.hasPrefix(prefix) }
+            return (order(matching, by: .oldest).0 + order(other, by: .oldest).0, .inSelectedFolder)
+        }
+
+        let ordered = files.sorted { left, right in
+            if rule == .shortestPath {
+                let leftCount = left.url.pathComponents.count
+                let rightCount = right.url.pathComponents.count
+                if leftCount != rightCount { return leftCount < rightCount }
+            } else {
+                switch (left.creationDate, right.creationDate) {
+                case let (left?, right?) where left != right:
+                    return rule == .newest ? left > right : left < right
+                case (nil, _?): return false
+                case (_?, nil): return true
+                default: break
+                }
+            }
+            return left.url.path.localizedStandardCompare(right.url.path) == .orderedAscending
+        }
+        guard ordered.count > 1 else { return (ordered, .firstByName) }
+        if rule == .shortestPath {
+            return (ordered, ordered[0].url.pathComponents.count < ordered[1].url.pathComponents.count
+                ? .shortestPath : .firstByName)
+        }
+        guard let first = ordered[0].creationDate, let second = ordered[1].creationDate,
+              first != second else { return (ordered, .firstByName) }
+        return (ordered, rule == .newest ? .newestCopy : .oldestCopy)
     }
 }
 

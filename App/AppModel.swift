@@ -101,6 +101,7 @@ final class AppModel {
             operations: operations,
             service: fileDuplicateService,
             removalService: fileDuplicateRemovalService,
+            settings: settings,
             preferences: { [weak settings] in RemovalPreferences(settings: settings) }
         )
         self.dashboard = DashboardModel(service: dashboardService, persistence: dashboardPersistence, settings: settings)
