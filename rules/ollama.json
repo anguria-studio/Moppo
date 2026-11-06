@@ -24,6 +24,27 @@
       "owner": "aiTools",
       "treatment": "protect",
       "note": "`~/.ollama` whole would offer the user's `id_ed25519` with the models, so no category lists it."
+    },
+    {
+      "path": "~/.ollama/models",
+      "type": "download",
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "protect",
+      "store": "ollama",
+      "claimed": false,
+      "custom": {
+        "variables": [
+          {
+            "name": "OLLAMA_MODELS"
+          }
+        ],
+        "identifiedBy": [
+          "manifests"
+        ],
+        "trimsQuotes": true
+      },
+      "comment": "Ollama reads `OLLAMA_MODELS` without home expansion. It removes spaces and quotes around the value."
     }
   ]
 }

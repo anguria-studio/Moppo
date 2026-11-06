@@ -20,29 +20,38 @@ public struct LocalModel: Sendable, Equatable {
     public let exclusive: [URL]
     /// Bytes in files this model shares with another. They stay, and the row says so.
     public let sharedBytes: Int64
+    /// The store folder that holds the model.
+    public internal(set) var folder: ModelStoreFolder? = nil
 }
 
-/// Reads the default Hugging Face, LM Studio, PyTorch Hub, Whisper, Keras, and GPT4All model stores.
+/// Reads the Hugging Face, LM Studio, PyTorch Hub, Whisper, Keras, and GPT4All model stores.
+/// Ollama, Hugging Face, PyTorch Hub, Whisper, and Keras stores can also be at a folder that a variable sets.
 /// Shared files remain outside removal targets unless every owner belongs to the selected group.
 /// Ollama models remain protected inventory until ownership and runtime checks support their storage.
 /// See THIRD_PARTY_NOTICES.md for source credits.
 public enum LocalModelStores {
 
     public static func all(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
-        let plain = lmStudio(home: home) + pyTorchHub(home: home) + whisper(home: home)
-            + keras(home: home) + gpt4All(home: home)
-        return huggingFace(home: home, context: context) + plain.filter { !context.isExcluded($0.primary) }
+        all(ModelStoreFolders(home: home, environment: context.environment), context: context)
+    }
+
+    static func all(_ folders: ModelStoreFolders, context: ScanContext) -> [LocalModel] {
+        let home = folders.home
+        let plain = lmStudio(home: home) + pyTorchHub(folders) + whisper(folders)
+            + keras(folders) + gpt4All(home: home)
+        return huggingFace(folders, context: context) + plain.filter { !context.isExcluded($0.primary) }
     }
 
     // The claim sets and the store paths are in `Generated/ToolRules.swift`. Change a rule in `rules/<tool>.json`.
 
-    /// Every path that AI Tools claims for local models.
-    public static func claimedPaths(home: URL) -> [String] {
+    /// Every path that AI Tools claims for local models, with the folders that variables set.
+    public static func claimedPaths(home: URL, environment: [String: String] = [:]) -> [String] {
         homeDotFolders.map { home.appendingPathComponent($0).path }
             + dotCacheFolders.map { home.appendingPathComponent(".cache/" + $0).path }
             + partlyClaimedFolders.flatMap { folder, children in
                 children.map { home.appendingPathComponent(folder).appendingPathComponent($0).path }
             }
+            + ModelStoreFolders(home: home, environment: environment).claimedPaths
     }
 
     /// The children of a partly claimed folder that its claim leaves to other categories.
@@ -75,8 +84,17 @@ public enum LocalModelStores {
     /// The hub carries `CACHEDIR.TAG`: the tool itself declares all of this a cache.
     /// The worst a wrong reading can cost is a download.
     static func huggingFace(home: URL, context: ScanContext = ScanContext()) -> [LocalModel] {
-        guard let store = huggingFaceStores.first else { return [] }
-        let hub = home.appendingPathComponent(store, isDirectory: true).appendingPathComponent("hub", isDirectory: true)
+        huggingFace(ModelStoreFolders(home: home, environment: context.environment), context: context)
+    }
+
+    /// Each hub is read alone. Two hubs do not share blobs.
+    static func huggingFace(_ folders: ModelStoreFolders, context: ScanContext) -> [LocalModel] {
+        folders.folders("huggingFaceHub", defaults: huggingFaceHubStores).flatMap { folder in
+            huggingFaceHub(folder.url, context: context).map { $0.stored(in: folder) }
+        }
+    }
+
+    private static func huggingFaceHub(_ hub: URL, context: ScanContext) -> [LocalModel] {
         let sharedStore = hub.appendingPathComponent("blobs", isDirectory: true)
             .standardizedFileURL.path
         let fm = FileManager.default
@@ -157,9 +175,13 @@ public enum LocalModelStores {
     /// `~/.cache/torch/hub` holds weight files in `checkpoints/` and one folder for each
     /// downloaded repository, named `<owner>_<repository>_<ref>`. GitHub owner names
     /// contain no underscore. A ref with an underscore keeps its first part in the name.
-    static func pyTorchHub(home: URL) -> [LocalModel] {
-        guard let store = pyTorchHubStores.first else { return [] }
-        let hub = home.appendingPathComponent(store, isDirectory: true)
+    static func pyTorchHub(_ folders: ModelStoreFolders) -> [LocalModel] {
+        folders.folders("pyTorchHub", defaults: pyTorchHubStores).flatMap { folder in
+            pyTorchHub(folder.url).map { $0.stored(in: folder) }
+        }
+    }
+
+    private static func pyTorchHub(_ hub: URL) -> [LocalModel] {
         let checkpoints = hub.appendingPathComponent("checkpoints", isDirectory: true)
         let weights = directoryNames(checkpoints).map { checkpoints.appendingPathComponent($0) }
             .filter(isRegularFile)
@@ -175,10 +197,14 @@ public enum LocalModelStores {
     }
 
     /// `~/.cache/whisper/<name>.pt`. Each file is one model.
-    static func whisper(home: URL) -> [LocalModel] {
-        guard let relative = whisperStores.first else { return [] }
-        let store = home.appendingPathComponent(relative, isDirectory: true)
-        return directoryNames(store).filter { $0.hasSuffix(".pt") }
+    static func whisper(_ folders: ModelStoreFolders) -> [LocalModel] {
+        folders.folders("whisper", defaults: whisperStores).flatMap { folder in
+            whisper(folder.url).map { $0.stored(in: folder) }
+        }
+    }
+
+    private static func whisper(_ store: URL) -> [LocalModel] {
+        directoryNames(store).filter { $0.hasSuffix(".pt") }
             .map { store.appendingPathComponent($0) }
             .filter(isRegularFile)
             .map { plainModel($0, name: $0.deletingPathExtension().lastPathComponent, runtime: "Whisper") }
@@ -187,13 +213,13 @@ public enum LocalModelStores {
 
     /// `~/.keras/models/<item>` and `~/.keras/datasets/<item>`. An item is a file or an
     /// extracted folder. `~/.keras/keras.json` holds settings and is never read.
-    static func keras(home: URL) -> [LocalModel] {
-        return kerasStores.flatMap { relative -> [LocalModel] in
-            let store = home.appendingPathComponent(relative, isDirectory: true)
+    static func keras(_ folders: ModelStoreFolders) -> [LocalModel] {
+        return folders.folders("keras", defaults: kerasStores).flatMap { folder -> [LocalModel] in
+            let store = folder.url
             let prefix = store.lastPathComponent == "datasets" ? "dataset " : ""
             return directoryNames(store).map { store.appendingPathComponent($0) }
                 .filter { isRegularFile($0) || isDirectory($0) }
-                .map { plainModel($0, name: prefix + $0.lastPathComponent, runtime: "Keras") }
+                .map { plainModel($0, name: prefix + $0.lastPathComponent, runtime: "Keras").stored(in: folder) }
         }
         .sorted { $0.name < $1.name }
     }
@@ -210,6 +236,16 @@ public enum LocalModelStores {
             .filter(isRegularFile)
             .map { plainModel($0, name: $0.lastPathComponent, runtime: "GPT4All") }
             .sorted { $0.name < $1.name }
+    }
+
+    /// The Ollama model folders: the default folder, then the folder that `OLLAMA_MODELS` sets.
+    static func ollama(_ folders: ModelStoreFolders) -> [ModelStoreFolder] {
+        folders.folders("ollama", defaults: ollamaStores)
+    }
+
+    /// The Hugging Face home folders. Their files other than the hubs stay protected.
+    static func huggingFaceHomes(_ folders: ModelStoreFolders) -> [ModelStoreFolder] {
+        folders.folders("huggingFace", defaults: huggingFaceStores)
     }
 
     /// A model that is one file or folder, with nothing shared with another model.
@@ -357,5 +393,14 @@ public enum LocalModelStores {
     private static func allocatedSize(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
         return Int64(values?.totalFileAllocatedSize ?? values?.fileSize ?? 0)
+    }
+}
+
+extension LocalModel {
+    /// The model with the store folder that holds it.
+    func stored(in folder: ModelStoreFolder) -> LocalModel {
+        var model = self
+        model.folder = folder
+        return model
     }
 }

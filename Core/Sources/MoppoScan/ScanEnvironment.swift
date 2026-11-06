@@ -78,6 +78,7 @@ public enum ScanEnvironment {
             ScanDiagnostics.current?.end(registrationSpan, details: ["registered_identifiers": "\(registered.count)"])
         }
         try Task.checkCancellation()
+        let environment = await LocalModelStores.environment(launchd: launchdValue)
         let context = ScanContext(
             measurer: AllocatedSizeMeasurer(followSymlinks: false),
             excludedPaths: configuration.excludedPaths,
@@ -86,8 +87,18 @@ public enum ScanEnvironment {
             runningApplications: owners,
             registeredApplicationBundleIdentifiers: registered,
             applicationLeftoverCandidates: candidates,
-            showsSmallItems: configuration.showsSmallItems
+            showsSmallItems: configuration.showsSmallItems,
+            environment: environment
         )
         return context
+    }
+
+    /// The value that `launchctl setenv` gave a variable. Ollama documents this method for its Mac app.
+    static func launchdValue(_ name: String) async -> String? {
+        guard let result = try? await ProcessRunner().runResult("/bin/launchctl", ["getenv", name], timeout: .seconds(5)),
+              result.succeeded else { return nil }
+        var value = String(decoding: result.output, as: UTF8.self)
+        if value.hasSuffix("\n") { value.removeLast() }
+        return value
     }
 }

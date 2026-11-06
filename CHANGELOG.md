@@ -23,6 +23,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Show protected AI Tools rows for Devin, AnythingLLM, Cherry Studio, Comfy Desktop, and Stability Matrix.
 - Show protected AI Tools rows for the Codex settings, credentials, databases, history, skills, installed packages, and desktop data.
 - Show T3 Code desktop data in AI Tools. Keep all files of these tools protected, including cache folders.
+- Show Ollama, Hugging Face, PyTorch, Whisper, and Keras models in folders that variables such as `OLLAMA_MODELS` and `HF_HOME` set.
+- Keep models in a folder outside the home folder protected.
 - Show the other folders in `~/.config` as separate Hidden & System Data rows.
 - Protect toolchain, virtual machine, and credential folders in Hidden & System Data, such as `~/.rustup`, `~/.colima`, and `~/.aws`.
 - Show the size of each protected folder. Offer only the caches in it that the developer tool catalog verified.

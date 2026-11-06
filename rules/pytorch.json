@@ -19,7 +19,24 @@
       "owner": "aiTools",
       "treatment": "review",
       "store": "pyTorchHub",
-      "note": "Weight files sit in `checkpoints`, and each downloaded repository has its own folder. Other folders in `~/.cache/torch` are compiler caches."
+      "note": "Weight files sit in `checkpoints`, and each downloaded repository has its own folder. Other folders in `~/.cache/torch` are compiler caches.",
+      "custom": {
+        "variables": [
+          {
+            "name": "TORCH_HOME",
+            "append": "hub"
+          },
+          {
+            "name": "XDG_CACHE_HOME",
+            "append": "torch/hub"
+          }
+        ],
+        "identifiedBy": [
+          "checkpoints",
+          "*/hubconf.py"
+        ],
+        "expandsHome": true
+      }
     }
   ]
 }

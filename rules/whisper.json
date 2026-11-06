@@ -19,7 +19,18 @@
       "owner": "aiTools",
       "treatment": "review",
       "store": "whisper",
-      "note": "Each `.pt` file is one model."
+      "note": "Each `.pt` file is one model.",
+      "custom": {
+        "variables": [
+          {
+            "name": "XDG_CACHE_HOME",
+            "append": "whisper"
+          }
+        ],
+        "identifiedBy": [
+          "*.pt"
+        ]
+      }
     }
   ]
 }
