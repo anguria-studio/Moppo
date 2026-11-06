@@ -147,6 +147,9 @@ Run the audit before each release and after each test rental. Record the result 
 A curated AI root, with `"curated": true` and a `remainderName`, is also a curation. Its curation caches sit below it.
 A model store path claims a whole home dot folder, a whole child of `~/.cache`, or one child of a folder, by its shape.
 A model store elsewhere, such as the GPT4All folder, needs `"claimed": false`.
+A model store can have `custom`, with the `variables` that move it and the `identifiedBy` items that identify it.
+Each variable has a `name` and an optional `append` path. The first variable with a value sets the folder.
+Set `expandsHome` when the tool expands `~`. Set `trimsQuotes` when the tool removes spaces and quotes around the value.
 The generator also writes `FileEntry.AITool`, `AIStorageSection.Owner`, and `ToolIcons` from the `aiTool` and `owner` fields of the tool files.
 
 A rule in another table can also set `"applicationData": true`.

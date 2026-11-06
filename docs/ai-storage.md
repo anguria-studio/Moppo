@@ -5,6 +5,7 @@
 ## Current coverage
 
 AI Tools measures default paths, including command-line data without a desktop application.
+It also measures the model store folders that variables set. See [Moved model stores](#moved-model-stores).
 Application Leftovers owns verified desktop data when its application is absent.
 Settings and history require the existing leftover review before removal.
 The scanner does not follow symlinks or parse conversation messages.
@@ -44,6 +45,41 @@ Each note under the table records the fact that justifies a rule.
 | Comfy Desktop | `~/ComfyUI-Installs`, `~/ComfyUI-Shared` | Protected inventory. Models, outputs, workflows, custom nodes, and Python environments stay protected. |  |
 | Stability Matrix | `~/Library/Application Support/StabilityMatrix`, `/Applications/Data` | Protected inventory. Models, settings, and the database stay protected. | In portable mode, Stability Matrix keeps `Data` next to the application. |
 <!-- rules:end ai-tools -->
+
+## Moved model stores
+
+A variable can move some model stores to another folder.
+AI Tools then reads the default folder and the folder that the variable sets.
+The first variable with a value sets the folder.
+
+| Store | Variables, in the order that the tool reads them |
+| --- | --- |
+| Ollama models | `OLLAMA_MODELS` |
+| Hugging Face hub | `HF_HUB_CACHE`, `HUGGINGFACE_HUB_CACHE`, `HF_HOME` with `hub`, `XDG_CACHE_HOME` with `huggingface/hub` |
+| Hugging Face home | `HF_HOME`, `XDG_CACHE_HOME` with `huggingface` |
+| PyTorch Hub | `TORCH_HOME` with `hub`, `XDG_CACHE_HOME` with `torch/hub` |
+| Whisper | `XDG_CACHE_HOME` with `whisper` |
+| Keras | `KERAS_HOME` with `models` and `datasets` |
+
+The `custom` field of each rule in `rules/` holds these variables and the items that identify each store.
+
+- Moppo reads each variable from its own process first, then from `launchctl getenv`.
+- An app that starts from the Dock does not get the variables that a shell profile, such as `~/.zshrc`, sets.
+- To show a moved store in the app, set the variable with `launchctl setenv`.
+- Ollama and Whisper do not expand `~` in a value, so Moppo does not expand it for these tools.
+- A row in a moved store shows the variable that set its folder.
+- Models in a folder outside the home folder stay protected. Moppo shows them, but does not remove them.
+- Other categories do not list a moved store again.
+- Moppo does not read the folder settings of LM Studio or GPT4All.
+
+Moppo ignores a value in these conditions:
+
+- The value is not an absolute path.
+- The folder is the home folder, a folder above it, or a system folder.
+- The folder is, or contains, a folder of many owners, such as `~/Documents`, `~/Library`, or `~/.cache`.
+- The folder overlaps the storage of another tool.
+- A component of the path is a symbolic link.
+- The folder does not contain items from the layout of the tool.
 
 ## Bundle identifiers
 

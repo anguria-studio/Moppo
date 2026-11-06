@@ -330,12 +330,28 @@ extension LocalModelStores {
     public static let dotCacheFolders: Set<String> = ["huggingface", "lm-studio", "whisper"]
     /// Folders that the model readers claim in part, with the claimed child names.
     public static let partlyClaimedFolders: [String: Set<String>] = [".cache/torch": ["hub"], ".keras": ["models", "datasets"]]
+    static let ollamaStores: [String] = [".ollama/models"]
     static let huggingFaceStores: [String] = [".cache/huggingface"]
+    static let huggingFaceHubStores: [String] = [".cache/huggingface/hub"]
     static let lmStudioStores: [String] = [".lmstudio", ".cache/lm-studio"]
     static let pyTorchHubStores: [String] = [".cache/torch/hub"]
     static let whisperStores: [String] = [".cache/whisper"]
     static let kerasStores: [String] = [".keras/models", ".keras/datasets"]
     static let gpt4AllStores: [String] = ["Library/Application Support/nomic.ai/GPT4All"]
+    /// Stores that a variable can move. Each comes from a rule with `custom`. The first variable with a value sets the folder.
+    static let customLocations: [CustomLocation] = [
+        CustomLocation(tool: "ollama", store: "ollama", defaultPath: ".ollama/models", variables: [.init(name: "OLLAMA_MODELS")], identifiedBy: ["manifests"], trimsQuotes: true),
+        CustomLocation(tool: "hugging-face", store: "huggingFace", defaultPath: ".cache/huggingface", variables: [.init(name: "HF_HOME"), .init(name: "XDG_CACHE_HOME", append: "huggingface")], identifiedBy: ["hub/models--*", "hub/datasets--*", "hub/spaces--*"], expandsHome: true),
+        CustomLocation(tool: "hugging-face", store: "huggingFaceHub", defaultPath: ".cache/huggingface/hub", variables: [.init(name: "HF_HUB_CACHE"), .init(name: "HUGGINGFACE_HUB_CACHE"), .init(name: "HF_HOME", append: "hub"), .init(name: "XDG_CACHE_HOME", append: "huggingface/hub")], identifiedBy: ["models--*", "datasets--*", "spaces--*"], expandsHome: true),
+        CustomLocation(tool: "pytorch", store: "pyTorchHub", defaultPath: ".cache/torch/hub", variables: [.init(name: "TORCH_HOME", append: "hub"), .init(name: "XDG_CACHE_HOME", append: "torch/hub")], identifiedBy: ["checkpoints", "*/hubconf.py"], expandsHome: true),
+        CustomLocation(tool: "whisper", store: "whisper", defaultPath: ".cache/whisper", variables: [.init(name: "XDG_CACHE_HOME", append: "whisper")], identifiedBy: ["*.pt"]),
+        CustomLocation(tool: "keras", store: "keras", defaultPath: ".keras/models", variables: [.init(name: "KERAS_HOME", append: "models")], identifiedBy: ["../keras.json"], expandsHome: true),
+        CustomLocation(tool: "keras", store: "keras", defaultPath: ".keras/datasets", variables: [.init(name: "KERAS_HOME", append: "datasets")], identifiedBy: ["../keras.json"], expandsHome: true)
+    ]
+    /// Every variable that a custom location reads.
+    public static let locationVariables: [String] = ["OLLAMA_MODELS", "HF_HOME", "XDG_CACHE_HOME", "HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE", "TORCH_HOME", "KERAS_HOME"]
+    /// The model store paths of each tool, below the home folder.
+    static let storePathsByTool: [String: [String]] = ["ollama": [".ollama", ".ollama/models"], "hugging-face": [".cache/huggingface", ".cache/huggingface/hub"], "lm-studio": [".lmstudio", ".cache/lm-studio"], "pytorch": [".cache/torch/hub"], "whisper": [".cache/whisper"], "keras": [".keras/models", ".keras/datasets"], "gpt4all": ["Library/Application Support/nomic.ai/GPT4All"]]
 }
 
 extension EditorExtensionStores {

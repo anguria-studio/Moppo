@@ -18,7 +18,19 @@
       "table": "localModelStores",
       "owner": "aiTools",
       "treatment": "review",
-      "store": "keras"
+      "store": "keras",
+      "custom": {
+        "variables": [
+          {
+            "name": "KERAS_HOME",
+            "append": "models"
+          }
+        ],
+        "identifiedBy": [
+          "../keras.json"
+        ],
+        "expandsHome": true
+      }
     },
     {
       "path": "~/.keras/datasets",
@@ -27,7 +39,19 @@
       "owner": "aiTools",
       "treatment": "review",
       "store": "keras",
-      "note": "`~/.keras` also holds `keras.json` settings, which no rule offers."
+      "note": "`~/.keras` also holds `keras.json` settings, which no rule offers.",
+      "custom": {
+        "variables": [
+          {
+            "name": "KERAS_HOME",
+            "append": "datasets"
+          }
+        ],
+        "identifiedBy": [
+          "../keras.json"
+        ],
+        "expandsHome": true
+      }
     }
   ]
 }

@@ -46,6 +46,8 @@ public struct ScanContext: Sendable {
     public var applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan?
     /// True when results include items smaller than 1 MB.
     public var showsSmallItems: Bool
+    /// The variables that can move a model store, such as `OLLAMA_MODELS`. See `LocalModelStores.environment`.
+    public var environment: [String: String]
     /// Bundle identifier walks that the categories of this scan share.
     let applicationBundleWalks = ApplicationBundleWalks()
 
@@ -60,7 +62,8 @@ public struct ScanContext: Sendable {
         runningApplications: [FileEntry.RunningOwner] = [],
         registeredApplicationBundleIdentifiers: Set<String> = [],
         applicationLeftoverCandidates: OrphanedAppLeftoverPlanner.CandidateScan? = nil,
-        showsSmallItems: Bool = false
+        showsSmallItems: Bool = false,
+        environment: [String: String] = [:]
     ) {
         // The measurer must know the globs or nothing detects a protected tree.
         // Taking them from the same argument keeps the two halves of the rule from
@@ -76,6 +79,7 @@ public struct ScanContext: Sendable {
         self.registeredApplicationBundleIdentifiers = registeredApplicationBundleIdentifiers
         self.applicationLeftoverCandidates = applicationLeftoverCandidates
         self.showsSmallItems = showsSmallItems
+        self.environment = environment
     }
 
     /// The running application at this bundle path, if there is one.
