@@ -19,6 +19,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ### Cleanup
 
+- Keep Cleanup results after Put Back or removal in another view. Offer **Scan again** or **Continue** when data changes.
+- Keep the notice about older results below the Cleanup controls. Keep the header and sidebar available.
+- Reuse Trash results between visits. Read the Trash again after removal, Put Back, or **Refresh Trash**.
+- Turn off scheduled scans by default. Keep saved schedule settings.
 - Add **Put Back** to History for items with valid Trash receipts.
 - Add **Put Back Run** to restore all available items from one recorded uninstall or cleanup run.
 - Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.

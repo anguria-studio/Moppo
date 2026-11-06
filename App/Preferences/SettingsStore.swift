@@ -114,7 +114,7 @@ final class SettingsStore {
         static let appearance = AppAppearance.system
         static let launchAtLogin = true
         static let showInMenuBar = true
-        static let scanSchedule = ScanSchedule.weekly
+        static let scanSchedule = ScanSchedule.never
         static let idleOnly = true
         static let warnBelowGB = 20
         static let lowSpaceAlertsEnabled = true

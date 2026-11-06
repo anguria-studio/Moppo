@@ -8,7 +8,7 @@ import MoppoCore
 final class CleanupModel {
     private static let runningAppsNoticeHiddenKey = "cleanup.runningAppsNoticeHidden"
 
-    struct Preferences: Sendable {
+    struct Preferences: Sendable, Equatable {
         var enabledCategories: Set<CategoryID>?
         var excludedPaths: [String] = []
         var excludedPatterns: [String] = []
@@ -38,6 +38,7 @@ final class CleanupModel {
     @ObservationIgnored private var administratorRetryEntries: [FileEntry] = []
     @ObservationIgnored private let saveExclusion: (FileEntry) -> Bool
     @ObservationIgnored private let preferences: () -> Preferences
+    @ObservationIgnored private var observedPreferences: Preferences?
     @ObservationIgnored private let applications: CleanupApplications
     @ObservationIgnored private let measureSaving: ([URL]) async throws -> PrivateSizeMeasurement?
     @ObservationIgnored private let scanDocker: (Preferences) async throws -> ScanCategoryResult
@@ -123,6 +124,7 @@ final class CleanupModel {
     }
     private(set) var lastScanFinishedAt: Date?
     private(set) var hasStartedInitialScan = false
+    private(set) var showsOutdatedResultsNotice = false
     private(set) var isRemoving = false
     private(set) var isWaitingForApplications = false
     private(set) var isInterruptingApplicationQuit = false
@@ -575,7 +577,7 @@ final class CleanupModel {
     }
 
     func requestCleanUp(in filter: ScanFilter) {
-        guard !isBusyWithDisk, pendingCleanUp == nil else { return }
+        guard !isBusyWithDisk, !showsOutdatedResultsNotice, pendingCleanUp == nil else { return }
         let scope = cleanupSelection(in: filter)
         let entries = selectedEntries.filter { scope.contains($0.id) }
         let selectedIDs = Set(entries.map(\.id))
@@ -617,6 +619,7 @@ final class CleanupModel {
     }
 
     var confirmBeforeCleanup: Bool { preferences().confirmBeforeCleanup }
+    var currentPreferences: Preferences { preferences() }
 
     private func measureCleanUpSaving(for plan: CleanupPlan) {
         // Filesystem measurements cannot measure storage inside Docker.
@@ -720,6 +723,7 @@ final class CleanupModel {
                     isInterruptingScan = false
                     scanTask = nil
                     self.scanID = nil
+                    if completed { updateScanPreferences() }
                 }
                 operations.finish(operation)
             }
@@ -736,6 +740,8 @@ final class CleanupModel {
                 try Task.checkCancellation()
                 guard self.scanID == scanID else { return false }
                 scanResults = results
+                observedPreferences = preferences
+                showsOutdatedResultsNotice = false
                 applyExclusions()
                 lastScanFinishedAt = results.finishedAt
                 defaults.set(results.finishedAt, forKey: "lastScanFinishedAt")
@@ -1070,17 +1076,31 @@ final class CleanupModel {
         return cancelled ? nil : result
     }
 
-    /// Disk changes invalidate the review and its protected-data authorizations.
-    func invalidateResults() {
+    /// Keep results after disk changes, but clear removal selections and approvals.
+    func markResultsOutdated() {
         cancelScan()
         cancelCleanUp()
-        scanResults = nil
         administratorRetryEntries = []
         scannerSelection.removeAll()
         userDataRemovalOverrides.removeAll()
-        cleanupRunningOwners = []
-        scanFilter = .safeToRemove
-        hasStartedInitialScan = false
-        safeSelectionSeededAt = nil
+        showsOutdatedResultsNotice = scanResults != nil
+    }
+
+    func continueWithExistingResults() {
+        showsOutdatedResultsNotice = false
+    }
+
+    /// Apply exclusions now. Other scan settings take effect after another scan.
+    func updateScanPreferences() {
+        guard !isScanning else { return }
+        let current = preferences()
+        defer { observedPreferences = current }
+        guard let previous = observedPreferences,
+              previous.enabledCategories != current.enabledCategories
+                || previous.excludedPaths != current.excludedPaths
+                || previous.excludedPatterns != current.excludedPatterns
+                || previous.showsSmallItems != current.showsSmallItems else { return }
+        applyExclusions()
+        markResultsOutdated()
     }
 }

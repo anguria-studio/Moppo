@@ -13,6 +13,7 @@ struct AppAppearanceTests {
 
         let fresh = SettingsStore(defaults: defaults, managesLoginItem: false)
         #expect(fresh.appearance == .system)
+        #expect(fresh.scanSchedule == .never)
         fresh.showInMenuBar = false
         fresh.scanSchedule = .daily
         fresh.warnBelowGB = 35

@@ -71,6 +71,13 @@ struct ScannerView: View {
                             .frame(minHeight: showsEmptyState ? geometry.size.height : 0, alignment: .top)
                             .padding(showsEmptyState ? 0 : Token.Size.pageGutter)
                         }
+                        .allowsHitTesting(!model.showsOutdatedResultsNotice)
+                        .accessibilityHidden(model.showsOutdatedResultsNotice)
+                        .overlay {
+                            if model.showsOutdatedResultsNotice {
+                                outdatedResultsNotice
+                            }
+                        }
                     }
                 }
                 .transition(.opacity)
@@ -128,6 +135,22 @@ struct ScannerView: View {
             resultsVisible = true
         }
         .onDisappear { resultsVisible = true }
+    }
+
+    private var outdatedResultsNotice: some View {
+        PageState(
+            title: "Cleanup data might be outdated",
+            symbol: "clock.arrow.circlepath",
+            detail: "Files or scan settings have changed since the last scan."
+        ) {
+            PageStateActions {
+                Button("Scan again") { model.startScan() }
+                    .buttonStyle(PageStateButtonStyle.primary)
+                Button("Continue") { model.continueWithExistingResults() }
+            }
+            .disabled(model.isBusyWithDisk)
+        }
+        .background(Token.pageBackground.opacity(0.96))
     }
 
     private var runningAppsNotice: some View {

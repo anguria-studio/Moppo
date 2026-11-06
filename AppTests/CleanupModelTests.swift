@@ -577,8 +577,8 @@ struct CleanupModelTests {
         cleanup.deselectAllInCurrentView()
         #expect(cleanup.scannerSelection == [node.id])
         operations.finish(operation)
-        cleanup.invalidateResults()
-        #expect(cleanup.dataTypeFilter == .all)
+        cleanup.markResultsOutdated()
+        #expect(cleanup.dataTypeFilter == .nodeModules)
         #expect(cleanup.hiddenSelectionCount == 0)
     }
 
@@ -1278,6 +1278,95 @@ struct CleanupModelTests {
         app.startInitialCleanupScan()
         #expect(!app.cleanup.isScanning)
         #expect(await scanner.requestCount == 1)
+
+        app.cleanup.scannerSelection = ["old-selection"]
+        app.cleanup.userDataRemovalOverrides = ["old-approval"]
+        app.cleanup.markResultsOutdated()
+        #expect(app.cleanup.scanResults == results)
+        #expect(app.cleanup.showsOutdatedResultsNotice)
+        #expect(app.cleanup.scannerSelection.isEmpty)
+        #expect(app.cleanup.userDataRemovalOverrides.isEmpty)
+        app.view = .trash
+        app.view = .scanner
+        app.startInitialCleanupScan()
+        #expect(await scanner.requestCount == 1)
+        app.cleanup.continueWithExistingResults()
+        app.view = .trash
+        app.view = .scanner
+        app.startInitialCleanupScan()
+        #expect(!app.cleanup.showsOutdatedResultsNotice)
+        #expect(await scanner.requestCount == 1)
+
+        app.cleanup.markResultsOutdated()
+        app.cleanup.startScan(refreshOverview: false)
+        try await waitUntil { await scanner.requestCount == 2 }
+        let refreshed = cleanupResults([])
+        await scanner.finish(1, results: refreshed)
+        try await waitUntil { !app.cleanup.isScanning }
+        #expect(app.cleanup.scanResults == refreshed)
+        #expect(!app.cleanup.showsOutdatedResultsNotice)
+    }
+
+    @Test("A failed or stopped rescan keeps the notice about older results", arguments: [false, true])
+    func outdatedRescan(stop: Bool) async throws {
+        let scanner = HeldCleanupScanner()
+        let cleanup = CleanupModel(operations: OperationCoordinator(), scanner: scanner)
+        let results = cleanupResults([cleanupEntry("cached")])
+        cleanup.scanResults = results
+        cleanup.markResultsOutdated()
+        cleanup.scannerSelection = ["/cleanup-fixture/cached"]
+        cleanup.requestCleanUp(in: .all)
+        #expect(cleanup.pendingCleanUp == nil)
+        cleanup.startScan(refreshOverview: false)
+        try await waitUntil { await scanner.requestCount == 1 }
+        if stop {
+            cleanup.cancelScan()
+            await scanner.finish(0, results: cleanupResults([]))
+        } else {
+            await scanner.fail(0)
+        }
+        try await waitUntil { !cleanup.isScanning }
+        #expect(cleanup.scanResults == results)
+        #expect(cleanup.showsOutdatedResultsNotice)
+    }
+
+    @Test("Scan setting changes require review and removal setting changes do not")
+    func changedScanPreferences() async throws {
+        let scanner = HeldCleanupScanner()
+        let entry = cleanupEntry("cached")
+        var preferences = CleanupModel.Preferences()
+        let cleanup = CleanupModel(
+            operations: OperationCoordinator(), scanner: scanner, preferences: { preferences }
+        )
+        cleanup.startScan(refreshOverview: false)
+        try await waitUntil { await scanner.requestCount == 1 }
+        await scanner.finish(0, results: cleanupResults([entry]))
+        try await waitUntil { !cleanup.isScanning }
+        preferences.confirmBeforeCleanup.toggle()
+        preferences.keepReceipt.toggle()
+        cleanup.updateScanPreferences()
+        #expect(!cleanup.showsOutdatedResultsNotice)
+
+        preferences.enabledCategories = [.systemCaches]
+        cleanup.updateScanPreferences()
+        #expect(cleanup.showsOutdatedResultsNotice)
+        cleanup.continueWithExistingResults()
+        cleanup.updateScanPreferences()
+        #expect(!cleanup.showsOutdatedResultsNotice)
+
+        preferences.excludedPaths = [entry.url.path]
+        cleanup.updateScanPreferences()
+        #expect(cleanup.showsOutdatedResultsNotice)
+        #expect(cleanup.allEntries.isEmpty)
+        cleanup.continueWithExistingResults()
+        preferences.excludedPatterns = ["*.log"]
+        cleanup.updateScanPreferences()
+        #expect(cleanup.showsOutdatedResultsNotice)
+        cleanup.continueWithExistingResults()
+        preferences.showsSmallItems = true
+        cleanup.updateScanPreferences()
+        #expect(cleanup.showsOutdatedResultsNotice)
+        #expect(await scanner.requestCount == 1)
     }
 
     @Test("Cancellation retains the guard and rejects old callbacks after a restart")
@@ -1367,11 +1456,11 @@ struct CleanupModelTests {
         #expect(!app.isBusyWithDisk)
         app.cleanup.startScan(refreshOverview: false)
         try await waitUntil { await scanner.requestCount == 2 }
-        app.cleanup.invalidateResults()
+        app.cleanup.markResultsOutdated()
         await scanner.finish(1, results: cleanupResults([]))
         try await waitUntil { !app.cleanup.isScanning }
         #expect(app.cleanup.scanResults == nil)
-        #expect(!app.cleanup.hasStartedInitialScan)
+        #expect(app.cleanup.hasStartedInitialScan)
     }
 
     @Test("Another operation blocks Cleanup scans and removal")
@@ -1395,7 +1484,7 @@ struct CleanupModelTests {
         cleanup.cancelCleanUp()
     }
 
-    @Test("Scans capture preferences and seed safe selection only once")
+    @Test("Scans capture preferences and preserve a cleared safe selection")
     func preferencesAndSelection() async throws {
         let scanner = HeldCleanupScanner()
         var preferences = CleanupModel.Preferences(
@@ -1427,10 +1516,12 @@ struct CleanupModelTests {
         let results = cleanupResults([parent, protected])
         await scanner.finish(0, results: results)
         try await waitUntil { !cleanup.isScanning }
-        #expect(cleanup.scannerSelection == [parent.id])
+        #expect(cleanup.scannerSelection.isEmpty)
+        #expect(cleanup.showsOutdatedResultsNotice)
         #expect(cleanup.openCategories.isEmpty)
         #expect(cleanup.lastScanFinishedAt == results.finishedAt)
         #expect(defaults.object(forKey: "lastScanFinishedAt") as? Date == results.finishedAt)
+        cleanup.continueWithExistingResults()
         cleanup.deselectAll()
         cleanup.seedSafeToRemoveSelection()
         #expect(cleanup.scannerSelection.isEmpty)
@@ -1857,7 +1948,7 @@ struct CleanupModelTests {
         #expect(await scanner.requestCount == 0)
     }
 
-    @Test("Partial cleanup retains its receipt and Put Back invalidates later results")
+    @Test("Partial cleanup retains its receipt and Put Back clears earlier removal approvals")
     func partialRemovalAndRecovery() async throws {
         let fixture = try CleanupFixture()
         let removable = try fixture.entry("removable")
@@ -1898,7 +1989,8 @@ struct CleanupModelTests {
         app.cleanup.requestCleanUp(in: .all)
         await app.recovery.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
         #expect(FileManager.default.fileExists(atPath: removable.id))
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults?.categories.flatMap(\.entries).map(\.id) == [protected.id])
+        #expect(app.cleanup.showsOutdatedResultsNotice)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.cleanup.pendingCleanUp == nil)
         #expect(app.cleanup.userDataRemovalOverrides.isEmpty)

@@ -154,7 +154,7 @@ struct OperationFlowTests {
         return process.terminationStatus
     }
 
-    @Test("Put Back waits for scans and clears old folder results after restoration")
+    @Test("Put Back waits for scans and marks Cleanup results as outdated after restoration")
     func putBackAfterScan() async throws {
         let folder = try TemporaryFolder()
         let trash = folder.url.appendingPathComponent(".Trash")
@@ -190,7 +190,8 @@ struct OperationFlowTests {
         #expect(model.recovery.cleanupHistory?.items.first?.state == .restored)
         #expect(model.storageExplorer.snapshot == nil)
         #expect(model.storageExplorer.needsRefresh)
-        #expect(model.cleanup.scanResults == nil)
+        #expect(model.cleanup.scanResults != nil)
+        #expect(model.cleanup.showsOutdatedResultsNotice)
         #expect(!model.isBusyWithDisk)
     }
 

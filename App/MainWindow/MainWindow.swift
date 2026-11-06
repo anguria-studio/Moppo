@@ -56,13 +56,15 @@ struct MainWindow: View {
         }
         .onChange(of: model.duplicateKind) { _, _ in model.photoDuplicates.preview = nil }
         .task {
+            model.cleanup.updateScanPreferences()
             if scenePhase == .active { model.startInitialCleanupScan() }
             await model.loadDashboard()
         }
         .task(id: scenePhase) {
             guard scenePhase == .active, model.view != .trash else { return }
-            await model.recovery.loadTrash()
+            await model.recovery.loadTrashIfNeeded()
         }
+        .onChange(of: model.cleanup.currentPreferences) { _, _ in model.cleanup.updateScanPreferences() }
         .onChange(of: model.view) { _, view in
             model.photoDuplicates.preview = nil
             if view == .scanner, scenePhase == .active { model.startInitialCleanupScan() }
@@ -349,7 +351,8 @@ struct MainWindow: View {
     private var canRemove: Bool {
         guard !model.isBusyWithDisk else { return false }
         switch model.view {
-        case .scanner:         return !model.cleanup.cleanupSelection(in: model.cleanup.scanFilter).isEmpty
+        case .scanner:         return !model.cleanup.showsOutdatedResultsNotice
+            && !model.cleanup.cleanupSelection(in: model.cleanup.scanFilter).isEmpty
         case .duplicates:      return model.duplicateKind == .files
             ? !model.fileDuplicates.selection.isEmpty && !model.fileDuplicates.isScanning
             : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping

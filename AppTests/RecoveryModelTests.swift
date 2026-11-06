@@ -5,6 +5,39 @@ import Testing
 @Suite("Recovery feature ownership")
 @MainActor
 struct RecoveryModelTests {
+    @Test("Trash visits share an active read and reuse it until a manual refresh")
+    func cachedTrashVisits() async throws {
+        let trash = HeldRecoveryTrash(holdReads: true)
+        let model = RecoveryModel(operations: OperationCoordinator(), trashService: trash)
+        let first = Task { await model.loadTrashIfNeeded() }
+        try await waitUntil { await trash.readLimits.count == 1 }
+        var secondStarted = false
+        var secondFinished = false
+        let second = Task {
+            secondStarted = true
+            await model.loadTrashIfNeeded()
+            secondFinished = true
+        }
+        try await waitUntil { secondStarted }
+        #expect(!secondFinished)
+        let item = recoveryItem("Cached")
+        let summary = TrashSummary(totalBytes: item.bytes, itemCount: 1, items: [item])
+        await trash.finishRead(0, summary)
+        await first.value
+        await second.value
+        await model.loadTrashIfNeeded()
+        #expect(model.trashSummary == summary)
+        #expect(await trash.readLimits.count == 1)
+
+        let refresh = Task { await model.loadTrash() }
+        try await waitUntil { await trash.readLimits.count == 2 }
+        await trash.finishRead(1, TrashSummary())
+        await refresh.value
+        await model.loadTrashIfNeeded()
+        #expect(model.trashSummary?.itemCount == 0)
+        #expect(await trash.readLimits.count == 2)
+    }
+
     @Test("A replaced Trash read cannot restore old rows or selection")
     func replacedTrash() async throws {
         let trash = HeldRecoveryTrash(holdReads: true)
@@ -70,7 +103,8 @@ struct RecoveryModelTests {
         await trash.finishRestoration()
         await caller.value
         #expect(await trash.cancelled == [false])
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults != nil)
+        #expect(app.cleanup.showsOutdatedResultsNotice)
         #expect(app.cleanup.scannerSelection.isEmpty)
         #expect(app.recovery.trashSummary?.itemCount == 0)
         #expect(app.recovery.cleanupHistory != nil)
@@ -339,7 +373,8 @@ struct RecoveryModelTests {
         try await waitUntil { await trash.restorations.count == 2 }
         await trash.finishRestoration()
         await retry.value
-        #expect(app.cleanup.scanResults == nil)
+        #expect(app.cleanup.scanResults != nil)
+        #expect(app.cleanup.showsOutdatedResultsNotice)
         #expect(app.notice == nil)
     }
 
@@ -371,14 +406,14 @@ struct RecoveryModelTests {
     func readFailure() async throws {
         let trash = HeldRecoveryTrash(holdReads: true)
         let model = RecoveryModel(operations: OperationCoordinator(), trashService: trash)
-        let first = Task { await model.loadTrash() }
+        let first = Task { await model.loadTrashIfNeeded() }
         try await waitUntil { await trash.readLimits.count == 1 }
         await trash.failRead(0)
         await first.value
         #expect(model.hasLoadedTrash)
         #expect(!model.isLoadingTrash)
         #expect(model.trashSummary == nil)
-        let retry = Task { await model.loadTrash() }
+        let retry = Task { await model.loadTrashIfNeeded() }
         try await waitUntil { await trash.readLimits.count == 2 }
         await trash.finishRead(1, TrashSummary())
         await retry.value
