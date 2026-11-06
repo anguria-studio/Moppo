@@ -6,19 +6,29 @@ import SwiftUI
 final class MainWindowRequestCenter {
     static let uninstall = MainWindowRequestCenter()
     static let savedPlan = MainWindowRequestCenter()
+    static let cleanupScan = MainWindowRequestCenter()
     private var handler: ((URL) -> Void)?
     private var presenter: (() -> Void)?
     private var pendingURL: URL?
+    private var presentationPending = false
 
     func install(_ handler: @escaping (URL) -> Void) {
         self.handler = handler
         if let pendingURL { self.pendingURL = nil; handler(pendingURL) }
     }
 
-    func installPresenter(_ presenter: @escaping () -> Void) { self.presenter = presenter }
+    func installPresenter(_ presenter: @escaping () -> Void) {
+        self.presenter = presenter
+        if presentationPending { present() }
+    }
+
+    func present() {
+        presentationPending = presenter == nil
+        presenter?()
+    }
 
     func submit(_ url: URL) {
-        presenter?()
+        present()
         guard let handler else { pendingURL = url; return }
         handler(url)
     }
@@ -31,7 +41,7 @@ struct MainWindowRequestReceiver: View {
         MainWindowIdentityView()
             .frame(width: 0, height: 0)
             .onAppear {
-                for center in [MainWindowRequestCenter.uninstall, .savedPlan] {
+                for center in [MainWindowRequestCenter.uninstall, .savedPlan, .cleanupScan] {
                     center.installPresenter { MainWindowPresenter.present { openWindow(id: "main") } }
                 }
             }

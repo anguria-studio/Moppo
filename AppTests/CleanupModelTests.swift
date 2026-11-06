@@ -2241,44 +2241,6 @@ private func cleanupResults(_ entries: [FileEntry]) -> ScanResults {
     )], startedAt: .now, finishedAt: .now)
 }
 
-
-private actor HeldCleanupRemoval: CleanupRemoving {
-    private(set) var requestCount = 0
-    private(set) var entries: [FileEntry] = []
-    private(set) var overrides: Set<FileEntry.ID> = []
-    private(set) var keepReceipt = true
-    private(set) var trashFirst = false
-    private(set) var confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval] = [:]
-    private(set) var wasCancelled = false
-    private var continuation: CheckedContinuation<CleanupOutcome, Never>?
-    var isPending: Bool { continuation != nil }
-    func remove(
-        entries: [FileEntry], trashFirst: Bool, keepReceipt: Bool,
-        userDataRemovalOverrides: Set<FileEntry.ID>, appDataRemovalOverrides: Set<FileEntry.ID>,
-        expectedIdentities: [FileEntry.ID: String],
-        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval],
-        runID: UUID
-    ) async throws -> CleanupOutcome {
-        requestCount += 1
-        self.entries = entries
-        self.overrides = userDataRemovalOverrides
-        self.keepReceipt = keepReceipt
-        self.trashFirst = trashFirst
-        self.confirmedToolCommands = confirmedToolCommands
-        let outcome = await withCheckedContinuation { continuation = $0 }
-        wasCancelled = Task.isCancelled
-        return outcome
-    }
-    func removeOrphanedAppLeftovers(
-        _ plan: OrphanedAppLeftoverPlan, bundleIdentifiers: Set<String>, itemPaths: Set<String>?,
-        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool,
-        runID: UUID
-    ) async throws -> CleanupOutcome {
-        CleanupOutcome(failed: plan.items(for: bundleIdentifiers, itemPaths: itemPaths).map(\.id))
-    }
-    func finish(_ result: CleanupOutcome) { continuation?.resume(returning: result); continuation = nil }
-}
-
 private actor CleanupMeasurements {
     private var continuations: [Int: CheckedContinuation<PrivateSizeMeasurement?, Never>] = [:]
     private(set) var count = 0

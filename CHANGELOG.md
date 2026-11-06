@@ -4,6 +4,15 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Shortcuts
+
+- Add actions for free space, Trash size, Safe to Remove size, and Cleanup scans.
+- Return size values in bytes, with volume names, item counts, or scan dates in the response.
+- Open Moppo for a requested scan.
+- Add **Delete Safe to Remove** to scan and remove eligible items in the background without confirmation.
+- Run background cleanup without opening the main window. Background cleanup requires Full Disk Access.
+- Keep removal protection checks and the current receipt setting. No Shortcuts action empties the Trash.
+
 ### Duplicate files
 
 - Add a **Keep** menu to choose the oldest copy, newest copy, shortest path, or copies in a folder.
