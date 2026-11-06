@@ -5,6 +5,7 @@
 ## For users
 
 - [User guide](user-guide.md): permissions, Cleanup filters, settings, removal, recovery, and updates.
+- [Shortcuts](user-guide.md#shortcuts): disk space, Trash size, Cleanup totals, scans, and background cleanup.
 - [Command line](cli.md): the `moppo` command, JSON output, and saved cleanup plans.
 - [Agent workflow](agent-workflow.md): skill installation, agent sandboxes, the user workflow, and troubleshooting.
 

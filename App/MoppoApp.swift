@@ -2,6 +2,7 @@ import SwiftUI
 import MoppoCore
 import MoppoPlans
 import UserNotifications
+import AppIntents
 
 #if !MOPPO_APP_TESTS
 @main
@@ -37,6 +38,8 @@ struct MoppoApp: App {
             onboardingProgress: OnboardingProgress(defaults: .standard),
             acquireRemovalLease: { try PlanExecutionLease() }
         )
+        AppDependencyManager.shared.add(dependency: model)
+        MoppoShortcuts.updateAppShortcutParameters()
         if let request = try? PlanHandoff(launchArguments: Array(CommandLine.arguments.dropFirst())) {
             model.openSavedPlan(request.url)
         }
@@ -168,7 +171,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 self.closeMainWindows()
                 self.isSettlingLoginLaunch = false
             }
-        } else {
+        } else if notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool != false {
+            // Background actions must not activate the main window.
             MainWindowPresenter.activateAfterLaunch()
         }
     }

@@ -256,6 +256,40 @@ To delete them sooner, select **Delete Snapshots…**, then confirm.
 Put Back cannot restore a deleted snapshot.
 Moppo does not show snapshots in **Safe to Remove**.
 
+## Shortcuts
+
+In the Shortcuts app, add an action from **Moppo**.
+These actions also have phrases for Siri and Spotlight.
+**Delete Safe to Remove** removes eligible items without confirmation.
+No Shortcuts action empties the Trash.
+
+| Action | Result | Opens the main window |
+| --- | --- | --- |
+| Get Free Space | Free bytes on the startup disk, with the volume name in the response. | No |
+| Get Trash Size | Bytes in the Trash, with the item count in the response. | No |
+| Get Safe to Remove Size | Safe to Remove bytes from the current Cleanup result, with its scan date in the response. | No |
+| Scan for Cleanup Items | Starts a Cleanup scan for review. | Yes |
+| Delete Safe to Remove | Runs a background scan and removes the automatically selected Safe to Remove items. | No |
+
+The three size actions return a number of bytes that a shortcut can compare with a limit.
+**Get Trash Size** reports an access error when Moppo cannot read the Trash.
+Grant Full Disk Access to Moppo in System Settings to permit this read.
+**Get Safe to Remove Size** does not start a scan.
+After Moppo quits, run a new Cleanup scan before you use this action.
+The saved Dashboard storage measurement does not contain a Safe to Remove total.
+**Scan for Cleanup Items** requires a completed welcome guide and no active disk operation.
+**Delete Safe to Remove** has the same requirements.
+It also requires Full Disk Access for background scans.
+It can start Moppo in the background after you quit the app.
+It does not open the main window or change the current view.
+It removes only eligible items from its new scan, regardless of earlier selections or type filters.
+It uses Moppo's normal removal methods and keeps the current receipt setting.
+Tool commands can remove caches permanently.
+This action does not change **Confirm before every clean-up** for other Cleanup actions.
+If its scan stops or fails, it removes nothing.
+Moppo repeats its removal safety checks before it removes items.
+The actions also work when Moppo runs in menu bar mode.
+
 ## Appearance and iCloud
 
 Choose **System**, **Light**, or **Dark** in **Settings > General > Appearance**.
@@ -282,6 +316,9 @@ Moppo checks each item before restoration. It keeps items in the Trash when thei
 Moppo deletes Time Machine local snapshots only from the Dashboard, after confirmation. Moppo does not delete other APFS snapshots.
 
 ### Confirmation
+
+The **Delete Safe to Remove** shortcut skips confirmation for eligible items from its new scan.
+The following rules apply to other removal actions.
 
 | Operation | Confirmation |
 | --- | --- |
