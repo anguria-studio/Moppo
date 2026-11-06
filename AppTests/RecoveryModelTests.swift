@@ -130,6 +130,96 @@ struct RecoveryModelTests {
         #expect(!model.isBusyWithDisk)
     }
 
+    @Test("History restores only the selected run and keeps unavailable receipt states")
+    func historyRunRestoration() async throws {
+        let folder = try TemporaryFolder()
+        let trashDirectory = folder.url.appendingPathComponent(".Trash")
+        try FileManager.default.createDirectory(at: trashDirectory, withIntermediateDirectories: true)
+        let log = MoppoCore.RemovalLog(directory: folder.url.appendingPathComponent("logs"))
+        let runID = UUID()
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let definitions: [(String, RemovalDisposition, UUID?, String?)] = [
+            ("Application.app", .trashed, runID, nil),
+            ("Profile", .trashed, runID, nil),
+            ("Missing", .trashed, runID, "missing"),
+            ("Unverified", .trashed, runID, "1:1"),
+            ("Failed", .failed, runID, nil),
+            ("Permanent", .deleted, runID, nil),
+            ("Other Run", .trashed, UUID(), nil),
+            ("Legacy", .trashed, nil, nil),
+        ]
+        for (name, disposition, run, identity) in definitions {
+            let url = trashDirectory.appendingPathComponent(name)
+            if name != "Missing" { try Data(name.utf8).write(to: url) }
+            try log.append([RemovalRecord(
+                timestamp: stamp, originalPath: folder.url.appendingPathComponent("Restored/\(name)").path,
+                bytes: 64, disposition: disposition, trashedPath: url.path,
+                trashedIdentity: identity ?? FileIdentity.of(url), runID: run
+            )])
+        }
+        let model = RecoveryModel(
+            operations: OperationCoordinator(), trashService: TrashService(home: folder.url, log: log),
+            historyService: CleanupHistoryReader(service: CleanupHistoryService(log: log))
+        )
+        await model.loadCleanupHistory()
+        let before = try #require(model.cleanupHistory)
+        let selected = try #require(before.items.first { $0.name == "Application.app" })
+        let runItems = model.restorableItems(inRunOf: selected)
+        #expect(Set(runItems.map(\.name)) == ["Application.app", "Profile"])
+        let legacy = try #require(before.items.first { $0.name == "Legacy" })
+        #expect(legacy.trashItem != nil)
+        #expect(model.restorableItems(inRunOf: legacy).isEmpty)
+
+        model.requestPutBack(runItems)
+        try await waitUntil { model.cleanupHistory?.availableInTrashCount == before.availableInTrashCount - 2 && !model.isBusyWithDisk }
+        let after = try #require(model.cleanupHistory)
+        for item in before.items {
+            let current = try #require(after.items.first { $0.id == item.id })
+            if ["Application.app", "Profile"].contains(item.name) {
+                #expect(current.state == .restored)
+                #expect(try String(contentsOf: item.originalURL, encoding: .utf8) == item.name)
+            } else {
+                #expect(current.state == item.state)
+                #expect(current.trashItem == item.trashItem)
+            }
+        }
+        #expect(model.restorableItems(inRunOf: selected).isEmpty)
+        model.requestPutBack([try #require(legacy.trashItem)])
+        try await waitUntil { model.cleanupHistory?.items.first { $0.id == legacy.id }?.state == .restored && !model.isBusyWithDisk }
+    }
+
+    @Test("A stale History receipt cannot restore a later removal at the same Trash path")
+    func staleHistoryReceipt() async throws {
+        let folder = try TemporaryFolder()
+        let trash = folder.url.appendingPathComponent(".Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let url = try folder.write(".Trash/Profile")
+        let log = MoppoCore.RemovalLog(directory: folder.url.appendingPathComponent("logs"))
+        let original = folder.url.appendingPathComponent("Profile")
+        func receipt() -> RemovalRecord {
+            RemovalRecord(timestamp: .now, originalPath: original.path, bytes: 64, disposition: .trashed,
+                trashedPath: url.path, trashedIdentity: FileIdentity.of(url), runID: UUID())
+        }
+        try log.append([receipt()])
+        let model = RecoveryModel(
+            operations: OperationCoordinator(), trashService: TrashService(home: folder.url, log: log),
+            historyService: CleanupHistoryReader(service: CleanupHistoryService(log: log))
+        )
+        await model.loadCleanupHistory()
+        let stale = try #require(model.cleanupHistory?.items.first?.trashItem)
+        try FileManager.default.moveItem(at: url, to: folder.url.appendingPathComponent("Previous"))
+        try Data("Replacement".utf8).write(to: url)
+        try log.append([receipt()])
+        var failed = false
+        model.onEvent = { event in
+            if case .failure = event { failed = true }
+        }
+        await model.putBack(stale)
+        #expect(failed)
+        #expect(try String(contentsOf: url, encoding: .utf8) == "Replacement")
+        #expect(!FileManager.default.fileExists(atPath: original.path))
+    }
+
     @Test("Empty Trash requests confirmation only for readable items when no operation or sheet is active")
     func emptyTrashConfirmation() async throws {
         let trash = HeldRecoveryTrash(holdReads: true)

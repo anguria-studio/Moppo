@@ -80,7 +80,7 @@ public struct HomebrewUninstallService: Sendable {
     }
 
     public func uninstall(
-        _ plan: AppUninstallPlan, keepReceipt: Bool = true
+        _ plan: AppUninstallPlan, keepReceipt: Bool = true, runID: UUID = UUID()
     ) async -> HomebrewUninstallOutcome {
         guard let package = plan.managedPackage,
               ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].contains(package.executable)
@@ -149,13 +149,13 @@ public struct HomebrewUninstallService: Sendable {
             try? log.append([RemovalRecord(
                 timestamp: .now, originalPath: plan.applicationURL.path,
                 bytes: plan.applicationItem.allocatedBytes, disposition: removed ? .deleted : .failed
-            )])
+            )], runID: runID)
         }
 
         switch verification {
         case .success(true) where removed && commandError == nil:
             let related = await cleanupService.removeRelatedFilesAfterHomebrew(
-                plan, keepReceipt: keepReceipt
+                plan, keepReceipt: keepReceipt, runID: runID
             )
             return .init(
                 status: .completed,

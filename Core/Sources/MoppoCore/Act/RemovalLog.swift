@@ -20,6 +20,8 @@ public enum RemovalDisposition: String, Sendable, CaseIterable {
 /// One removal record.
 public struct RemovalRecord: Sendable, Equatable {
     public var timestamp: Date
+    /// Identifies the uninstall or cleanup run that wrote this receipt.
+    public var runID: UUID?
     /// Where the item lived before removal — for a `trashed` item this is also the
     /// destination a Put Back restores to.
     public var originalPath: String
@@ -57,9 +59,11 @@ public struct RemovalRecord: Sendable, Equatable {
         trashedIdentity: String? = nil,
         freedBytes: Int64? = nil,
         toolCommandResult: ToolCommandRemovalResult? = nil,
-        optedInSharedGroupContainer: Bool = false
+        optedInSharedGroupContainer: Bool = false,
+        runID: UUID? = nil
     ) {
         self.timestamp = timestamp
+        self.runID = runID
         self.originalPath = originalPath
         self.bytes = bytes
         self.disposition = disposition
@@ -168,12 +172,16 @@ public struct RemovalLog: Sendable {
         })
     }
 
-    public func append(_ records: [RemovalRecord]) throws {
+    public func append(_ records: [RemovalRecord], runID: UUID? = nil) throws {
         guard !records.isEmpty else { return }
         let descriptor = try openForWriting()
         defer { close(descriptor) }
 
-        let text = records.map(Self.line(for:)).joined(separator: "\n") + "\n"
+        let text = records.map { record in
+            var record = record
+            if let runID { record.runID = runID }
+            return Self.line(for: record)
+        }.joined(separator: "\n") + "\n"
         try Data(text.utf8).withUnsafeBytes { buffer in
             guard let base = buffer.baseAddress else { return }
             var written = 0
@@ -236,12 +244,13 @@ public struct RemovalLog: Sendable {
     /// field is a set of tokens rather than fixed columns: `dev:ino` bare, for the
     /// records already on disk that end that way, and `freed=` prefixed. Order is
     /// not relied on when reading.
+    /// The optional `run=<UUID>` token identifies one uninstall or cleanup run.
     static func line(for record: RemovalRecord) -> String {
         let timestamp = record.timestamp.formatted(timestampStyle)
         let path = quote(record.originalPath)
         var line = "\(timestamp) \(path) \(record.bytes) \(record.disposition.rawValue)"
         guard record.trashedPath != nil || record.freedBytes != nil || record.toolCommandResult != nil
-                || record.optedInSharedGroupContainer
+                || record.optedInSharedGroupContainer || record.runID != nil
         else { return line }
         line += " " + quote(record.trashedPath ?? "")
         if let identity = record.trashedIdentity { line += " " + identity }
@@ -249,6 +258,7 @@ public struct RemovalLog: Sendable {
         if let result = record.toolCommandResult, let data = try? JSONEncoder().encode(result) {
             line += " command=" + data.base64EncodedString()
         }
+        if let runID = record.runID { line += " run=\(runID.uuidString)" }
         if record.optedInSharedGroupContainer { line += " " + optInToken }
         return line
     }
@@ -272,6 +282,7 @@ public struct RemovalLog: Sendable {
         var freedBytes: Int64?
         var toolCommandResult: ToolCommandRemovalResult?
         var optedInSharedGroupContainer = false
+        var runID: UUID?
         if fields.count == 3, let (trashed, rest) = unquote(fields[2]) {
             // An empty quoted field is a placeholder written by a permanent
             // deletion that still had a freed figure to record; it names no path.
@@ -279,6 +290,8 @@ public struct RemovalLog: Sendable {
             for token in rest.split(separator: " ", omittingEmptySubsequences: true) {
                 if token == optInToken {
                     optedInSharedGroupContainer = true
+                } else if token.hasPrefix("run=") {
+                    runID = UUID(uuidString: String(token.dropFirst("run=".count)))
                 } else if token.hasPrefix("freed=") {
                     freedBytes = Int64(token.dropFirst("freed=".count))
                 } else if token.hasPrefix("command=") {
@@ -300,7 +313,8 @@ public struct RemovalLog: Sendable {
             trashedIdentity: trashedIdentity,
             freedBytes: freedBytes,
             toolCommandResult: toolCommandResult,
-            optedInSharedGroupContainer: optedInSharedGroupContainer
+            optedInSharedGroupContainer: optedInSharedGroupContainer,
+            runID: runID
         )
     }
 

@@ -57,6 +57,22 @@ struct CleanupServiceTests {
         #expect(logged.freedBytes == outcome.freedBytes)
     }
 
+    @Test("Separate cleanup calls record separate runs")
+    func cleanupRunReceipts() async throws {
+        let sandbox = try Sandbox()
+        let files = try (0..<3).map { try sandbox.writeFile("Item \($0)", bytes: 64) }
+        let log = RemovalLog(directory: sandbox.root.appendingPathComponent("logs"))
+        let service = CleanupService(log: log)
+        _ = try await service.remove(entries: files.prefix(2).map { entry($0) }, trashFirst: false)
+        _ = try await service.remove(entries: [entry(files[2])], trashFirst: false)
+        let records = log.recentEntries()
+        #expect(records.count == 3)
+        let firstRun = try #require(records.first { $0.originalPath == files[0].path }?.runID)
+        #expect(records.first { $0.originalPath == files[1].path }?.runID == firstRun)
+        #expect(records.first { $0.originalPath == files[2].path }?.runID != firstRun)
+        #expect(records.allSatisfy { $0.runID != nil })
+    }
+
     @Test("one failure does not abort the batch and is named in `failed`")
     func failureDoesNotAbortTheBatch() async throws {
         let sandbox = try Sandbox()

@@ -53,6 +53,12 @@ struct CleanupHistoryView: View {
                     .help(summaryText(summary))
             }
             Spacer(minLength: 0)
+            Button("Put Back Run") { model.requestPutBack(selectedRunItems) }
+                .buttonStyle(PageActionButtonStyle(size: .small))
+                .disabled(selectedRunItems.isEmpty)
+                .help(model.isBusyWithDisk
+                      ? "Explain why Put Back must wait for the current operation."
+                      : "Restore all available items from the selected uninstall or cleanup run.")
             FindField(text: $searchText, findRequest: findRequest)
                 .frame(width: 180)
                 .disabled(items.isEmpty)
@@ -116,13 +122,34 @@ struct CleanupHistoryView: View {
                         .monospacedDigit()
                         .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
                         .frame(maxWidth: .infinity, alignment: .trailing)
+                },
+                CompactTableColumn("", width: 80, min: 80, max: 80) { item, selected in
+                    if let trashItem = item.trashItem {
+                        Button("Put Back") { model.requestPutBack([trashItem]) }
+                            .buttonStyle(CompactTableActionStyle(isSelected: selected))
+                            .help(model.isBusyWithDisk
+                                  ? "Explain why Put Back must wait for the current operation."
+                                  : "Restore this item to its original folder.")
+                    }
                 }
             ],
             itemName: { $0.name },
             menuActions: { ids in
-                guard let item = visibleItems.first(where: { ids.contains($0.id) }),
-                      item.state == .availableInTrash, item.trashedURL != nil else { return [] }
-                return [CompactTableMenuAction(title: "Show in Trash") { model.showInTrash(item) }]
+                guard let item = visibleItems.first(where: { ids.contains($0.id) }) else { return [] }
+                var actions: [CompactTableMenuAction] = []
+                if let trashItem = item.trashItem {
+                    actions.append(CompactTableMenuAction(title: "Put Back") { model.requestPutBack([trashItem]) })
+                }
+                let runItems = model.restorableItems(inRunOf: item)
+                if !runItems.isEmpty {
+                    actions.append(CompactTableMenuAction(title: "Put Back Run (\(runItems.count) \(runItems.count == 1 ? "Item" : "Items"))") {
+                        model.requestPutBack(runItems)
+                    })
+                }
+                if item.state == .availableInTrash, item.trashedURL != nil {
+                    actions.append(CompactTableMenuAction(title: "Show in Trash") { model.showInTrash(item) })
+                }
+                return actions
             }
         )
         .tableQuickLook(items: visibleItems, selection: tableSelection, url: { $0.quickLookURL })
@@ -133,6 +160,11 @@ struct CleanupHistoryView: View {
 
     private var tableSelection: Binding<Set<CleanupHistoryItem.ID>> {
         Binding(get: { Set(selection.map { [$0] } ?? []) }, set: { selection = $0.first })
+    }
+
+    private var selectedRunItems: [TrashItem] {
+        guard let item = items.first(where: { $0.id == selection }) else { return [] }
+        return model.restorableItems(inRunOf: item)
     }
 
     private var loadingState: some View {

@@ -673,6 +673,7 @@ struct AppUninstallerModelTests {
             await remover.finish(2, CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1))
         }
         try await waitUntil { !model.isUninstallingApp }
+        #expect(Set(await remover.requests.map(\.runID)).count == 1)
         #expect(model.batchUninstallOutcome?.uninstalled == (cancelled ? ["First"] : ["First", "Third"]))
         #expect(model.batchUninstallOutcome?.setAside.first?.name == "Second")
         #expect(model.batchUninstallOutcome?.setAside.first?.reason.contains(cancelled ? "cancelled" : "denied access") == true)
@@ -1046,6 +1047,40 @@ struct AppUninstallerModelTests {
         #expect(!operations.isBusy)
     }
 
+    @Test("One History command restores a complete uninstall with its profile")
+    func completeUninstallRecovery() async throws {
+        let fixture = try UninstallerFixture()
+        let log = MoppoCore.RemovalLog(directory: fixture.root.appendingPathComponent("logs"))
+        defer {
+            for record in log.recentEntries() {
+                if let path = record.trashedPath { try? FileManager.default.removeItem(atPath: path) }
+            }
+        }
+        let planner = AppUninstallPlanner(
+            home: fixture.root, systemLibrary: fixture.root.appendingPathComponent("SystemLibrary"),
+            applicationRoots: [fixture.root.appendingPathComponent("Applications")], darwinCache: nil, darwinTemp: nil
+        )
+        let plan = try await planner.plan(applicationURL: fixture.application)
+        let outcome = try await CleanupService(log: log).uninstall(plan)
+        #expect(outcome.failed.isEmpty)
+        #expect(outcome.trashedCount == 2)
+        #expect(!FileManager.default.fileExists(atPath: fixture.application.path))
+        #expect(!FileManager.default.fileExists(atPath: fixture.profile.path))
+        let recovery = RecoveryModel(
+            operations: OperationCoordinator(), trashService: TrashService(home: fixture.root, log: log),
+            historyService: CleanupHistoryReader(service: CleanupHistoryService(log: log))
+        )
+        await recovery.loadCleanupHistory()
+        let item = try #require(recovery.cleanupHistory?.items.first { $0.originalURL == fixture.application })
+        let runItems = recovery.restorableItems(inRunOf: item)
+        #expect(runItems.count == outcome.trashedCount)
+        recovery.requestPutBack(runItems)
+        try await waitUntil { recovery.cleanupHistory?.availableInTrashCount == 0 && !recovery.isBusyWithDisk }
+        #expect(try String(contentsOf: fixture.profile, encoding: .utf8) == "Disposable profile")
+        #expect(Bundle(url: fixture.application)?.bundleIdentifier == "org.moppo.uninstallerfixture")
+        #expect(recovery.cleanupHistory?.items.allSatisfy { $0.state == .restored } == true)
+    }
+
     @Test("Partial uninstall retains receipts and Put Back clears stale results")
     func receiptRecovery() async throws {
         let fixture = try UninstallerFixture()
@@ -1214,6 +1249,7 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
     struct Request: Sendable {
         let plan: AppUninstallPlan
         let keepReceipt: Bool
+        let runID: UUID
     }
     struct LeftoverRequest: Sendable {
         let registered: Set<String>
@@ -1234,19 +1270,20 @@ private actor HeldUninstallerRemoval: AppUninstallRemoving {
     private var soundReply: CheckedContinuation<CleanupOutcome, Never>?
     private(set) var permanentConfirmations: [@Sendable () async -> Bool] = []
     func uninstall(
-        _ plan: AppUninstallPlan, keepReceipt: Bool,
+        _ plan: AppUninstallPlan, keepReceipt: Bool, runID: UUID,
         confirmPermanentRemoval: @escaping @Sendable () async -> Bool
     ) async throws -> CleanupOutcome {
         permanentConfirmations.append(confirmPermanentRemoval)
         let index = requests.count
-        requests.append(Request(plan: plan, keepReceipt: keepReceipt))
+        requests.append(Request(plan: plan, keepReceipt: keepReceipt, runID: runID))
         let result = await withCheckedContinuation { replies[index] = $0 }
         cancelled.append(Task.isCancelled)
         return result
     }
     func removeOrphanedAppLeftovers(
         _ plan: OrphanedAppLeftoverPlan, bundleIdentifiers: Set<String>, itemPaths: Set<String>?,
-        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool
+        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool,
+        runID: UUID
     ) async throws -> CleanupOutcome {
         leftoverRequests.append(LeftoverRequest(registered: registeredApplicationBundleIdentifiers, paths: itemPaths, keepReceipt: keepReceipt))
         return await withCheckedContinuation { leftoverReply = $0 }

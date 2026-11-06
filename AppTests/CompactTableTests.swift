@@ -105,6 +105,58 @@ struct CompactTableTests {
         }
     }
 
+    @Test("History offers item and run recovery through its table actions")
+    func historyRecoveryActions() async throws {
+        let folder = try TemporaryFolder()
+        let trash = folder.url.appendingPathComponent(".Trash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let log = MoppoCore.RemovalLog(directory: folder.url.appendingPathComponent("logs"))
+        let runID = UUID()
+        for name in ["Application.app", "Profile", "Missing"] {
+            let url = trash.appendingPathComponent(name)
+            if name != "Missing" { try Data(name.utf8).write(to: url) }
+            try log.append([RemovalRecord(
+                timestamp: .now, originalPath: folder.url.appendingPathComponent("Restored/\(name)").path,
+                bytes: 64, disposition: .trashed, trashedPath: url.path,
+                trashedIdentity: FileIdentity.of(url), runID: runID
+            )])
+        }
+        let model = RecoveryModel(
+            operations: OperationCoordinator(), trashService: TrashService(home: folder.url, log: log),
+            historyService: CleanupHistoryReader(service: CleanupHistoryService(log: log))
+        )
+        await model.loadCleanupHistory()
+        let host = NSHostingView(rootView: CleanupHistoryView(model: model)
+            .background(Token.pageBackground).environment(\.colorScheme, .dark))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 880, height: 360),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        try await waitUntil { findTable(in: host)?.numberOfRows == 3 }
+        host.layoutSubtreeIfNeeded()
+        let table = try #require(findTable(in: host))
+        let coordinator = try #require(table.delegate as? CompactTable<CleanupHistoryItem, KeyPathComparator<CleanupHistoryItem>>.Coordinator)
+        let item = try #require(coordinator.parent.items.first { $0.name == "Application.app" })
+        let actions = coordinator.parent.menuActions([item.id])
+        #expect(actions.map(\.title) == ["Put Back", "Put Back Run (2 Items)", "Show in Trash"])
+        let missing = try #require(coordinator.parent.items.first { $0.name == "Missing" })
+        #expect(coordinator.parent.menuActions([missing.id]).map(\.title) == ["Put Back Run (2 Items)"])
+        let row = try #require(coordinator.parent.items.firstIndex { $0.id == item.id })
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        try await Task.sleep(for: .milliseconds(100))
+        host.layoutSubtreeIfNeeded()
+        let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        try #require(bitmap.representation(using: .png, properties: [:]))
+            .write(to: URL(fileURLWithPath: "/tmp/moppo-324-history.png"))
+        actions[1].perform()
+        try await waitUntil { model.cleanupHistory?.availableInTrashCount == 0 && !model.isBusyWithDisk }
+        #expect(FileManager.default.fileExists(atPath: item.originalURL.path))
+        #expect(try String(contentsOf: folder.url.appendingPathComponent("Restored/Profile"), encoding: .utf8) == "Profile")
+    }
+
     @Test("Clicking a selected Storage Explorer row transfers arrow navigation from the sidebar")
     func rowClickFocus() async throws {
         _ = NSApplication.shared

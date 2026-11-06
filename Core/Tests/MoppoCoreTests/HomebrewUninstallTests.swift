@@ -94,6 +94,8 @@ struct HomebrewUninstallTests {
         #expect(appRecord.trashedPath == nil)
         let dataRecord = try #require(records.first { $0.originalPath == fixture.related.path })
         #expect(dataRecord.disposition == .trashed)
+        #expect(appRecord.runID != nil)
+        #expect(dataRecord.runID == appRecord.runID)
         let trashed = URL(fileURLWithPath: try #require(dataRecord.trashedPath))
         try await TrashService(home: fixture.root, log: fixture.log).putBack(
             TrashItem(url: trashed, bytes: dataRecord.bytes, canPutBack: true)

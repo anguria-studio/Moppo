@@ -15,6 +15,7 @@ public enum CleanupHistoryState: String, Sendable, Equatable, CaseIterable {
 public struct CleanupHistoryItem: Sendable, Identifiable, Equatable {
     public let id: String
     public let timestamp: Date
+    public let runID: UUID?
     public let originalURL: URL
     public let trashedURL: URL?
     public let trashedIdentity: String?
@@ -30,8 +31,18 @@ public struct CleanupHistoryItem: Sendable, Identifiable, Equatable {
         return originalURL.lastPathComponent
     }
 
+    /// Keeps the receipt identity for the checks that run immediately before restoration.
+    public var trashItem: TrashItem? {
+        guard state == .availableInTrash, let trashedURL, let trashedIdentity else { return nil }
+        return TrashItem(
+            url: trashedURL, name: name, bytes: bytes, deletedAt: timestamp,
+            canPutBack: true, originalURL: originalURL, trashedIdentity: trashedIdentity
+        )
+    }
+
     init(record: RemovalRecord, state: CleanupHistoryState, occurrence: Int) {
         timestamp = record.timestamp
+        runID = record.runID
         if let url = URL(string: record.originalPath), url.scheme == "docker" {
             originalURL = url
         } else {

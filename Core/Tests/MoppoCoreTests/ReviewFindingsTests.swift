@@ -287,7 +287,8 @@ struct ReviewFindingsTests {
             originalPath: "/Users/x/Library/Caches/thing with spaces",
             bytes: 12, disposition: .trashed,
             trashedPath: "/Users/x/.Trash/thing with spaces",
-            trashedIdentity: "16777232:41231"
+            trashedIdentity: "16777232:41231",
+            runID: UUID()
         )
         #expect(RemovalLog.record(from: Substring(RemovalLog.line(for: record))) == record)
 
@@ -296,6 +297,11 @@ struct ReviewFindingsTests {
         let old = RemovalLog.record(from: Substring(legacy))
         #expect(old?.trashedPath == "/Users/x/.Trash/old")
         #expect(old?.trashedIdentity == nil)
+        #expect(old?.runID == nil)
+
+        let failed = RemovalRecord(timestamp: record.timestamp, originalPath: record.originalPath,
+            bytes: 12, disposition: .failed, runID: record.runID)
+        #expect(RemovalLog.record(from: Substring(RemovalLog.line(for: failed))) == failed)
     }
 
     // MARK: - One arithmetic for tiles and lists

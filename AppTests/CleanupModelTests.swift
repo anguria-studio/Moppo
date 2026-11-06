@@ -2164,7 +2164,8 @@ private actor HeldCleanupRemoval: CleanupRemoving {
         entries: [FileEntry], trashFirst: Bool, keepReceipt: Bool,
         userDataRemovalOverrides: Set<FileEntry.ID>, appDataRemovalOverrides: Set<FileEntry.ID>,
         expectedIdentities: [FileEntry.ID: String],
-        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval]
+        confirmedToolCommands: [FileEntry.ID: ToolCommandRemoval],
+        runID: UUID
     ) async throws -> CleanupOutcome {
         requestCount += 1
         self.entries = entries
@@ -2178,7 +2179,8 @@ private actor HeldCleanupRemoval: CleanupRemoving {
     }
     func removeOrphanedAppLeftovers(
         _ plan: OrphanedAppLeftoverPlan, bundleIdentifiers: Set<String>, itemPaths: Set<String>?,
-        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool
+        registeredApplicationBundleIdentifiers: Set<String>, keepReceipt: Bool,
+        runID: UUID
     ) async throws -> CleanupOutcome {
         CleanupOutcome(failed: plan.items(for: bundleIdentifiers, itemPaths: itemPaths).map(\.id))
     }
