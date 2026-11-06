@@ -209,20 +209,10 @@ public extension CategoryScanner {
     }
 
     /// The same answer for code with no scanner instance to ask — the static
-    /// helpers that split an application's folders into rows.
+    /// helpers that split an application's folders into rows. `LastOpenedDates`
+    /// gives Spotlight a time limit.
     static func lastOpenedDate(for url: URL) -> Date? {
-        if let item = MDItemCreate(nil, url.path as CFString) {
-            if let used = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date {
-                return used
-            }
-            if let modified = MDItemCopyAttribute(item, kMDItemContentModificationDate) as? Date {
-                return modified
-            }
-        }
-        // Spotlight may not have indexed the volume at all.
-        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
-        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
-        return values.contentModificationDate ?? values.creationDate
+        LastOpenedDates.current.date(for: url)
     }
 
     /// Convenience: build an entry, measuring it through the shared measurer.

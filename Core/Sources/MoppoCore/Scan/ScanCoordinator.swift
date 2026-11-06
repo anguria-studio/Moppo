@@ -122,14 +122,18 @@ public actor ScanCoordinator {
 
         let active = scanners.filter { enabled?.contains($0.id) ?? true }
         ScanDiagnostics.current?.record("categories_enabled", details: ["categories": active.map { $0.id.rawValue }.joined(separator: ",")])
+        // A Spotlight timeout in an earlier scan does not stop this scan from asking.
+        let dates = LastOpenedDates.current.forNewScan()
         let task = Task { [active] in
-            try await Self.run(
-                active,
-                context: context,
-                onProgress: onProgress,
-                onCategory: onCategory,
-                onCategoryTiming: onCategoryTiming
-            )
+            try await LastOpenedDates.$current.withValue(dates) {
+                try await Self.run(
+                    active,
+                    context: context,
+                    onProgress: onProgress,
+                    onCategory: onCategory,
+                    onCategoryTiming: onCategoryTiming
+                )
+            }
         }
         runningTask = task
         defer { runningTask = nil }
