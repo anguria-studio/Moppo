@@ -41,6 +41,7 @@ final class FileDuplicatesModel {
     @ObservationIgnored private let service: any FileDuplicatesScanning
     @ObservationIgnored private let removalService: any FileDuplicatesRemoving
     @ObservationIgnored private let preferences: () -> Preferences
+    @ObservationIgnored private let settings: SettingsStore?
     @ObservationIgnored private var folderTask: Task<Void, Never>?
     @ObservationIgnored private var scanTask: Task<Void, Never>?
     @ObservationIgnored private var scanID: UUID?
@@ -52,12 +53,15 @@ final class FileDuplicatesModel {
         operations: OperationCoordinator,
         service: any FileDuplicatesScanning = FileDuplicateService(),
         removalService: any FileDuplicatesRemoving = FileDuplicateRemovalService(),
+        settings: SettingsStore? = nil,
         preferences: @escaping () -> Preferences = { Preferences() }
     ) {
         self.operations = operations
         self.service = service
         self.removalService = removalService
         self.preferences = preferences
+        self.settings = settings
+        self.keeperRule = settings?.duplicateKeeperRule ?? .oldest
     }
 
     private(set) var results: FileDuplicateResults?
@@ -66,6 +70,16 @@ final class FileDuplicatesModel {
     private(set) var isInterrupting = false
     private(set) var isRemoving = false
     private(set) var selection: Set<DuplicateFile.ID> = []
+    private(set) var keeperRule: DuplicateKeeperRule
+
+    var keeperRuleLabel: String {
+        switch keeperRule {
+        case .oldest: "Oldest copy"
+        case .newest: "Newest copy"
+        case .shortestPath: "Shortest path"
+        case .inFolder: "Copies in a folder"
+        }
+    }
 
     var minimumBytes: Int64 = 1_000_000 {
         didSet { selection.formIntersection(removableIDs) }
@@ -116,8 +130,13 @@ final class FileDuplicatesModel {
             chooseFolders()
             return
         }
+        if case let .inFolder(folder) = keeperRule,
+           !KeeperFolderSelection.contains(folder, in: roots) {
+            setKeeperRule(.oldest)
+        }
         guard let operation = operations.begin(.fileScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
         let preferences = preferences()
+        let keeperRule = keeperRule
         let scanID = UUID()
         self.scanID = scanID
         isScanning = true
@@ -142,7 +161,7 @@ final class FileDuplicatesModel {
                 let results = try await service.scan(
                     roots: roots,
                     // Keep all sizes so the filter can change without another scan.
-                    options: .init(minimumLogicalBytes: 0),
+                    options: .init(minimumLogicalBytes: 0, keeperRule: keeperRule),
                     excludedPaths: preferences.excludedPaths,
                     excludedPatterns: preferences.excludedPatterns,
                     onProgress: { [weak self] progress in
@@ -221,12 +240,56 @@ final class FileDuplicatesModel {
               let promoted = results.groups[index].promoting(fileID),
               !operations.explainBlockedAction()
         else { return }
-        let groupWasSelected = results.groups[index].removable.contains { selection.contains($0.id) }
-        let previousKeeper = results.groups[index].keeper.id
-        results.groups[index] = promoted
+        replaceGroup(at: index, with: promoted, in: &results)
         self.results = results
-        selection.remove(fileID)
-        if groupWasSelected { selection.insert(previousKeeper) }
+    }
+
+    func setKeeperRule(_ rule: DuplicateKeeperRule) {
+        guard !operations.explainBlockedAction() else { return }
+        if case let .inFolder(folder) = rule {
+            guard KeeperFolderSelection.contains(folder, in: results?.roots ?? []) else { return }
+        }
+        keeperRule = rule
+        settings?.duplicateKeeperRule = rule
+        guard var results else { return }
+        for index in results.groups.indices where results.groups[index].keeperReason != .chosenByUser {
+            replaceGroup(at: index, with: results.groups[index].applying(rule), selectAllCopies: true, in: &results)
+        }
+        self.results = results
+    }
+
+    private func replaceGroup(
+        at index: Int, with group: FileDuplicateGroup, selectAllCopies: Bool = false,
+        in results: inout FileDuplicateResults
+    ) {
+        let previous = results.groups[index]
+        let wasSelected = previous.files.contains { selection.contains($0.id) }
+        selection.remove(group.keeper.id)
+        if wasSelected {
+            selection.formUnion(selectAllCopies ? group.removable.map(\.id) : [previous.keeper.id])
+        }
+        results.groups[index] = group
+    }
+
+    func chooseKeeperFolder() {
+        guard !isBusyWithDisk, folderTask == nil, let roots = results?.roots else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose Copies to Keep"
+        panel.message = "Choose a folder inside the scanned folders. Moppo keeps copies in this folder first."
+        panel.prompt = "Keep Copies Here"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.resolvesAliases = true
+        panel.directoryURL = roots.first
+        let delegate = KeeperFolderSelection(roots: roots)
+        panel.delegate = delegate
+        folderTask = Task { [self] in
+            defer { folderTask = nil }
+            guard await panel.presentAsSheet() == .OK, let folder = panel.url,
+                  KeeperFolderSelection.contains(folder, in: delegate.roots) else { return }
+            setKeeperRule(.inFolder(folder.standardizedFileURL))
+        }
     }
 
     func removeSelected() async {
@@ -285,6 +348,36 @@ final class FileDuplicatesModel {
                 title: "The Duplicates Could Not Be Moved",
                 message: "The selected copies could not move to the Trash. Nothing was removed."
             ))
+        }
+    }
+}
+
+@MainActor
+private final class KeeperFolderSelection: NSObject, NSOpenSavePanelDelegate {
+    let roots: [URL]
+
+    init(roots: [URL]) { self.roots = roots }
+
+    static func contains(_ folder: URL, in roots: [URL]) -> Bool {
+        guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return false }
+        let path = folder.standardizedFileURL.path
+        return roots.contains {
+            let root = $0.standardizedFileURL.path
+            return path == root || path.hasPrefix(root == "/" ? root : root + "/")
+        }
+    }
+
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+        if Self.contains(url, in: roots) { return true }
+        let path = url.standardizedFileURL.path
+        return roots.contains { $0.standardizedFileURL.path.hasPrefix(path == "/" ? path : path + "/") }
+    }
+
+    func panel(_ sender: Any, validate url: URL) throws {
+        guard Self.contains(url, in: roots) else {
+            throw NSError(domain: "Moppo.DuplicateKeeperFolder", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Choose a folder inside the scanned folders."
+            ])
         }
     }
 }

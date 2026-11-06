@@ -85,6 +85,7 @@ struct FileDuplicatesView: View {
         PageProgressView(
             title: "Scanning for duplicate files",
             detail: progressLabel,
+            counts: progressCounts,
             progress: model.progress?.fractionCompleted,
             isInterrupting: model.isInterrupting,
             icon: .mascot(.fileDuplicateScanning),
@@ -98,12 +99,18 @@ struct FileDuplicatesView: View {
         case .enumerating:
             return "Reading the selected folders…"
         case .sampling:
-            return "Checking likely matches — \(progress.completed) of \(progress.total)"
+            return "Checking likely matches"
         case .verifying:
-            return "Verifying file contents — \(progress.completed) of \(progress.total)"
+            return "Verifying file contents"
         case .done:
             return "Finishing…"
         }
+    }
+
+    private var progressCounts: (completed: Int, total: Int) {
+        guard let progress = model.progress,
+              progress.stage == .sampling || progress.stage == .verifying else { return (0, 0) }
+        return (progress.completed, progress.total)
     }
 
     @ViewBuilder
@@ -444,6 +451,55 @@ struct FileDuplicateRow: View {
     }
 }
 
+/// Applies one keeper rule to all file groups.
+struct FileDuplicateKeeperMenu: View {
+    @Bindable var model: FileDuplicatesModel
+
+    var body: some View {
+        Menu {
+            ruleButton("Oldest copy", rule: .oldest)
+            ruleButton("Newest copy", rule: .newest)
+            ruleButton("Shortest path", rule: .shortestPath)
+            Divider()
+            Button { model.chooseKeeperFolder() } label: {
+                if case .inFolder = model.keeperRule {
+                    Label("Copies in a folder…", systemImage: "checkmark")
+                } else {
+                    Text("Copies in a folder…")
+                }
+            }
+            if case let .inFolder(folder) = model.keeperRule {
+                Text((folder.path as NSString).abbreviatingWithTildeInPath)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Text("Keep: \(model.keeperRuleLabel)")
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(PageActionButtonStyle(size: .small))
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(model.isBusyWithDisk)
+        .help("Choose which copy stays in each group")
+        .accessibilityLabel("Keep")
+        .accessibilityValue(model.keeperRuleLabel)
+    }
+
+    private func ruleButton(_ label: String, rule: DuplicateKeeperRule) -> some View {
+        Button { model.setKeeperRule(rule) } label: {
+            if model.keeperRule == rule {
+                Label(label, systemImage: "checkmark")
+            } else {
+                Text(label)
+            }
+        }
+    }
+}
+
 /// Filters completed scan results by file size.
 struct FileDuplicateMinimumPicker: View {
     @Bindable var model: FileDuplicatesModel
@@ -555,6 +611,9 @@ extension FileDuplicateGroup {
         let reason: String
         switch keeperReason {
         case .oldestCopy: reason = "keeping the oldest"
+        case .newestCopy: reason = "keeping the newest"
+        case .shortestPath: reason = "keeping the shortest path"
+        case .inSelectedFolder: reason = "keeping a copy in the selected folder"
         case .firstByName: reason = "keeping the first by name"
         case .chosenByUser: reason = "keeping your choice"
         }

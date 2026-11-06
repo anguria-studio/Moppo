@@ -130,6 +130,67 @@ struct FileDuplicateServiceTests {
         #expect(promoted.removable.count == 1)
         #expect(promoted.removable[0].id == group.keeper.id)
         #expect(promoted.keeperReason == .chosenByUser)
+        for rule in [DuplicateKeeperRule.oldest, .newest, .shortestPath, .inFolder(box.root)] {
+            #expect(promoted.applying(rule) == promoted)
+        }
+    }
+
+    @Test("Keeper rules choose among three copies", arguments: [
+        DuplicateKeeperRule.newest, .shortestPath, .inFolder(URL(filePath: "/Documents"))
+    ])
+    func keeperRules(rule: DuplicateKeeperRule) {
+        let group = keeperGroup([
+            ("/Documents/Photos/a.bin", 10), ("/Downloads/import/b.bin", 30), ("/Documents/c.bin", 20)
+        ])
+        let updated = group.applying(rule)
+        switch rule {
+        case .newest:
+            #expect(updated.keeper.id == "/Downloads/import/b.bin")
+            #expect(updated.keeperReason == .newestCopy)
+        case .shortestPath:
+            #expect(updated.keeper.id == "/Documents/c.bin")
+            #expect(updated.keeperReason == .shortestPath)
+        case .inFolder:
+            #expect(updated.keeper.id == "/Documents/Photos/a.bin")
+            #expect(updated.keeperReason == .inSelectedFolder)
+        case .oldest: Issue.record("The scan test covers the default rule")
+        }
+        #expect(updated.id == group.id)
+        #expect(updated.contentDigest == group.contentDigest)
+        #expect(Set(updated.files.map(\.id)) == Set(group.files.map(\.id)))
+        #expect(!updated.removable.contains(updated.keeper))
+    }
+
+    @Test("Keeper reasons describe ties, missing dates, and folder fallbacks")
+    func keeperFallbacks() {
+        let tied = keeperGroup([("/files/c", 10), ("/files/b", 10), ("/files/a", 10)])
+        for rule in [DuplicateKeeperRule.newest, .shortestPath, .inFolder(URL(filePath: "/files"))] {
+            #expect(tied.applying(rule).keeper.id == "/files/a")
+            #expect(tied.applying(rule).keeperReason == .firstByName)
+        }
+        let missing = keeperGroup([("/files/c", nil), ("/files/b", 10), ("/files/a", nil)])
+        for rule in [DuplicateKeeperRule.oldest, .newest] {
+            #expect(missing.applying(rule).keeper.id == "/files/b")
+            #expect(missing.applying(rule).keeperReason == .firstByName)
+        }
+        let folders = keeperGroup([
+            ("/Documents Archive/a", 10), ("/Documents/nested/b", 20), ("/Downloads/c", 30)
+        ])
+        let preferred = folders.applying(.inFolder(URL(filePath: "/Documents/./")))
+        #expect(preferred.keeper.id == "/Documents/nested/b")
+        #expect(preferred.keeperReason == .inSelectedFolder)
+        let absent = folders.applying(.inFolder(URL(filePath: "/Pictures")))
+        #expect(absent.keeper.id == "/Documents Archive/a")
+        #expect(absent.keeperReason == .oldestCopy)
+        #expect(folders.applying(.inFolder(URL(filePath: "/"))) == folders.applying(.oldest))
+    }
+
+    private func keeperGroup(_ copies: [(String, TimeInterval?)]) -> FileDuplicateGroup {
+        let files = copies.map { path, date in
+            DuplicateFile(url: URL(filePath: path), logicalBytes: 10, allocatedBytes: 10,
+                          creationDate: date.map { Date(timeIntervalSince1970: $0) })
+        }
+        return FileDuplicateGroup(id: "rules", keeper: files[0], removable: Array(files.dropFirst()), contentDigest: "verified")
     }
 
     @Test("Removal refuses a group when its keeper changes")
@@ -272,17 +333,23 @@ struct FileDuplicateServiceTests {
         await #expect(throws: CancellationError.self) { try await task.value }
     }
 
-    @Test("A verified copy moves to the Trash")
+    @Test("Removal uses the keeper after a rule change")
     func removesVerifiedCopy() async throws {
         let box = try Sandbox()
         let suffix = UUID().uuidString
         let data = Data(repeating: 1, count: 128)
-        _ = try box.write("moppo-duplicate-a-\(suffix).bin", data: data)
-        _ = try box.write("moppo-duplicate-b-\(suffix).bin", data: data)
+        let first = try box.write("moppo-duplicate-a-\(suffix).bin", data: data)
+        let second = try box.write("moppo-duplicate-b-\(suffix).bin", data: data)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.creationDate: date], ofItemAtPath: first.path)
+        try FileManager.default.setAttributes([.creationDate: date.addingTimeInterval(60)], ofItemAtPath: second.path)
         let results = try await FileDuplicateService().scan(
             roots: [box.root], options: .init(minimumLogicalBytes: 0)
         )
-        let group = try #require(results.groups.first)
+        let original = try #require(results.groups.first)
+        let group = original.applying(.newest)
+        #expect(original.keeper.url == first)
+        #expect(group.keeper.url == second)
         let selected = try #require(group.removable.first)
         let trashed = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appendingPathComponent(".Trash", isDirectory: true)
@@ -345,22 +412,28 @@ struct FileDuplicateServiceTests {
         }
 
         let tied = try await FileDuplicateService().scan(
-            roots: [box.root], options: .init(minimumLogicalBytes: 0)
+            roots: [box.root], options: .init(minimumLogicalBytes: 0, keeperRule: .oldest)
         )
         let tiedGroup = try #require(tied.groups.first)
         #expect(tiedGroup.keeperReason == .firstByName)
         #expect(tiedGroup.keeper.url == a)
 
-        // Now `b` is genuinely older: it keeps, and the label may claim it.
+        // The earlier date makes b the oldest copy.
         try FileManager.default.setAttributes(
             [.creationDate: sameDate.addingTimeInterval(-3_600)], ofItemAtPath: b.path
         )
         let dated = try await FileDuplicateService().scan(
-            roots: [box.root], options: .init(minimumLogicalBytes: 0)
+            roots: [box.root], options: .init(minimumLogicalBytes: 0, keeperRule: .oldest)
         )
         let datedGroup = try #require(dated.groups.first)
         #expect(datedGroup.keeperReason == .oldestCopy)
         #expect(datedGroup.keeper.url == b)
+        let newest = try await FileDuplicateService().scan(
+            roots: [box.root], options: .init(minimumLogicalBytes: 0, keeperRule: .newest)
+        )
+        #expect(newest.groups.first?.keeper.url == a)
+        #expect(newest.groups.first?.keeperReason == .newestCopy)
+        #expect(newest.groups.first?.id == datedGroup.id)
     }
 
     @Test("Progress is throttled, never runs backwards, and ends done", arguments: [0, 1, 200])

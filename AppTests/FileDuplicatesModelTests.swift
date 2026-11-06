@@ -154,6 +154,101 @@ struct FileDuplicatesModelTests {
         #expect(files.selection.isEmpty)
     }
 
+    @Test("Shared keeper rules retain group selection and manual choices")
+    func keeperRuleSelection() async throws {
+        var results = fileResults("selected")
+        results.groups += fileResults("manual").groups + fileResults("untouched").groups
+            + fileResults("hidden", bytes: 1).groups
+        let operations = OperationCoordinator()
+        let files = FileDuplicatesModel(operations: operations, service: HeldFileScanner(results: results))
+        files.minimumBytes = 5
+        files.startScan(roots: results.roots)
+        try await waitUntil { !files.isScanning }
+        files.toggle("/selected/copy-2")
+        files.toggle("/manual/copy-2")
+        files.keepInstead(groupID: "manual", fileID: "/manual/copy-2")
+        #expect(files.selection == ["/selected/copy-2", "/manual/keeper"])
+        files.toggle("/manual/keeper")
+        files.toggle("/manual/copy-1")
+        let manual = try #require(files.groups.first { $0.id == "manual" })
+
+        files.setKeeperRule(.newest)
+
+        #expect(files.groups.first?.keeper.id == "/selected/copy-1")
+        #expect(files.selection == ["/selected/copy-2", "/selected/keeper", "/manual/copy-1"])
+        #expect(files.groups.first { $0.id == "manual" } == manual)
+        #expect(files.results?.groups.first { $0.id == "hidden" }?.keeper.id == "/hidden/copy-1")
+        #expect(files.groups.allSatisfy { !files.selection.contains($0.keeper.id) })
+        #expect(files.groups.map(\.id) == ["selected", "manual", "untouched"])
+
+        let operation = try #require(operations.begin(.cleanupScan))
+        files.setKeeperRule(.shortestPath)
+        #expect(files.keeperRule == .newest)
+        #expect(files.selection == ["/selected/copy-2", "/selected/keeper", "/manual/copy-1"])
+        operations.finish(operation)
+    }
+
+    @Test("Keeper preferences survive restart and reach the next scan")
+    func keeperPreferences() async throws {
+        let fixture = try RemovalSettingsFixture(confirm: false)
+        let files = FileDuplicatesModel(operations: OperationCoordinator(), settings: fixture.settings)
+        #expect(files.keeperRule == .oldest)
+        for rule in [DuplicateKeeperRule.newest, .shortestPath, .oldest] {
+            files.setKeeperRule(rule)
+            let reopened = SettingsStore(defaults: fixture.defaults, managesLoginItem: false)
+            let scanner = HeldFileScanner(results: fileResults("preferences"))
+            let app = AppModel(settings: reopened, fileDuplicateService: scanner)
+            #expect(app.fileDuplicates.keeperRule == rule)
+            app.fileDuplicates.startScan(roots: [URL(filePath: "/preferences")])
+            try await waitUntil { !app.fileDuplicates.isScanning }
+            #expect(await scanner.requests.first?.options.keeperRule == rule)
+        }
+        fixture.settings.duplicateKeeperRule = .newest
+        fixture.settings.resetToDefaults()
+        #expect(fixture.settings.duplicateKeeperRule == .oldest)
+    }
+
+    @Test("Folder preferences accept scanned folders and recover when the folder disappears")
+    func keeperFolderPreferences() async throws {
+        let folder = try TemporaryFolder()
+        let preferred = folder.url.appendingPathComponent("Documents")
+        let neighbor = folder.url.appendingPathComponent("Documents Archive")
+        try FileManager.default.createDirectory(at: preferred, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: neighbor, withIntermediateDirectories: true)
+        let fixture = try RemovalSettingsFixture(confirm: false)
+        let results = FileDuplicateResults(groups: fileResults("folders").groups, roots: [preferred])
+        let scanner = HeldFileScanner(results: results)
+        let model = FileDuplicatesModel(operations: OperationCoordinator(), service: scanner, settings: fixture.settings)
+        model.startScan(roots: [preferred])
+        try await waitUntil { !model.isScanning }
+        model.setKeeperRule(.inFolder(neighbor))
+        #expect(model.keeperRule == .oldest)
+        let file = try folder.write("file")
+        model.setKeeperRule(.inFolder(file))
+        #expect(model.keeperRule == .oldest)
+        model.setKeeperRule(.inFolder(preferred))
+        #expect(model.keeperRule == .inFolder(preferred))
+        #expect(fixture.defaults.string(forKey: "settings.duplicateKeeperFolder") == preferred.path)
+        let reopened = SettingsStore(defaults: fixture.defaults, managesLoginItem: false)
+        #expect(reopened.duplicateKeeperRule == .inFolder(preferred))
+        model.startScan(roots: [preferred])
+        try await waitUntil { !model.isScanning }
+        #expect(await scanner.requests.last?.options.keeperRule == .inFolder(preferred))
+        try FileManager.default.removeItem(at: preferred)
+        let missing = SettingsStore(defaults: fixture.defaults, managesLoginItem: false)
+        #expect(missing.duplicateKeeperRule == .oldest)
+        model.startScan(roots: [preferred])
+        try await waitUntil { !model.isScanning }
+        #expect(model.keeperRule == .oldest)
+        #expect(await scanner.requests.last?.options.keeperRule == .oldest)
+        try FileManager.default.createDirectory(at: preferred, withIntermediateDirectories: true)
+        model.setKeeperRule(.inFolder(preferred))
+        model.startScan(roots: [neighbor])
+        try await waitUntil { !model.isScanning }
+        #expect(model.keeperRule == .oldest)
+        #expect(await scanner.requests.last?.options.keeperRule == .oldest)
+    }
+
     @Test("File removal follows confirmation settings and retains its operation", arguments: RemovalConfirmationChoice.allCases)
     func removalLifetime(_ choice: RemovalConfirmationChoice) async throws {
         let fixture = try RemovalSettingsFixture(confirm: choice.isEnabled)
@@ -198,6 +293,8 @@ struct FileDuplicatesModelTests {
         #expect(app.storageExplorer.isMeasurementBlocked)
         #expect(app.removalCompletion == nil)
         let selected = files.selection
+        files.setKeeperRule(.newest)
+        #expect(files.keeperRule == .oldest)
         files.keepInstead(groupID: "initial", fileID: "/initial/copy-1")
         files.deselectAll()
         files.toggleGroup("initial")
@@ -358,7 +455,13 @@ struct FileDuplicatesModelTests {
         files.minimumBytes = 0
         files.startScan(roots: [fixture.root])
         try await waitUntil { !files.isScanning }
+        let original = try #require(files.groups.first)
+        let wanted = try #require(original.files.max { ($0.creationDate ?? .distantPast) < ($1.creationDate ?? .distantPast) })
+        files.selectAll()
+        files.setKeeperRule(.newest)
         let group = try #require(files.groups.first)
+        #expect(group.keeper.id == wanted.id)
+        #expect(!files.selection.contains(wanted.id))
         let changed = try #require(group.removable.first)
         try Data("Changed after the scan".utf8).write(to: changed.url)
         files.selectAll()
@@ -605,7 +708,13 @@ private final class FileRemovalFixture {
 
     init() throws {
         folder = try TemporaryFolder(prefix: "moppo-file-model")
-        for name in ["first", "second", "third"] { _ = try writeCopy(name) }
+        for (index, name) in ["first", "second", "third"].enumerated() {
+            let url = try writeCopy(name)
+            try FileManager.default.setAttributes(
+                [.creationDate: Date(timeIntervalSince1970: 1_700_000_000 + Double(index * 60))],
+                ofItemAtPath: url.path
+            )
+        }
     }
 
     func writeCopy(_ name: String) throws -> URL {

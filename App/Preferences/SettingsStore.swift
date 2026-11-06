@@ -153,6 +153,8 @@ final class SettingsStore {
         static let confirmBeforeCleanup = "settings.confirmBeforeCleanup"
         static let keepReceipt = "settings.keepReceipt"
         static let allowPhotoDownloads = "settings.allowPhotoDownloads"
+        static let duplicateKeeperRule = "settings.duplicateKeeperRule"
+        static let duplicateKeeperFolder = "settings.duplicateKeeperFolder"
         static let exclusions = ScanConfiguration.exclusionsKey
     }
 
@@ -256,6 +258,22 @@ final class SettingsStore {
 
     var allowPhotoDownloads: Bool {
         didSet { defaults.set(allowPhotoDownloads, forKey: Key.allowPhotoDownloads) }
+    }
+
+    var duplicateKeeperRule: DuplicateKeeperRule {
+        didSet {
+            let name: String
+            switch duplicateKeeperRule {
+            case .oldest: name = "oldest"
+            case .newest: name = "newest"
+            case .shortestPath: name = "shortestPath"
+            case let .inFolder(folder):
+                name = "inFolder"
+                defaults.set(folder.standardizedFileURL.path, forKey: Key.duplicateKeeperFolder)
+            }
+            defaults.set(name, forKey: Key.duplicateKeeperRule)
+            if name != "inFolder" { defaults.removeObject(forKey: Key.duplicateKeeperFolder) }
+        }
     }
 
     // MARK: Exclusions
@@ -377,6 +395,18 @@ final class SettingsStore {
         self.confirmBeforeCleanup = bool(Key.confirmBeforeCleanup, or: Defaults.confirmBeforeCleanup)
         self.keepReceipt = bool(Key.keepReceipt, or: Defaults.keepReceipt)
         self.allowPhotoDownloads = bool(Key.allowPhotoDownloads, or: Defaults.allowPhotoDownloads)
+        switch defaults.string(forKey: Key.duplicateKeeperRule) {
+        case "newest": self.duplicateKeeperRule = .newest
+        case "shortestPath": self.duplicateKeeperRule = .shortestPath
+        case "inFolder":
+            if let path = defaults.string(forKey: Key.duplicateKeeperFolder), path.hasPrefix("/"),
+               (try? URL(filePath: path).resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+                self.duplicateKeeperRule = .inFolder(URL(filePath: path).standardizedFileURL)
+            } else {
+                self.duplicateKeeperRule = .oldest
+            }
+        default: self.duplicateKeeperRule = .oldest
+        }
 
         self.exclusions = (try? ScanConfiguration.readExclusions(from: defaults)) ?? Defaults.exclusions
         // The CLI posts this notification after it adds exclusions.
@@ -421,6 +451,7 @@ final class SettingsStore {
         confirmBeforeCleanup = Defaults.confirmBeforeCleanup
         keepReceipt = Defaults.keepReceipt
         allowPhotoDownloads = Defaults.allowPhotoDownloads
+        duplicateKeeperRule = .oldest
         exclusions = Defaults.exclusions
     }
 

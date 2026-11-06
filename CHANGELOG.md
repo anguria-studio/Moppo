@@ -4,6 +4,13 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Duplicate files
+
+- Add a **Keep** menu to choose the oldest copy, newest copy, shortest path, or copies in a folder.
+- Save the selected rule between launches. Keep individual **Keep instead** choices when the rule changes.
+- Show the selected rule on the **Keep** button.
+- Keep the duplicate scan stage and file counter on separate lines. Use equal digit widths for the counter.
+
 ### Dashboard
 
 - Show local Time Machine snapshots with their dates and an estimate of purgeable space.

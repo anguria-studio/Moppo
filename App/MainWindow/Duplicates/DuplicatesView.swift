@@ -6,36 +6,7 @@ struct DuplicatesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                PageSegmentedControl(selection: $model.duplicateKind, segments:
-                    AppModel.DuplicateKind.allCases.map { kind in
-                        .init(id: kind, title: kind.title,
-                              symbol: kind == .files ? "doc.on.doc" : "photo.on.rectangle")
-                    }
-                )
-                if (model.duplicateKind == .photos && model.photoDuplicates.libraryAccess?.canSweep == true && model.photoDuplicates.unavailableReason == nil)
-                    || (model.duplicateKind == .files && model.fileDuplicates.results != nil) {
-                    Rectangle()
-                        .fill(Token.Fill.controlBorder)
-                        .frame(width: Token.hairline, height: 22)
-                        .padding(.horizontal, 8)
-                    if model.duplicateKind == .photos {
-                        PhotoSimilarityPicker(model: model.photoDuplicates)
-                            .disabled(model.photoDuplicates.isRequestingAccess)
-                    } else {
-                        FileDuplicateMinimumPicker(model: model.fileDuplicates)
-                    }
-                }
-                Spacer(minLength: 0)
-                if model.duplicateKind == .files, model.fileDuplicates.results != nil {
-                    Button("Choose Other Folders", systemImage: "folder") { model.fileDuplicates.chooseFolders() }
-                        .buttonStyle(PageActionButtonStyle(size: .small))
-                        .disabled(model.isBusyWithDisk)
-                }
-            }
-            .disabled(model.activity != nil || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == .duplicates)
-            .frame(minHeight: 38)
-            .padding(Token.Size.pageGutter)
+            toolbar
             Divider()
             Group {
                 switch model.duplicateKind {
@@ -51,6 +22,75 @@ struct DuplicatesView: View {
             .overlay {
                 RemovalOperationSurface(model: model, fadesOnDismiss: true)
             }
+        }
+    }
+
+    private var showsOptions: Bool {
+        if model.duplicateKind == .files { return model.fileDuplicates.results != nil }
+        return model.photoDuplicates.libraryAccess?.canSweep == true && model.photoDuplicates.unavailableReason == nil
+    }
+
+    private var toolbar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                kindPicker
+                if showsOptions {
+                    Rectangle()
+                        .fill(Token.Fill.controlBorder)
+                        .frame(width: Token.hairline, height: 22)
+                        .padding(.horizontal, 8)
+                    options
+                }
+                Spacer(minLength: 0)
+                chooseFoldersButton
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    kindPicker
+                    Spacer(minLength: 0)
+                    chooseFoldersButton
+                }
+                if showsOptions {
+                    HStack(spacing: 8) {
+                        options
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+        .disabled(model.activity != nil || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == .duplicates)
+        .frame(minHeight: 38)
+        .padding(Token.Size.pageGutter)
+    }
+
+    private var kindPicker: some View {
+        PageSegmentedControl(selection: $model.duplicateKind, segments:
+            AppModel.DuplicateKind.allCases.map { kind in
+                .init(id: kind, title: kind.title,
+                      symbol: kind == .files ? "doc.on.doc" : "photo.on.rectangle")
+            }
+        )
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var options: some View {
+        if model.duplicateKind == .photos {
+            PhotoSimilarityPicker(model: model.photoDuplicates)
+                .disabled(model.photoDuplicates.isRequestingAccess)
+        } else {
+            FileDuplicateMinimumPicker(model: model.fileDuplicates)
+            FileDuplicateKeeperMenu(model: model.fileDuplicates)
+        }
+    }
+
+    @ViewBuilder
+    private var chooseFoldersButton: some View {
+        if model.duplicateKind == .files, model.fileDuplicates.results != nil {
+            Button("Choose Other Folders", systemImage: "folder") { model.fileDuplicates.chooseFolders() }
+                .buttonStyle(PageActionButtonStyle(size: .small))
+                .fixedSize()
+                .disabled(model.isBusyWithDisk)
         }
     }
 }

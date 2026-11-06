@@ -15,11 +15,13 @@ public actor FileDuplicateService {
         public var minimumLogicalBytes: Int64
         public var sampleBytes: Int
         public var readChunkBytes: Int
+        public var keeperRule: DuplicateKeeperRule
 
         public init(
             minimumLogicalBytes: Int64 = 1_000_000,
             sampleBytes: Int = 64 * 1024,
-            readChunkBytes: Int = 1024 * 1024
+            readChunkBytes: Int = 1024 * 1024,
+            keeperRule: DuplicateKeeperRule = .oldest
         ) {
             precondition(minimumLogicalBytes >= 0)
             precondition(sampleBytes > 0)
@@ -27,6 +29,7 @@ public actor FileDuplicateService {
             self.minimumLogicalBytes = minimumLogicalBytes
             self.sampleBytes = sampleBytes
             self.readChunkBytes = readChunkBytes
+            self.keeperRule = keeperRule
         }
     }
 
@@ -312,12 +315,12 @@ private struct FileDuplicateFinder {
             let partition = try byteEqualSets(candidates)
             skippedCount += partition.skipped
             for equalSet in partition.sets where equalSet.count > 1 {
-                let files = equalSet.map(\.file).sorted(by: keeperOrder)
+                let (files, reason) = DuplicateKeeperOrder.order(equalSet.map(\.file), by: options.keeperRule)
                 let stablePath = files.map(\.id).sorted().first ?? files[0].id
                 groups.append(FileDuplicateGroup(
                     id: "\(key):\(stablePath)",
                     keeper: files[0],
-                    keeperReason: Self.datesDecide(files) ? .oldestCopy : .firstByName,
+                    keeperReason: reason,
                     removable: Array(files.dropFirst()),
                     contentDigest: String(key.split(separator: ":", maxSplits: 1).last ?? "")
                 ))
@@ -464,30 +467,6 @@ private struct FileDuplicateFinder {
             let b = try right.read(upToCount: options.readChunkBytes) ?? Data()
             if a != b { return false }
             if a.isEmpty { return true }
-        }
-    }
-
-    /// True only when the keeper is strictly older than the next copy. Equal or
-    /// missing dates fell through to the path order in `keeperOrder`, and the
-    /// label must say so.
-    private static func datesDecide(_ files: [DuplicateFile]) -> Bool {
-        guard files.count > 1,
-              let first = files[0].creationDate,
-              let second = files[1].creationDate
-        else { return false }
-        return first < second
-    }
-
-    private func keeperOrder(_ lhs: DuplicateFile, _ rhs: DuplicateFile) -> Bool {
-        switch (lhs.creationDate, rhs.creationDate) {
-        case let (left?, right?) where left != right:
-            return left < right
-        case (nil, _?):
-            return false
-        case (_?, nil):
-            return true
-        default:
-            return lhs.url.path.localizedStandardCompare(rhs.url.path) == .orderedAscending
         }
     }
 

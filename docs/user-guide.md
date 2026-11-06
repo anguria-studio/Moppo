@@ -3,6 +3,7 @@
 [Back to the project overview](../README.md).
 
 - [File and Photos access](#file-and-photos-access)
+- [Duplicate files](#duplicate-files)
 - [Cleanup filters and actions](#cleanup-filters-and-actions)
 - [Dashboard storage](#dashboard-storage)
 - [Appearance and iCloud](#appearance-and-icloud)
@@ -36,6 +37,30 @@ The setting applies to new requests. Active requests can finish.
 With iCloud Photos enabled, deletion affects the linked library and its other devices.
 Deleted photos move to Recently Deleted, so storage recovery can take time.
 Use Photos to review recovery and permanent deletion.
+
+## Duplicate files
+
+In **Duplicates > Files**, scan the folders that you want to compare.
+Use the **Keep** menu to choose the copy that stays in each group.
+The **Keep** button shows the selected rule.
+
+| Rule | Copy to keep | Fallback |
+| --- | --- | --- |
+| Oldest copy | Earliest creation date | First by path |
+| Newest copy | Latest creation date | First by path |
+| Shortest path | Fewest path components | First by path |
+| Copies in a folder | Copy inside the selected folder | Oldest copy |
+
+**Oldest copy** is the default. Each group shows the reason for its kept copy.
+If the selected folder contains several copies, Moppo keeps the oldest of those copies.
+Select **Keep instead** to keep a different copy in one group.
+A later rule change keeps that choice.
+If a group has selected copies, a rule change selects all copies except the new kept copy.
+
+Choose the folder from the scanned folders or their subfolders.
+Moppo saves the rule and the folder path for the next launch.
+If the folder is missing or outside the next scan, Moppo uses **Oldest copy**.
+The **Keep** menu does not change photo duplicates.
 
 ## Cleanup filters and actions
 

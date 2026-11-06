@@ -1005,6 +1005,7 @@ struct PageProgressView: View {
 
     let title: String
     var detail: String? = nil
+    var counts: (completed: Int, total: Int)? = nil
     var progress: Double? = nil
     var isInterrupting = false
     var icon: Icon = .hourglass
@@ -1029,10 +1030,28 @@ struct PageProgressView: View {
             }
         } detail: {
             VStack(spacing: 18) {
-                if let detail {
-                    Text(detail)
-                        .opacity(isInterrupting ? 0 : 1)
-                        .accessibilityHidden(isInterrupting)
+                if detail != nil || counts != nil {
+                    VStack(spacing: 6) {
+                        if let detail { Text(detail) }
+                        if let counts {
+                            let completed = counts.completed.formatted()
+                            let total = counts.total.formatted()
+                            HStack(spacing: 0) {
+                                Text(total)
+                                    .hidden()
+                                    .overlay(alignment: .trailing) { Text(completed) }
+                                Text(" of \(total)")
+                            }
+                            .monospacedDigit()
+                            .fixedSize()
+                            .opacity(counts.total > 0 ? 1 : 0)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(completed) of \(total)")
+                            .accessibilityHidden(counts.total == 0)
+                        }
+                    }
+                    .opacity(isInterrupting ? 0 : 1)
+                    .accessibilityHidden(isInterrupting)
                 }
                 OperationProgressBar(progress: isInterrupting ? nil : progress)
                     .accessibilityLabel(displayedTitle)
