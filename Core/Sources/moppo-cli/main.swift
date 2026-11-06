@@ -83,7 +83,8 @@ struct CLI {
         guard let result = results.categories.first(where: { $0.categoryID == .aiTools }) else { return }
         print("AI Tools: " + ByteFormatting.string(result.totalBytes))
         for entry in result.entries {
-            print("  " + ByteFormatting.string(entry.displayBytes) + "  " + entry.displayName)
+            print("  " + ByteFormatting.string(entry.displayBytes) + "  " + entry.displayName
+                  + (entry.isRemovalLocked ? "  · protected" : "") + "  · " + entry.parentDisplay)
             for child in entry.children {
                 let status = child.isRemovalLocked ? "protected" : child.isGitWorktree ? "Git review" : "cache"
                 print("    " + ByteFormatting.string(child.allocatedBytes) + "  " + child.displayName + "  · " + status)
@@ -153,7 +154,8 @@ struct CLI {
     /// Locally stored models: what each occupies alone, and what it shares and keeps.
     static func models() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        let found = LocalModelStores.all(home: home)
+        let environment = ProcessInfo.processInfo.environment.filter { LocalModelStores.locationVariables.contains($0.key) }
+        let found = LocalModelStores.all(home: home, context: ScanContext(environment: environment))
         if found.isEmpty { print("  no Hugging Face, LM Studio, PyTorch, Whisper, Keras, or GPT4All models found") }
         func size(_ url: URL) -> Int64 {
             let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey])

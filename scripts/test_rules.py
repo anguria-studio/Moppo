@@ -265,6 +265,30 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(RULES.RuleError):
             RULES.validate(sections, tools)
 
+    def test_custom_locations(self):
+        sections = {"ai-tools": {"title": "Coverage", "document": "docs/ai-storage.md", "format": "aiCoverage", "tools": ["whisper"]}}
+        custom = {"variables": [{"name": "XDG_CACHE_HOME", "append": "whisper"}], "identifiedBy": ["*.pt"]}
+        store = {"path": "~/.cache/whisper", "type": "download", "table": "localModelStores", "owner": "aiTools",
+                 "treatment": "review", "store": "whisper", "custom": custom}
+        tools = {"whisper": {"id": "whisper", "name": "Whisper", "section": "ai-tools", "removalRules": "One row for each model file.",
+                             "aiTool": {"case": "whisper", "rawValue": "Whisper"}, "owner": {"case": "whisper", "name": "Whisper"},
+                             "storage": [store]}}
+        RULES.validate(sections, tools)
+        swift = RULES.render_swift(sections, tools)
+        self.assertIn('CustomLocation(tool: "whisper", store: "whisper", defaultPath: ".cache/whisper", '
+                      'variables: [.init(name: "XDG_CACHE_HOME", append: "whisper")], identifiedBy: ["*.pt"])', swift)
+        self.assertIn('public static let locationVariables: [String] = ["XDG_CACHE_HOME"]', swift)
+        self.assertIn('static let storePathsByTool: [String: [String]] = ["whisper": [".cache/whisper"]]', swift)
+        for change in ({"identifiedBy": []}, {"variables": [{"name": "xdg"}]}, {"variables": [{"name": "A", "append": "../x"}]},
+                       {"expandsHome": "yes"}, {"follows": True}):
+            store["custom"] = {**custom, **change}
+            with self.assertRaises(RULES.RuleError, msg=str(change)):
+                RULES.validate(sections, tools)
+        store["custom"] = custom
+        store.pop("store")
+        with self.assertRaises(RULES.RuleError):
+            RULES.validate(sections, tools)
+
 
 class AuditTests(unittest.TestCase):
     def tools(self):

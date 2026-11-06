@@ -19,7 +19,58 @@
       "owner": "aiTools",
       "treatment": "review",
       "store": "huggingFace",
-      "comment": "The hub inside carries `CACHEDIR.TAG`. The reader handles the classic layout and the shared blob layout."
+      "comment": "The hub inside carries `CACHEDIR.TAG`. The reader handles the classic layout and the shared blob layout.",
+      "custom": {
+        "variables": [
+          {
+            "name": "HF_HOME"
+          },
+          {
+            "name": "XDG_CACHE_HOME",
+            "append": "huggingface"
+          }
+        ],
+        "identifiedBy": [
+          "hub/models--*",
+          "hub/datasets--*",
+          "hub/spaces--*"
+        ],
+        "expandsHome": true
+      }
+    },
+    {
+      "path": "~/.cache/huggingface/hub",
+      "type": "download",
+      "table": "localModelStores",
+      "owner": "aiTools",
+      "treatment": "review",
+      "store": "huggingFaceHub",
+      "claimed": false,
+      "custom": {
+        "variables": [
+          {
+            "name": "HF_HUB_CACHE"
+          },
+          {
+            "name": "HUGGINGFACE_HUB_CACHE"
+          },
+          {
+            "name": "HF_HOME",
+            "append": "hub"
+          },
+          {
+            "name": "XDG_CACHE_HOME",
+            "append": "huggingface/hub"
+          }
+        ],
+        "identifiedBy": [
+          "models--*",
+          "datasets--*",
+          "spaces--*"
+        ],
+        "expandsHome": true
+      },
+      "comment": "`huggingface_hub` uses the first of these variables that is set, and expands `~` in the value."
     }
   ]
 }

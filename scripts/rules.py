@@ -214,6 +214,10 @@ def validate_storage(name, storage, catalog=True):
                     raise RuleError(f"{where}: a model store outside a home dot folder or ~/.cache needs \"claimed\": false")
             if storage.get("store") and not re.match(r"^[a-z][A-Za-z0-9]*$", storage["store"]):
                 raise RuleError(f"{where}: store is a Swift constant name")
+            if "custom" in storage:
+                validate_custom(where, storage)
+        elif "custom" in storage:
+            raise RuleError(f"{where}: only a model store has custom locations")
         if table == "editorExtensionStores":
             if storage.get("check") != "editorObsolete" or treatment != "offer" or not storage.get("name"):
                 raise RuleError(f"{where}: an editor store is offered with check editorObsolete and the editor name")
@@ -256,6 +260,35 @@ def validate_storage(name, storage, catalog=True):
             raise RuleError(f"{where}: verified.kind is verified or found")
     elif catalog and not storage.get("status"):
         raise RuleError(f"{where}: needs verified or status")
+
+
+VARIABLE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def validate_custom(where, storage):
+    """A model store that a variable can move. The first variable with a value sets the folder."""
+    custom = storage["custom"]
+    if not storage.get("store") or len(storage_paths(storage)) != 1:
+        raise RuleError(f"{where}: a custom location needs a store and one default path")
+    unknown = set(custom) - {"variables", "identifiedBy", "expandsHome", "trimsQuotes"}
+    if unknown:
+        raise RuleError(f"{where}: custom has unknown keys {', '.join(sorted(unknown))}")
+    variables = custom.get("variables")
+    if not variables or not all(isinstance(v, dict) and VARIABLE.match(v.get("name", "")) for v in variables):
+        raise RuleError(f"{where}: custom variables need names in capital letters")
+    for variable in variables:
+        if set(variable) - {"name", "append"}:
+            raise RuleError(f"{where}: a custom variable has only name and append")
+        append = variable.get("append", "")
+        if append.startswith("/") or ".." in append.split("/") or "*" in append:
+            raise RuleError(f"{where}: append is a relative path without .. or *")
+    # A folder name alone is not evidence, so each custom folder needs items from the tool's layout.
+    markers = custom.get("identifiedBy")
+    if not markers or not all(isinstance(m, str) and m and not m.startswith("/") for m in markers):
+        raise RuleError(f"{where}: a custom location needs identifiedBy items")
+    for key in ("expandsHome", "trimsQuotes"):
+        if key in custom and not isinstance(custom[key], bool):
+            raise RuleError(f"{where}: {key} is true or false")
 
 
 def validate_overlaps(entries):
@@ -335,6 +368,10 @@ def model_claim(path):
     return ("part", "/".join(parts[:-1]), parts[-1])
 
 
+def storage_paths_of(tool):
+    return [path for storage in tool["storage"] for path in storage_paths(storage)]
+
+
 def storage_paths(storage):
     if "paths" in storage:
         return list(storage["paths"])
@@ -407,6 +444,9 @@ def rule_paths(tool, sections, tools):
                 continue
             if storage.get("table") == "curations" and storage["treatment"] != "protect":
                 continue
+            if storage.get("table") == "localModelStores" and any(
+                    covers(other, path) and other != path for other in storage_paths_of(tool)):
+                continue   # A store inside another path of the same tool, such as `~/.ollama/models`.
             if path not in paths:
                 paths.append(path)
     return paths
@@ -802,8 +842,19 @@ public enum ToolIcons {{
 """
 
 
+def render_custom_location(tool, storage):
+    custom = storage["custom"]
+    variables = ", ".join(
+        f".init(name: {swift_string(v['name'])}" + (f", append: {swift_string(v['append'])}" if v.get("append") else "") + ")"
+        for v in custom["variables"])
+    flags = "".join(f", {key}: true" for key in ("expandsHome", "trimsQuotes") if custom.get(key))
+    return (f"        CustomLocation(tool: {swift_string(tool['id'])}, store: {swift_string(storage['store'])}, "
+            f"defaultPath: {swift_string(swift_base(storage_paths(storage)[0])[1])}, variables: [{variables}], "
+            f"identifiedBy: {swift_list(custom['identifiedBy'])}{flags})")
+
+
 def render_model_stores(sections, tools):
-    home, cache, part, stores = [], [], {}, {}
+    home, cache, part, stores, custom, by_tool = [], [], {}, {}, [], {}
     for _, tool, storage in rows(sections, tools):
         if storage.get("table") != "localModelStores":
             continue
@@ -818,6 +869,16 @@ def render_model_stores(sections, tools):
                     part.setdefault(claim[1], []).append(claim[2])
             if storage.get("store"):
                 stores.setdefault(storage["store"], []).append(swift_base(path)[1])
+        if storage.get("custom"):
+            custom.append((tool, storage))
+        by_tool.setdefault(tool["id"], []).extend(swift_base(path)[1] for path in storage_paths(storage))
+    variables = []
+    for _, storage in custom:
+        for variable in storage["custom"]["variables"]:
+            if variable["name"] not in variables:
+                variables.append(variable["name"])
+    tool_lines = ", ".join(f"{swift_string(tool)}: {swift_list(paths)}" for tool, paths in by_tool.items())
+    custom_lines = ",\n".join(render_custom_location(tool, storage) for tool, storage in custom)
     part_lines = ", ".join(f"{swift_string(folder)}: [{', '.join(swift_string(c) for c in children)}]" for folder, children in part.items())
     store_lines = "\n".join(f"    static let {name}Stores: [String] = {swift_list(paths)}" for name, paths in stores.items())
     return f"""    /// Home dot folders that the model readers claim whole.
@@ -826,7 +887,15 @@ def render_model_stores(sections, tools):
     public static let dotCacheFolders: Set<String> = [{', '.join(swift_string(n) for n in cache)}]
     /// Folders that the model readers claim in part, with the claimed child names.
     public static let partlyClaimedFolders: [String: Set<String>] = [{part_lines or ':'}]
-{store_lines}"""
+{store_lines}
+    /// Stores that a variable can move. Each comes from a rule with `custom`. The first variable with a value sets the folder.
+    static let customLocations: [CustomLocation] = [
+{custom_lines}
+    ]
+    /// Every variable that a custom location reads.
+    public static let locationVariables: [String] = {swift_list(variables)}
+    /// The model store paths of each tool, below the home folder.
+    static let storePathsByTool: [String: [String]] = [{tool_lines}]"""
 
 
 def render_editors(sections, tools):

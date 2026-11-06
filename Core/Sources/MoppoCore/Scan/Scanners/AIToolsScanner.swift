@@ -93,7 +93,8 @@ public struct AIToolsScanner: CategoryScanner {
             }
             found.entries.append(entry)
         }
-        try await appendLocalModels(context: context, to: &found)
+        let folders = ModelStoreFolders(home: home, environment: context.environment)
+        try await appendLocalModels(folders, context: context, to: &found)
         found.entries.sort { $0.displayBytes > $1.displayBytes }
         var result = ScanCategoryResult(
             categoryID: id, totalBytes: found.entries.reduce(0) { $0 + $1.displayBytes },
@@ -104,7 +105,7 @@ public struct AIToolsScanner: CategoryScanner {
             unreadableCount: found.unreadableCount
         )
         result.claimedStoragePaths = AIToolStorage.claimedPaths(home: home, applications: applications)
-            + LocalModelStores.claimedPaths(home: home)
+            + LocalModelStores.claimedPaths(home: home) + folders.claimedPaths
         return result
     }
 
@@ -149,29 +150,42 @@ public struct AIToolsScanner: CategoryScanner {
         entry.children.append(child)
     }
 
+    /// True when `url` is below the base of its store folder without links.
+    /// A custom folder is its own base. `ModelStoreFolders` checked its path for links.
+    private func isOwned(_ url: URL, in folder: ModelStoreFolder?) -> Bool {
+        guard let folder else { return isOwnedPath(url) }
+        if folder.variable != nil, url.standardizedFileURL.path == folder.url.standardizedFileURL.path { return true }
+        return isOwnedPath(url, under: folder.base)
+    }
+
+    /// The folder and the variable that set it, for a row in a custom store.
+    private static func origin(_ folder: ModelStoreFolder?) -> String? {
+        guard let folder, let variable = folder.variable else { return nil }
+        return "Set by \(variable) · " + FileEntry.abbreviate(folder.url.path)
+    }
+
     private func appendLocalModels(
-        context: ScanContext, to found: inout Found
+        _ folders: ModelStoreFolders, context: ScanContext, to found: inout Found
     ) async throws {
-        let huggingFace = home.appendingPathComponent(".cache/huggingface")
-        let ollama = home.appendingPathComponent(".ollama/models", isDirectory: true)
-        if !context.isExcluded(ollama), isOwnedPath(ollama),
-           FileManager.default.fileExists(atPath: ollama.path) {
+        for folder in LocalModelStores.ollama(folders) {
+            let ollama = folder.url
+            guard !context.isExcluded(ollama), isOwned(ollama, in: folder),
+                  FileManager.default.fileExists(atPath: ollama.path) else { continue }
             let measurement = try await context.measurer.measure(ollama)
             found.unreadableCount += measurement.unreadableCount
-            if measurement.allocatedBytes > 0, !measurement.containsProtectedPattern {
-                let explanation = "Moppo cannot verify all Ollama model references or active models. Use Ollama to manage these files."
-                found.entries.append(FileEntry(
-                    url: ollama, displayName: "Ollama models", kind: .folder,
-                    allocatedBytes: measurement.allocatedBytes, lastOpened: lastOpenedDate(for: ollama),
-                    protectionReason: .inventory, protectionExplanation: explanation,
-                    aiTool: .ollama,
-                    aiStorageSection: .init(owner: .ollama, title: "Models", summary: explanation)
-                ))
-            }
+            guard measurement.allocatedBytes > 0, !measurement.containsProtectedPattern else { continue }
+            let explanation = "Moppo cannot verify all Ollama model references or active models. Use Ollama to manage these files."
+            found.entries.append(FileEntry(
+                url: ollama, displayName: "Ollama models", parentDisplay: Self.origin(folder), kind: .folder,
+                allocatedBytes: measurement.allocatedBytes, lastOpened: lastOpenedDate(for: ollama),
+                protectionReason: .inventory, protectionExplanation: explanation,
+                aiTool: .ollama,
+                aiStorageSection: .init(owner: .ollama, title: "Models", summary: explanation)
+            ))
         }
 
-        let models = LocalModelStores.all(home: home, context: context).filter { model in
-            ([model.primary] + model.exclusive).allSatisfy { !context.isExcluded($0) && isOwnedPath($0) }
+        let models = LocalModelStores.all(folders, context: context).filter { model in
+            ([model.primary] + model.exclusive).allSatisfy { !context.isExcluded($0) && isOwned($0, in: model.folder) }
         }
         // LM Studio can link to Hugging Face files without a matching model row.
         let links = models.isEmpty ? LocalModelStores.ExternalLinks() : LocalModelStores.lmStudioLinks(home: home)
@@ -220,6 +234,7 @@ public struct AIToolsScanner: CategoryScanner {
                 : "\(model.memberNames.count) \(model.runtime) models that share their weights: "
                     + model.memberNames.joined(separator: ", ")
             qualifier += " · " + FileEntry.abbreviate(model.primary.deletingLastPathComponent().path)
+            if let variable = model.folder?.variable { qualifier += " · set by \(variable)" }
             if model.sharedBytes > 0 {
                 qualifier += " · \(ByteFormatting.string(model.sharedBytes)) shared with another model stays"
             }
@@ -248,20 +263,27 @@ public struct AIToolsScanner: CategoryScanner {
         }
 
         // Other Hugging Face files remain protected because their contents can vary.
-        let others = try await context.measurer.measureChildren(of: huggingFace)
-        for (child, measurement) in others where child.lastPathComponent != "hub" {
-            found.unreadableCount += measurement.unreadableCount
-            guard !context.isExcluded(child), isOwnedPath(child),
-                  measurement.allocatedBytes > 0, !measurement.containsProtectedPattern else { continue }
-            found.entries.append(FileEntry(
-                url: child, displayName: "Hugging Face " + child.lastPathComponent,
-                kind: .folder, allocatedBytes: measurement.allocatedBytes,
-                lastOpened: lastOpenedDate(for: child), protectionReason: .inventory,
-                protectionExplanation: "Additional model store files. Use Hugging Face tools to manage them.",
-                aiTool: .huggingFace,
-                aiStorageSection: .init(owner: .huggingFace, title: child.lastPathComponent,
-                    summary: "Additional model store files. Use Hugging Face tools to manage them.")
-            ))
+        // A hub that a variable moves into a home folder has its own model rows.
+        let hubs = folders.folders("huggingFaceHub", defaults: LocalModelStores.huggingFaceHubStores)
+            .map(\.url.standardizedFileURL.path)
+        for folder in LocalModelStores.huggingFaceHomes(folders) {
+            let others = try await context.measurer.measureChildren(of: folder.url)
+            for (child, measurement) in others where child.lastPathComponent != "hub"
+                && !hubs.contains(where: { ApplicationsScanner.overlaps($0, child.standardizedFileURL.path) }) {
+                found.unreadableCount += measurement.unreadableCount
+                guard !context.isExcluded(child), isOwned(child, in: folder),
+                      measurement.allocatedBytes > 0, !measurement.containsProtectedPattern else { continue }
+                found.entries.append(FileEntry(
+                    url: child, displayName: "Hugging Face " + child.lastPathComponent,
+                    parentDisplay: Self.origin(folder),
+                    kind: .folder, allocatedBytes: measurement.allocatedBytes,
+                    lastOpened: lastOpenedDate(for: child), protectionReason: .inventory,
+                    protectionExplanation: "Additional model store files. Use Hugging Face tools to manage them.",
+                    aiTool: .huggingFace,
+                    aiStorageSection: .init(owner: .huggingFace, title: child.lastPathComponent,
+                        summary: "Additional model store files. Use Hugging Face tools to manage them.")
+                ))
+            }
         }
     }
 
@@ -270,6 +292,9 @@ public struct AIToolsScanner: CategoryScanner {
         for model: LocalModel, files: ModelFiles, links: LocalModelStores.ExternalLinks,
         activity: GitWorktreeReview.Check
     ) -> (FileEntry.ProtectionReason?, String?) {
+        if model.folder?.isOutsideHome == true {
+            return (.inventory, "This model folder is outside your home folder. Moppo shows the models but does not remove them.")
+        }
         if case .found(let names) = activity {
             return (.running, "Files are open in: \(names). Unload the model or quit the tool. Then scan again.")
         }
