@@ -26,7 +26,7 @@ Core/                         Swift package
   Tests/MoppoCLITests/       CLI contract, settings, cancellation, and storage tests
   Tests/MoppoCoreTests/      Engine tests
 App/                          SwiftUI app
-  Cleanup/                   Cleanup model, services, and scheduler
+  Cleanup/                   Cleanup model, shared app operations, services, and scheduler
   Dashboard/                 Dashboard model and measurement services
   DesignSystem/              Shared controls, colors, text styles, and application icons
     Mascot/                  Moppo motion, beams, and acts
@@ -34,6 +34,7 @@ App/                          SwiftUI app
       Acts/                  One file for each act, and the act protocol
   Duplicates/                File duplicate model
   MainWindow/                Main views, sidebar, sheets, and external requests
+  MenuBar/                   Native menu bar controls, cached readings, and operation results
   SavedPlans/                Saved plan review, mandatory confirmation, and outcomes
   Shortcuts/                 App Intents for disk space, Cleanup totals, scans, and Safe to Remove cleanup
   Photos/                    Photo model, PhotoKit access, and thumbnails
@@ -67,6 +68,7 @@ Views receive their feature model directly, and navigation goes through explicit
 | `AppUninstallerModel` | Application lists, leftovers, uninstall reviews, selection, and removal tasks. |
 | `DashboardModel` | Storage measurements, cached figures, snapshots, iCloud data, and growth comparisons. |
 | `RecoveryModel` | History, Trash, recovery selection, Put Back, and empty Trash tasks. |
+| `MenuBarModel` | Explicit background refresh requests and operation results that survive a closed panel. |
 | `CleanupScheduler` | Periodic volume checks and automatic scan requests. |
 | `FileDuplicatesModel` | File scans, size filters, keeper selection, removal, and result invalidation. |
 | `StorageExplorerModel` | Folder measurements, navigation history, cached results, selection, and removal tasks. |
@@ -95,9 +97,11 @@ Views receive their feature model directly, and navigation goes through explicit
 | Keeps the guard through a replacement measurement and rejects late results and progress callbacks. | `StorageExplorerModel` |
 
 **Confirm before every clean-up** controls the Cleanup review.
-The **Delete Safe to Remove** shortcut bypasses confirmation for eligible items from its new scan.
+The **Delete Safe to Remove** shortcut and menu bar action bypass confirmation for eligible items from a new scan.
 It runs in the background with Full Disk Access and keeps the current view.
 Its scan and removal tasks keep the process active until they finish.
+The menu bar and Shortcuts share `AppModel.startCleanup` for access checks and Cleanup operations.
+Opening the menu bar reads existing results. Reload starts a background scan and refreshes disk space and Trash.
 Docker volume removal, Homebrew batches, and Empty Trash always show a review.
 Outside **Delete Safe to Remove**, each tool command shows a review.
 Confirmation captures the selection and the preferences before the decision. Cancellation keeps the selection and releases the guard.

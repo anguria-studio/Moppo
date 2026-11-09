@@ -4,6 +4,14 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Menu bar
+
+- Show disk space, Trash readings, and the last Safe to Remove result with native macOS controls.
+- Use **Reload** to refresh readings and scan for Cleanup items without opening the main window.
+- Add **Delete Safe to Remove** with a new background scan and no confirmation.
+- Show operation progress, results, access guidance, and **Stop** for operations that support cancellation.
+- Keep work running when the panel closes. Add **Settings** access.
+
 ### Shortcuts
 
 - Add actions for free space, Trash size, Safe to Remove size, and Cleanup scans.

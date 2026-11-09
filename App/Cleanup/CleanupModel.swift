@@ -19,6 +19,7 @@ final class CleanupModel {
 
     enum Event {
         case scanStarted(automatic: Bool, refreshOverview: Bool)
+        case scanFinished(completed: Bool, removeSafeToRemove: Bool)
         case confirmationRequested
         case confirmationDismissed
         case operationStarted
@@ -727,7 +728,7 @@ final class CleanupModel {
         scanProgress = 0
         scanPhase = nil
         onEvent(.scanStarted(automatic: automatic, refreshOverview: refreshOverview))
-        let activity = removeSafeToRemove ? ProcessInfo.processInfo.beginActivity(
+        let activity = automatic && !refreshOverview ? ProcessInfo.processInfo.beginActivity(
             options: .userInitiatedAllowingIdleSystemSleep, reason: "Background Cleanup scan"
         ) : nil
         scanTask = Task { [self] in
@@ -750,6 +751,9 @@ final class CleanupModel {
                     safeSelectionSeededAt = nil
                     seedSafeToRemoveSelection()
                     requestCleanUp(in: .safeToRemove, automatically: true)
+                }
+                if isCurrentScan {
+                    onEvent(.scanFinished(completed: completed && !Task.isCancelled, removeSafeToRemove: removeSafeToRemove))
                 }
                 if let activity { ProcessInfo.processInfo.endActivity(activity) }
             }

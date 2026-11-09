@@ -71,6 +71,13 @@ final class OperationCoordinator {
     private(set) var isTerminating = false
 
     var isBusy: Bool { activeOperation != nil || isTerminating }
+    var canCancel: Bool { cancelActiveOperation != nil && !isTerminating }
+
+    /// Keeps the operation guard until its workers finish.
+    func cancel() {
+        guard canCancel else { return }
+        cancelActiveOperation?()
+    }
 
     func begin(_ kind: Kind, cancel: (() -> Void)? = nil) -> Operation? {
         guard !isBusy else { return nil }

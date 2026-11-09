@@ -113,7 +113,7 @@ struct MoppoApp: App {
         MenuBarExtra(isInserted: $settings.showInMenuBar) {
             MenuBarView(model: model)
         } label: {
-            MenuBarLabel(volume: model.dashboard.volume)
+            MenuBarLabel()
         }
         .menuBarExtraStyle(.window)
         .commands { MoppoCommands(model: model, updates: updates) }
