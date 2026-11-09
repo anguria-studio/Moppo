@@ -577,6 +577,10 @@ final class CleanupModel {
     }
 
     func requestCleanUp(in filter: ScanFilter) {
+        requestCleanUp(in: filter, automatically: false)
+    }
+
+    private func requestCleanUp(in filter: ScanFilter, automatically: Bool) {
         guard !isBusyWithDisk, !showsOutdatedResultsNotice, pendingCleanUp == nil else { return }
         let scope = cleanupSelection(in: filter)
         let entries = selectedEntries.filter { scope.contains($0.id) }
@@ -588,8 +592,12 @@ final class CleanupModel {
             .first(where: { $0.categoryID == .applicationLeftovers })?
             .applicationLeftoverPlan
         guard !entries.isEmpty || !orphanedIdentifiers.isEmpty else { return }
+        if automatically {
+            guard filter == .safeToRemove, orphanedEntries.isEmpty,
+                  entries.allSatisfy(\.regeneratesSafely) else { return }
+        }
         let preferences = preferences()
-        let plan = CleanupPlan(
+        var plan = CleanupPlan(
             keepReceipt: preferences.keepReceipt,
             entries: entries,
             userDataRemovalOverrides: userDataRemovalOverrides.intersection(selectedIDs),
@@ -606,15 +614,20 @@ final class CleanupModel {
                     return true
                 }.map(\.id)).count
         )
+        if automatically {
+            plan.confirmedToolCommands = Dictionary(uniqueKeysWithValues: plan.toolCommandEntries.compactMap { entry in
+                entry.toolCommand.map { (entry.id, $0) }
+            })
+        }
         pendingCleanUp = plan
 
         // Volume data has no other copy, so volume removal always asks first.
-        if preferences.confirmBeforeCleanup || plan.worktreeWarning != nil || plan.codexSessionCount > 0
-            || plan.dockerVolumeCount > 0 || !plan.toolCommandEntries.isEmpty {
+        if !automatically && (preferences.confirmBeforeCleanup || plan.worktreeWarning != nil || plan.codexSessionCount > 0
+            || plan.dockerVolumeCount > 0 || !plan.toolCommandEntries.isEmpty) {
             onEvent(.confirmationRequested)
             measureCleanUpSaving(for: plan)
         } else {
-            beginRemoval(quittingOwners: false)
+            beginRemoval(quittingOwners: false, keepProcessActive: automatically)
         }
     }
 
@@ -697,7 +710,7 @@ final class CleanupModel {
         scanResults = results
     }
 
-    func startScan(automatic: Bool = false, refreshOverview: Bool = true) {
+    func startScan(automatic: Bool = false, refreshOverview: Bool = true, removeSafeToRemove: Bool = false) {
         guard canScan(automatic), pendingCleanUp == nil,
               let operation = operations.begin(.cleanupScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
         let preferences = preferences()
@@ -714,11 +727,15 @@ final class CleanupModel {
         scanProgress = 0
         scanPhase = nil
         onEvent(.scanStarted(automatic: automatic, refreshOverview: refreshOverview))
+        let activity = removeSafeToRemove ? ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep, reason: "Background Cleanup scan"
+        ) : nil
         scanTask = Task { [self] in
             let presentation = OperationPresentationDuration()
             var completed = false
             defer {
-                if self.scanID == scanID {
+                let isCurrentScan = self.scanID == scanID
+                if isCurrentScan {
                     isScanning = false
                     isInterruptingScan = false
                     scanTask = nil
@@ -726,6 +743,15 @@ final class CleanupModel {
                     if completed { updateScanPreferences() }
                 }
                 operations.finish(operation)
+                if isCurrentScan, completed, !Task.isCancelled, removeSafeToRemove, !showsOutdatedResultsNotice {
+                    scanFilter = .safeToRemove
+                    dataTypeFilter = .all
+                    deselectAll()
+                    safeSelectionSeededAt = nil
+                    seedSafeToRemoveSelection()
+                    requestCleanUp(in: .safeToRemove, automatically: true)
+                }
+                if let activity { ProcessInfo.processInfo.endActivity(activity) }
             }
             do {
                 await beforeScan()
@@ -804,7 +830,7 @@ final class CleanupModel {
 
     /// Removal owns its task so a closed view cannot discard completed work.
     @discardableResult
-    private func beginRemoval(quittingOwners: Bool) -> Task<Void, Never>? {
+    private func beginRemoval(quittingOwners: Bool, keepProcessActive: Bool = false) -> Task<Void, Never>? {
         guard let plan = pendingCleanUp, plan.nextToolCommand == nil else { return nil }
         let includesCommands = !plan.toolCommandEntries.isEmpty
         let cancel: (() -> Void)? = includesCommands ? { [weak self] in self?.cancelRemoval() } : nil
@@ -815,7 +841,11 @@ final class CleanupModel {
         isInterruptingRemoval = false
         onEvent(.operationStarted)
         cancelCleanUp()
+        let activity = keepProcessActive ? ProcessInfo.processInfo.beginActivity(
+            options: .userInitiatedAllowingIdleSystemSleep, reason: "Background Cleanup removal"
+        ) : nil
         let task = Task { [self] in
+            defer { if let activity { ProcessInfo.processInfo.endActivity(activity) } }
             let attempted = await execute(plan, quittingOwners: quittingOwners)
             onEvent(.operationFinished)
             isRemoving = false

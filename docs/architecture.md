@@ -35,6 +35,7 @@ App/                          SwiftUI app
   Duplicates/                File duplicate model
   MainWindow/                Main views, sidebar, sheets, and external requests
   SavedPlans/                Saved plan review, mandatory confirmation, and outcomes
+  Shortcuts/                 App Intents for disk space, Cleanup totals, scans, and Safe to Remove cleanup
   Photos/                    Photo model, PhotoKit access, and thumbnails
   Preferences/               Four panes and the settings store
   Recovery/                  History, Trash, and Put Back model
@@ -94,7 +95,11 @@ Views receive their feature model directly, and navigation goes through explicit
 | Keeps the guard through a replacement measurement and rejects late results and progress callbacks. | `StorageExplorerModel` |
 
 **Confirm before every clean-up** controls the Cleanup review.
-Docker volume removal, Homebrew batches, Empty Trash, and each tool command always show a review.
+The **Delete Safe to Remove** shortcut bypasses confirmation for eligible items from its new scan.
+It runs in the background with Full Disk Access and keeps the current view.
+Its scan and removal tasks keep the process active until they finish.
+Docker volume removal, Homebrew batches, and Empty Trash always show a review.
+Outside **Delete Safe to Remove**, each tool command shows a review.
 Confirmation captures the selection and the preferences before the decision. Cancellation keeps the selection and releases the guard.
 A tool command runs fixed arguments after Moppo checks the tool and the item identity again.
 Its result enters Cleanup History with the measured size reduction and the verified disk recovery.
