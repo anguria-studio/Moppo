@@ -4,6 +4,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-09
+
+Build 57.
+
 ### Menu bar
 
 - Show disk space, Trash readings, and the last Safe to Remove result with native macOS controls.
@@ -45,6 +49,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Add **Put Back** to History for items with valid Trash receipts.
 - Add **Put Back Run** to restore all available items from one recorded uninstall or cleanup run.
 - Offer Composer, Bundler, and Go `vendor` folders for removal after tool, lockfile, and Git checks.
+- Show open pull requests in Git worktree rows and reviews when the pull request matches the worktree commit.
+- Confirm pushed worktree commits from saved remote branches when the local branch has no upstream.
+- Accept ignored worktree files when the main checkout keeps an identical regular file of 1 MiB or less.
+- Keep a worktree when the same cleanup would remove its matching main checkout files.
 - Show each Docker volume as a separate row, with its size, container use, and Docker Compose project.
 - Remove selected Docker volumes that no container uses. Moppo always asks before it removes a volume.
 - Show **Not regenerable** on rows whose contents do not come back, such as Xcode Archives and application leftovers.
@@ -251,7 +259,8 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.7.0...main
+[0.7.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.0
 [0.6.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.6.0
 [0.5.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.5.0
 [0.4.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.4.0
