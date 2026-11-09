@@ -325,7 +325,7 @@ final class AppModel {
     var view: View = .scanner {
         didSet {
             if oldValue != view {
-                removalCompletion = nil
+                if removalCompletion?.destination == oldValue { removalCompletion = nil }
                 operations.dismissBlockedAction()
             }
             if oldValue == .scanner, view != .scanner {
@@ -336,7 +336,7 @@ final class AppModel {
     var duplicateKind: DuplicateKind = .files {
         didSet {
             if oldValue != duplicateKind {
-                removalCompletion = nil
+                if removalCompletion?.destination == .duplicates { removalCompletion = nil }
                 operations.dismissBlockedAction()
             }
         }
@@ -351,7 +351,7 @@ final class AppModel {
     /// as a key that does nothing.
     var canFind: Bool {
         switch view {
-        case .trash, .history, .uninstaller: activity == nil
+        case .trash, .history, .uninstaller: !showsActivityOnCurrentView
         case .dashboard, .scanner, .storageExplorer, .duplicates: false
         }
     }
@@ -489,12 +489,30 @@ final class AppModel {
         notice = Notice(title: title, message: message, finderURLs: finderURLs)
     }
 
-    /// The disk operation in progress, if any. The window is covered while it
-    /// runs. See `ActivityOverlay`.
+    /// The disk operation in progress, if any. See `ActivityOverlay`.
     ///
     /// Cleared before the post-removal refresh. That disk walk has its own page
     /// state. Keeping the scrim visible made the cleanup appear frozen.
     private(set) var activity: Activity?
+
+    /// Keeps Cleanup and Trash progress on their operation page while other views remain available.
+    var activityDestination: View? {
+        switch operations.activeOperation?.kind {
+        case .cleanupRemoval, .cleanupQuit: cleanupDestination
+        case .emptyTrash: .trash
+        default: nil
+        }
+    }
+
+    var showsActivityOnCurrentView: Bool {
+        activity != nil && (activityDestination == nil || activityDestination == view)
+    }
+
+    var cancelCleanupOperation: (() -> Void)? {
+        if cleanup.canCancelRemoval { return { self.cleanup.cancelRemoval() } }
+        guard cleanup.isWaitingForApplications else { return nil }
+        return { self.cleanup.cancelApplicationQuit() }
+    }
 
     enum Activity: Equatable {
         case checkingWorktrees
@@ -916,7 +934,7 @@ final class AppModel {
                 dashboard.recordTrashRemoval(outcome)
             }
             else { completeTrashRemoval(outcome, in: destination) }
-            if view == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,
+            if destination == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,
                outcome.trashedCount == outcome.removedCount, outcome.deletedCount == 0 {
                 cleanupCompletion = CleanupCompletion(outcome: outcome)
             }

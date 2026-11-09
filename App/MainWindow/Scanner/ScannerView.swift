@@ -19,7 +19,7 @@ struct ScannerView: View {
     var body: some View {
         Group {
             if case .checkingWorktrees = activity, let activity {
-                ActivityOverlay(activity: activity)
+                ActivityOverlay(activity: activity, isModal: false)
                     .transition(.opacity)
             } else if case .cleaningUp(let itemCount, let totalBytes) = activity {
                 CleanupOperationView(itemCount: itemCount, totalBytes: totalBytes,

@@ -22,8 +22,10 @@ struct MainWindow: View {
         // Native title bar layout keeps the window controls aligned during resizing.
         .background(WindowChrome())
         .modifier(KeyboardFocusVisibility())
-        .disabled(model.savedPlans.isPresented || (!showsAppUninstallDetail && (model.activity != nil
-                  || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil)))
+        .disabled(model.savedPlans.isPresented || (!showsAppUninstallDetail && (
+            (model.activity != nil && model.activityDestination == nil)
+                || model.photoDuplicates.isDeleting || model.photoDuplicates.preview != nil
+        )))
         // Keep the scroll view enabled so its scrollbar keeps the same width.
         .allowsHitTesting(!showsAppUninstallDetail && !model.savedPlans.isPresented)
         .accessibilityHidden(model.photoDuplicates.preview != nil || showsAppUninstallDetail || model.savedPlans.isPresented)
@@ -225,7 +227,7 @@ struct MainWindow: View {
             case .scanner:
                 ScannerView(
                     model: model.cleanup,
-                    activity: model.activity,
+                    activity: model.showsActivityOnCurrentView ? model.activity : nil,
                     cleanupCompletion: model.cleanupCompletion,
                     onContinue: { model.dismissCleanupCompletion($0) },
                     onViewDashboard: { model.showDashboardAfterCleanup($0) },
@@ -419,7 +421,14 @@ struct MainWindow: View {
     /// Names the operation that blocks scans on the current page.
     @ViewBuilder
     private var headerCentre: some View {
-        if model.cleanup.isScanning, model.view != .scanner {
+        if let activity = model.activity, let destination = model.activityDestination, model.view != destination {
+            backgroundWorkStatus(
+                title: activity.title,
+                detail: activity.detail,
+                isInterrupting: model.cleanup.isInterruptingRemoval || model.cleanup.isInterruptingApplicationQuit,
+                onStop: model.cancelCleanupOperation
+            )
+        } else if model.cleanup.isScanning, model.view != .scanner {
             backgroundWorkStatus(
                 title: "Cleanup scan",
                 detail: model.cleanup.scanProgressDetail,
@@ -468,7 +477,7 @@ struct MainWindow: View {
     private func backgroundWorkStatus(
         title: String, detail: String, progress: Double? = nil,
         isInterrupting: Bool = false,
-        onStop: @escaping () -> Void
+        onStop: (() -> Void)? = nil
     ) -> some View {
         HStack(spacing: 8) {
             if isInterrupting {
@@ -484,18 +493,20 @@ struct MainWindow: View {
                 OperationProgressBar(progress: progress)
                     .frame(width: 60)
                     .accessibilityLabel(title)
-                Button(action: onStop) {
-                    Image(systemName: "stop.fill")
-                        .frame(width: 24, height: 28)
-                        .contentShape(Rectangle())
+                if let onStop {
+                    Button(action: onStop) {
+                        Image(systemName: "stop.fill")
+                            .frame(width: 24, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Stop \(title)")
+                    .help("Stop \(title)")
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Stop \(title)")
-                .help("Stop \(title)")
             }
         }
         .padding(.leading, 14)
-        .padding(.trailing, isInterrupting ? 14 : 6)
+        .padding(.trailing, isInterrupting || onStop == nil ? 14 : 6)
         .frame(height: 38)
         .background(Token.Fill.control, in: Capsule())
         .overlay {
@@ -505,7 +516,9 @@ struct MainWindow: View {
             )
         }
         .help(isInterrupting ? ScanInterruptionView.title
-              : "\(title): \(detail). Finish or stop this operation to start another scan.")
+              : "\(title): \(detail). " + (onStop == nil
+                ? "Wait for this operation to finish before starting another scan."
+                : "Finish or stop this operation to start another scan."))
         .accessibilityElement(children: .contain)
     }
 
