@@ -7,6 +7,54 @@ import Testing
 @MainActor
 struct DashboardModelTests {
 
+    @Test("Volume refresh does not require system notifications when no observer is configured")
+    func volumeRefreshWithoutNotifications() async throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        fixture.settings.lowSpaceAlertsEnabled = true
+        let volume = dashboardVolume()
+        let app = AppModel(
+            settings: fixture.settings,
+            dashboardService: HeldDashboardMeasurements(volume: volume),
+            dashboardPersistence: HeldDashboardPersistence()
+        )
+
+        await app.dashboard.refreshVolumeInfo()
+
+        #expect(app.dashboard.volume == volume)
+    }
+
+    @Test("Low-space observations follow the current alert and threshold settings")
+    func lowSpaceObservations() async throws {
+        let fixture = try RemovalSettingsFixture(confirm: true)
+        fixture.settings.lowSpaceAlertsEnabled = false
+        fixture.settings.warnBelowGB = 20
+        let volume = dashboardVolume()
+        var observations: [(volume: VolumeInfo, thresholdGB: Int)] = []
+        let app = AppModel(
+            settings: fixture.settings,
+            dashboardService: HeldDashboardMeasurements(volume: volume),
+            dashboardPersistence: HeldDashboardPersistence(),
+            observeLowDiskSpace: { observations.append(($0, $1)) }
+        )
+
+        await app.dashboard.refreshVolumeInfo()
+        #expect(observations.isEmpty)
+
+        fixture.settings.lowSpaceAlertsEnabled = true
+        await app.dashboard.refreshVolumeInfo()
+        let first = try #require(observations.first)
+        #expect(observations.count == 1)
+        #expect(first.volume == volume)
+        #expect(first.thresholdGB == 20)
+
+        fixture.settings.warnBelowGB = 40
+        await app.dashboard.refreshVolumeInfo(notifyLowSpace: false)
+        #expect(observations.count == 1)
+        await app.dashboard.refreshVolumeInfo()
+        #expect(observations.count == 2)
+        #expect(observations.last?.thresholdGB == 40)
+    }
+
     @Test("Free-space states respect both limits at their exact boundaries")
     func spaceStates() {
         let gb = ByteFormatting.bytesPerGB

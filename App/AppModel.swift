@@ -15,7 +15,6 @@ final class AppModel {
     @ObservationIgnored private let hasFullDiskAccess: () -> Bool
     let dashboard: DashboardModel
     let recovery: RecoveryModel
-    @ObservationIgnored private lazy var lowDiskNotifications = LowDiskNotificationService()
     let operations: OperationCoordinator
     let photoDuplicates: PhotoDuplicatesModel
     let uninstaller: AppUninstallerModel
@@ -39,6 +38,7 @@ final class AppModel {
         historyReader: (any CleanupHistoryReading)? = nil,
         dashboardService: any DashboardMeasuring = DashboardMeasurementService(),
         dashboardPersistence: any DashboardPersisting = DashboardPersistence(),
+        observeLowDiskSpace: @escaping (VolumeInfo, Int) async -> Void = { _, _ in },
         cleanupHistoryService: CleanupHistoryService = CleanupHistoryService(),
         appUninstallPlanner: AppUninstallPlanner = AppUninstallPlanner(),
         homebrewUninstallService: HomebrewUninstallService = HomebrewAuthentication.service(),
@@ -137,9 +137,7 @@ final class AppModel {
         dashboard.beforeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
         dashboard.onVolumeChanged = { [weak self] volume in
             guard let self, let settings = self.settings, settings.lowSpaceAlertsEnabled else { return }
-            await self.lowDiskNotifications.observe(
-                freeBytes: volume.freeBytes, volumeName: volume.name, thresholdGB: settings.warnBelowGB
-            )
+            await observeLowDiskSpace(volume, settings.warnBelowGB)
         }
         recovery.onEvent = { [weak self] event in self?.handleRecoveryEvent(event) }
         recovery.refreshAfterMutation = { [weak self] mutation in

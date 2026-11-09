@@ -36,6 +36,11 @@ struct MoppoApp: App {
         let model = AppModel(
             settings: settings, launchAccess: OnboardingView.launchAccess,
             onboardingProgress: OnboardingProgress(defaults: .standard),
+            observeLowDiskSpace: { volume, thresholdGB in
+                await LowDiskNotificationService().observe(
+                    freeBytes: volume.freeBytes, volumeName: volume.name, thresholdGB: thresholdGB
+                )
+            },
             acquireRemovalLease: { try PlanExecutionLease() }
         )
         AppDependencyManager.shared.add(dependency: model)
