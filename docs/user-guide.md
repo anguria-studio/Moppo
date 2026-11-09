@@ -331,6 +331,10 @@ If a measurement fails, select **Try Again** or open the setup guide.
 
 ## Removal and Put Back
 
+During Cleanup removal or Trash emptying, you can use the sidebar to open other views.
+Progress stays on the operation page. Other views show the active operation in the header.
+Scans, other removals, and Put Back must wait until the operation finishes.
+
 ### Sizes and recovery
 
 APFS clones can share storage. Reported cleanup sizes are upper bounds, not promises of recovered space.

@@ -36,6 +36,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ### Cleanup
 
+- Keep sidebar navigation available during Cleanup removal and Trash emptying. Keep conflicting disk actions blocked.
+- Show progress on the operation page and its status in other views.
 - Keep Cleanup results after Put Back or removal in another view. Offer **Scan again** or **Continue** when data changes.
 - Keep the notice about older results below the Cleanup controls. Keep the header and sidebar available.
 - Reuse Trash results between visits. Read the Trash again after removal, Put Back, or **Refresh Trash**.

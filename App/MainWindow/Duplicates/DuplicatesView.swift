@@ -58,7 +58,7 @@ struct DuplicatesView: View {
                 }
             }
         }
-        .disabled(model.activity != nil || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == .duplicates)
+        .disabled(model.showsActivityOnCurrentView || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == .duplicates)
         .frame(minHeight: 38)
         .padding(Token.Size.pageGutter)
     }

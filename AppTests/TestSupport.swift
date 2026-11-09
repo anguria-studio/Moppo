@@ -364,3 +364,55 @@ struct UnreadableTrash: TrashServicing {
     func empty() async throws -> EmptyTrashOutcome { Issue.record("The action must not empty the Trash."); return .init() }
     func putBack(_ item: TrashItem) async throws { Issue.record("The action must not restore an item.") }
 }
+
+func recoveryItem(_ name: String) -> TrashItem {
+    TrashItem(url: URL(fileURLWithPath: "/moppo-fixture/.Trash/\(name)"), bytes: 64, canPutBack: true)
+}
+
+actor HeldRecoveryTrash: TrashServicing {
+    let holdReads: Bool
+    private(set) var readLimits: [Int] = []
+    private(set) var restorations: [TrashItem] = []
+    private(set) var emptyRequests = 0
+    private(set) var cancelled: [Bool] = []
+    private var reads: [Int: CheckedContinuation<TrashSummary, Error>] = [:]
+    private var restore: CheckedContinuation<Void, Error>?
+    private var empty: CheckedContinuation<EmptyTrashOutcome, Error>?
+    init(holdReads: Bool = false) { self.holdReads = holdReads }
+    func summary(limit: Int) async throws -> TrashSummary {
+        let index = readLimits.count
+        readLimits.append(limit)
+        if holdReads { return try await withCheckedThrowingContinuation { reads[index] = $0 } }
+        return TrashSummary()
+    }
+    func empty() async throws -> EmptyTrashOutcome {
+        emptyRequests += 1
+        let result = try await withCheckedThrowingContinuation { empty = $0 }
+        cancelled.append(Task.isCancelled)
+        return result
+    }
+    func putBack(_ item: TrashItem) async throws {
+        restorations.append(item)
+        try await withCheckedThrowingContinuation { restore = $0 }
+        cancelled.append(Task.isCancelled)
+    }
+    func finishRead(_ index: Int, _ summary: TrashSummary) { reads.removeValue(forKey: index)?.resume(returning: summary) }
+    func failRead(_ index: Int) { reads.removeValue(forKey: index)?.resume(throwing: TrashError.unreadable("fixture")) }
+    func finishRestoration() { restore?.resume(); restore = nil }
+    func failRestoration(_ error: TrashError) { restore?.resume(throwing: error); restore = nil }
+    func finishEmpty(freed: Int64, skipped: Int) { empty?.resume(returning: EmptyTrashOutcome(freedBytes: freed, skippedURLs: (0..<skipped).map { recoveryItem("Survivor-\($0)").url })); empty = nil }
+}
+
+actor HeldRecoveryHistory: CleanupHistoryReading {
+    let holdReads: Bool
+    private(set) var readCount = 0
+    private var reads: [Int: CheckedContinuation<CleanupHistorySummary, Never>] = [:]
+    init(holdReads: Bool = true) { self.holdReads = holdReads }
+    func summary() async -> CleanupHistorySummary {
+        let index = readCount
+        readCount += 1
+        if holdReads { return await withCheckedContinuation { reads[index] = $0 } }
+        return CleanupHistorySummary()
+    }
+    func finish(_ index: Int, _ summary: CleanupHistorySummary) { reads.removeValue(forKey: index)?.resume(returning: summary) }
+}

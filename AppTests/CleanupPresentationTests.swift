@@ -6,6 +6,114 @@ import Testing
 @Suite("Cleanup presentation", .serialized)
 @MainActor
 struct CleanupPresentationTests {
+    @Test("Sidebar input browses other views while Cleanup or Trash removal keeps its guard", arguments: [false, true])
+    func removalNavigation(emptyTrash: Bool) async throws {
+        _ = NSApplication.shared
+        let folder = try TemporaryFolder()
+        let settings = try RemovalSettingsFixture(confirm: true)
+        let entry = FileEntry(url: try folder.write("Cache"), kind: .cache, allocatedBytes: 64, isRegenerable: true)
+        let scanner = HeldCleanupScanner()
+        let removal = HeldCleanupRemoval()
+        let trash = HeldRecoveryTrash()
+        let model = AppModel(settings: settings.settings, hasFullDiskAccess: { true },
+            trashService: trash, historyReader: HeldRecoveryHistory(holdReads: false),
+            cleanupScanner: scanner, cleanupRemover: removal)
+        model.dashboard.canLoad = { false }
+        model.cleanup.refreshAfterRemoval = {}
+        model.recovery.refreshAfterMutation = { _ in }
+        model.cleanup.scanFilter = .all
+        model.cleanup.scanResults = ScanResults(
+            categories: [.init(categoryID: .systemCaches, totalBytes: 64, entries: [entry])],
+            startedAt: .now, finishedAt: .now
+        )
+        model.cleanup.scannerSelection = [entry.id]
+        model.recovery.trashSummary = TrashSummary(totalBytes: 64, itemCount: 1, items: [recoveryItem("Saved")])
+        let destination: AppModel.View = emptyTrash ? .trash : .scanner
+        model.view = destination
+        if !emptyTrash { model.cleanup.requestCleanUp(in: .all) }
+        let caller = Task {
+            if emptyTrash { await model.recovery.emptyTrash() }
+            else { await model.cleanup.performCleanUp() }
+        }
+        try await waitUntil { emptyTrash ? await trash.emptyRequests == 1 : await removal.isPending }
+        let operation = try #require(model.operations.activeOperation)
+        #expect(model.activityDestination == destination)
+        #expect(model.showsActivityOnCurrentView)
+
+        let host = NSHostingView(rootView: MainWindow(model: model)
+            .environment(\.scenePhase, .inactive))
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 1120, height: 734),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer {
+            window.contentView = nil
+            window.close()
+        }
+        window.makeKeyAndOrderFront(nil)
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        try click(NSPoint(x: 100, y: Token.Size.headerBand + 244), in: host, window: window)
+        try await waitUntil { model.view == .dashboard }
+        #expect(!model.showsActivityOnCurrentView)
+        #expect(model.operations.activeOperation == operation)
+
+        try await Task.sleep(for: .milliseconds(100))
+        try sendKey("\u{F701}", code: 125, to: window)
+        try await waitUntil { model.view == .history }
+        #expect(model.canFind)
+        model.requestFind()
+        #expect(model.findRequest == 1)
+        #expect(!model.showsActivityOnCurrentView)
+        #expect(model.operations.activeOperation == operation)
+        try await Task.sleep(for: .milliseconds(100))
+        let bitmap = try capture(host)
+        try bitmap.representation(using: .png, properties: [:])?.write(
+            to: URL(fileURLWithPath: "/tmp/moppo-391-navigation-\(emptyTrash ? "trash" : "cleanup").png")
+        )
+        model.recovery.requestPutBack([recoveryItem("Saved")])
+        #expect(model.operations.blockedAction?.operation == operation)
+        #expect(await trash.restorations.isEmpty)
+        model.cleanup.startScan()
+        model.cleanup.requestCleanUp(in: .all)
+        #expect(await scanner.requestCount == 0)
+        #expect(model.cleanup.pendingCleanUp == nil)
+        #expect(!model.canEmptyTrash)
+        for kind in OperationCoordinator.Kind.allCases {
+            #expect(model.operations.begin(kind) == nil)
+        }
+
+        // Return focus from the search field to the selected sidebar row.
+        try click(NSPoint(x: 100, y: Token.Size.headerBand + 280), in: host, window: window)
+        try await Task.sleep(for: .milliseconds(100))
+        try sendKey("\u{F701}", code: 125, to: window)
+        try await waitUntil { model.view == .trash }
+        #expect(model.showsActivityOnCurrentView == emptyTrash)
+        #expect(model.operations.activeOperation == operation)
+        if !emptyTrash {
+            model.view = .scanner
+            #expect(model.showsActivityOnCurrentView)
+        }
+        model.view = .history
+        if emptyTrash { await trash.finishEmpty(freed: 64, skipped: 0) }
+        else { await removal.finish(CleanupOutcome(removedBytes: 64, removedCount: 1, trashedCount: 1)) }
+        await caller.value
+        #expect(model.view == .history)
+        #expect(model.activity == nil)
+        #expect(!model.isBusyWithDisk)
+        if emptyTrash { #expect(model.removalCompletion?.destination == .trash) }
+        else { #expect(model.cleanupCompletion?.outcome.removedCount == 1) }
+        model.view = .duplicates
+        model.duplicateKind = .photos
+        model.view = destination
+        if emptyTrash { #expect(model.removalCompletion?.title == "Trash emptied") }
+        else { #expect(model.cleanupCompletion != nil) }
+        let next = try #require(model.operations.begin(.cleanupScan))
+        model.operations.finish(next)
+    }
+
     @Test("The notice about older results leaves the sidebar and header visible", arguments: [false, true])
     func outdatedOverlay(dark: Bool) async throws {
         _ = NSApplication.shared

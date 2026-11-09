@@ -8,17 +8,11 @@ struct RemovalOperationSurface: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var showsActivity: Bool {
-        model.activity != nil && !(model.view == .scanner && model.isCleaningUp)
+        model.showsActivityOnCurrentView && !(model.view == .scanner && model.isCleaningUp)
     }
 
     private var isPresented: Bool {
         showsActivity || model.photoDuplicates.isDeleting || model.removalCompletion?.destination == model.view
-    }
-
-    private var cancelCleanupOperation: (() -> Void)? {
-        if model.cleanup.canCancelRemoval { return { model.cleanup.cancelRemoval() } }
-        guard model.cleanup.isWaitingForApplications else { return nil }
-        return { model.cleanup.cancelApplicationQuit() }
     }
 
     var body: some View {
@@ -29,7 +23,8 @@ struct RemovalOperationSurface: View {
                     if showsActivity, let activity = model.activity {
                         ActivityOverlay(
                             activity: activity,
-                            onCancel: cancelCleanupOperation,
+                            isModal: model.activityDestination == nil,
+                            onCancel: model.cancelCleanupOperation,
                             isCancelling: model.cleanup.isInterruptingApplicationQuit || model.cleanup.isInterruptingRemoval,
                             cancellingTitle: model.cleanup.isInterruptingRemoval
                                 ? PageProgressView.stoppingRemovalTitle : PageProgressView.stoppingWaitTitle
@@ -74,6 +69,7 @@ struct RemovalOperationSurface: View {
 /// Blocks page input while a removal operation runs.
 struct ActivityOverlay: View {
     let activity: AppModel.Activity
+    var isModal = true
     var onCancel: (() -> Void)? = nil
     var isCancelling = false
     var cancellingTitle = PageProgressView.stoppingWaitTitle
@@ -90,7 +86,7 @@ struct ActivityOverlay: View {
         // ZStack would let a click on the transparent card margins fall through.
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isModal)
+        .accessibilityAddTraits(isModal ? .isModal : [])
         .accessibilityLabel(activity.title)
     }
 }
