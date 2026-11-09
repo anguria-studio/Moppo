@@ -252,3 +252,115 @@ actor HeldCleanupRemoval: CleanupRemoving {
     }
     func finish(_ result: CleanupOutcome) { continuation?.resume(returning: result); continuation = nil }
 }
+
+
+actor HeldDashboardMeasurements: DashboardMeasuring {
+    let holdCloud: Bool
+    let holdVolume: Bool
+    let volume: VolumeInfo
+    private(set) var measurementCount = 0
+    private(set) var cloudPlans: [Int64?] = []
+    private(set) var volumeCount = 0
+    private(set) var cancelled: [Bool] = []
+    private var measurements: [Int: CheckedContinuation<StorageMeasurement, Error>] = [:]
+    private var clouds: [Int: CheckedContinuation<ICloudStorage, Error>] = [:]
+    private var volumes: [Int: CheckedContinuation<VolumeInfo, Never>] = [:]
+    init(holdCloud: Bool = false, holdVolume: Bool = false, volume: VolumeInfo = dashboardVolume()) {
+        self.holdCloud = holdCloud
+        self.holdVolume = holdVolume
+        self.volume = volume
+    }
+    func volumeInfo() async throws -> VolumeInfo {
+        let index = volumeCount
+        volumeCount += 1
+        if holdVolume { return await withCheckedContinuation { volumes[index] = $0 } }
+        return volume
+    }
+    private var snapshotList = ["boot", "data"].map {
+        SnapshotInfo(uuid: $0, name: $0, purgeable: $0 != "boot", limitingContainerShrink: false,
+                     isBootSnapshot: $0 == "boot", volumeDisk: "disk-fixture")
+    }
+    private(set) var deletedStamps: [String] = []
+    func snapshots() async throws -> [SnapshotInfo] { snapshotList }
+    func purgeableBytes() async -> Int64? { snapshotList.contains { $0.timeMachineStamp != nil } ? 50 : nil }
+    func deleteTimeMachineSnapshots(_ snapshots: [SnapshotInfo]) async throws {
+        let stamps = snapshots.compactMap(\.timeMachineStamp)
+        deletedStamps += stamps
+        snapshotList.removeAll { $0.timeMachineStamp.map(stamps.contains) ?? false }
+    }
+    func setSnapshots(_ snapshots: [SnapshotInfo]) { snapshotList = snapshots }
+    func measure() async throws -> StorageMeasurement {
+        let index = measurementCount
+        measurementCount += 1
+        let value = try await withCheckedThrowingContinuation { measurements[index] = $0 }
+        cancelled.append(Task.isCancelled)
+        return value
+    }
+    func iCloudStorage(planBytes: Int64?) async throws -> ICloudStorage {
+        let index = cloudPlans.count
+        cloudPlans.append(planBytes)
+        if holdCloud { return try await withCheckedThrowingContinuation { clouds[index] = $0 } }
+        return ICloudStorage(totalBytes: planBytes ?? 100, freeBytes: 20, documentsBytes: 40)
+    }
+    func finishMeasurement(_ index: Int, _ value: StorageMeasurement) { measurements.removeValue(forKey: index)?.resume(returning: value) }
+    func failMeasurement(_ index: Int) { measurements.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadNoPermission)) }
+    func finishCloud(_ index: Int, _ value: ICloudStorage) { clouds.removeValue(forKey: index)?.resume(returning: value) }
+    func failCloud(_ index: Int) { clouds.removeValue(forKey: index)?.resume(throwing: CocoaError(.fileReadNoPermission)) }
+    func finishVolume(_ index: Int, _ value: VolumeInfo) { volumes.removeValue(forKey: index)?.resume(returning: value) }
+}
+
+actor HeldDashboardPersistence: DashboardPersisting {
+    let holdHistory: Bool
+    let holdRecord: Bool
+    let recordHistory: (@Sendable (StorageMeasurement, SnapshotTrigger) async throws -> [StorageSnapshot])?
+    private(set) var cache: BreakdownCache?
+    private(set) var cacheLoads = 0
+    private(set) var cacheClears = 0
+    private(set) var historyLoads = 0
+    private(set) var records: [SnapshotTrigger] = []
+    private(set) var clearCount = 0
+    private var history: [StorageSnapshot] = []
+    private var rejectsNextRecord = false
+    private var historyReply: CheckedContinuation<[StorageSnapshot], Never>?
+    private var recordReply: CheckedContinuation<[StorageSnapshot], Never>?
+    init(cache: BreakdownCache? = nil, holdHistory: Bool = false, holdRecord: Bool = false,
+         recordHistory: (@Sendable (StorageMeasurement, SnapshotTrigger) async throws -> [StorageSnapshot])? = nil) {
+        self.cache = cache
+        self.holdHistory = holdHistory
+        self.holdRecord = holdRecord
+        self.recordHistory = recordHistory
+    }
+    func loadCache() -> BreakdownCache? { cacheLoads += 1; return cache }
+    func saveCache(_ cache: BreakdownCache) { self.cache = cache }
+    func clearCache() { cache = nil; cacheClears += 1 }
+    func loadHistory() async -> [StorageSnapshot] {
+        historyLoads += 1
+        if holdHistory { return await withCheckedContinuation { historyReply = $0 } }
+        return history
+    }
+    func rejectNextRecord() { rejectsNextRecord = true }
+    func record(_ measurement: StorageMeasurement, trigger: SnapshotTrigger) async throws -> [StorageSnapshot] {
+        records.append(trigger)
+        if rejectsNextRecord {
+            rejectsNextRecord = false
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        if holdRecord { return await withCheckedContinuation { recordReply = $0 } }
+        if let recordHistory {
+            history = try await recordHistory(measurement, trigger)
+            return history
+        }
+        if let snapshot = SnapshotCapture.snapshot(from: measurement, trigger: trigger) { history.insert(snapshot, at: 0) }
+        return history
+    }
+    func clearHistory() { clearCount += 1; history = [] }
+    func finishHistory(_ history: [StorageSnapshot]) { historyReply?.resume(returning: history); historyReply = nil }
+    func finishRecord(_ history: [StorageSnapshot]) { recordReply?.resume(returning: history); recordReply = nil }
+}
+
+
+struct UnreadableTrash: TrashServicing {
+    func summary(limit: Int) async throws -> TrashSummary { throw TrashError.unreadable("/fixture/.Trash") }
+    func empty() async throws -> EmptyTrashOutcome { Issue.record("The action must not empty the Trash."); return .init() }
+    func putBack(_ item: TrashItem) async throws { Issue.record("The action must not restore an item.") }
+}

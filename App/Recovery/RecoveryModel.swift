@@ -39,6 +39,8 @@ final class RecoveryModel {
     }
 
     var trashSummary: TrashSummary?
+    private(set) var trashMeasuredAt: Date?
+    private(set) var trashReadError: String?
     var selectedTrashItemIDs: Set<TrashItem.ID> = []
     private(set) var hasLoadedTrash = false
     private(set) var isLoadingTrash = false
@@ -108,11 +110,23 @@ final class RecoveryModel {
                     trashLoadID = nil
                 }
             }
-            let summary = try? await trashService.summary(limit: Int.max)
+            let summary: TrashSummary
+            do {
+                summary = try await trashService.summary(limit: Int.max)
+            } catch {
+                guard trashLoadID == id, !Task.isCancelled else { return }
+                hasLoadedTrash = true
+                trashReadError = error is TrashError
+                    ? "Grant Full Disk Access to Moppo in System Settings to read the Trash."
+                    : "Moppo could not read the Trash. Try Reload again."
+                return
+            }
             guard trashLoadID == id, !Task.isCancelled else { return }
             trashSummary = summary
+            trashMeasuredAt = .now
+            trashReadError = nil
             hasLoadedTrash = true
-            if let request = pendingTrashReveal, let url = request.trashedURL, let summary {
+            if let request = pendingTrashReveal, let url = request.trashedURL {
                 pendingTrashReveal = nil
                 if let item = summary.items.first(where: {
                     $0.url.standardizedFileURL == url.standardizedFileURL
@@ -122,7 +136,7 @@ final class RecoveryModel {
                     onEvent(.failure(title: "Item Not Found", message: "This item is no longer available in the Trash."))
                 }
             }
-            selectedTrashItemIDs.formIntersection(Set(summary?.items.map(\.id) ?? []))
+            selectedTrashItemIDs.formIntersection(Set(summary.items.map(\.id)))
         }
         trashTask = task
         await task.value

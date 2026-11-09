@@ -256,6 +256,33 @@ To delete them sooner, select **Delete Snapshots…**, then confirm.
 Put Back cannot restore a deleted snapshot.
 Moppo does not show snapshots in **Safe to Remove**.
 
+## Menu bar
+
+Enable **Show in menu bar** in **Settings > General**.
+The menu bar uses native macOS controls and the system window material.
+
+| Control | Behavior |
+| --- | --- |
+| Disk space | Shows free space, capacity, the volume name, and a capacity bar. |
+| Safe to Remove | Shows the last Cleanup total and scan date. Later disk changes can affect this total. |
+| Trash | Shows the last measured size, item count, and measurement date. |
+| Reload | Refreshes disk space and Trash. Starts a background Cleanup scan. |
+| Delete Safe to Remove | Runs a new background scan, then removes only eligible Safe to Remove items without confirmation. |
+| Stop | Requests cancellation when the active operation supports it. New operations wait until the workers finish. |
+| Open Moppo | Opens the main window. |
+| Settings | Opens app settings. |
+| Quit Moppo | Uses the normal quit checks for active operations. |
+
+Safe to Remove and Trash are readings, not buttons.
+Opening the menu bar does not start a scan or measurement.
+Reload and deletion require a completed welcome guide and Full Disk Access.
+These actions keep the main window closed and preserve its current view.
+Work continues when the panel closes. Progress and results remain available when the panel opens again.
+Deletion uses the new scan result even when the displayed total comes from an earlier scan, equals zero, or lacks a result.
+Moppo keeps its removal protection checks and the current receipt setting.
+If the new scan stops or fails, Moppo removes nothing.
+Tool commands can remove caches permanently. This action does not empty the Trash.
+
 ## Shortcuts
 
 In the Shortcuts app, add an action from **Moppo**.

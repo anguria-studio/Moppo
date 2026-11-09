@@ -19,6 +19,7 @@ final class AppModel {
     let photoDuplicates: PhotoDuplicatesModel
     let uninstaller: AppUninstallerModel
     let cleanup: CleanupModel
+    let menuBar = MenuBarModel()
     let savedPlans: SavedPlanModel
     @ObservationIgnored private var pendingSavedPlan: PlanHandoff?
     @ObservationIgnored private let cleanupScheduler = CleanupScheduler()
@@ -865,6 +866,7 @@ final class AppModel {
     }
 
     private func handleCleanupEvent(_ event: CleanupModel.Event) {
+        menuBar.handleCleanupEvent(event, cleanup: cleanup, operations: operations)
         switch event {
         case .scanStarted(let automatic, let refreshOverview):
             cleanupCompletion = nil
@@ -872,6 +874,8 @@ final class AppModel {
             if refreshOverview {
                 Task { await dashboard.measureStorage(trigger: automatic ? .scheduled : .scan) }
             }
+        case .scanFinished:
+            break
         case .confirmationRequested:
             activeSheet = .cleanUp
         case .confirmationDismissed:

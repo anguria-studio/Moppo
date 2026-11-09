@@ -10,7 +10,7 @@ struct MoppoIntentTests {
     func welcomeGuide(action: CleanupShortcutAction) async throws {
         let model = AppModel(launchAccess: .welcome, hasFullDiskAccess: { false })
 
-        await #expect(throws: MoppoIntentError.welcomeGuideIncomplete) { try await action.perform(model: model) }
+        await #expect(throws: MoppoOperationError.welcomeGuideIncomplete) { try await action.perform(model: model) }
 
         #expect(!model.cleanup.hasStartedInitialScan)
         #expect(!model.isBusyWithDisk)
@@ -22,7 +22,7 @@ struct MoppoIntentTests {
         let operation = try #require(model.operations.begin(.emptyTrash))
         defer { model.operations.finish(operation) }
 
-        await #expect(throws: MoppoIntentError.operationInProgress) { try await action.perform(model: model) }
+        await #expect(throws: MoppoOperationError.operationInProgress) { try await action.perform(model: model) }
 
         #expect(model.operations.activeOperation == operation)
         #expect(!model.cleanup.hasStartedInitialScan)
@@ -42,7 +42,7 @@ struct MoppoIntentTests {
         defer { model.cleanup.cancelCleanUp() }
         let plan = try #require(model.cleanup.pendingCleanUp)
 
-        await #expect(throws: MoppoIntentError.operationInProgress) { try await action.perform(model: model) }
+        await #expect(throws: MoppoOperationError.operationInProgress) { try await action.perform(model: model) }
 
         #expect(model.cleanup.pendingCleanUp?.id == plan.id)
         #expect(!model.cleanup.hasStartedInitialScan)
@@ -206,7 +206,7 @@ struct MoppoIntentTests {
         let model = AppModel(launchAccess: access, hasFullDiskAccess: { false }, cleanupScanner: scanner)
         model.view = .dashboard
 
-        await #expect(throws: MoppoIntentError.backgroundAccessRequired) {
+        await #expect(throws: MoppoOperationError.backgroundAccessRequired) {
             try await CleanupShortcutAction.delete.perform(model: model)
         }
 
@@ -243,7 +243,7 @@ struct MoppoIntentTests {
         let intent = GetSafeToRemoveSizeIntent()
         intent.$model.wrappedValue = model
 
-        await #expect(throws: MoppoIntentError.scanRequired) { try await intent.perform() }
+        await #expect(throws: MoppoOperationError.scanRequired) { try await intent.perform() }
 
         #expect(!model.cleanup.hasStartedInitialScan)
     }
@@ -269,8 +269,8 @@ struct MoppoIntentTests {
         var intent = GetTrashSizeIntent()
         intent.trashService = UnreadableTrash()
 
-        await #expect(throws: MoppoIntentError.trashAccessRequired) { try await intent.perform() }
-        #expect(String(localized: MoppoIntentError.trashAccessRequired.localizedStringResource).contains("Full Disk Access"))
+        await #expect(throws: MoppoOperationError.trashAccessRequired) { try await intent.perform() }
+        #expect(String(localized: MoppoOperationError.trashAccessRequired.localizedStringResource).contains("Full Disk Access"))
     }
 
     @Test("A main window request waits for its presenter")
@@ -302,10 +302,4 @@ enum CleanupShortcutAction: CaseIterable {
             _ = try await intent.perform()
         }
     }
-}
-
-private struct UnreadableTrash: TrashServicing {
-    func summary(limit: Int) async throws -> TrashSummary { throw TrashError.unreadable("/fixture/.Trash") }
-    func empty() async throws -> EmptyTrashOutcome { Issue.record("The action must not empty the Trash."); return .init() }
-    func putBack(_ item: TrashItem) async throws { Issue.record("The action must not restore an item.") }
 }
