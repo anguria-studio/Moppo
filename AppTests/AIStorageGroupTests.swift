@@ -98,9 +98,8 @@ struct AIStorageGroupTests {
         cleanup.scannerSelection = ids
         cleanup.userDataRemovalOverrides = ids
         #expect(cleanup.selectedEntries.isEmpty)
-        #expect(cleanup.cleanupSelection(in: .all).isEmpty)
-        #expect(cleanup.cleanupSelectionBytes(in: .all) == 0)
-        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
+        #expect(cleanup.cleanupSelection.isEmpty)
+        #expect(cleanup.cleanupSelectionBytes == 0)
 
         for dark in [false, true] {
             var collapsedHeight = 0.0

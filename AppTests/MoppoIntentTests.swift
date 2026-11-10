@@ -38,7 +38,7 @@ struct MoppoIntentTests {
             ScanCategoryResult(categoryID: .systemCaches, totalBytes: 128, entries: [entry])
         ], startedAt: .now, finishedAt: .now)
         model.cleanup.scannerSelection = [entry.id]
-        model.cleanup.requestCleanUp(in: .safeToRemove)
+        model.cleanup.requestCleanUp()
         defer { model.cleanup.cancelCleanUp() }
         let plan = try #require(model.cleanup.pendingCleanUp)
 

@@ -49,8 +49,7 @@ extension CleanupModel {
     }
 
     var hiddenSelectionCount: Int {
-        CleanupSelection.ids(in: scanResults?.categories ?? [], selected: scannerSelection, scope: .all)
-            .subtracting(idsInCurrentView).count
+        cleanupSelection.subtracting(idsInCurrentView).count
     }
 
     /// Selecting a filtered child replaces selection of its whole parent.

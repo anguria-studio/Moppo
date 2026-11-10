@@ -4,6 +4,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Cleanup
+
+- Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.
+
 ## [0.7.0] - 2026-11-09
 
 Build 57.
