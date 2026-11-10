@@ -1,0 +1,69 @@
+{
+  "id": "firefox",
+  "name": "Firefox",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "org.mozilla.firefox"
+  ],
+  "note": "Firefox profiles contain bookmarks, passwords, sessions, extensions, and website data. The whole profile root is never a cache.",
+  "storage": [
+    {
+      "path": "~/Library/Application Support/Firefox",
+      "type": "userData",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "protect",
+      "name": "Firefox profiles and settings",
+      "recognition": "Bundle identifier `org.mozilla.firefox`",
+      "removal": "Never offer whole. Moppo offers the caches below it.",
+      "restore": "Not possible",
+      "status": "Not verified for removal. The profile root stays protected."
+    },
+    {
+      "path": "~/Library/Application Support/Firefox/Profiles/*/cache2",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Firefox profile layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Firefox rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Firefox 153.0.4",
+        "macos": "27.2",
+        "scope": "isolated custom profile, cache recovery and saved data"
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Firefox/Profiles/*/startupCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Firefox profile layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Firefox rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Firefox 153.0.4",
+        "macos": "27.2",
+        "scope": "isolated custom profile, cache recovery and saved data"
+      }
+    },
+    {
+      "path": "~/Library/Caches/Firefox",
+      "type": "cache",
+      "coverage": "caches",
+      "recognition": "Firefox cache folder",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Firefox rebuilds temporary data.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Firefox 153.0.4",
+        "macos": "27.2",
+        "scope": "standard profile in isolated directories"
+      }
+    }
+  ]
+}

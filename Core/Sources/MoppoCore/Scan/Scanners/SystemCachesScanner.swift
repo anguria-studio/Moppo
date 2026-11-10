@@ -273,13 +273,16 @@ public struct SystemCachesScanner: CategoryScanner {
         try await appendSystemApplicationCaches(
             context: context, to: &entries, unreadableCount: &unreadableCount
         )
+        try await appendVerifiedContainerCaches(
+            context: context, to: &entries, unreadableCount: &unreadableCount
+        )
         try await appendApplicationSupportCaches(
             context: context, to: &entries, unreadableCount: &unreadableCount
         )
 
         // Every root refused us. Say how to fix it rather than reporting an empty
         // category, which would read as "nothing to clean".
-        if reachableRoots == 0, unreadableCount > 0 {
+        if reachableRoots == 0, entries.isEmpty, unreadableCount > 0 {
             return ScanCategoryResult(
                 categoryID: id,
                 availability: .unavailable(
@@ -375,7 +378,46 @@ public struct SystemCachesScanner: CategoryScanner {
         }
     }
 
-    // MARK: - System applications
+    // MARK: - Container caches
+
+    struct ContainerCache: Sendable {
+        let name: String
+        let bundleIdentifier: String
+        let path: String
+    }
+
+    private func appendVerifiedContainerCaches(
+        context: ScanContext, to entries: inout [FileEntry], unreadableCount: inout Int
+    ) async throws {
+        guard let containersRoot, !context.isWithinExclusion(containersRoot) else { return }
+        let home = containersRoot.deletingLastPathComponent().deletingLastPathComponent()
+        for cache in Self.containerCaches {
+            let container = containersRoot.appendingPathComponent(cache.bundleIdentifier, isDirectory: true)
+            guard ModelStoreFolders.hasNoLinks(container.path, below: home.path) else { continue }
+            for url in ApplicationsScanner.expand(cache.path, under: container) {
+                try Task.checkCancellation()
+                guard !context.isExcluded(url),
+                      ModelStoreFolders.hasNoLinks(url.path, below: container.path),
+                      (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                else { continue }
+                let measurement = try await context.measurer.measure(url)
+                unreadableCount += measurement.unreadableCount
+                guard measurement.allocatedBytes >= Self.minimumEntryBytes,
+                      !measurement.containsProtectedPattern
+                else { continue }
+                entries.append(FileEntry(
+                    url: url,
+                    displayName: cache.name,
+                    kind: .cache,
+                    allocatedBytes: measurement.allocatedBytes,
+                    lastOpened: lastOpenedDate(for: url),
+                    isRegenerable: true,
+                    inUseBy: context.runningOwner(bundleIdentifier: cache.bundleIdentifier),
+                    childCount: Self.childCount(of: url)
+                ))
+            }
+        }
+    }
 
     /// The sandboxed caches of the applications in `/System/Applications`.
     ///
@@ -396,7 +438,7 @@ public struct SystemCachesScanner: CategoryScanner {
     /// read by `AMPLibraryAgent`, which outlives Music, so "Music is closed" does not
     /// mean nothing is using it. Purge (github.com/jithin-sabu/purge-app) labels the
     /// same caches Check First and keeps them out of one-click cleaning; this agrees.
-    /// `IdentityState` refuses Passwords, Home, Safari and their like outright.
+    /// `IdentityState` excludes protected containers from this scan.
     ///
     /// The cache folder's children are the rows, never `Caches` itself, for the
     /// reason given on `ApplicationsScanner.containerCuration`.

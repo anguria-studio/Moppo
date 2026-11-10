@@ -140,6 +140,7 @@ Run the audit before each release and after each test rental. Record the result 
 | `applicationDataFolders` | `ApplicationDataFolders.byBundleIdentifier` | Data folders that use another name than their application. The tool needs `bundleIdentifiers`. |
 | `aiToolStorage` | `AIToolStorage.roots` | Protected AI tool storage. A rule below a root is one of its parts. The tool needs `owner` and `aiTool`. |
 | `curations` | `ApplicationsScanner.curations` | A support folder with caches beside user data. The protected root locks the remainder. An offered path below it is a regenerable cache. |
+| `containerCaches` | `SystemCachesScanner.containerCaches` | Verified cache folders inside a named application container. The rule matches only the given path. |
 
 | `localModelStores` | `LocalModelStores` claim sets and store paths | Model folders that the readers claim. A `store` names the constant that its reader uses. |
 | `editorExtensionStores` | `EditorExtensionStores.editors` | The `extensions` folder of a VS Code–family editor, with `"check": "editorObsolete"`. |

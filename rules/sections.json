@@ -198,6 +198,8 @@
     "document": "docs/tool-catalog.md",
     "tools": [
       "chrome",
+      "firefox",
+      "safari",
       "figma",
       "ferdium",
       "tor-browser"

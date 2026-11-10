@@ -135,6 +135,10 @@ struct RuleDocumentTests {
             rules.append(Rule(path: "~/Library/Application Support/" + cache.components.joined(separator: "/"),
                               treatment: .offer, table: "SystemCachesScanner.applicationSupportCaches"))
         }
+        for cache in SystemCachesScanner.containerCaches {
+            rules.append(Rule(path: "~/Library/Containers/\(cache.bundleIdentifier)/\(cache.path)",
+                              treatment: .offer, table: "SystemCachesScanner.containerCaches"))
+        }
         for editor in EditorExtensionStores.editors {
             rules.append(Rule(path: "~/" + editor.dotFolder + "/extensions", treatment: .offer,
                               table: "EditorExtensionStores.editors"))

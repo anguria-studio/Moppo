@@ -105,6 +105,18 @@ class ValidationTests(unittest.TestCase):
         self.rejects("verified.date", {"mysql": tool(storage=[storage(verified={"date": "yesterday", "tool": "x"})])})
         self.rejects("needs verified or status", {"mysql": tool(storage=[storage(verified=None)])})
 
+    def test_container_cache_requires_verification_and_matching_bundle(self):
+        cache = storage(
+            path="~/Library/Containers/org.example.app/Data/Library/WebKit/WebsiteDataStore/*/NetworkCache",
+            type="cache", table="containerCaches", owner="systemCaches", treatment="offer",
+            name="Network cache", identifiedBy=None, removal="Trash", restore="Next launch"
+        )
+        app = tool(bundleIdentifiers=["org.example.app"], storage=[cache])
+        RULES.validate(SECTIONS, {"mysql": app})
+        self.rejects("below its bundle", {"mysql": {**app, "bundleIdentifiers": ["org.other.app"]}})
+        found = {**cache, "verified": {**cache["verified"], "kind": "found"}}
+        self.rejects("needs a name and verified record", {"mysql": {**app, "storage": [found]}})
+
 
 class TableTests(unittest.TestCase):
     def test_package_caches_and_the_go_module_cache(self):
