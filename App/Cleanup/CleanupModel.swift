@@ -237,9 +237,9 @@ final class CleanupModel {
         }
     }
 
-    /// True when the visible selection has a Docker object, a tool command, or a Codex session.
+    /// True when the selection has a Docker object, a tool command, or a Codex session.
     var hasSelectedPermanentItems: Bool {
-        let selected = cleanupSelection(in: scanFilter)
+        let selected = cleanupSelection
         return selectedEntries.contains {
             selected.contains($0.id) && ($0.docker != nil || $0.toolCommand != nil || $0.codexSession != nil)
         }
@@ -262,7 +262,7 @@ final class CleanupModel {
     }
 
     func selectedBytes(in category: CategoryID, filter: ScanFilter = .all) -> Int64 {
-        let selected = cleanupSelection(in: filter)
+        let selected = dataTypeFilter == .all ? cleanupSelection : cleanupSelection.intersection(idsInCurrentView)
         guard let result = scanResults?.categories.first(where: { $0.categoryID == category })
         else { return 0 }
         let entries = filter == .all
@@ -415,19 +415,12 @@ final class CleanupModel {
         }
     }
 
-    func cleanupSelection(in filter: ScanFilter) -> Set<FileEntry.ID> {
-        let scope: CleanupSelection.Scope = switch filter {
-        case .all: .all
-        case .safeToRemove: .safe
-        }
-        let selected = dataTypeFilter == .all ? scannerSelection : scannerSelection.intersection(idsInCurrentView)
-        return CleanupSelection.ids(
-            in: scanResults?.categories ?? [], selected: selected, scope: scope
-        )
+    var cleanupSelection: Set<FileEntry.ID> {
+        CleanupSelection.ids(in: scanResults?.categories ?? [], selected: scannerSelection, scope: .all)
     }
 
-    func cleanupSelectionBytes(in filter: ScanFilter) -> Int64 {
-        let ids = cleanupSelection(in: filter)
+    var cleanupSelectionBytes: Int64 {
+        let ids = cleanupSelection
         return selectedEntries.filter { ids.contains($0.id) }
             .reduce(0) { $0 + Self.plannedBytes(for: $1) }
             + selectedOrphanApplicationEntries.filter { ids.contains($0.id) }
@@ -436,7 +429,7 @@ final class CleanupModel {
 
     var selectAllStateInCurrentView: NSControl.StateValue {
         selectAllState(in: selectableInCurrentView,
-            selected: cleanupSelection(in: scanFilter).intersection(idsInCurrentView))
+            selected: cleanupSelection.intersection(idsInCurrentView))
     }
 
     var canSelectAllInCurrentView: Bool {
@@ -577,13 +570,15 @@ final class CleanupModel {
         }
     }
 
-    func requestCleanUp(in filter: ScanFilter) {
-        requestCleanUp(in: filter, automatically: false)
+    func requestCleanUp() {
+        requestCleanUp(automatically: false)
     }
 
-    private func requestCleanUp(in filter: ScanFilter, automatically: Bool) {
+    private func requestCleanUp(automatically: Bool) {
         guard !isBusyWithDisk, !showsOutdatedResultsNotice, pendingCleanUp == nil else { return }
-        let scope = cleanupSelection(in: filter)
+        let scope = automatically
+            ? CleanupSelection.ids(in: scanResults?.categories ?? [], selected: scannerSelection, scope: .safe)
+            : cleanupSelection
         let entries = selectedEntries.filter { scope.contains($0.id) }
         let selectedIDs = Set(entries.map(\.id))
         let orphanedEntries = selectedOrphanApplicationEntries.filter { scope.contains($0.id) }
@@ -594,7 +589,7 @@ final class CleanupModel {
             .applicationLeftoverPlan
         guard !entries.isEmpty || !orphanedIdentifiers.isEmpty else { return }
         if automatically {
-            guard filter == .safeToRemove, orphanedEntries.isEmpty,
+            guard orphanedEntries.isEmpty,
                   entries.allSatisfy(\.regeneratesSafely) else { return }
         }
         let preferences = preferences()
@@ -750,7 +745,7 @@ final class CleanupModel {
                     deselectAll()
                     safeSelectionSeededAt = nil
                     seedSafeToRemoveSelection()
-                    requestCleanUp(in: .safeToRemove, automatically: true)
+                    requestCleanUp(automatically: true)
                 }
                 if isCurrentScan {
                     onEvent(.scanFinished(completed: completed && !Task.isCancelled, removeSafeToRemove: removeSafeToRemove))
