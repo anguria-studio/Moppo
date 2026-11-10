@@ -306,7 +306,7 @@ final class FileDuplicatesModel {
             )
             if confirmed {
                 onEvent(.removalStarted(count: selected.count, bytes: bytes))
-                await performRemoval(selected, groups: groups, bytes: bytes, keepReceipt: settings.keepReceipt)
+                await performRemoval(selected, groups: groups, keepReceipt: settings.keepReceipt)
             }
             // Publish completion before the progress surface and shared guard close.
             onEvent(.operationFinished)
@@ -318,10 +318,9 @@ final class FileDuplicatesModel {
     }
 
     private func performRemoval(
-        _ selected: Set<DuplicateFile.ID>, groups: [FileDuplicateGroup], bytes: Int64, keepReceipt: Bool
+        _ selected: Set<DuplicateFile.ID>, groups: [FileDuplicateGroup], keepReceipt: Bool
     ) async {
-        var presentation = OperationPresentationDuration()
-        presentation.extend(toShow: .deletion(bytes: bytes))
+        let presentation = OperationPresentationDuration()
         do {
             let result = try await removalService.remove(
                 selectedIDs: selected, from: groups, keepReceipt: keepReceipt

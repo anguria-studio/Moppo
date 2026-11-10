@@ -28,7 +28,6 @@ struct CleanupOperationView: View {
             PageProgressView(
                 title: "Removing selected items",
                 detail: summary,
-                icon: .deletion(bytes: totalBytes),
                 onCancel: onCancel,
                 isCancelling: isCancelling,
                 cancellingTitle: PageProgressView.stoppingRemovalTitle

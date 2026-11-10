@@ -103,24 +103,21 @@ struct ActivityOverlay: View {
 #Preview("Emptying the Trash") {
     ZStack {
         Token.pageBackground
-        ActivityOverlay(activity: .emptyingTrash(itemCount: 214, totalBytes: 9_040_000_000))
+        ActivityOverlay(activity: .emptyingTrash(itemCount: 214, totalBytes: 15_000_000_000))
     }
     .frame(width: 760, height: 480)
 }
 
 extension AppModel.Activity {
-    /// Moppo appears for deletions and for waits that can take a while.
-    /// Restoring an item and uninstalling one app are usually short, so they keep the hourglass.
+    /// Red rays appear only when Trash emptying removes at least 15 GB.
+    /// Other removal actions use the hourglass.
     var progressIcon: PageProgressView.Icon {
         switch self {
-        case .cleaningUp(_, let bytes),
-             .emptyingTrash(_, let bytes),
-             .removingDuplicateFiles(_, let bytes),
-             .removingStorageItems(_, let bytes):
-            return .deletion(bytes: bytes)
+        case .emptyingTrash(_, let bytes):
+            return .emptyingTrash(bytes: bytes)
         case .checkingWorktrees, .reviewingStorageItems, .waitingForApplicationsToQuit:
             return .mascot(.search)
-        case .restoringTrashItem, .uninstalling:
+        case .cleaningUp, .removingDuplicateFiles, .removingStorageItems, .restoringTrashItem, .uninstalling:
             return .hourglass
         }
     }

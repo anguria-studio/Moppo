@@ -958,7 +958,7 @@ struct OperationPresentationDuration: Sendable {
 
     private var deadline = ContinuousClock.now.advanced(by: isEnabled ? .seconds(1) : .zero)
 
-    /// Keeps a deletion on screen until Moppo finishes the first pass of its rays.
+    /// Keeps Trash emptying on screen until Moppo finishes the first pass of its rays.
     /// Call it when the progress appears. With Reduce Motion on, nothing changes because Moppo does not move.
     @MainActor mutating func extend(toShow icon: PageProgressView.Icon) {
         guard Self.isEnabled, case .mascot(let mode) = icon, let pass = mode.firstPassDuration,
@@ -997,9 +997,9 @@ struct PageProgressView: View {
         case hourglass
         case mascot(MoppoMascotView.Mode)
 
-        /// Moppo destroys only very large deletions, as a rare surprise. Other deletions keep the hourglass.
-        static func deletion(bytes: Int64) -> Icon {
-            bytes > 5 * ByteFormatting.bytesPerGB ? .mascot(.destroying) : .hourglass
+        /// Shows red rays when Trash emptying removes at least 15 GB. Smaller operations use the hourglass.
+        static func emptyingTrash(bytes: Int64) -> Icon {
+            bytes >= 15 * ByteFormatting.bytesPerGB ? .mascot(.destroying) : .hourglass
         }
     }
 

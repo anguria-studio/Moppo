@@ -298,8 +298,7 @@ final class AppUninstallerModel {
         let keepReceipt = review.keepReceipt
         onEvent(.removalStarted(count: items.count, bytes: bytes))
         let task = startRemoval(operation) { [self] in
-            var presentation = OperationPresentationDuration()
-            presentation.extend(toShow: .deletion(bytes: bytes))
+            let presentation = OperationPresentationDuration()
             let outcome = (try? await remover.removeSoundLibraries(
                 plan, itemPaths: paths, keepReceipt: keepReceipt
             )) ?? CleanupOutcome(failed: Array(paths).sorted())
@@ -415,8 +414,7 @@ final class AppUninstallerModel {
         let bytes = items.reduce(0) { $0 + $1.allocatedBytes }
         onEvent(.removalStarted(count: items.count, bytes: bytes))
         let task = startRemoval(operation) { [self] in
-            var presentation = OperationPresentationDuration()
-            presentation.extend(toShow: .deletion(bytes: bytes))
+            let presentation = OperationPresentationDuration()
             let registered = applications.registeredIdentifiers(leftovers.ownerBundleIdentifiers(for: identifiers))
             let outcome = (try? await remover.removeOrphanedAppLeftovers(
                 leftovers, bundleIdentifiers: identifiers, itemPaths: paths,

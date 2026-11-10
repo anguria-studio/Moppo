@@ -151,7 +151,7 @@ final class RecoveryModel {
         onEvent(.emptyingTrash(count: count, bytes: bytes))
         let task = Task { [self] in
             var presentation = OperationPresentationDuration()
-            presentation.extend(toShow: .deletion(bytes: bytes))
+            presentation.extend(toShow: .emptyingTrash(bytes: bytes))
             do {
                 let result = try await trashService.empty()
                 await refreshVolume()
