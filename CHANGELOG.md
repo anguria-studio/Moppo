@@ -16,6 +16,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Offer Firefox network and startup caches. Keep Firefox profile data protected.
 - List verified Safari profile network caches in System Caches & Logs.
 - Add Chrome rendering caches. Keep Chrome diagnostic reports out of automatic cache cleanup.
+- List the Chrome on-device AI model only in **All**. Chrome needs a large download to restore the model.
 - Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.
 
 ### Trash

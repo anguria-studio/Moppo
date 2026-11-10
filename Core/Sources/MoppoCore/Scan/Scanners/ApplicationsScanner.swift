@@ -324,6 +324,9 @@ public struct ApplicationsScanner: CategoryScanner {
 
         /// Name for the single locked entry holding everything else.
         let remainderName: String
+
+        /// Subpaths that need review and the conditions for recovery.
+        var reviewCaveats: [String: String] = [:]
     }
 
     // `curations` is in `Generated/ToolRules.swift`. Each curation comes from a tool file in `rules/`.
@@ -492,7 +495,8 @@ public struct ApplicationsScanner: CategoryScanner {
         // that stop being part of the remainder.
         var curatedTopLevel = Set<String>()
 
-        for subpath in curation.regenerable {
+        for subpath in curation.reviewCaveats.keys.sorted() + curation.regenerable {
+            let caveat = curation.reviewCaveats[subpath]
             for url in expand(subpath, under: root) {
                 // Expanding globs and skipping absent paths can run for a while
                 // without reaching the measurer, which is the other place that
@@ -528,7 +532,9 @@ public struct ApplicationsScanner: CategoryScanner {
                     // a row is safe to remove, and every carved cache wore it —
                     // WhatsApp's, Pages', Chrome's — because no date was passed.
                     lastOpened: lastOpenedDate(for: url),
-                    isRegenerable: true
+                    isRegenerable: true,
+                    requiresRemovalReview: caveat != nil,
+                    safetyCaveat: caveat
                 ))
             }
         }

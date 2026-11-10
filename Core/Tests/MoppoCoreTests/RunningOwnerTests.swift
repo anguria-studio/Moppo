@@ -124,6 +124,40 @@ struct RunningOwnerTests {
                 == result.entries.reduce(0) { $0 + $1.displayBytes })
     }
 
+    @Test("Chrome's model needs review even when Chrome is closed", arguments: [false, true])
+    func chromeModelNeedsReview(isRunning: Bool) async throws {
+        let sandbox = try Sandbox()
+        let bundleID = "com.google.Chrome"
+        let app = try sandbox.app("Google Chrome", bundleID: bundleID)
+        let folder = "Library/Application Support/Google/Chrome"
+        try sandbox.file("\(folder)/OptGuideOnDeviceModel/weights.bin")
+        try sandbox.file("\(folder)/Default/Code Cache/index")
+        try sandbox.file("\(folder)/Default/Bookmarks")
+
+        let scanner = ApplicationsScanner(
+            applicationDirectories: [app.deletingLastPathComponent()], home: sandbox.home
+        )
+        let owner = Self.owner("Google Chrome", bundleID, path: app.path)
+        let result = try await scanner.scan(context: ScanContext(runningApplications: isRunning ? [owner] : []))
+        let chrome = try #require(result.entries.first)
+        let model = try #require(chrome.children.first { $0.displayName == "OptGuideOnDeviceModel" })
+        let cache = try #require(chrome.children.first { $0.displayName == "Code Cache" })
+        let settings = try #require(chrome.children.first { $0.displayName == "Chrome profiles and settings" })
+
+        #expect(model.isRegenerable)
+        #expect(!model.isRemovalLocked)
+        #expect(model.inUseBy == (isRunning ? owner : nil))
+        let caveat = try #require(model.safetyCaveat)
+        #expect(FileEntryPresentation(entry: model).summary.contains(caveat))
+        #expect(settings.isRemovalLocked)
+        #expect(result.tileRows(safeToRemove: false).flatMap(\.children).contains { $0.id == model.id })
+
+        let selected: Set<FileEntry.ID> = [model.id, cache.id]
+        #expect(CleanupSelection.ids(in: [result], selected: selected, scope: .all) == selected)
+        #expect(CleanupSelection.ids(in: [result], selected: selected, scope: .safe) == (isRunning ? [] : [cache.id]))
+        #expect(result.safeToRemoveBytes == (isRunning ? 0 : cache.allocatedBytes))
+    }
+
     @Test("a system cache whose owner runs moves from Safe to Remove to Needs Review")
     func systemCacheUnderRunningOwner() async throws {
         let sandbox = try Sandbox()

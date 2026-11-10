@@ -195,13 +195,10 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var inUseBy: RunningOwner?
     public var xcodeBuildCacheReview: XcodeBuildCache.Review?
 
-    /// Why a row that looks regenerable is not called so, in two or three words:
-    /// `no lockfile` on a dependency store nothing can put back as it was.
-    ///
-    /// For the reader, not for arithmetic. The row already carries
-    /// `isRegenerable == false`, which is what keeps it out of Safe to remove; this
-    /// says why, so a grey `node_modules` beside a green one is not a riddle. See
-    /// `BuildOutputDetector.reinstallEvidence(for:)`.
+    /// Keeps a regenerable item outside Safe to Remove.
+    public var requiresRemovalReview: Bool
+
+    /// Explains a removal or recovery condition.
     public var safetyCaveat: String?
 
     /// Signs of work in the project around a dependency store. Moppo does not count a
@@ -322,6 +319,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         docker: DockerItem? = nil,
         inUseBy: RunningOwner? = nil,
         xcodeBuildCacheReview: XcodeBuildCache.Review? = nil,
+        requiresRemovalReview: Bool = false,
         safetyCaveat: String? = nil,
         gitWorktreeReview: GitWorktreeReview? = nil,
         removalAction: RemovalAction? = nil,
@@ -349,6 +347,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.docker = docker
         self.inUseBy = inUseBy
         self.xcodeBuildCacheReview = xcodeBuildCacheReview
+        self.requiresRemovalReview = requiresRemovalReview
         self.safetyCaveat = safetyCaveat
         self.gitWorktreeReview = gitWorktreeReview
         self.removalAction = removalAction
@@ -418,7 +417,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// the badge now ask the same question.
     public var regeneratesSafely: Bool {
         (gitWorktreeReview?.isSafeToRemove ?? isRegenerable) && !isRemovalLocked && inUseBy == nil
-            && projectActivity?.hold == nil
+            && !requiresRemovalReview && projectActivity?.hold == nil
     }
 
     /// The size shown beside a top-level Scanner row. Applications show only their

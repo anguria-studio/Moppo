@@ -126,9 +126,9 @@ struct RuleDocumentTests {
         }
         for curation in ApplicationsScanner.curations.values {
             rules.append(Rule(path: "~/" + curation.root, treatment: .protect, table: "ApplicationsScanner.curations"))
-            for subpath in curation.regenerable {
+            for subpath in curation.regenerable + curation.reviewCaveats.keys.sorted() {
                 rules.append(Rule(path: "~/" + curation.root + "/" + subpath, treatment: .offer,
-                                  table: "ApplicationsScanner.curations.regenerable"))
+                                  table: "ApplicationsScanner.curations"))
             }
         }
         for cache in SystemCachesScanner.applicationSupportCaches {
