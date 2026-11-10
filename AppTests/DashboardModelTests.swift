@@ -59,7 +59,7 @@ struct DashboardModelTests {
     func limitedLaunch() async throws {
         let service = HeldDashboardMeasurements()
         let measurement = dashboardMeasurement()
-        let cache = BreakdownCache(volume: measurement.volume, breakdown: measurement.breakdown, measuredAt: .now)
+        let cache = BreakdownCache(breakdown: measurement.breakdown, measuredAt: .now)
         let persistence = HeldDashboardPersistence(cache: cache)
         let app = AppModel(
             launchAccess: .limited, hasFullDiskAccess: { false },
@@ -68,6 +68,7 @@ struct DashboardModelTests {
         await app.dashboard.loadDashboard()
         #expect(app.dashboard.hasCompletedInitialDashboardLoad)
         #expect(!app.dashboard.isDashboardLoading)
+        #expect(app.dashboard.volume == measurement.volume)
         #expect(app.dashboard.breakdown == measurement.breakdown)
         #expect(app.dashboard.snapshots.count == 2)
         #expect(app.dashboard.boot?.uuid == "boot")
@@ -122,12 +123,13 @@ struct DashboardModelTests {
         #expect(app.view == .history)
     }
 
-    @Test("Launch shows cached figures and waits for Cleanup workers", arguments: [false, true])
+    @Test("Launch reads free space while the full measurement waits for Cleanup", arguments: [false, true])
     func launchWaitsForCleanup(stopScan: Bool) async throws {
         let scanner = HeldCleanupScanner()
-        let service = HeldDashboardMeasurements()
-        let measurement = dashboardMeasurement()
-        let cache = BreakdownCache(volume: measurement.volume, breakdown: measurement.breakdown, measuredAt: .now)
+        let service = HeldDashboardMeasurements(holdVolume: true)
+        let saved = dashboardMeasurement(free: 100)
+        let measurement = dashboardMeasurement(free: 200)
+        let cache = BreakdownCache(breakdown: saved.breakdown, measuredAt: .now)
         let persistence = HeldDashboardPersistence(cache: cache)
         let app = AppModel(
             hasFullDiskAccess: { true }, dashboardService: service,
@@ -137,8 +139,13 @@ struct DashboardModelTests {
         try await waitUntil { await scanner.requestCount == 1 }
         let launch = Task { await app.loadDashboard() }
         try await waitUntil { app.dashboard.breakdown == cache.breakdown }
+        #expect(app.dashboard.volume == nil)
+        try await waitUntil { await service.volumeCount == 1 }
+        await service.finishVolume(0, measurement.volume)
+        try await waitUntil { app.dashboard.volume == measurement.volume }
+        #expect(app.cleanup.isScanning)
+        #expect(app.dashboard.breakdown?.freeBytes == measurement.volume.freeBytes)
         try await waitUntil { await persistence.historyLoads == 1 }
-        #expect(await persistence.historyLoads == 1)
         #expect(await service.measurementCount == 0)
         app.view = .dashboard
         if stopScan { app.cleanup.cancelScan() }
@@ -147,8 +154,12 @@ struct DashboardModelTests {
         #expect(await service.measurementCount == 0)
         await scanner.finish(0, results: ScanResults(categories: [], startedAt: .now, finishedAt: .now))
         if !stopScan {
+            try await waitUntil { await service.volumeCount == 2 }
+            await service.finishVolume(1, measurement.volume)
             try await waitUntil { await service.measurementCount == 1 }
             await service.finishMeasurement(0, measurement)
+            try await waitUntil { await service.volumeCount == 3 }
+            await service.finishVolume(2, measurement.volume)
         }
         await launch.value
         #expect(!app.cleanup.isScanning)
@@ -817,7 +828,7 @@ struct DashboardModelTests {
     func measurementFailure() async throws {
         let service = HeldDashboardMeasurements()
         let measurement = dashboardMeasurement()
-        let cache = BreakdownCache(volume: measurement.volume, breakdown: measurement.breakdown, measuredAt: .distantPast)
+        let cache = BreakdownCache(breakdown: measurement.breakdown, measuredAt: .distantPast)
         let persistence = HeldDashboardPersistence(cache: cache)
         let model = DashboardModel(service: service, persistence: persistence)
         model.canMeasure = { _ in false }

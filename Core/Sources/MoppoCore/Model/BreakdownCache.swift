@@ -1,25 +1,11 @@
 import Foundation
 
-/// The last measured breakdown, persisted between launches.
-///
-/// Without this the Dashboard measured the whole home directory on every launch,
-/// which meant every launch also walked `~/Documents`, `~/Desktop` and `~/Downloads`
-/// — the three folders macOS gates behind TCC. On an unsigned development build the
-/// signature changes with each rebuild, so the system re-asks for permission every
-/// single time.
-///
-/// Showing the last known figures immediately and measuring only on request fixes
-/// that, and is better behaviour regardless: a disk utility should not hammer the
-/// disk merely because you opened it. The design anticipates this — Preferences ›
-/// Advanced offers "Rebuild the size index", which only makes sense if an index is
-/// being kept.
+/// Saves the last measured storage breakdown between launches.
 public struct BreakdownCache: Codable, Sendable {
-    public var volume: VolumeInfo
     public var breakdown: StorageBreakdown
     public var measuredAt: Date
 
-    public init(volume: VolumeInfo, breakdown: StorageBreakdown, measuredAt: Date) {
-        self.volume = volume
+    public init(breakdown: StorageBreakdown, measuredAt: Date) {
         self.breakdown = breakdown
         self.measuredAt = measuredAt
     }

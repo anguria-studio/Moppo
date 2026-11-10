@@ -149,10 +149,10 @@ final class DashboardModel {
                 }
                 let cached = await DashboardDiagnostics.phase("cache_read") { await persistence.loadCache() }
                 if breakdown == nil, !isLoadingBreakdown, let cached {
-                    if volume == nil { volume = cached.volume }
                     breakdown = cached.breakdown
                     measuredAt = cached.measuredAt
                 }
+                await refreshVolumeInfo(notifyLowSpace: false)
                 await refreshSnapshots()
                 let revision = historyRevision
                 await DashboardDiagnostics.phase("history_clear_wait") { await historyClearTask?.value }
@@ -167,8 +167,6 @@ final class DashboardModel {
                 }
                 if canMeasure(true) {
                     await DashboardDiagnostics.phase("launch_measurement_wait") { await measureStorage(trigger: .launch) }
-                } else {
-                    await refreshVolumeInfo(notifyLowSpace: false)
                 }
             }
         }
@@ -333,9 +331,9 @@ final class DashboardModel {
             diagnostics.record("display_reconciliation", details: details)
         }
         measuredAt = now()
-        if let volume, let breakdown, let measuredAt {
+        if let breakdown, let measuredAt {
             await DashboardDiagnostics.phase("cache_write") {
-                await persistence.saveCache(BreakdownCache(volume: volume, breakdown: breakdown, measuredAt: measuredAt))
+                await persistence.saveCache(BreakdownCache(breakdown: breakdown, measuredAt: measuredAt))
             }
         }
         await DashboardDiagnostics.phase("history_clear_wait") { await historyClearTask?.value }
