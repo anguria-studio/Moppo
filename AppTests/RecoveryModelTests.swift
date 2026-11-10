@@ -296,11 +296,19 @@ struct RecoveryModelTests {
         #expect(await trash.emptyRequests == 0)
     }
 
-    @Test("Empty Trash keeps its guard through refreshed reads and reports survivors")
-    func emptyLifetime() async throws {
+    @Test("Empty Trash updates free space before list reads and keeps its guard", arguments: [0, 1])
+    func emptyLifetime(skipped: Int) async throws {
         let trash = HeldRecoveryTrash(holdReads: true)
         let history = HeldRecoveryHistory()
-        let app = AppModel(launchAccess: .limited, hasFullDiskAccess: { false }, trashService: trash, historyReader: history)
+        let service = HeldDashboardMeasurements(holdVolume: true)
+        let app = AppModel(
+            launchAccess: .limited, hasFullDiskAccess: { false }, trashService: trash, historyReader: history,
+            dashboardService: service, dashboardPersistence: HeldDashboardPersistence()
+        )
+        let initial = Task { await app.dashboard.refreshVolumeInfo() }
+        try await waitUntil { await service.volumeCount == 1 }
+        await service.finishVolume(0, dashboardVolume(free: 100))
+        await initial.value
         app.recovery.trashSummary = TrashSummary(totalBytes: 128, itemCount: 2)
         app.activeSheet = .emptyTrash
         let caller = Task { await app.recovery.emptyTrash() }
@@ -310,19 +318,31 @@ struct RecoveryModelTests {
         #expect(app.activity == .emptyingTrash(itemCount: 2, totalBytes: 128))
         await app.recovery.emptyTrash()
         #expect(await trash.emptyRequests == 1)
-        await trash.finishEmpty(freed: 64, skipped: 1)
+        await trash.finishEmpty(freed: 64, skipped: skipped)
+        try await waitUntil { await service.volumeCount == 2 }
+        #expect(await trash.readLimits.isEmpty)
+        #expect(await history.readCount == 0)
+        #expect(app.isBusyWithDisk)
+        await service.finishVolume(1, dashboardVolume(free: 300))
         try await waitUntil { await trash.readLimits.count == 1 }
+        #expect(app.dashboard.volume?.freeBytes == 300)
         #expect(app.isBusyWithDisk)
-        await trash.finishRead(0, TrashSummary(totalBytes: 64, itemCount: 1, items: [recoveryItem("Survivor")]))
+        await trash.finishRead(0, TrashSummary(
+            totalBytes: Int64(skipped * 64), itemCount: skipped,
+            items: skipped == 0 ? [] : [recoveryItem("Survivor")]
+        ))
         try await waitUntil { await history.readCount == 1 }
+        #expect(app.dashboard.volume?.freeBytes == 300)
         #expect(app.isBusyWithDisk)
-        await history.finish(0, CleanupHistorySummary(removedCount: 1, failedCount: 1))
+        await history.finish(0, CleanupHistorySummary(removedCount: 2 - skipped, failedCount: skipped))
         await caller.value
-        #expect(app.removalCompletion?.title == "Some items remain in Trash")
-        #expect(app.removalCompletion?.isSuccess == false)
-        #expect(app.removalCompletion?.finderURLs == [recoveryItem("Survivor-0").url])
-        #expect(app.recovery.trashSummary?.itemCount == 1)
-        #expect(app.recovery.cleanupHistory?.failedCount == 1)
+        #expect(app.removalCompletion?.title == (skipped == 0 ? "Trash emptied" : "Some items remain in Trash"))
+        #expect(app.removalCompletion?.isSuccess == (skipped == 0))
+        #expect(app.removalCompletion?.finderURLs == (skipped == 0 ? [] : [recoveryItem("Survivor-0").url]))
+        #expect(app.recovery.trashSummary?.itemCount == skipped)
+        #expect(app.recovery.cleanupHistory?.failedCount == skipped)
+        #expect(await service.volumeCount == 2)
+        #expect(await service.measurementCount == 0)
         #expect(await trash.cancelled == [false])
         #expect(!app.isBusyWithDisk)
     }

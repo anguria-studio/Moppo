@@ -141,6 +141,7 @@ final class AppModel {
             await observeLowDiskSpace(volume, settings.warnBelowGB)
         }
         recovery.onEvent = { [weak self] event in self?.handleRecoveryEvent(event) }
+        recovery.refreshVolume = { [weak self] in await self?.dashboard.refreshVolumeInfo() }
         recovery.refreshAfterMutation = { [weak self] mutation in
             guard let self else { return }
             switch mutation {

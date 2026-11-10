@@ -26,6 +26,7 @@ final class RecoveryModel {
     @ObservationIgnored private var historyLoadID: UUID?
     @ObservationIgnored private var pendingTrashReveal: CleanupHistoryItem?
     @ObservationIgnored var onEvent: (Event) -> Void = { _ in }
+    @ObservationIgnored var refreshVolume: () async -> Void = {}
     @ObservationIgnored var refreshAfterMutation: (Mutation) async -> Void = { _ in }
 
     init(
@@ -153,6 +154,7 @@ final class RecoveryModel {
             presentation.extend(toShow: .deletion(bytes: bytes))
             do {
                 let result = try await trashService.empty()
+                await refreshVolume()
                 try? await presentation.wait()
                 onEvent(.emptiedTrash(freedBytes: result.freedBytes, skippedURLs: result.skippedURLs))
             } catch {
