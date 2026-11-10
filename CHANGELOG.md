@@ -4,6 +4,12 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+### Dashboard
+
+- Remove low-space and Trash banners.
+- Remove warning colors from the free-space total and the nearly full warning icon from iCloud.
+- Move the shared-storage explanation to a tooltip on the used-space total.
+
 ### Cleanup
 
 - Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.

@@ -125,13 +125,6 @@ struct ICloudCard: View {
                     .help("Your plan size is estimated. Set the correct plan in Preferences.")
             }
 
-            if storage.isNearlyFull {
-                Image(systemName: "exclamationmark.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Token.textColor(.orange))
-                    .help("iCloud storage is nearly full.")
-            }
-
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.right")
