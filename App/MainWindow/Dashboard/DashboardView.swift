@@ -22,26 +22,18 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: Token.Size.pageGutter) {
-                if let volume = model.volume, model.showsSpaceWarning(warnBelowGB: warnBelowGB) {
-                    lowSpaceBanner(volume)
-                }
-
-                if let notice = model.trashNotice {
-                    trashBanner(notice)
-                }
-
                 if let volume = model.volume, model.isDashboardLoading {
                     // The totals are already known — `diskutil` answers before the
                     // category walk even starts — so only the parts the walk
                     // produces go to bones. The previous breakdown supplies the
                     // category names, which are stable; its figures are withheld:
                     // stale numbers under a pulse read as current.
-                    CapacityCard(volume: volume, breakdown: model.breakdown, isMeasuring: true, warnBelowGB: warnBelowGB)
+                    CapacityCard(volume: volume, breakdown: model.breakdown, isMeasuring: true)
                 } else if model.isDashboardLoading {
                     // Not even the totals yet: the moment before `diskutil` returns.
                     CapacityCardSkeleton()
                 } else if let volume = model.volume, let breakdown = model.breakdown {
-                    CapacityCard(volume: volume, breakdown: breakdown, warnBelowGB: warnBelowGB)
+                    CapacityCard(volume: volume, breakdown: breakdown)
                 } else {
                     unmeasuredPlaceholder
                 }
@@ -101,75 +93,6 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showsICloudSetup) {
             ICloudSetupView(model: model, access: access)
-        }
-    }
-
-    private var warnBelowGB: Int { settings?.warnBelowGB ?? SettingsStore.Defaults.warnBelowGB }
-    private var safeBytes: Int64 { scanResults?.safeToRemoveBytes ?? 0 }
-
-    private func lowSpaceBanner(_ volume: VolumeInfo) -> some View {
-        let critical = DashboardSpaceState(freeBytes: volume.freeBytes, warnBelowGB: warnBelowGB) == .critical
-        let detail: String
-        if critical {
-            detail = "Only \(ByteFormatting.string(volume.freeBytes)) left. Apps may fail to save. "
-                + (safeBytes > 0 ? "Clean safe items, then review large items." : "Review large items to make space.")
-        } else {
-            detail = "Below your \(warnBelowGB) GB threshold. "
-                + (safeBytes > 0
-                   ? "\(ByteFormatting.string(safeBytes)) is safe to move to Trash."
-                   : "Review large items to make space.")
-        }
-        return statusBanner(
-            title: critical ? "Almost out of space" : "Running low on space",
-            detail: detail,
-            symbol: "exclamationmark.triangle",
-            color: critical ? .red : .orange,
-            dismiss: critical ? nil : {
-                model.dismissLowSpaceWarning()
-            }
-        )
-    }
-
-    private func trashBanner(_ notice: DashboardModel.TrashNotice) -> some View {
-        statusBanner(
-            title: notice.bytes.map { "Moved \(ByteFormatting.string($0)) to Trash" }
-                ?? "Moved \(notice.count) \(notice.count == 1 ? "item" : "items") to Trash",
-            detail: "Emptying the Trash permanently deletes its contents and can recover space.",
-            symbol: "checkmark",
-            color: .green,
-            dismiss: { model.dismissTrashNotice(notice.id) }
-        )
-        .task(id: notice.id) {
-            do { try await Task.sleep(for: .seconds(8)) }
-            catch { return }
-            model.dismissTrashNotice(notice.id)
-        }
-    }
-
-    private func statusBanner(
-        title: String, detail: String, symbol: String, color: ColorToken,
-        dismiss: (() -> Void)?
-    ) -> some View {
-        NoticeBanner(title: title, dismiss: dismiss) {
-            Image(systemName: symbol)
-                .font(.mcControlLabel)
-                .foregroundStyle(Token.textColor(color))
-                .frame(width: 30, height: 30)
-                .background(
-                    color == .orange ? Token.Fill.warning : (color == .green ? Token.Fill.safeBadge : Token.color(.red).opacity(0.15)),
-                    in: RoundedRectangle(cornerRadius: Token.Radius.control)
-                )
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.mcControlLabel)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Token.Text.primary)
-                Text(detail)
-                    .font(.mcSubtitle)
-                    .foregroundStyle(Token.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 4)
         }
     }
 

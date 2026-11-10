@@ -410,7 +410,6 @@ final class AppModel {
 
     private func completeTrashRemoval(_ outcome: CleanupOutcome, in destination: View, extraFailures: Int = 0) {
         if outcome.removedCount > 0 { dashboard.recordCleanup() }
-        dashboard.recordTrashRemoval(outcome)
         let remaining = outcome.failed.count + extraFailures
         let success = remaining == 0 && outcome.removedCount > 0
         if !outcome.toolCommandResults.isEmpty {
@@ -851,7 +850,6 @@ final class AppModel {
                 dashboard.recordCleanup()
             }
             let skipped = skippedURLs.count
-            if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             removalCompletion = RemovalCompletion(
                 destination: .trash,
                 title: skipped == 0 ? "Trash emptied" : "Some items remain in Trash",
@@ -865,7 +863,6 @@ final class AppModel {
             activity = .restoringTrashItem(name: name)
         case .restored:
             uninstaller.invalidateDetailCache()
-            if let notice = dashboard.trashNotice { dashboard.dismissTrashNotice(notice.id) }
             fileDuplicates.invalidateResults()
             storageExplorer.invalidateCache()
             cleanup.markResultsOutdated()
@@ -931,7 +928,6 @@ final class AppModel {
             }
             if destination == .scanner {
                 if outcome.removedCount > 0 { dashboard.recordCleanup() }
-                dashboard.recordTrashRemoval(outcome)
             }
             else { completeTrashRemoval(outcome, in: destination) }
             if destination == .scanner, outcome.failed.isEmpty, outcome.removedCount > 0,

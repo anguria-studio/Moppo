@@ -24,17 +24,14 @@ struct CapacityCard: View {
     private let freeBytes: Int64
     private let breakdown: StorageBreakdown?
     private let isMeasuring: Bool
-    private let spaceState: DashboardSpaceState
 
-    init(volume: VolumeInfo, breakdown: StorageBreakdown?, isMeasuring: Bool = false,
-         warnBelowGB: Int = SettingsStore.Defaults.warnBelowGB) {
+    init(volume: VolumeInfo, breakdown: StorageBreakdown?, isMeasuring: Bool = false) {
         self.init(
             capacityBytes: volume.capacityBytes,
             usedBytes: volume.usedBytes,
             freeBytes: volume.freeBytes,
             breakdown: breakdown,
-            isMeasuring: isMeasuring,
-            warnBelowGB: warnBelowGB
+            isMeasuring: isMeasuring
         )
     }
 
@@ -45,15 +42,13 @@ struct CapacityCard: View {
         usedBytes: Int64,
         freeBytes: Int64,
         breakdown: StorageBreakdown?,
-        isMeasuring: Bool = false,
-        warnBelowGB: Int = SettingsStore.Defaults.warnBelowGB
+        isMeasuring: Bool = false
     ) {
         self.capacityBytes = capacityBytes
         self.usedBytes = usedBytes
         self.freeBytes = freeBytes
         self.breakdown = breakdown
         self.isMeasuring = isMeasuring
-        self.spaceState = DashboardSpaceState(freeBytes: freeBytes, warnBelowGB: warnBelowGB)
     }
 
     var body: some View {
@@ -64,18 +59,6 @@ struct CapacityCard: View {
                 if let breakdown, !isMeasuring {
                     CapacityBar(breakdown: breakdown)
                         .padding(.top, 16)
-
-                    if breakdown.categorySegments != nil {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Category measurements").fontWeight(.semibold)
-                            Text("Some files share storage, so the categories add up to "
-                                + "\(ByteFormatting.string(breakdown.allocationExcessBytes)) more than used space.")
-                        }
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 16)
-                    }
 
                     legend(breakdown)
                         .padding(.top, 16)
@@ -121,13 +104,12 @@ struct CapacityCard: View {
                     .font(.mcControlLabel)
                     .fontWeight(.semibold)
             }
-            .foregroundStyle(Token.color(spaceState.color))
+            .foregroundStyle(Token.Text.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .layoutPriority(1)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(ByteFormatting.string(freeBytes)) free")
-            .accessibilityValue(spaceState == .critical ? "Almost out of space" : (spaceState == .low ? "Running low on space" : "Above warning threshold"))
             .help(freeSpaceExplanation)
 
             Spacer(minLength: 12)
@@ -138,6 +120,7 @@ struct CapacityCard: View {
                 .foregroundStyle(Token.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .help("Some files share storage, so category measurements can exceed used space.")
         }
     }
 

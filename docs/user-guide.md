@@ -234,9 +234,11 @@ Storage Explorer opens folder contents or highlights a file in its containing fo
 ## Dashboard storage
 
 Dashboard shows physical Used and Free space for the volume.
+Storage totals use standard text colors. Dashboard does not show low-space or Trash banners.
 Category measurements use allocated file sizes. They can include shared storage and files that change during a scan.
 If the categories total more than the used space, the capacity bar scales them to fit.
-The category list shows the measured values and the difference.
+The category list shows the measured values.
+The used-space total has a tooltip that explains shared storage.
 
 Storage changes compares the latest measurement with an earlier one.
 **Since last cleanup** starts at the measurement before the newest cleanup.

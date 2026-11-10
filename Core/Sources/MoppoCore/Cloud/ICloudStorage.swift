@@ -63,13 +63,6 @@ public struct ICloudStorage: Sendable, Equatable, Codable {
             ICloudSegment(id: .free, bytes: freeBytes)
         ].filter { $0.bytes > 0 }
     }
-
-    public var usedFraction: Double {
-        totalBytes > 0 ? Double(usedBytes) / Double(totalBytes) : 0
-    }
-
-    /// True when the account is close enough to full to be worth flagging.
-    public var isNearlyFull: Bool { usedFraction >= 0.9 }
 }
 
 public enum ICloudSegmentID: String, Sendable, Codable, CaseIterable {
