@@ -235,12 +235,14 @@ struct SystemCachesScanTests {
         let sandbox = try Sandbox()
         try sandbox.systemApplication("Podcasts", identifier: "com.apple.podcasts")
         try sandbox.systemApplication("Passwords", identifier: "com.apple.Passwords")
+        try sandbox.systemApplication("Safari", identifier: "com.apple.Safari")
         let caches = "Data/Library/Caches"
         try sandbox.file("Library/Containers/com.apple.podcasts/\(caches)/episodes/ep1.mp3",
                          bytes: 9 * 1024 * 1024)
         try sandbox.file("Library/Containers/com.apple.podcasts/Data/Documents/library.sqlite")
         // A system application, and never offered: see `IdentityState`.
         try sandbox.file("Library/Containers/com.apple.Passwords/\(caches)/icons/a.png")
+        try sandbox.file("Library/Containers/com.apple.Safari/\(caches)/WebKit/NetworkCache/blob")
         // An agent's container. Nothing in /System/Applications answers to it.
         try sandbox.file("Library/Containers/com.apple.CalendarAgent/\(caches)/blob")
         // A third party's: the Applications scanner or Application Leftovers owns it.
@@ -263,6 +265,37 @@ struct SystemCachesScanTests {
         #expect(row.inUseBy?.name == "Podcasts")
         #expect(result.safeToRemoveBytes == 0)
         #expect(result.needsReviewBytes == row.allocatedBytes)
+    }
+
+    @Test("Safari offers only profile network caches and marks them in use while Safari runs")
+    func safariNetworkCaches() async throws {
+        let sandbox = try Sandbox()
+        let library = "Library/Containers/com.apple.Safari/Data/Library"
+        let stores = "\(library)/WebKit/WebsiteDataStore"
+        let cache = try sandbox.file("\(stores)/\(UUID())/NetworkCache/entry").deletingLastPathComponent()
+        let excluded = try sandbox.file("\(stores)/\(UUID())/NetworkCache/entry")
+        let outside = try sandbox.file("Library/Application Support/Other/NetworkCache/entry")
+        try sandbox.file("\(stores)/\(UUID())/NetworkCache")
+        try sandbox.file("\(stores)/\(UUID())/ServiceWorkers/database")
+        try sandbox.file("\(stores)/\(UUID())/LocalStorage/database")
+        try sandbox.file("\(library)/Caches/WebKit/NetworkCache/entry")
+        try FileManager.default.createSymbolicLink(
+            at: sandbox.home.appendingPathComponent("\(stores)/\(UUID())"),
+            withDestinationURL: outside.deletingLastPathComponent().deletingLastPathComponent()
+        )
+        let closed = try await sandbox.scanner().scan(context: ScanContext(excludedPaths: [excluded.path]))
+        #expect(closed.entries.map(\.url.path) == [cache.path])
+        #expect(closed.entries.first?.displayName == "Safari profile network cache")
+        #expect(closed.safeToRemoveBytes == closed.totalBytes && closed.totalBytes > 0)
+
+        let safari = FileEntry.RunningOwner(name: "Safari", bundleIdentifier: "com.apple.Safari",
+                                           bundlePath: "/Applications/Safari.app")
+        let open = try await sandbox.scanner().scan(context: ScanContext(
+            excludedPaths: [excluded.path], runningApplications: [safari]
+        ))
+        #expect(open.entries.map(\.url.path) == [cache.path])
+        #expect(open.entries.first?.inUseBy == safari)
+        #expect(open.safeToRemoveBytes == 0)
     }
 
     /// Premiere Pro and After Effects keep rendered previews and conformed audio

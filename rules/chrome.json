@@ -5,8 +5,8 @@
   "bundleIdentifiers": [
     "com.google.Chrome"
   ],
-  "note": "Nothing under `Service Worker` or `Shared Dictionary` is a row. A live registration or an in-memory index points at the removed files, and sites fail to load.",
-  "comment": "`Database` holds the registration, and the registration addresses script bodies in `ScriptCache`. A running Chrome holds the dictionary index in memory, and removal left `www.reddit.com` blank with `net::ERR_DICTIONARY_LOAD_FAILED` on 19 September 2026.",
+  "note": "Service workers and shared dictionaries stay protected because their files depend on stored registrations and indexes.",
+  "comment": "A service worker registration addresses script bodies in ScriptCache. A running Chrome can keep the shared dictionary index in memory.",
   "storage": [
     {
       "path": "~/Library/Application Support/Google/Chrome",
@@ -22,91 +22,122 @@
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/OptGuideOnDeviceModel",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "status": "Not verified. Removal and recovery checks remain open in #362."
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/OptGuideOnDeviceClassifierModel",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "status": "Not verified. Removal and recovery checks remain open in #362."
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/optimization_guide_model_store",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated profile, component recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/component_crx_cache",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Next component download. A network connection can be necessary.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated profile, component recovery and site data"
+      },
+      "note": "The component package cache can stay empty until Chrome downloads another component."
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/SODA",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated profile, component recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/SODALanguagePacks",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated profile, component recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/screen_ai",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "configured test profile, component recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/WasmTtsEngine",
-      "type": "cache",
+      "type": "download",
       "table": "curations",
       "owner": "applications",
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated profile, component recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/GrShaderCache",
@@ -116,8 +147,13 @@
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Next launch and page load. Chrome rebuilds the shader cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Chrome for Testing 139.0.7258.154",
+        "macos": "27.2",
+        "scope": "isolated profile with OpenGL"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/ShaderCache",
@@ -127,19 +163,18 @@
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Not established. Verify recovery before relying on automatic replacement.",
+      "status": "Not verified. Removal and recovery checks remain open in #362."
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/Crashpad",
-      "type": "cache",
-      "table": "curations",
-      "owner": "applications",
-      "treatment": "offer",
+      "type": "logs",
       "recognition": "Chrome layout",
-      "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "removal": "Never offer as a regenerable cache.",
+      "restore": "Old diagnostic reports do not come back.",
+      "status": "Not verified for removal. Diagnostic reports stay in the protected Chrome data row.",
+      "coverage": "protected",
+      "note": "Crashpad holds diagnostic reports. New reports do not restore old reports."
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/Default/Code Cache",
@@ -149,8 +184,13 @@
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/Default/GPUCache",
@@ -160,8 +200,13 @@
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/Profile */Code Cache",
@@ -171,8 +216,13 @@
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/Profile */GPUCache",
@@ -182,8 +232,93 @@
       "treatment": "offer",
       "recognition": "Chrome layout",
       "removal": "Trash",
-      "restore": "Next launch. Chrome rebuilds compiled script, shader caches, and on-device models.",
-      "status": "Not verified. The rule is older than the catalog. No test Mac removed the folder."
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/GraphiteDawnCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Default/DawnGraphiteCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Default/DawnWebGPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Profile */DawnGraphiteCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
+    },
+    {
+      "path": "~/Library/Application Support/Google/Chrome/Profile */DawnWebGPUCache",
+      "type": "cache",
+      "table": "curations",
+      "owner": "applications",
+      "treatment": "offer",
+      "recognition": "Chrome layout",
+      "removal": "Trash",
+      "restore": "Next launch and page load. Chrome rebuilds the cache.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 156.0.8078.80",
+        "macos": "27.2",
+        "scope": "isolated headless profiles, cache recovery and site data"
+      }
     }
   ]
 }

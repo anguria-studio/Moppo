@@ -309,7 +309,8 @@ extension ApplicationsScanner {
     /// `"table": "curations"`, or from a curated AI tool root. The caches below it are the regenerable paths.
     static let curations: [String: AppDataCuration] = [
         "com.microsoft.VSCode": AppDataCuration(root: "Library/Application Support/Code", regenerable: electronRegenerable + ["CachedData", "CachedExtensions", "CachedExtensionVSIXs", "CachedProfilesData", "CachedConfigurations"], remainderName: "Visual Studio Code settings and data"),
-        "com.google.Chrome": AppDataCuration(root: "Library/Application Support/Google/Chrome", regenerable: ["OptGuideOnDeviceModel", "OptGuideOnDeviceClassifierModel", "optimization_guide_model_store", "component_crx_cache", "SODA", "SODALanguagePacks", "screen_ai", "WasmTtsEngine", "GrShaderCache", "ShaderCache", "Crashpad", "Default/Code Cache", "Default/GPUCache", "Profile */Code Cache", "Profile */GPUCache"], remainderName: "Chrome profiles and settings"),
+        "com.google.Chrome": AppDataCuration(root: "Library/Application Support/Google/Chrome", regenerable: ["OptGuideOnDeviceModel", "OptGuideOnDeviceClassifierModel", "optimization_guide_model_store", "component_crx_cache", "SODA", "SODALanguagePacks", "screen_ai", "WasmTtsEngine", "GrShaderCache", "ShaderCache", "Default/Code Cache", "Default/GPUCache", "Profile */Code Cache", "Profile */GPUCache", "GraphiteDawnCache", "Default/DawnGraphiteCache", "Default/DawnWebGPUCache", "Profile */DawnGraphiteCache", "Profile */DawnWebGPUCache"], remainderName: "Chrome profiles and settings"),
+        "org.mozilla.firefox": AppDataCuration(root: "Library/Application Support/Firefox", regenerable: ["Profiles/*/cache2", "Profiles/*/startupCache"], remainderName: "Firefox profiles and settings"),
         "com.figma.Desktop": AppDataCuration(root: "Library/Application Support/Figma", regenerable: ["DesktopProfile/*/Cache", "DesktopProfile/*/Code Cache", "DesktopProfile/*/GPUCache", "DesktopProfile/*/Crashpad"], remainderName: "Figma settings and data"),
         "org.ferdium.ferdium-app": AppDataCuration(root: "Library/Application Support/Ferdium", regenerable: electronRegenerable + ["Partitions/*/Cache", "Partitions/*/Code Cache", "Partitions/*/GPUCache"], remainderName: "Ferdium accounts and settings"),
         "org.torproject.torbrowser": AppDataCuration(root: "Library/Application Support/TorBrowser-Data", regenerable: ["Browser/Caches"], remainderName: "Tor Browser profile and settings"),
@@ -319,6 +320,13 @@ extension ApplicationsScanner {
         "com.anysphere.sand": AppDataCuration(root: "Library/Application Support/Grok Bot", regenerable: electronRegenerable + ["Partitions/*/Cache", "Partitions/*/Code Cache", "Partitions/*/GPUCache", "Partitions/*/DawnWebGPUCache", "Partitions/*/DawnGraphiteCache", "Partitions/*/DawnCache", "v8-code-cache"], remainderName: "Grok Bot settings and data"),
         // Antigravity desktop 2.28.1 uses this identifier and support folder. The evidence does not verify its cache folders, so no path counts as regenerable.
         "com.google.antigravity": AppDataCuration(root: "Library/Application Support/Antigravity", regenerable: [], remainderName: "Antigravity settings and data")
+    ]
+}
+
+extension SystemCachesScanner {
+    static let containerCaches: [ContainerCache] = [
+        // A profile network cache is separate from cookies, local storage, offline content, and service workers.
+        ContainerCache(name: "Safari profile network cache", bundleIdentifier: "com.apple.Safari", path: "Data/Library/WebKit/WebsiteDataStore/*/NetworkCache"),
     ]
 }
 

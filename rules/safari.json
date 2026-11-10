@@ -1,0 +1,38 @@
+{
+  "id": "safari",
+  "name": "Safari",
+  "section": "application-caches",
+  "bundleIdentifiers": [
+    "com.apple.Safari"
+  ],
+  "note": "Only the named profile network caches qualify for removal inside the Safari container. Website data can contain login sessions and offline content.",
+  "storage": [
+    {
+      "path": "~/Library/Containers/com.apple.Safari",
+      "type": "userData",
+      "coverage": "no",
+      "recognition": "Safari bundle identifier and protected container prefix",
+      "removal": "Never offer through the container cache scan.",
+      "restore": "Not possible",
+      "status": "The container root and other data stay excluded."
+    },
+    {
+      "path": "~/Library/Containers/com.apple.Safari/Data/Library/WebKit/WebsiteDataStore/*/NetworkCache",
+      "type": "cache",
+      "recognition": "Safari profile data store",
+      "removal": "Trash or Delete, according to settings.",
+      "restore": "Next page load. Safari downloads cached resources again.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Safari 27.2 (22625.2.8.11.9)",
+        "macos": "27.2",
+        "scope": "new profile in current account"
+      },
+      "note": "A profile network cache is separate from cookies, local storage, offline content, and service workers.",
+      "table": "containerCaches",
+      "owner": "systemCaches",
+      "treatment": "offer",
+      "name": "Safari profile network cache"
+    }
+  ]
+}

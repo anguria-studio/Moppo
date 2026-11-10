@@ -127,6 +127,13 @@ Moppo did not classify a row without a label. Examine its contents before you re
 The removal confirmation shows the number of selected items that do not regenerate.
 If you empty the Trash, you lose the contents of these items.
 
+### Browser caches
+
+Cleanup lists named Chrome and Firefox profile caches under **Applications**.
+**System Caches & Logs** includes the separate Firefox cache folder and Safari profile network caches.
+While Safari runs, Moppo marks its network cache rows as in use.
+See the [tool catalog](tool-catalog.md#desktop-application-caches) for paths and recovery details.
+
 ### Worktrees and grouped folders
 
 Detected worktrees appear separately from grouped folders. Moppo counts each byte once.

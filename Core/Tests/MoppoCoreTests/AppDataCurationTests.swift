@@ -181,6 +181,7 @@ struct AppDataCurationTests {
             ("com.figma.Desktop", "Figma", "Figma"),
             ("org.ferdium.ferdium-app", "Ferdium", "Ferdium"),
             ("org.torproject.torbrowser", "Tor Browser", "TorBrowser-Data"),
+            ("org.mozilla.firefox", "Firefox", "Firefox"),
         ]
 
         for (bundleID, appName, supportName) in cases {
@@ -194,6 +195,57 @@ struct AppDataCurationTests {
     }
 
     // MARK: - Remainder arithmetic
+
+    @Test("Firefox offers verified caches and keeps profile data locked")
+    func firefoxProfilesStayProtected() async throws {
+        let sandbox = try Sandbox()
+        let folder = Self.support("Firefox")
+        for name in ["places.sqlite", "logins.json", "key4.db", "cookies.sqlite",
+                     "sessionstore-backups/recovery.jsonlz4", "extensions/addon.xpi",
+                     "storage/default/site/idb/data.sqlite"] {
+            try sandbox.writeFile("\(folder)/Profiles/example.default/\(name)", bytes: Self.oneMB)
+        }
+        let caches = ["Profiles/example.default/cache2", "Profiles/second.default/startupCache"]
+        for cache in caches {
+            try sandbox.writeFile("\(folder)/\(cache)/data", bytes: Self.oneMB)
+        }
+
+        let curation = try #require(ApplicationsScanner.curation(
+            bundleID: "org.mozilla.firefox", baseName: "Firefox", home: sandbox.root
+        ))
+        let data = try await Self.curated(curation, home: sandbox.root)
+
+        let offered = Set(data.entries.filter(\.isRegenerable).map(\.url))
+        #expect(offered == Set(caches.map { sandbox.root.appendingPathComponent("\(folder)/\($0)") }))
+        let remainder = try #require(Self.remainder(data))
+        #expect(remainder.isRemovalLocked)
+        #expect(remainder.displayName == "Firefox profiles and settings")
+        #expect(!remainder.isRegenerable)
+        #expect(remainder.allocatedBytes >= 7 * Int64(Self.oneMB))
+    }
+
+    @Test("Chrome offers rendering caches and keeps diagnostic reports")
+    func chromeRenderingCachesKeepReports() async throws {
+        let sandbox = try Sandbox()
+        let folder = Self.support("Google/Chrome")
+        let caches = ["GraphiteDawnCache", "Default/DawnGraphiteCache", "Default/DawnWebGPUCache",
+                      "Profile 1/DawnGraphiteCache", "Profile 2/DawnWebGPUCache"]
+        for cache in caches {
+            try sandbox.writeFile("\(folder)/\(cache)/data", bytes: Self.oneMB)
+        }
+        try sandbox.writeFile("\(folder)/Crashpad/completed/report.dmp", bytes: Self.oneMB)
+        try sandbox.writeFile("\(folder)/Default/Bookmarks", bytes: Self.oneMB)
+
+        let curation = try #require(ApplicationsScanner.curation(
+            bundleID: "com.google.Chrome", baseName: "Google Chrome", home: sandbox.root
+        ))
+        let data = try await Self.curated(curation, home: sandbox.root)
+        let offered = Set(data.entries.filter(\.isRegenerable).map(\.url))
+        #expect(offered == Set(caches.map { sandbox.root.appendingPathComponent("\(folder)/\($0)") }))
+        let remainder = try #require(Self.remainder(data))
+        #expect(remainder.isRemovalLocked)
+        #expect(remainder.allocatedBytes >= 2 * Int64(Self.oneMB))
+    }
 
     @Test("the locked remainder is the measured folder minus the curated bytes")
     func remainderIsMeasuredNotGuessed() async throws {

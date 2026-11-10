@@ -38,7 +38,7 @@ OWNERS = {
 }
 TREATMENTS = {"offer", "review", "protect"}
 TABLES = {"databaseStorage", "toolHomeFolders", "toolHomeLocations", "packageManagerCaches", "applicationDataFolders",
-          "aiToolStorage", "curations", "localModelStores", "editorExtensionStores"}
+          "aiToolStorage", "curations", "containerCaches", "localModelStores", "editorExtensionStores"}
 FORMATS = {"catalog", "aiCoverage", "bundleIdentifiers"}
 AI_COVERAGE_HEADER = "| Tool | Default paths | Removal rules | Notes |\n| --- | --- | --- | --- |"
 BUNDLE_HEADER = "| Tool | Bundle identifier |\n| --- | --- |"
@@ -152,6 +152,13 @@ def validate_tool(tool, sections, listed):
             raise RuleError(f"{name}: a curated root needs the tool's bundleIdentifiers")
         if storage.get("table") == "curations" and storage["treatment"] == "protect" and not identifiers:
             raise RuleError(f"{name}: a curation needs the tool's bundleIdentifiers")
+        if storage.get("table") == "containerCaches":
+            for path in storage_paths(storage):
+                parts = components(path)
+                if (len(parts) < 7 or parts[:3] != ["~", "Library", "Containers"]
+                        or parts[3] not in identifiers or parts[4:6] != ["Data", "Library"]
+                        or any(part in (".", "..") for part in parts)):
+                    raise RuleError(f"{name}: a container cache must be below its bundle's Data/Library folder")
 
 
 def validate_storage(name, storage, catalog=True):
@@ -208,6 +215,12 @@ def validate_storage(name, storage, catalog=True):
                 raise RuleError(f"{where}: a curation needs the name of its locked remainder")
             if treatment == "review":
                 raise RuleError(f"{where}: a curation cache is offered, not reviewed")
+        if table == "containerCaches":
+            verified = storage.get("verified")
+            if (storage["type"] != "cache" or storage["owner"] != "systemCaches"
+                    or treatment != "offer" or not storage.get("name")
+                    or not isinstance(verified, dict) or verified.get("kind", "verified") != "verified"):
+                raise RuleError(f"{where}: a container cache needs a name and verified record in System Caches")
         if table == "localModelStores":
             for path in paths:
                 if model_claim(path) is None and storage.get("claimed", True):
@@ -232,9 +245,9 @@ def validate_storage(name, storage, catalog=True):
         if storage["type"] == "userData" and treatment != "protect":
             raise RuleError(f"{where}: user data is never offered")
         if treatment != "protect":
-            # A package cache or a curation cache is offered by its path, and a model reader checks its own layout.
+            # The cache tables below use paths. Model readers check their own layouts.
             if not storage.get("identifiedBy") and not storage.get("check") \
-                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations", "localModelStores"):
+                    and table not in HOME_TABLES and table not in ("packageManagerCaches", "curations", "containerCaches", "localModelStores"):
                 raise RuleError(f"{where}: an offered path needs identifiedBy or check")
             if catalog and "verified" not in storage and not str(storage.get("status", "")).startswith("Not verified"):
                 raise RuleError(f"{where}: an offered path needs a verified record, or a status that starts with Not verified")
@@ -735,6 +748,21 @@ def render_ai_roots(sections, tools):
     return "\n".join(lines)
 
 
+def render_container_caches(sections, tools):
+    lines = []
+    for _, _, storage in rows(sections, tools):
+        if storage.get("table") != "containerCaches":
+            continue
+        for path in storage_paths(storage):
+            parts = components(path)
+            lines += swift_comment(storage)
+            lines.append(
+                f"        ContainerCache(name: {swift_string(storage['name'])}, "
+                f"bundleIdentifier: {swift_string(parts[3])}, path: {swift_string('/'.join(parts[4:]))}),"
+            )
+    return "\n".join(lines)
+
+
 def render_curations(sections, tools):
     lines = []
     all_rules = [(tool, storage, path) for _, tool, storage in rows(sections, tools) if "table" in storage
@@ -964,6 +992,12 @@ extension ApplicationsScanner {{
     /// `"table": "curations"`, or from a curated AI tool root. The caches below it are the regenerable paths.
     static let curations: [String: AppDataCuration] = [
 {render_curations(sections, tools)}
+    ]
+}}
+
+extension SystemCachesScanner {{
+    static let containerCaches: [ContainerCache] = [
+{render_container_caches(sections, tools)}
     ]
 }}
 
