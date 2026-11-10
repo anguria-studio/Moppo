@@ -205,13 +205,12 @@ struct FileTable: View {
 
     // MARK: - Rows
 
-    /// Lazy because a category can expand into hundreds of entries, and every one of
-    /// them carries a live checkbox and a hover tracker.
+    /// Measures expanded rows together so selection cannot change estimated section heights.
     private var rows: some View {
         let displayedGroups = groups
         let visible = displayedGroups.flatMap { $0.visibleEntries(expandedOwners: expandedGroups) }
         let indices = Dictionary(uniqueKeysWithValues: visible.enumerated().map { ($0.element.id, $0.offset) })
-        return LazyVStack(spacing: 0) {
+        return VStack(spacing: 0) {
             ForEach(Array(displayedGroups.enumerated()), id: \.element.id) { groupIndex, group in
                 if groupIndex > 0 { Hairline() }
                 if let owner = group.owner {
