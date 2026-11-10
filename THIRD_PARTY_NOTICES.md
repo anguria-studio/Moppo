@@ -34,10 +34,25 @@ The OpenClaw repository uses the MIT License.
 Moppo exported the OpenClaw icon from `apps/macos/Icon.icon` at commit `c2b82d6b9c5ce46a319feaffe50d4ea9ec5ab737`.
 Moppo used Icon Composer 27.2 to export the Default macOS rendition at 512 by 512 pixels.
 
-GitHub Copilot CLI shows a system symbol, not a GitHub icon.
-The [GitHub logo guidelines](https://brand.github.com/foundations/logo) do not give permission to use the Copilot icon in other products.
+The Moppo app uses a system symbol for GitHub Copilot CLI.
 
 Installed application icons take priority over the bundled fallback icons.
+
+## README tool icons
+
+The README uses the AI tool icons above, including the OpenAI logo for ChatGPT.
+Its developer tool icons come from [Devicon](https://github.com/devicons/devicon).
+The GitHub Copilot CLI icon comes from [Octicons](https://primer.style/octicons/icon/copilot-48/).
+Language icons also identify related tools.
+Generic icons identify groups without a bundled vendor icon.
+Several icons use lighter colors on dark backgrounds.
+The names and icons belong to their respective owners.
+
+Devicon uses the MIT License.
+See [the included license](docs/images/tools/DEVICON-LICENSE.txt).
+
+Octicons uses the MIT License.
+See [the included Octicons license](docs/images/tools/OCTICONS-LICENSE.txt).
 
 ## Purge
 
