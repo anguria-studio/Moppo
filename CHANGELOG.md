@@ -4,6 +4,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-10
+
+Build 58.
+
 ### Dashboard
 
 - Remove low-space and Trash banners.
@@ -12,16 +16,26 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ### Cleanup
 
-- Show **Check Now** in **All** when Docker is unavailable.
+- Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.
+- Keep the same rows in view when you select checkboxes in expanded sections.
+- Show **Check Now** in **All** when Docker is unavailable. It checks Docker without a full Cleanup scan.
+
+### Browser cleanup
+
 - Offer Firefox network and startup caches. Keep Firefox profile data protected.
 - List verified Safari profile network caches in System Caches & Logs.
 - Add Chrome rendering caches. Keep Chrome diagnostic reports out of automatic cache cleanup.
 - List the Chrome on-device AI model only in **All**. Chrome needs a large download to restore the model.
-- Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.
 
-### Trash
+### Sidebar and Trash
 
+- Read free space when Moppo opens, while Cleanup scans.
 - Update sidebar free space as soon as Trash deletion completes.
+- Show red rays during Trash emptying when the measured size is at least 15 GB. Other removals show the hourglass.
+
+### Documentation
+
+- Update the Cleanup screenshot and add tables of tested tools to the README.
 
 ## [0.7.0] - 2026-11-09
 
@@ -278,7 +292,8 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.7.0...main
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.7.1...main
+[0.7.1]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.0
 [0.6.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.6.0
 [0.5.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.5.0
