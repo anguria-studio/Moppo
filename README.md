@@ -15,6 +15,7 @@
   <a href="#your-data">Privacy</a> &middot;
   <a href="CHANGELOG.md">Changelog</a> &middot;
   <a href="#build-the-app">Build</a> &middot;
+  <a href="#tested-apps-and-tools">Tested Apps and Tools</a> &middot;
   <a href="docs/README.md">Docs</a> &middot;
   <a href="https://github.com/anguria-studio/Moppo/issues">Issues</a>
 </p>
@@ -28,7 +29,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/moppo-cleanup-dark.jpg" width="860" alt="Moppo Cleanup in dark mode on a Mac desktop, showing items selected for removal">
+  <img src="docs/images/moppo-cleanup-dark.webp" width="860" alt="Moppo Cleanup in dark mode on a yellow desktop background, showing AI tools and selected items">
 </p>
 
 **[Download Moppo for macOS](https://github.com/anguria-studio/Moppo/releases/latest/download/Moppo.dmg)**
@@ -44,10 +45,10 @@ brew install --cask anguria-studio/tap/moppo
 
 | Feature | What you can do |
 | --- | --- |
-| Dashboard | See disk usage and compare changes between saved measurements. |
 | Cleanup | Review caches, application leftovers, Xcode data, developer folders, and Git worktrees. |
-| Storage Explorer | Browse folders with a table and treemap. |
 | AI Tools | Review AI tool storage, Codex sessions, worktrees, and local models. Models in use stay protected. |
+| Dashboard | See disk usage and compare changes between saved measurements. |
+| Storage Explorer | Browse folders with a table and treemap. |
 | Duplicates | Compare file contents or find identical and similar photos. |
 | App Uninstaller | Review applications and related files. Remove Homebrew packages through Homebrew. |
 | Docker images and volumes | Review unused images and volumes and remove them through Docker. |
@@ -97,6 +98,113 @@ Read the [privacy policy](https://anguria.studio/moppo/privacy/) and [terms of u
 
 Moppo uses Swift 6, SwiftUI, and XcodeGen.
 See the [build and test guide](docs/building.md) for requirements, signing, commands, and CI checks.
+
+## Tested Apps and Tools
+
+Checks cover specific storage paths and tool versions.
+
+<table>
+  <tr>
+    <th align="left" width="180">Desktop apps</th>
+    <td width="540">
+      <a href="docs/ai-storage.md" title="ChatGPT / Codex desktop: Cache removal and application recovery"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tools/chatgpt-dark.png"><img src="docs/images/tools/chatgpt-light.png" width="32" height="32" alt="ChatGPT / Codex desktop"></picture></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Claude desktop: Cache removal and account recovery"><img src="docs/images/tools/claude.png" width="32" height="32" alt="Claude desktop"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Cursor desktop: Cache removal, uninstall, and Put Back"><img src="docs/images/tools/cursor.png" width="32" height="32" alt="Cursor desktop"></a>&nbsp;
+    </td>
+  </tr>
+  <tr>
+    <th align="left" width="180">Sessions and projects</th>
+    <td width="540">
+      <a href="docs/ai-storage.md" title="Codex CLI: Worktree removal and Put Back"><img src="docs/images/tools/codex.png" width="32" height="32" alt="Codex CLI"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Composer: Project vendor removal and package reinstall"><img src="docs/images/tools/composer.svg" width="32" height="32" alt="Composer"></a>&nbsp;
+    </td>
+  </tr>
+</table>
+
+Checks used Moppo scans with tool commands or manual Trash moves.
+
+<table>
+  <tr>
+    <th align="left" width="180">Languages and builds</th>
+    <td width="540">
+      <a href="docs/tool-catalog.md" title="Go, goenv, gopls, golangci-lint"><img src="docs/images/tools/go.svg" width="32" height="32" alt="Go, goenv, gopls, golangci-lint"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Cargo, rustup, sccache"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tools/cargo-dark.svg"><img src="docs/images/tools/cargo.svg" width="32" height="32" alt="Cargo, rustup, sccache"></picture></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Bundler, ruby-install"><img src="docs/images/tools/ruby.svg" width="32" height="32" alt="Bundler, ruby-install"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Composer"><img src="docs/images/tools/composer.svg" width="32" height="32" alt="Composer"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Maven"><img src="docs/images/tools/maven.svg" width="32" height="32" alt="Maven"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="sbt, Coursier"><img src="docs/images/tools/scala.svg" width="32" height="32" alt="sbt, Coursier"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Kotlin/Native"><img src="docs/images/tools/kotlin.svg" width="32" height="32" alt="Kotlin/Native"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="cpanm, plenv"><img src="docs/images/tools/perl.svg" width="32" height="32" alt="cpanm, plenv"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="cabal, Stack"><img src="docs/images/tools/haskell.svg" width="32" height="32" alt="cabal, Stack"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="NuGet"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tools/nuget-dark.svg"><img src="docs/images/tools/nuget.svg" width="32" height="32" alt="NuGet"></picture></a>&nbsp;
+    </td>
+  </tr>
+  <tr>
+    <th align="left" width="180">Python</th>
+    <td width="540">
+      <a href="docs/tool-catalog.md" title="pre-commit, pipx"><img src="docs/images/tools/python.svg" width="32" height="32" alt="pre-commit, pipx"></a>&nbsp;
+    </td>
+  </tr>
+  <tr>
+    <th align="left" width="180">Containers and versions</th>
+    <td width="540">
+      <a href="docs/tool-catalog.md" title="Podman"><img src="docs/images/tools/podman.svg" width="32" height="32" alt="Podman"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Lima"><img src="docs/images/tools/virtual-machine.svg" width="32" height="32" alt="Lima"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="asdf, mise"><img src="docs/images/tools/toolchains.svg" width="32" height="32" alt="asdf, mise"></a>&nbsp;
+    </td>
+  </tr>
+</table>
+
+Checks cover storage recognition, measurement, and refusal of removal.
+
+<table>
+  <tr>
+    <th align="left" width="180">AI coding tools</th>
+    <td width="540">
+      <a href="docs/ai-storage.md" title="Claude Code"><img src="docs/images/tools/claude.png" width="32" height="32" alt="Claude Code"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Cursor CLI"><img src="docs/images/tools/cursor.png" width="32" height="32" alt="Cursor CLI"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="T3 Code"><img src="docs/images/tools/t3-code.png" width="32" height="32" alt="T3 Code"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="GitHub Copilot CLI"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tools/copilot-dark.svg"><img src="docs/images/tools/copilot.svg" width="32" height="32" alt="GitHub Copilot CLI"></picture></a>&nbsp;
+      <a href="docs/ai-storage.md" title="OpenCode"><img src="docs/images/tools/opencode.png" width="32" height="32" alt="OpenCode"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Goose"><img src="docs/images/tools/goose.png" width="32" height="32" alt="Goose"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="OpenClaw"><img src="docs/images/tools/openclaw.png" width="32" height="32" alt="OpenClaw"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Kiro"><img src="docs/images/tools/kiro.png" width="32" height="32" alt="Kiro"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Devin"><img src="docs/images/tools/devin.png" width="32" height="32" alt="Devin"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Gemini CLI"><img src="docs/images/tools/gemini.png" width="32" height="32" alt="Gemini CLI"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Antigravity"><img src="docs/images/tools/antigravity.png" width="32" height="32" alt="Antigravity"></a>&nbsp;
+    </td>
+  </tr>
+  <tr>
+    <th align="left" width="180">AI desktop tools</th>
+    <td width="540">
+      <a href="docs/ai-storage.md" title="AnythingLLM"><img src="docs/images/tools/anythingllm.png" width="32" height="32" alt="AnythingLLM"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Cherry Studio"><img src="docs/images/tools/cherry-studio.png" width="32" height="32" alt="Cherry Studio"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Comfy Desktop"><img src="docs/images/tools/comfy.png" width="32" height="32" alt="Comfy Desktop"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Stability Matrix"><img src="docs/images/tools/stability-matrix.png" width="32" height="32" alt="Stability Matrix"></a>&nbsp;
+    </td>
+  </tr>
+  <tr>
+    <th align="left" width="180">Model storage</th>
+    <td width="540">
+      <a href="docs/ai-storage.md" title="Ollama"><img src="docs/images/tools/ollama.png" width="32" height="32" alt="Ollama"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="Hugging Face"><img src="docs/images/tools/hugging-face.svg" width="32" height="32" alt="Hugging Face"></a>&nbsp;
+      <a href="docs/ai-storage.md" title="LM Studio"><img src="docs/images/tools/lm-studio.png" width="32" height="32" alt="LM Studio"></a>&nbsp;
+    </td>
+  </tr>
+  <tr>
+    <th align="left" width="180">Databases</th>
+    <td width="540">
+      <a href="docs/tool-catalog.md" title="PostgreSQL, Postgres.app"><img src="docs/images/tools/postgresql.svg" width="32" height="32" alt="PostgreSQL, Postgres.app"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="MySQL"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tools/mysql-dark.svg"><img src="docs/images/tools/mysql.svg" width="32" height="32" alt="MySQL"></picture></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="MongoDB"><img src="docs/images/tools/mongodb.svg" width="32" height="32" alt="MongoDB"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="Redis"><img src="docs/images/tools/redis.svg" width="32" height="32" alt="Redis"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="DBeaver"><img src="docs/images/tools/dbeaver.svg" width="32" height="32" alt="DBeaver"></a>&nbsp;
+      <a href="docs/tool-catalog.md" title="DBngin, OpenSearch"><img src="docs/images/tools/database.svg" width="32" height="32" alt="DBngin, OpenSearch"></a>&nbsp;
+    </td>
+  </tr>
+</table>
+
+See the [AI storage rules](docs/ai-storage.md) and [developer tool storage catalog](docs/tool-catalog.md) for full coverage and limits.
 
 ## Documentation and contributing
 
