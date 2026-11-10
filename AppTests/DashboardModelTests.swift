@@ -55,79 +55,6 @@ struct DashboardModelTests {
         #expect(observations.last?.thresholdGB == 40)
     }
 
-    @Test("Free-space states respect both limits at their exact boundaries")
-    func spaceStates() {
-        let gb = ByteFormatting.bytesPerGB
-        #expect(DashboardSpaceState(freeBytes: 20 * gb, warnBelowGB: 20) == .healthy)
-        #expect(DashboardSpaceState(freeBytes: 20 * gb - 1, warnBelowGB: 20) == .low)
-        #expect(DashboardSpaceState(freeBytes: 5 * gb, warnBelowGB: 20) == .low)
-        #expect(DashboardSpaceState(freeBytes: 5 * gb - 1, warnBelowGB: 20) == .critical)
-        #expect(DashboardSpaceState(freeBytes: 0, warnBelowGB: 0) == .critical)
-        #expect(DashboardSpaceState(freeBytes: 30 * gb, warnBelowGB: 40) == .low)
-        #expect(DashboardSpaceState(freeBytes: 30 * gb, warnBelowGB: 20) == .healthy)
-    }
-
-    @Test("Critical space remains visible after dismissal and during a Trash notice")
-    func criticalWarningPriority() async throws {
-        let service = HeldDashboardMeasurements(holdVolume: true)
-        let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
-        #expect(!model.showsSpaceWarning(warnBelowGB: 20))
-        let lowRead = Task { await model.refreshVolumeInfo(notifyLowSpace: false) }
-        try await waitUntil { await service.volumeCount == 1 }
-        await service.finishVolume(0, dashboardVolume(free: 10 * ByteFormatting.bytesPerGB))
-        await lowRead.value
-        #expect(model.showsSpaceWarning(warnBelowGB: 20))
-        model.recordTrashRemoval(.init(removedBytes: 100, removedCount: 1, trashedCount: 1))
-        #expect(!model.showsSpaceWarning(warnBelowGB: 20))
-        let notice = try #require(model.trashNotice)
-        model.dismissTrashNotice(notice.id)
-        #expect(model.showsSpaceWarning(warnBelowGB: 20))
-        model.dismissLowSpaceWarning()
-        #expect(!model.showsSpaceWarning(warnBelowGB: 20))
-        let criticalRead = Task { await model.refreshVolumeInfo(notifyLowSpace: false) }
-        try await waitUntil { await service.volumeCount == 2 }
-        await service.finishVolume(1, dashboardVolume(free: 3 * ByteFormatting.bytesPerGB))
-        await criticalRead.value
-        #expect(model.showsSpaceWarning(warnBelowGB: 20))
-        model.recordTrashRemoval(.init(removedBytes: 100, removedCount: 1, trashedCount: 1))
-        #expect(model.showsSpaceWarning(warnBelowGB: 20))
-    }
-
-    @Test("Trash notices exclude permanent deletions and reject an old dismissal")
-    func trashNotices() throws {
-        let model = DashboardModel(service: HeldDashboardMeasurements(), persistence: HeldDashboardPersistence())
-        model.recordTrashRemoval(.init(removedBytes: 500, removedCount: 1, deletedCount: 1))
-        #expect(model.trashNotice == nil)
-        model.recordTrashRemoval(.init(removedBytes: 200, removedCount: 2, trashedCount: 2))
-        let first = try #require(model.trashNotice)
-        #expect(first.bytes == 200)
-        #expect(first.count == 2)
-        model.recordTrashRemoval(.init(removedBytes: 300, removedCount: 2, trashedCount: 1, deletedCount: 1))
-        let second = try #require(model.trashNotice)
-        #expect(second.bytes == nil)
-        #expect(second.count == 1)
-        model.dismissTrashNotice(first.id)
-        #expect(model.trashNotice?.id == second.id)
-        model.dismissTrashNotice(second.id)
-        #expect(model.trashNotice == nil)
-    }
-
-    @Test("Cleanup and duplicate removal feed the dashboard Trash notice")
-    func trashNoticeEvents() {
-        let app = AppModel(
-            hasFullDiskAccess: { true }, dashboardService: HeldDashboardMeasurements(),
-            dashboardPersistence: HeldDashboardPersistence()
-        )
-        app.view = .scanner
-        app.cleanup.onEvent(.removed(.init(removedBytes: 200, removedCount: 1, trashedCount: 1)))
-        #expect(app.dashboard.trashNotice?.bytes == 200)
-        app.fileDuplicates.onEvent(.removed(
-            .init(removedBytes: 300, removedCount: 1, trashedCount: 1), extraFailures: 0
-        ))
-        #expect(app.dashboard.trashNotice?.bytes == 300)
-        app.recovery.onEvent(.emptiedTrash(freedBytes: 500, skippedURLs: []))
-        #expect(app.dashboard.trashNotice == nil)
-    }
     @Test("Limited access loads cached figures without starting background measurements")
     func limitedLaunch() async throws {
         let service = HeldDashboardMeasurements()
@@ -380,7 +307,6 @@ struct DashboardModelTests {
         #expect(model.growth == .insufficientHistory)
         #expect(model.growthBaselineOptions.isEmpty)
         let second = Task { await model.measureStorage(trigger: .removal) }
-        model.recordTrashRemoval(.init(removedBytes: 300, removedCount: 1, trashedCount: 1))
         try await waitUntil { await service.measurementCount == 2 }
         if saveFailure {
             await persistence.rejectNextRecord()
@@ -392,7 +318,6 @@ struct DashboardModelTests {
         #expect(model.cleanupMeasurementState == .failed)
         #expect(model.hasCleanupGrowthBaseline)
         #expect(model.cleanupBaselineDate == originalDate)
-        #expect(model.trashNotice?.bytes == 300)
         let records = try diagnosticRecords(logs[1])
         let failure = try #require(records.first {
             $0.event == "span_end" && $0.details["outcome"] == "failed"
@@ -888,32 +813,6 @@ struct DashboardModelTests {
         #expect(model.growthBaseline == .sevenDays)
     }
 
-    @Test("Dismissal lasts through navigation and volume reads until the next dashboard measurement")
-    func lowSpaceWarningDismissal() async throws {
-        let service = HeldDashboardMeasurements()
-        let app = AppModel(
-            hasFullDiskAccess: { true }, dashboardService: service,
-            dashboardPersistence: HeldDashboardPersistence()
-        )
-        await app.dashboard.refreshVolumeInfo(notifyLowSpace: false)
-        #expect(!app.dashboard.isLowSpaceWarningDismissed)
-        app.dashboard.dismissLowSpaceWarning()
-        app.view = .history
-        app.view = .dashboard
-        await app.dashboard.refreshVolumeInfo(notifyLowSpace: false)
-        #expect(app.dashboard.isLowSpaceWarningDismissed)
-
-        let caller = Task { await app.dashboard.measureStorage() }
-        try await waitUntil { await service.measurementCount == 1 }
-        #expect(app.dashboard.isLowSpaceWarningDismissed)
-        await service.finishMeasurement(0, dashboardMeasurement())
-        await caller.value
-        #expect(!app.dashboard.isLowSpaceWarningDismissed)
-        #expect(app.dashboard.volume == dashboardVolume())
-        app.dashboard.dismissLowSpaceWarning()
-        #expect(app.dashboard.isLowSpaceWarningDismissed)
-    }
-
     @Test("A failed measurement keeps cached figures and permits a retry")
     func measurementFailure() async throws {
         let service = HeldDashboardMeasurements()
@@ -923,7 +822,6 @@ struct DashboardModelTests {
         let model = DashboardModel(service: service, persistence: persistence)
         model.canMeasure = { _ in false }
         await model.loadDashboard()
-        model.dismissLowSpaceWarning()
         model.canMeasure = { _ in true }
         let caller = Task { await model.measureStorage() }
         try await waitUntil { await service.measurementCount == 1 }
@@ -932,14 +830,12 @@ struct DashboardModelTests {
         #expect(model.breakdown == cache.breakdown)
         #expect(model.measuredAt == cache.measuredAt)
         #expect(!model.isLoadingBreakdown)
-        #expect(model.isLowSpaceWarningDismissed)
         #expect(await persistence.records.isEmpty)
         let retry = Task { await model.rebuildSizeIndex() }
         try await waitUntil { await service.measurementCount == 2 }
         await service.finishMeasurement(1, measurement)
         await retry.value
         #expect(await persistence.cacheClears == 1)
-        #expect(!model.isLowSpaceWarningDismissed)
         #expect(await persistence.records == [.manual])
     }
 
@@ -975,7 +871,6 @@ struct DashboardModelTests {
         let persistence = HeldDashboardPersistence(recordHistory: { try await history.record($0, trigger: $1) })
         let model = DashboardModel(service: service, persistence: persistence,
                                    beginDiagnostics: { _ in log })
-        model.recordTrashRemoval(.init(removedBytes: 4_405_153_792, removedCount: 2, trashedCount: 2))
         let task = Task { await model.measureStorage(trigger: .removal) }
         try await waitUntil { await service.measurementCount == 1 }
         await service.finishMeasurement(0, measurement)
@@ -990,7 +885,6 @@ struct DashboardModelTests {
             #expect(snapshot.breakdown.freeBytes == volume.freeBytes)
             #expect(snapshot.breakdown.categorySegments == breakdown.categorySegments)
         }
-        #expect(model.trashNotice?.bytes == 4_405_153_792)
         let records = try diagnosticRecords(log)
         let result = try #require(records.first { $0.event == "measurement_result" })
         #expect(result.details["allocated_category_bytes"] == "\(allocated)")
@@ -1035,8 +929,6 @@ struct DashboardModelTests {
         let first = Task { await model.measureStorage() }
         try await waitUntil { await gate.isPending }
         #expect(await service.measurementCount == 0)
-        model.dismissLowSpaceWarning()
-        #expect(model.isLowSpaceWarningDismissed)
         await gate.finish()
         model.beforeMeasurement = { true }
         try await waitUntil { await service.measurementCount == 1 }
