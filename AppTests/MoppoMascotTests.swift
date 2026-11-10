@@ -1,10 +1,43 @@
 import CoreGraphics
 import Foundation
+import MoppoCore
 import SwiftUI
 import Testing
 
-@Suite("Moppo mascot geometry")
+@Suite("Moppo mascot")
 struct MoppoMascotTests {
+    @Test("Trash emptying uses red rays at 15 GB", arguments: [
+        15 * ByteFormatting.bytesPerGB - 1,
+        15 * ByteFormatting.bytesPerGB,
+        15 * ByteFormatting.bytesPerGB + 1
+    ])
+    @MainActor
+    func trashRedRays(bytes: Int64) {
+        let activity = AppModel.Activity.emptyingTrash(itemCount: 1, totalBytes: bytes)
+        switch activity.progressIcon {
+        case .mascot(.destroying):
+            #expect(bytes >= 15 * ByteFormatting.bytesPerGB)
+        case .hourglass:
+            #expect(bytes < 15 * ByteFormatting.bytesPerGB)
+        default:
+            Issue.record("Trash emptying must use red rays or the hourglass.")
+        }
+    }
+
+    @Test("Other removal actions use the hourglass", arguments: [
+        AppModel.Activity.cleaningUp(itemCount: 1, totalBytes: .max),
+        .removingDuplicateFiles(itemCount: 1, totalBytes: .max),
+        .removingStorageItems(itemCount: 1, totalBytes: .max),
+        .uninstalling(applicationName: "Test", applicationOnly: false, waitingToQuit: false)
+    ])
+    @MainActor
+    func removalHourglass(activity: AppModel.Activity) {
+        guard case .hourglass = activity.progressIcon else {
+            Issue.record("Removal outside Trash emptying must use the hourglass.")
+            return
+        }
+    }
+
     @Test("The bundled poses load with matching points")
     func posesMatch() throws {
         let geometry = try #require(MoppoMascotGeometry.shared)

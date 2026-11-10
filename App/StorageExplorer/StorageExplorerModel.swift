@@ -246,7 +246,7 @@ final class StorageExplorerModel {
         _ items: [StorageExplorerItem], from directory: URL,
         preferences: Preferences, generation: Int
     ) async -> Bool {
-        var presentation = OperationPresentationDuration()
+        let presentation = OperationPresentationDuration()
         let review: StorageExplorerSelectionReview
         do {
             review = try await service.reviewSelection(
@@ -292,7 +292,6 @@ final class StorageExplorerModel {
             .trash(itemCount: review.items.count, totalBytes: bytes), using: confirmRemoval
         ) else { return false }
         onEvent(.removalStarted(count: review.items.count, bytes: bytes))
-        presentation.extend(toShow: .deletion(bytes: bytes))
         do {
             let outcome = try await removalService.remove(
                 review.items, from: directory, keepReceipt: preferences.keepReceipt

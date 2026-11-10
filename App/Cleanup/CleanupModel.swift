@@ -877,7 +877,7 @@ final class CleanupModel {
 
     private func execute(_ capturedPlan: CleanupPlan, quittingOwners: Bool) async -> Bool {
         var plan = capturedPlan
-        var presentation = OperationPresentationDuration()
+        let presentation = OperationPresentationDuration()
         var skippedWorktrees: Set<String> = []
         let worktrees = plan.entries.flatMap(Self.plannedTargets).filter { $0.gitWorktreeReview?.isSafeToRemove == true }
         var currentReviews: [URL: GitWorktreeReview] = [:]
@@ -925,7 +925,6 @@ final class CleanupModel {
             }
         }
         onEvent(.removalStarted(count: plan.itemCount, bytes: plan.totalBytes))
-        presentation.extend(toShow: .deletion(bytes: plan.totalBytes))
         let entries = plan.entries
         let runID = UUID()
         if !entries.isEmpty {
