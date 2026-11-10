@@ -195,7 +195,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var inUseBy: RunningOwner?
     public var xcodeBuildCacheReview: XcodeBuildCache.Review?
 
-    /// Keeps a regenerable item in Needs Review.
+    /// Keeps a regenerable item outside Safe to Remove.
     public var requiresRemovalReview: Bool
 
     /// Explains a removal or recovery condition.
