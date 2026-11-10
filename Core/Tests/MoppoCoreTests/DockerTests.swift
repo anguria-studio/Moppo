@@ -76,9 +76,9 @@ struct DockerTests {
         let reason: String
         switch error {
         case .timedOut:
-            reason = "Docker did not finish the scan in time. Try scanning again."
+            reason = "The Docker engine did not respond in time. Before you scan again, check the engine status in Docker Desktop."
         case .failed(_, _, let stderr) where stderr.contains("Cannot connect"):
-            reason = "Start Docker Desktop, then scan again to see results."
+            reason = "Moppo cannot connect to the Docker engine. Before you scan again, check the engine status in Docker Desktop."
         default:
             reason = "Docker could not read its storage information. Try scanning again."
         }

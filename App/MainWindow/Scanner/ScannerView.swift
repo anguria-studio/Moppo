@@ -321,13 +321,21 @@ struct ScannerView: View {
     @ViewBuilder
     private func categorySection(_ category: ScanCategoryResult) -> some View {
         let isExpanded = model.openCategories.contains(category.categoryID)
+        let showsCheck = category.categoryID == .docker && model.showsDockerCheck
+        let isCheckingDocker = showsCheck && model.isCheckingDocker
 
         VStack(spacing: 0) {
             CategoryRow(
                 result: category,
                 isExpanded: isExpanded,
                 selectedBytes: model.selectedBytes(in: category.categoryID, filter: model.scanFilter),
-                onToggle: { toggle(category) }
+                onToggle: { toggle(category) },
+                isChecking: isCheckingDocker,
+                isCheckDisabled: showsCheck && (isCheckingDocker ? model.isInterruptingScan : !model.canCheckDocker),
+                onCheck: showsCheck ? {
+                    if isCheckingDocker { model.cancelScan() }
+                    else { model.startDockerScan() }
+                } : nil
             )
 
             if isExpanded, !category.entries.isEmpty {

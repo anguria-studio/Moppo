@@ -789,13 +789,14 @@ struct CleanupModelTests {
 
     enum WorktreeChange: CaseIterable { case unchanged, localChanges, inUse, unavailable, mergeLost }
 
-    @Test("Docker setup remains visible across filters only for an installed application", arguments: CleanupModel.ScanFilter.allCases)
+    @Test("Unavailable Docker appears only in All", arguments: CleanupModel.ScanFilter.allCases)
     func dockerCategoryVisibility(filter: CleanupModel.ScanFilter) {
         let cleanup = CleanupModel(operations: OperationCoordinator())
         cleanup.scanFilter = filter
-        let prompt = ScanCategoryResult.unavailable(.docker, reason: "Start Docker Desktop, then scan again to see results.")
+        let prompt = ScanCategoryResult.unavailable(.docker,
+            reason: "Moppo cannot connect to the Docker engine. Before you scan again, check the engine status in Docker Desktop.")
         cleanup.scanResults = ScanResults(categories: [prompt], startedAt: .now, finishedAt: .now)
-        #expect(cleanup.visibleCategories == [prompt])
+        #expect(cleanup.visibleCategories == (filter == .all ? [prompt] : []))
         #expect(cleanup.scanResults?.safeToRemoveBytes == 0)
         #expect(cleanup.scannerSelection.isEmpty)
         cleanup.scanResults?.categories = [ScanCategoryResult(categoryID: .docker, availability: .notInstalled)]

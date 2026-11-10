@@ -36,7 +36,7 @@ public struct DockerScanner: CategoryScanner {
     // MARK: - User-facing copy
 
     static let connectionReason =
-        "Start Docker Desktop, then scan again to see results."
+        "Moppo cannot connect to the Docker engine. Before you scan again, check the engine status in Docker Desktop."
 
     static let setupReason =
         "Open Docker Desktop to finish setup, then scan again."
@@ -126,7 +126,7 @@ public struct DockerScanner: CategoryScanner {
         case .executableMissing:
             return setupReason
         case .timedOut:
-            return "Docker did not finish the scan in time. Try scanning again."
+            return "The Docker engine did not respond in time. Before you scan again, check the engine status in Docker Desktop."
         case .failed:
             if DockerService.isConnectionFailure(error) { return connectionReason }
             return "Docker could not read its storage information. Try scanning again."

@@ -76,6 +76,9 @@ Select **Continue** to use the existing results until another relevant change.
 Moppo clears earlier removal selections and protected-data approvals when results become outdated.
 Removal safety checks still run before Moppo removes items.
 
+When Docker is unavailable, select **Check Now** in **All** to scan Docker storage.
+Select **Stop** to stop the check and keep the previous results.
+
 Scheduled scans are off by default. Saved schedules stay in use.
 To set a schedule, use **Settings > General > Scanning > Scan automatically**.
 

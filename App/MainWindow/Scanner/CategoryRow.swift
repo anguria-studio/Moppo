@@ -7,6 +7,9 @@ struct CategoryRow: View {
     let isExpanded: Bool
     let selectedBytes: Int64
     let onToggle: () -> Void
+    var isChecking = false
+    var isCheckDisabled = false
+    var onCheck: (() -> Void)? = nil
 
     private var category: CategoryID { result.categoryID }
 
@@ -15,18 +18,22 @@ struct CategoryRow: View {
     }
 
     var body: some View {
-        if isActionable {
-            Button(action: onToggle) { rowContent }
-                .buttonStyle(.plain)
-                .hoverHighlight(fill: Token.Fill.cleanupHeaderHover, restingFill: Token.Fill.groupHeader)
-                .accessibilityLabel(accessibilityDescription)
-                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
-        } else {
-            rowContent
-                .background(Token.Fill.groupHeader, in: Rectangle())
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(accessibilityDescription)
+        Group {
+            if isActionable {
+                Button(action: onToggle) { rowContent }
+                    .buttonStyle(.plain)
+                    .hoverHighlight(fill: Token.Fill.cleanupHeaderHover, restingFill: Token.Fill.groupHeader)
+                    .accessibilityLabel(accessibilityDescription)
+                    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            } else if onCheck == nil {
+                rowContent
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(accessibilityDescription)
+            } else {
+                rowContent
+            }
         }
+        .background(Token.Fill.groupHeader, in: Rectangle())
     }
 
     private var rowContent: some View {
@@ -38,6 +45,7 @@ struct CategoryRow: View {
                 .opacity(isActionable ? 1 : 0)
                 .frame(width: 11)
                 .animation(.easeOut(duration: 0.18), value: isExpanded)
+                .accessibilityHidden(true)
             Image(systemName: iconStyle.symbol)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Token.color(iconStyle.color))
@@ -51,10 +59,24 @@ struct CategoryRow: View {
                 Text(detail)
                     .font(.mcSubtitle)
                     .foregroundStyle(Token.Text.secondary)
-                    .lineLimit(2)
+                    .lineLimit(onCheck != nil && !isActionable ? 3 : 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .help(category.subtitle)
+            .accessibilityElement(children: .combine)
+            if let onCheck, !isActionable {
+                HStack(spacing: 8) {
+                    if isChecking {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .accessibilityHidden(true)
+                    }
+                    Button(isChecking ? "Stop" : "Check Now", action: onCheck)
+                        .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
+                        .disabled(isCheckDisabled)
+                        .accessibilityLabel(isChecking ? "Stop Docker scan" : "Check Now")
+                }
+            }
             VStack(alignment: .trailing, spacing: 4) {
                 Text(totalDisplay)
                     .font(.mcRowTitle.monospacedDigit())
@@ -76,6 +98,7 @@ struct CategoryRow: View {
     }
 
     private var detail: String {
+        if isChecking { return isCheckDisabled ? "Stopping the Docker scan…" : "Checking Docker storage…" }
         if case .unavailable(let reason) = result.availability { return reason }
         let count = result.entries.count
         let worktrees = result.entries.reduce(0) { $0 + $1.worktreeCount }
@@ -150,7 +173,7 @@ struct CategoryRow: View {
         // Dimmed, and the reason takes over the subtitle.
         (ScanCategoryResult.unavailable(
             .docker,
-            reason: "Start Docker Desktop, then scan again to see results."
+            reason: "Moppo cannot connect to the Docker engine. Before you scan again, check the engine status in Docker Desktop."
         ), 0)
     ]
 
@@ -162,7 +185,8 @@ struct CategoryRow: View {
                     result: row.0,
                     isExpanded: index == 0,
                     selectedBytes: row.1,
-                    onToggle: {}
+                    onToggle: {},
+                    onCheck: row.0.categoryID == .docker ? {} : nil
                 )
             }
         }
