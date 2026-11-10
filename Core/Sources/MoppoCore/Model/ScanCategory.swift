@@ -224,7 +224,7 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
     /// Checks whether the row itself is safe to remove.
     /// Running applications keep their rows outside Safe to Remove and automatic selection.
     private func countsAsSafe(_ entry: FileEntry) -> Bool {
-        guard entry.inUseBy == nil, !entry.isRemovalLocked else { return false }
+        guard entry.inUseBy == nil, !entry.isRemovalLocked, !entry.requiresRemovalReview else { return false }
         guard entry.children.filter(\.isGitWorktree).allSatisfy(\.regeneratesSafely) else { return false }
         if entry.isGitWorktree { return entry.regeneratesSafely }
         return categoryID.isSafe && entry.isRegenerable

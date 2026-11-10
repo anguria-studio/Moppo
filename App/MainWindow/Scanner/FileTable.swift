@@ -879,6 +879,8 @@ private struct ChildRow: View {
                         Badge(text: "\(owner.name) is open").fixedSize()
                     } else if entry.protectionReason == .running {
                         Badge(text: "in use").fixedSize()
+                    } else if entry.requiresRemovalReview {
+                        Badge(text: "review", style: .review).fixedSize()
                     } else if entry.isRegenerable {
                         // The badge follows the same safety rules as the filter.
                         if showsSafeToRemoveBadges && entry.regeneratesSafely {
@@ -891,11 +893,12 @@ private struct ChildRow: View {
                         Badge(text: caveat).fixedSize()
                     }
                 }
-                if entry.xcodeBuildCacheReview == nil, !presentation.summary.isEmpty {
-                    Text(presentation.summary)
+                let summary = entry.requiresRemovalReview ? (entry.safetyCaveat ?? presentation.summary) : presentation.summary
+                if entry.xcodeBuildCacheReview == nil, !summary.isEmpty {
+                    Text(summary)
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
-                        .lineLimit(1)
+                        .lineLimit(entry.requiresRemovalReview ? 2 : 1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

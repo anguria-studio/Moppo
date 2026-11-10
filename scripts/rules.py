@@ -213,8 +213,8 @@ def validate_storage(name, storage, catalog=True):
         if table == "curations":
             if treatment == "protect" and not storage.get("name"):
                 raise RuleError(f"{where}: a curation needs the name of its locked remainder")
-            if treatment == "review":
-                raise RuleError(f"{where}: a curation cache is offered, not reviewed")
+            if treatment == "review" and (not isinstance(storage.get("caveat"), str) or not storage["caveat"].strip()):
+                raise RuleError(f"{where}: a curation that needs review needs a caveat")
         if table == "containerCaches":
             verified = storage.get("verified")
             if (storage["type"] != "cache" or storage["owner"] != "systemCaches"
@@ -774,18 +774,27 @@ def render_curations(sections, tools):
             continue
         _, relative = swift_base(path)
         caches = []
+        review_caveats = {}
         for _, cache, cache_path in all_rules:
-            if cache["table"] == "curations" and cache["treatment"] == "offer" and covers(path, cache_path) and cache_path != path:
+            if cache["table"] == "curations" and cache["treatment"] != "protect" and covers(path, cache_path) and cache_path != path:
                 _, cache_relative = swift_base(cache_path)
-                caches.append(cache_relative[len(relative) + 1:])
+                subpath = cache_relative[len(relative) + 1:]
+                if cache["treatment"] == "review":
+                    review_caveats[subpath] = cache["caveat"]
+                else:
+                    caches.append(subpath)
         regenerable = swift_list(caches)
         if storage.get("electronCaches"):
             regenerable = "electronRegenerable + " + regenerable if caches else "electronRegenerable"
         remainder = storage["remainderName"] if storage["table"] == "aiToolStorage" else storage["name"]
         if storage["table"] == "curations":
             lines += swift_comment(storage)
+        review = ""
+        if review_caveats:
+            pairs = ", ".join(f"{swift_string(key)}: {swift_string(value)}" for key, value in review_caveats.items())
+            review = f", reviewCaveats: [{pairs}]"
         lines.append(f"        {swift_string(tool['bundleIdentifiers'][0])}: AppDataCuration(root: {swift_string(relative)}, "
-                     f"regenerable: {regenerable}, remainderName: {swift_string(remainder)}),")
+                     f"regenerable: {regenerable}, remainderName: {swift_string(remainder)}{review}),")
     if lines:
         lines[-1] = lines[-1].rstrip(",")
     return "\n".join(lines)

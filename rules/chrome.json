@@ -25,11 +25,17 @@
       "type": "download",
       "table": "curations",
       "owner": "applications",
-      "treatment": "offer",
+      "treatment": "review",
+      "caveat": "Chrome needs a large download to restore on-device AI.",
       "recognition": "Chrome layout",
-      "removal": "Trash",
-      "restore": "Chrome downloads components when needed. Recovery can require a network connection.",
-      "status": "Not verified. Removal and recovery checks remain open in #362."
+      "removal": "Trash after review",
+      "restore": "Next use of an on-device AI feature. Recovery can require a model download.",
+      "verified": {
+        "date": "2026-11-10",
+        "tool": "Google Chrome 157.0.8103.40",
+        "macos": "27.2",
+        "scope": "isolated profile, prompt and site data"
+      }
     },
     {
       "path": "~/Library/Application Support/Google/Chrome/OptGuideOnDeviceClassifierModel",
