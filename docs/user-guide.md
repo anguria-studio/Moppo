@@ -91,7 +91,8 @@ The menu shows types found in the current **All** or **Safe to Remove** view.
 Choosing a specific type opens matching categories and AI tool groups.
 Each type includes its item count and size.
 **Select All** selects eligible items in the filtered view.
-Changing filters keeps earlier selections. A notice identifies selected items outside the current view.
+Changing tabs or type filters keeps earlier selections and the removal total.
+A notice identifies selected items outside the current view.
 Removal includes all selected items.
 
 ### Small items

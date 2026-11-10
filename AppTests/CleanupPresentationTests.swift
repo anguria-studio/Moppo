@@ -30,7 +30,7 @@ struct CleanupPresentationTests {
         model.recovery.trashSummary = TrashSummary(totalBytes: 64, itemCount: 1, items: [recoveryItem("Saved")])
         let destination: AppModel.View = emptyTrash ? .trash : .scanner
         model.view = destination
-        if !emptyTrash { model.cleanup.requestCleanUp(in: .all) }
+        if !emptyTrash { model.cleanup.requestCleanUp() }
         let caller = Task {
             if emptyTrash { await model.recovery.emptyTrash() }
             else { await model.cleanup.performCleanUp() }
@@ -77,7 +77,7 @@ struct CleanupPresentationTests {
         #expect(model.operations.blockedAction?.operation == operation)
         #expect(await trash.restorations.isEmpty)
         model.cleanup.startScan()
-        model.cleanup.requestCleanUp(in: .all)
+        model.cleanup.requestCleanUp()
         #expect(await scanner.requestCount == 0)
         #expect(model.cleanup.pendingCleanUp == nil)
         #expect(!model.canEmptyTrash)

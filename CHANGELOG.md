@@ -10,6 +10,10 @@ Changes that affect Moppo users appear here, with the newest release first.
 - Remove warning colors from the free-space total and the nearly full warning icon from iCloud.
 - Move the shared-storage explanation to a tooltip on the used-space total.
 
+### Cleanup
+
+- Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.
+
 ## [0.7.0] - 2026-11-09
 
 Build 57.

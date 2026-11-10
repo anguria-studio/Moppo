@@ -354,7 +354,7 @@ struct MainWindow: View {
         guard !model.isBusyWithDisk else { return false }
         switch model.view {
         case .scanner:         return !model.cleanup.showsOutdatedResultsNotice
-            && !model.cleanup.cleanupSelection(in: model.cleanup.scanFilter).isEmpty
+            && !model.cleanup.cleanupSelection.isEmpty
         case .duplicates:      return model.duplicateKind == .files
             ? !model.fileDuplicates.selection.isEmpty && !model.fileDuplicates.isScanning
             : model.photoDuplicates.canAccessPhotos && !model.photoDuplicates.selection.isEmpty && !model.photoDuplicates.isRegrouping
@@ -371,7 +371,7 @@ struct MainWindow: View {
 
     private func removeTapped() {
         switch model.view {
-        case .scanner: model.cleanup.requestCleanUp(in: model.cleanup.scanFilter)
+        case .scanner: model.cleanup.requestCleanUp()
         case .duplicates:
             if model.duplicateKind == .files {
                 Task { await model.fileDuplicates.removeSelected() }
@@ -411,8 +411,8 @@ struct MainWindow: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.removeLabel)
         .help(model.view == .scanner
               ? model.cleanup.hasSelectedPermanentItems
-                ? "Some selected items in this view cannot go to the Trash. Their tools remove them permanently. Other selected items move to the Trash."
-                : "Moves selected items in this view to the Trash."
+                ? "Some selected items cannot go to the Trash. Their tools remove them permanently. Other selected items move to the Trash."
+                : "Moves selected items to the Trash."
               : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
                 ? "Checks each selected application before uninstall."
                 : model.removeLabel)

@@ -14,7 +14,7 @@ struct CleanupModelTests {
         let cleanup = CleanupModel(operations: OperationCoordinator(), remover: remover)
         cleanup.scanResults = cleanupResults([entry])
         cleanup.scannerSelection = [entry.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
         try await waitUntil { await remover.isPending }
         var result = ToolCommandRemovalResult(targetID: entry.id, name: entry.displayName,
@@ -64,7 +64,7 @@ struct CleanupModelTests {
             isAdministratorRetryEligible: { _ in true }, preferences: { .init(excludedPaths: excludedPaths) })
         model.scanResults = cleanupResults([item, other])
         model.scannerSelection = [item.id, other.id]
-        model.requestCleanUp(in: .all)
+        model.requestCleanUp()
         let first = Task { await model.performCleanUp() }
         try await waitUntil { await remover.isPending }
         await remover.finish(CleanupOutcome(removedBytes: 10, removedCount: 1, failed: [item.id],
@@ -117,7 +117,7 @@ struct CleanupModelTests {
         #expect(cleanup.scanResults?.totalBytes == sibling.allocatedBytes)
         cleanup.selectAllInCurrentView()
         cleanup.seedSafeToRemoveSelection()
-        #expect(cleanup.cleanupSelection(in: .safeToRemove) == [sibling.id])
+        #expect(cleanup.cleanupSelection == [sibling.id])
 
         let restored = SettingsStore(defaults: defaults, managesLoginItem: false)
         let rule = try #require(restored.exclusions.first { $0.value == item.id })
@@ -160,7 +160,7 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection.isEmpty)
         #expect(settings.excludedPaths == [child.id])
         cleanup.selectAllInCurrentView()
-        #expect(cleanup.cleanupSelection(in: .safeToRemove) == [sibling.id])
+        #expect(cleanup.cleanupSelection == [sibling.id])
     }
 
     @Test("Model group exclusions save each manifest without saving blob or store paths")
@@ -223,7 +223,7 @@ struct CleanupModelTests {
         let entry = cleanupEntry("keep")
         cleanup.scanResults = cleanupResults([entry])
         cleanup.scannerSelection = [entry.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         cleanup.neverOfferAgain(entry)
         #expect(fixture.settings.excludedPaths.isEmpty)
         #expect(cleanup.pendingCleanUp?.entries == [entry])
@@ -255,7 +255,7 @@ struct CleanupModelTests {
             })
         cleanup.scanResults = cleanupResults(entries)
         cleanup.scannerSelection = Set(entries.map(\.id))
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(!cleanup.isRemoving)
         #expect(cleanup.pendingCleanUp?.nextToolCommand?.id == entries[0].id)
         await cleanup.performCleanUp()
@@ -269,7 +269,7 @@ struct CleanupModelTests {
         #expect(cleanup.pendingCleanUp == nil)
         #expect(await remover.requestCount == 0)
 
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(cleanup.pendingCleanUp?.confirmedToolCommands.isEmpty == true)
         await cleanup.performCleanUp(confirmingToolCommand: entries[0].toolCommand)
         let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entries[1].toolCommand) }
@@ -295,7 +295,7 @@ struct CleanupModelTests {
         let cleanup = CleanupModel(operations: operations, remover: remover)
         cleanup.scanResults = cleanupResults([entry])
         cleanup.scannerSelection = [entry.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
         try await waitUntil { await remover.isPending }
         cleanup.cancelRemoval()
@@ -340,7 +340,7 @@ struct CleanupModelTests {
         let cleanup = CleanupModel(operations: OperationCoordinator(), remover: remover)
         cleanup.scanResults = cleanupResults([entry])
         cleanup.scannerSelection = [entry.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let task = Task { await cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
         try await waitUntil { cleanup.canCancelRemoval }
         try await Task.sleep(for: .milliseconds(20))
@@ -423,7 +423,7 @@ struct CleanupModelTests {
         app.cleanup.refreshAfterRemoval = {}
         app.cleanup.scanResults = cleanupResults([entry, worktree])
         app.cleanup.scannerSelection = [entry.id, worktree.id]
-        app.cleanup.requestCleanUp(in: .all)
+        app.cleanup.requestCleanUp()
         let task = Task { await app.cleanup.performCleanUp(confirmingToolCommand: entry.toolCommand) }
         try await waitUntil { await remover.isPending }
         var result = ToolCommandRemovalResult(targetID: entry.id, name: entry.displayName, command: command.command)
@@ -486,7 +486,7 @@ struct CleanupModelTests {
         #expect(cleanup.visibleCategories.flatMap(\.entries).map(\.id) == [photo.id])
     }
 
-    @Test("Type filters preserve selections and limit cleanup totals and plans to visible items")
+    @Test("Type filters preserve the shared selection, cleanup total, and plan")
     func dataTypeSelection() throws {
         var node = cleanupEntry("project/node_modules")
         node.kind = .cache
@@ -503,38 +503,39 @@ struct CleanupModelTests {
         cleanup.scanFilter = .all
         cleanup.scannerSelection = [project.id, otherNode.id, audio.id]
         cleanup.userDataRemovalOverrides = [project.id, audio.id]
+        let totalBytes = [project, node, python, otherNode, audio].reduce(Int64(0)) { $0 + $1.allocatedBytes }
         cleanup.dataTypeFilter = .nodeModules
         #expect(cleanup.scannerSelection == [project.id, otherNode.id, audio.id])
         #expect(cleanup.userDataRemovalOverrides == [project.id, audio.id])
         #expect(cleanup.hiddenSelectionCount == 2)
-        #expect(cleanup.cleanupSelectionBytes(in: .all) == otherNode.allocatedBytes)
+        #expect(cleanup.cleanupSelectionBytes == totalBytes)
         #expect(cleanup.selectAllStateInCurrentView == .mixed)
-        cleanup.requestCleanUp(in: .all)
-        #expect(cleanup.pendingCleanUp?.entries.map(\.id) == [otherNode.id])
-        #expect(cleanup.pendingCleanUp?.totalBytes == otherNode.allocatedBytes)
-        #expect(cleanup.pendingCleanUp?.userDataRemovalOverrides.isEmpty == true)
+        cleanup.requestCleanUp()
+        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [project.id, otherNode.id, audio.id])
+        #expect(cleanup.pendingCleanUp?.totalBytes == totalBytes)
+        #expect(cleanup.pendingCleanUp?.userDataRemovalOverrides == [project.id, audio.id])
         cleanup.cancelCleanUp()
         cleanup.dataTypeFilter = .all
         #expect(cleanup.scannerSelection == [project.id, otherNode.id, audio.id])
         #expect(cleanup.userDataRemovalOverrides == [project.id, audio.id])
-        let restoredBytes = [project, node, python, otherNode, audio].reduce(Int64(0)) { $0 + $1.allocatedBytes }
-        #expect(cleanup.cleanupSelectionBytes(in: .all) == restoredBytes)
+        #expect(cleanup.cleanupSelectionBytes == totalBytes)
         cleanup.dataTypeFilter = .nodeModules
         cleanup.selectAllInCurrentView()
         #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
         #expect(cleanup.selectAllStateInCurrentView == .on)
         #expect(cleanup.hiddenSelectionCount == 1)
         #expect(cleanup.selectedBytes(in: .systemCaches) == node.allocatedBytes + otherNode.allocatedBytes)
-        cleanup.requestCleanUp(in: .all)
-        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [node.id, otherNode.id])
+        cleanup.requestCleanUp()
+        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [node.id, otherNode.id, audio.id])
         #expect(cleanup.pendingCleanUp?.entries.first { $0.id == node.id } == node)
         cleanup.cancelCleanUp()
         cleanup.dataTypeFilter = .pythonEnvironments
         #expect(cleanup.scannerSelection == [node.id, otherNode.id, audio.id])
         #expect(cleanup.hiddenSelectionCount == 3)
-        #expect(cleanup.cleanupSelectionBytes(in: .all) == 0)
-        cleanup.requestCleanUp(in: .all)
-        #expect(cleanup.pendingCleanUp == nil)
+        #expect(cleanup.cleanupSelectionBytes == node.allocatedBytes + otherNode.allocatedBytes + audio.allocatedBytes)
+        cleanup.requestCleanUp()
+        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [node.id, otherNode.id, audio.id])
+        cleanup.cancelCleanUp()
         cleanup.selectAllInCurrentView()
         #expect(cleanup.scannerSelection == [node.id, otherNode.id, python.id, audio.id])
         cleanup.deselectAllInCurrentView()
@@ -582,8 +583,8 @@ struct CleanupModelTests {
         #expect(cleanup.hiddenSelectionCount == 0)
     }
 
-    @Test("The cleanup button follows visible selections across type and safety filters")
-    func cleanupButtonScope() {
+    @Test("The cleanup button and confirmation keep one selection across tabs and type filters")
+    func cleanupButtonScope() throws {
         var node = cleanupEntry("project/node_modules")
         node.kind = .cache
         var archive = cleanupEntry("Installer.zip")
@@ -593,33 +594,55 @@ struct CleanupModelTests {
             url: URL(string: "docker://images/fixture")!, kind: .diskImage, allocatedBytes: 200,
             docker: .image(DockerImage(imageID: "fixture", context: "fixture", tags: ["fixture:latest"], containerCount: 0))
         )
-        let app = AppModel()
+        let settings = try RemovalSettingsFixture(confirm: true)
+        let app = AppModel(settings: settings.settings)
         app.view = .scanner
         let cleanup = app.cleanup
-        cleanup.scanFilter = .all
         cleanup.scanResults = cleanupResults([node, archive, image])
-        cleanup.scannerSelection = [node.id, archive.id, image.id]
+        cleanup.seedSafeToRemoveSelection()
+        #expect(cleanup.scannerSelection == [node.id])
+        let safeLabel = "Move to Trash (\(ByteFormatting.string(node.allocatedBytes)))"
+        #expect(app.removeLabel == safeLabel)
+        cleanup.scanFilter = .all
+        #expect(cleanup.scannerSelection == [node.id])
+        #expect(app.removeLabel == safeLabel)
+        cleanup.setScannerSelection([node.id, archive.id, image.id])
+        let totalBytes = node.allocatedBytes + archive.allocatedBytes + image.allocatedBytes
+        let allLabel = "Remove (\(ByteFormatting.string(totalBytes)))"
         #expect(cleanup.hasSelectedPermanentItems)
+        #expect(app.removeLabel == allLabel)
         cleanup.dataTypeFilter = .nodeModules
-        #expect(!cleanup.hasSelectedPermanentItems)
-        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(node.allocatedBytes)))")
+        #expect(cleanup.hiddenSelectionCount == 2)
+        #expect(cleanup.hasSelectedPermanentItems)
+        #expect(app.removeLabel == allLabel)
+        cleanup.requestCleanUp()
+        let plan = try #require(cleanup.pendingCleanUp)
+        #expect(Set(plan.entries.map(\.id)) == [node.id, archive.id, image.id])
+        #expect(plan.totalBytes == totalBytes)
+        #expect(plan.dockerImageCount == 1)
+        cleanup.cancelCleanUp()
         cleanup.setScannerSelection(cleanup.scannerSelection.subtracting([node.id]))
-        #expect(cleanup.cleanupSelection(in: cleanup.scanFilter).isEmpty)
-        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
-        cleanup.requestCleanUp(in: cleanup.scanFilter)
-        #expect(cleanup.pendingCleanUp == nil)
+        #expect(cleanup.cleanupSelection == [archive.id, image.id])
         cleanup.dataTypeFilter = .all
         #expect(cleanup.scannerSelection == [archive.id, image.id])
         #expect(cleanup.hasSelectedPermanentItems)
         let remainingBytes = archive.allocatedBytes + image.allocatedBytes
         #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
         cleanup.scanFilter = .safeToRemove
-        #expect(!cleanup.hasSelectedPermanentItems)
-        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
-        cleanup.requestCleanUp(in: cleanup.scanFilter)
-        #expect(cleanup.pendingCleanUp == nil)
+        #expect(cleanup.hiddenSelectionCount == 2)
+        #expect(cleanup.hasSelectedPermanentItems)
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
+        cleanup.requestCleanUp()
+        #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [archive.id, image.id])
+        #expect(cleanup.pendingCleanUp?.totalBytes == remainingBytes)
+        cleanup.cancelCleanUp()
         cleanup.scanFilter = .all
         #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
+        cleanup.deselectAllInCurrentView()
+        #expect(cleanup.cleanupSelection.isEmpty)
+        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
+        cleanup.requestCleanUp()
+        #expect(cleanup.pendingCleanUp == nil)
     }
 
     @Test("Cleanup and its confirmation label the selected rows that do not regenerate")
@@ -637,7 +660,7 @@ struct CleanupModelTests {
             preferences: { .init(confirmBeforeCleanup: true) }, measureSaving: { _ in nil })
         cleanup.scanResults = cleanupResults(rows)
         cleanup.scannerSelection = Set(rows.map(\.id)).subtracting([locked.id])
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(cleanup.pendingCleanUp?.notRegenerableCount == 1)
         cleanup.cancelCleanUp()
 
@@ -686,7 +709,7 @@ struct CleanupModelTests {
         cleanup.selectWorktree(unknownEntry.id)
         var requested = false
         cleanup.onEvent = { if case .confirmationRequested = $0 { requested = true } }
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(requested)
         #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree has uncommitted changes.") == true)
         #expect(cleanup.pendingCleanUp?.worktreeWarning?.contains("1 worktree needs further review.") == true)
@@ -715,10 +738,10 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection == (hasLocalChanges ? [] : [worktree.id]))
         #expect(!parent.isRemovalLocked)
         cleanup.scannerSelection = [remainder.id]
-        #expect(cleanup.cleanupSelection(in: .all).isEmpty)
+        #expect(cleanup.cleanupSelection.isEmpty)
         cleanup.scannerSelection = [parent.id]
         #expect(cleanup.selectedBytes(in: .systemCaches) == 300)
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let plan = try #require(cleanup.pendingCleanUp)
         #expect(plan.entries.map(\.id) == [parent.id])
         #expect(plan.totalBytes == 300)
@@ -821,7 +844,7 @@ struct CleanupModelTests {
             if case .checkingWorktrees = $0 { isCheckingWorktrees = true }
             if case .removalStarted(let count, _) = $0 { announcedCount = count }
         }
-        cleanup.requestCleanUp(in: .safeToRemove)
+        cleanup.requestCleanUp()
         let task = Task { await cleanup.performCleanUp() }
         try await waitUntil { await gate.isPending }
         // One request checks every selected worktree with one process inventory.
@@ -910,7 +933,7 @@ struct CleanupModelTests {
         let selected = selectsMainCheckout ? [main, worktree] : [worktree]
         cleanup.scanResults = cleanupResults(selected)
         cleanup.scannerSelection = Set(selected.map(\.id))
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let task = Task { await cleanup.performCleanUp() }
         try await waitUntil { await removal.isPending }
         #expect(await removal.entries.map(\.id) == (selectsMainCheckout ? [main.id] : [worktree.id]))
@@ -944,7 +967,7 @@ struct CleanupModelTests {
             if case .removalStarted = $0 { removalEvents += 1 }
         }
         cleanup.refreshAfterRemoval = { refreshes += 1 }
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         await cleanup.performCleanUp()
         try await waitUntil { !cleanup.isRemoving }
         #expect(await removal.requestCount == 0)
@@ -968,7 +991,7 @@ struct CleanupModelTests {
         app.cleanup.refreshAfterRemoval = {}
         app.cleanup.scanResults = cleanupResults([cache])
         app.cleanup.scannerSelection = [cache.id]
-        app.cleanup.requestCleanUp(in: .all)
+        app.cleanup.requestCleanUp()
         let task = Task { await app.cleanup.performCleanUp() }
         try await waitUntil { await removal.isPending }
         let kept = fixture.root.appendingPathComponent("changed-worktree")
@@ -1013,7 +1036,7 @@ struct CleanupModelTests {
         let failedIDs = failedEntries.map(\.id)
         app.cleanup.scanResults = cleanupResults(entries)
         app.cleanup.scannerSelection = Set(entries.map(\.id))
-        app.cleanup.requestCleanUp(in: .all)
+        app.cleanup.requestCleanUp()
         let task = Task { await app.cleanup.performCleanUp() }
         try await waitUntil { await removal.isPending }
         if partial { try FileManager.default.removeItem(at: second.url) }
@@ -1078,12 +1101,11 @@ struct CleanupModelTests {
         #expect(cleanup.selectedBytes(in: .xcode) == cache.allocatedBytes)
         let testResults = try #require(parent.children.first { $0.url.lastPathComponent == "TestResults" })
         cleanup.scannerSelection = [testResults.id]
-        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
-        #expect(cleanup.cleanupSelection(in: .all) == [testResults.id])
+        #expect(cleanup.cleanupSelection == [testResults.id])
         cleanup.scannerSelection = [parent.id, cache.id]
-        #expect(cleanup.cleanupSelection(in: .all) == [parent.id])
+        #expect(cleanup.cleanupSelection == [parent.id])
         #expect(cleanup.selectedBytes(in: .xcode) == parent.displayBytes)
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(cleanup.pendingCleanUp?.entries.map(\.id) == [parent.id])
         #expect(cleanup.scannerSelection.contains(parent.id))
     }
@@ -1112,7 +1134,7 @@ struct CleanupModelTests {
         cleanup.scannerSelection = [root.id, history.id, cache.id]
         cleanup.userDataRemovalOverrides = [root.id, history.id]
         #expect(cleanup.selectedEntries.map(\.id) == [cache.id])
-        #expect(cleanup.cleanupSelection(in: .all) == [cache.id])
+        #expect(cleanup.cleanupSelection == [cache.id])
         #expect(cleanup.selectedBytes(in: .aiTools) == cache.allocatedBytes)
     }
 
@@ -1140,11 +1162,10 @@ struct CleanupModelTests {
         #expect(cleanup.selectableIDs(in: category).isEmpty)
         cleanup.scannerSelection = [session.id]
         cleanup.userDataRemovalOverrides = [session.id]
-        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
-        #expect(cleanup.cleanupSelection(in: .all) == [session.id])
+        #expect(cleanup.cleanupSelection == [session.id])
         var requested = false
         cleanup.onEvent = { if case .confirmationRequested = $0 { requested = true } }
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(requested)
         #expect(cleanup.pendingCleanUp?.codexSessionCount == 2)
         #expect(cleanup.pendingCleanUp?.codexSessionWarning?.contains("1 child session") == true)
@@ -1211,7 +1232,7 @@ struct CleanupModelTests {
         cleanup.setChildrenSelected(true, in: group.id)
         #expect(cleanup.scannerSelection == [unrelated.id, first.id, second.id])
         #expect(cleanup.selectedEntries.map(\.id) == [first.id, second.id])
-        #expect(cleanup.cleanupSelection(in: .safeToRemove).isEmpty)
+        #expect(cleanup.cleanupSelection == [first.id, second.id])
         cleanup.setChildrenSelected(false, in: group.id)
         #expect(cleanup.scannerSelection == [unrelated.id])
         #expect(cleanup.userDataRemovalOverrides == [unrelated.id, first.id, second.id])
@@ -1240,10 +1261,10 @@ struct CleanupModelTests {
         #expect(cleanup.userDataRemovalOverrides == [data.id])
         cleanup.setChildrenSelected(true, in: group.id)
         #expect(cleanup.selectedEntries.map(\.id) == [data.id])
-        #expect(cleanup.cleanupSelection(in: .all) == [data.id])
+        #expect(cleanup.cleanupSelection == [data.id])
         cleanup.scannerSelection.insert(group.id)
         #expect(cleanup.selectedEntries.map(\.id) == [data.id])
-        #expect(cleanup.cleanupSelection(in: .all) == [data.id])
+        #expect(cleanup.cleanupSelection == [data.id])
         group.removesAsUnit = true
         #expect(group.unlockableChildren.isEmpty)
         group.removesAsUnit = false
@@ -1315,7 +1336,7 @@ struct CleanupModelTests {
         cleanup.scanResults = results
         cleanup.markResultsOutdated()
         cleanup.scannerSelection = ["/cleanup-fixture/cached"]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(cleanup.pendingCleanUp == nil)
         cleanup.startScan(refreshOverview: false)
         try await waitUntil { await scanner.requestCount == 1 }
@@ -1472,7 +1493,7 @@ struct CleanupModelTests {
         let item = cleanupEntry("guard")
         cleanup.scanResults = cleanupResults([item])
         cleanup.scannerSelection = [item.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let operation = try #require(operations.begin(.fileScan))
         cleanup.startScan()
         await cleanup.performCleanUp()
@@ -1555,14 +1576,14 @@ struct CleanupModelTests {
         #expect(cleanup.selectAllStateInCurrentView == .on)
         cleanup.scanFilter = .safeToRemove
         #expect(cleanup.scannerSelection == [first.id, second.id, review.id])
-        #expect(cleanup.cleanupSelectionBytes(in: .safeToRemove) == first.allocatedBytes + second.allocatedBytes)
+        #expect(cleanup.cleanupSelectionBytes == first.allocatedBytes + second.allocatedBytes + review.allocatedBytes)
         #expect(cleanup.selectedBytes(in: .systemCaches, filter: .safeToRemove) == first.allocatedBytes + second.allocatedBytes)
         #expect(cleanup.selectAllStateInCurrentView == .on)
         cleanup.deselectAllInCurrentView()
         #expect(cleanup.scannerSelection == [review.id])
         #expect(cleanup.selectAllStateInCurrentView == .off)
         cleanup.scanFilter = .all
-        #expect(cleanup.cleanupSelectionBytes(in: .all) == review.allocatedBytes)
+        #expect(cleanup.cleanupSelectionBytes == review.allocatedBytes)
         #expect(cleanup.selectedBytes(in: .systemCaches) == review.allocatedBytes)
         #expect(cleanup.selectAllStateInCurrentView == .mixed)
         cleanup.deselectAllInCurrentView()
@@ -1660,7 +1681,7 @@ struct CleanupModelTests {
         cleanup.scanResults = cleanupResults([first, protected, later])
         cleanup.scannerSelection = [first.id, protected.id]
         cleanup.userDataRemovalOverrides = [protected.id, later.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(cleanup.pendingCleanUp?.protectedDataCount == 1)
         cleanup.scannerSelection = [later.id]
         cleanup.userDataRemovalOverrides = [later.id]
@@ -1713,14 +1734,14 @@ struct CleanupModelTests {
         )
         cleanup.scanResults = cleanupResults([first, second])
         cleanup.scannerSelection = [first.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         try await waitUntil { await measurements.count == 1 }
         let previous = cleanup.pendingCleanUp?.id
         cleanup.cancelCleanUp()
         await cleanup.performCleanUp()
         #expect(await removal.requestCount == 0)
         cleanup.scannerSelection = [second.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         try await waitUntil { await measurements.count == 2 }
         #expect(cleanup.pendingCleanUp?.id != previous)
         await measurements.finish(0, bytes: 99)
@@ -1752,7 +1773,7 @@ struct CleanupModelTests {
         }
         cleanup.scanResults = cleanupResults([item])
         cleanup.scannerSelection = [item.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         let caller = Task { await cleanup.performCleanUp(quittingOwners: true) }
         try await waitUntil { await gate.isPending }
         caller.cancel()
@@ -1809,7 +1830,7 @@ struct CleanupModelTests {
         cleanup.scanResults = cleanupResults([first, second])
         cleanup.scannerSelection = [first.id, second.id]
         let scannedAt = cleanup.scanResults?.finishedAt
-        if path != .quitOnly { cleanup.requestCleanUp(in: .all) }
+        if path != .quitOnly { cleanup.requestCleanUp() }
         let caller = Task {
             if path != .quitOnly {
                 await cleanup.performCleanUp(quittingOwners: true, confirmingToolCommand: path == .toolCommand ? first.toolCommand : nil)
@@ -1926,7 +1947,7 @@ struct CleanupModelTests {
         app.cleanup.scanResults = cleanupResults(hasRemainingItems ? [removed, remaining] : [removed])
         app.cleanup.scanFilter = .all
         app.cleanup.scannerSelection = [removed.id]
-        app.cleanup.requestCleanUp(in: .all)
+        app.cleanup.requestCleanUp()
         let task = Task { await app.cleanup.performCleanUp() }
         try await waitUntil { await removal.isPending }
         await removal.finish(CleanupOutcome(removedBytes: removed.allocatedBytes, removedCount: 1, trashedCount: 1))
@@ -1968,7 +1989,7 @@ struct CleanupModelTests {
         )
         app.cleanup.scanResults = cleanupResults([removable, protected])
         app.cleanup.scannerSelection = [removable.id, protected.id]
-        app.cleanup.requestCleanUp(in: .all)
+        app.cleanup.requestCleanUp()
         #expect(app.activeSheet == .cleanUp)
         await app.cleanup.performCleanUp()
         #expect(app.activity == nil)
@@ -1986,7 +2007,7 @@ struct CleanupModelTests {
         app.cleanup.scanResults = cleanupResults([protected])
         app.cleanup.scannerSelection = [protected.id]
         app.cleanup.userDataRemovalOverrides = [protected.id]
-        app.cleanup.requestCleanUp(in: .all)
+        app.cleanup.requestCleanUp()
         await app.recovery.putBack(TrashItem(url: trashed, bytes: receipt.bytes, canPutBack: true))
         #expect(FileManager.default.fileExists(atPath: removable.id))
         #expect(app.cleanup.scanResults?.categories.flatMap(\.entries).map(\.id) == [protected.id])
@@ -2051,7 +2072,7 @@ struct CleanupModelTests {
         cleanup.scannerSelection = [item.id]
         var confirmed = false
         cleanup.onEvent = { if case .confirmationRequested = $0 { confirmed = true } }
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(confirmed == confirm)
         if confirm {
             #expect(cleanup.pendingCleanUp?.includesSoundLibrary == sounds)
@@ -2115,7 +2136,7 @@ struct CleanupModelTests {
         cleanup.scannerSelection = [image.id, file.id]
         var confirmed = false
         cleanup.onEvent = { if case .confirmationRequested = $0 { confirmed = true } }
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(confirmed == (choice.isEnabled || volume))
         if confirmed {
             let plan = try #require(cleanup.pendingCleanUp)
@@ -2182,7 +2203,7 @@ struct CleanupModelTests {
             ScanCategoryResult(categoryID: .docker, totalBytes: 200, entries: [image])
         ], startedAt: .now, finishedAt: .now)
         cleanup.scannerSelection = [image.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         try await waitUntil { await removal.isPending }
         await removal.finish(CleanupOutcome(failed: [image.id]))
         try await waitUntil { !cleanup.isRemoving }
@@ -2206,11 +2227,11 @@ struct CleanupModelTests {
         )
         cleanup.scanResults = cleanupResults([first, later])
         cleanup.scannerSelection = [first.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         #expect(cleanup.isRemoving)
         #expect(cleanup.pendingCleanUp == nil)
         cleanup.scannerSelection = [later.id]
-        cleanup.requestCleanUp(in: .all)
+        cleanup.requestCleanUp()
         try await waitUntil { await removal.isPending }
         #expect(await removal.entries.map(\.id) == [first.id])
         #expect(await removal.requestCount == 1)

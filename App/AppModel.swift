@@ -618,8 +618,8 @@ final class AppModel {
         switch view {
         case .scanner:
             cleanup.hasSelectedPermanentItems
-                ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: cleanup.scanFilter))))"
-                : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes(in: cleanup.scanFilter))))"
+                ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes)))"
+                : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes)))"
         case .duplicates:
             duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
