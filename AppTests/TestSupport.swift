@@ -165,6 +165,13 @@ func nativeButtons(in view: NSView) -> [NSButton] {
     return view.subviews.flatMap(nativeButtons)
 }
 
+/// Finds scroll views in a hosted view.
+@MainActor
+func scrollViews(in view: NSView) -> [NSScrollView] {
+    let current = (view as? NSScrollView).map { [$0] } ?? []
+    return current + view.subviews.flatMap { scrollViews(in: $0) }
+}
+
 /// Renders a native view for layout checks. Give an output URL to save a PNG for visual review.
 @MainActor
 func renderTestView<V: View>(_ view: V, width: CGFloat, dark: Bool, output: URL? = nil) async throws -> CGSize {

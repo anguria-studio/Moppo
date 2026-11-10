@@ -172,11 +172,6 @@ struct HomebrewUninstallFlowTests {
         #expect(libraryScroll.contentView.bounds == contentBounds)
     }
 
-    private func scrollViews(in view: NSView) -> [NSScrollView] {
-        let current = (view as? NSScrollView).map { [$0] } ?? []
-        return current + view.subviews.flatMap { scrollViews(in: $0) }
-    }
-
     @Test("Homebrew review and results render in both appearances")
     func renderLayouts() async throws {
         let fixture = try Fixture()
