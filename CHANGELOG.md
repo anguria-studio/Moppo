@@ -12,6 +12,7 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ### Cleanup
 
+- Show **Check Now** in **All** when Docker is unavailable.
 - Keep one selection and removal total across tabs and type filters. Removal includes selected items outside the current view.
 
 ### Trash

@@ -7,6 +7,9 @@ import MoppoCore
 @Observable
 final class CleanupModel {
     private static let runningAppsNoticeHiddenKey = "cleanup.runningAppsNoticeHidden"
+    private static let dockerReadFailure = ScanCategoryResult.unavailable(
+        .docker, reason: "Moppo could not read Docker storage. Select Check Now to try again."
+    )
 
     struct Preferences: Sendable, Equatable {
         var enabledCategories: Set<CategoryID>?
@@ -115,6 +118,7 @@ final class CleanupModel {
     var scannerSelection: Set<FileEntry.ID> = []
     var userDataRemovalOverrides: Set<FileEntry.ID> = []
     private(set) var isScanning = false
+    private(set) var isCheckingDocker = false
     private(set) var isInterruptingScan = false
     private(set) var scanProgress = 0
     private(set) var scanPhase: String?
@@ -337,12 +341,10 @@ final class CleanupModel {
         }
     }
 
-    /// Keeps the Docker setup message visible when no type filter is active.
     var safetyFilteredCategories: [ScanCategoryResult] {
         let categories = (scanResults?.categories ?? []).filter { $0.availability != .notInstalled }
         guard scanFilter != .all else { return categories }
         return categories.compactMap { category in
-            if category.categoryID == .docker, case .unavailable = category.availability { return category }
             let filtered = category.filtered(safeToRemove: true)
             return filtered.entries.isEmpty ? nil : filtered
         }
@@ -788,9 +790,57 @@ final class CleanupModel {
         }
     }
 
+    var showsDockerCheck: Bool {
+        scanResults?.categories.contains { category in
+            guard category.categoryID == .docker, case .unavailable = category.availability else { return false }
+            return true
+        } == true
+    }
+
+    var canCheckDocker: Bool {
+        showsDockerCheck && !isBusyWithDisk && !showsOutdatedResultsNotice && pendingCleanUp == nil
+            && preferences().enabledCategories?.contains(.docker) != false
+    }
+
+    /// Updates Docker without changing the other category results or the full scan date.
+    func startDockerScan() {
+        guard canCheckDocker, canScan(false),
+              let operation = operations.begin(.cleanupScan, cancel: { [weak self] in self?.cancelScan() }) else { return }
+        let preferences = preferences()
+        let scanID = UUID()
+        self.scanID = scanID
+        isCheckingDocker = true
+        isInterruptingScan = false
+        scanTask = Task { [self] in
+            defer {
+                if self.scanID == scanID {
+                    isCheckingDocker = false
+                    isInterruptingScan = false
+                    scanTask = nil
+                    self.scanID = nil
+                }
+                operations.finish(operation)
+            }
+            let category: ScanCategoryResult
+            do {
+                try Task.checkCancellation()
+                category = try await scanDocker(preferences)
+            } catch is CancellationError {
+                return false
+            } catch {
+                category = Self.dockerReadFailure
+            }
+            guard self.scanID == scanID, !Task.isCancelled,
+                  self.preferences().enabledCategories?.contains(.docker) != false else { return false }
+            updateDockerCategory(category)
+            openCategories.insert(.docker)
+            return true
+        }
+    }
+
     /// Keep the operation guard until the scan service returns.
     func cancelScan() {
-        guard isScanning, !isInterruptingScan else { return }
+        guard isScanning || isCheckingDocker, !isInterruptingScan else { return }
         isInterruptingScan = true
         scanTask?.cancel()
     }
@@ -996,17 +1046,14 @@ final class CleanupModel {
             scanResults = results
         }
         pruneVanishedEntries()
-        if plan.includesDocker, var results = scanResults {
+        if plan.includesDocker, scanResults != nil {
             let category: ScanCategoryResult
             do {
                 category = try await scanDocker(preferences())
             } catch {
-                category = .unavailable(.docker, reason: "Docker storage could not be updated. Try scanning again.")
+                category = Self.dockerReadFailure
             }
-            results.categories = results.categories.map { $0.categoryID == .docker ? category : $0 }
-            scanResults = results
-            let selectableIDs = Set(category.entries.filter { !$0.isRemovalLocked }.map(\.id))
-            scannerSelection.subtract(Set(plan.entries.filter { $0.docker != nil }.map(\.id)).subtracting(selectableIDs))
+            updateDockerCategory(category)
         }
         await refreshLeftovers(plan.orphanedApplicationBundleIdentifiers)
         try? await presentation.wait()
@@ -1014,6 +1061,19 @@ final class CleanupModel {
         // The remaining results stay valid. Protected-data approvals apply to one removal only.
         if outcome.removedCount > 0 { userDataRemovalOverrides.removeAll() }
         return true
+    }
+
+    private func updateDockerCategory(_ category: ScanCategoryResult) {
+        guard var results = scanResults,
+              let index = results.categories.firstIndex(where: { $0.categoryID == .docker }) else { return }
+        let previousIDs = Set(results.categories[index].entries.map(\.id))
+        let current = preferences()
+        let context = ScanContext(excludedPaths: current.excludedPaths, excludedPatterns: current.excludedPatterns)
+        let category = category.excluding(context)
+        results.categories[index] = category
+        scanResults = results
+        let selectableIDs = Set(category.entries.filter { !$0.isRemovalLocked }.map(\.id))
+        scannerSelection.subtract(previousIDs.subtracting(selectableIDs))
     }
 
     var administratorRetryCount: Int { Set(administratorRetryEntries.map(\.id)).count }
