@@ -289,7 +289,7 @@ struct LocalModelStoresTests {
     private func scanner(_ sandbox: Sandbox, open: [String: Set<String>] = [:],
                          issue: String? = nil) -> AIToolsScanner {
         var scanner = AIToolsScanner(home: sandbox.home)
-        scanner.captureModelActivity = { WorktreeActivity(roots: $0, processes: open, issue: issue) }
+        scanner.captureFileActivity = { WorktreeActivity(roots: $0, processes: open, issue: issue) }
         return scanner
     }
 

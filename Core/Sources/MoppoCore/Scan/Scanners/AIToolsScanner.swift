@@ -7,10 +7,8 @@ public struct AIToolsScanner: CategoryScanner {
     /// The folder that holds applications and portable tool data.
     private let applications: URL
     private let codexExecutable: String?
-    /// Reads open model files. Tests replace the process check.
-    var captureModelActivity: @Sendable ([URL]) async throws -> WorktreeActivity = {
-        try await WorktreeActivity.capture(roots: $0)
-    }
+    /// Reads open files for runtime versions and models.
+    var captureFileActivity: @Sendable ([URL]) async throws -> WorktreeActivity = WorktreeActivity.capture
 
     public init(home: URL = URL(fileURLWithPath: NSHomeDirectory()),
                 applications: URL = URL(fileURLWithPath: "/Applications", isDirectory: true)) {
@@ -27,6 +25,7 @@ public struct AIToolsScanner: CategoryScanner {
 
     public func scan(context: ScanContext) async throws -> ScanCategoryResult {
         var found = Found()
+        let cursor = CursorCLIVersions(home: home)
         for root in AIToolStorage.roots {
             try Task.checkCancellation()
             guard let url = AIToolStorage.location(of: root, home: home, applications: applications) else { continue }
@@ -34,6 +33,7 @@ public struct AIToolsScanner: CategoryScanner {
             guard !context.isWithinExclusion(url), isOwnedPath(url, under: base),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
             let parts = root.parts.map { (part: $0, paths: ApplicationsScanner.expand($0.path, under: url)) }
+            let cursorInventory = root.path == CursorCLIVersions.storePath ? cursor.inventory() : nil
             let roots: [URL]
             if root.reviewsWorktrees {
                 roots = try GitWorktreeDetector.isWorktree(url)
@@ -42,7 +42,8 @@ public struct AIToolsScanner: CategoryScanner {
                 roots = []
             }
             let worktrees = try await WorktreeScan.prepare(roots)
-            let measured = try await worktrees.measure(url, with: context.measurer, retaining: parts.flatMap(\.paths))
+            let retainedPaths = parts.flatMap(\.paths) + (cursorInventory?.versions.map(\.url) ?? [])
+            let measured = try await worktrees.measure(url, with: context.measurer, retaining: retainedPaths)
             let total = measured.measurements[url.standardizedFileURL] ?? .zero
             found.unreadableCount += total.unreadableCount
             guard total.allocatedBytes > 0, !total.containsProtectedPattern else { continue }
@@ -88,6 +89,12 @@ public struct AIToolsScanner: CategoryScanner {
                     append(child, to: &entry)
                 }
             }
+            if let cursorInventory, total.unreadableCount == 0 {
+                for row in try await cursorRows(cursor, inventory: cursorInventory, context: context,
+                                                measurements: measured.measurements) {
+                    append(row, to: &entry)
+                }
+            }
             if root.reviewsWorktrees {
                 entry = try await GitWorktreeDetector.addingWorktrees(to: entry, context: context, prepared: measured)
             }
@@ -107,6 +114,42 @@ public struct AIToolsScanner: CategoryScanner {
         result.claimedStoragePaths = AIToolStorage.claimedPaths(home: home, applications: applications)
             + LocalModelStores.claimedPaths(home: home) + folders.claimedPaths
         return result
+    }
+
+    private func cursorRows(
+        _ cursor: CursorCLIVersions, inventory: CursorCLIVersions.Inventory, context: ScanContext,
+        measurements: [URL: SizeMeasurement]
+    ) async throws -> [FileEntry] {
+        let candidates = inventory.versions.filter { inventory.isOlderThanRollback($0) && !context.isExcluded($0.url) }
+        let activity = candidates.isEmpty ? nil : try await captureFileActivity(candidates.map(\.url))
+        var rows: [FileEntry] = []
+        for version in inventory.versions.reversed() {
+            guard var row = try await measuredPart(version.url, under: home, context: context,
+                                                  measurement: measurements[version.url] ?? .zero) else { continue }
+            let reason: String?
+            if version == inventory.active {
+                reason = "The Cursor CLI launchers use this version."
+            } else if version.releaseDay == inventory.active.releaseDay {
+                reason = "This build has the same release date as the active version."
+            } else if version.releaseDay == inventory.rollbackDay {
+                reason = "Moppo keeps this version for rollback."
+            } else if let activity {
+                reason = try await CursorCLIVersions.failure(for: version, activity: activity, measurer: context.measurer)
+            } else { continue }
+            if let reason {
+                row.protectionReason = .inventory
+                row.protectionExplanation = reason
+                row.safetyCaveat = reason
+            } else {
+                row.requiresRemovalReview = true
+                row.safetyCaveat = "Older than the active and rollback versions. Cleanup moves this version to Trash."
+                row.cursorCLIVersion = .init(home: home, version: version, active: inventory.active,
+                    storeIdentity: inventory.storeIdentity, versionsIdentity: inventory.versionsIdentity,
+                    excludedPatterns: context.measurer.protectedPatterns)
+            }
+            rows.append(row)
+        }
+        return cursor.inventory() == inventory ? rows : []
     }
 
     /// Rejects symlinks in each component, including a parent of an expanded cache path.
@@ -189,7 +232,7 @@ public struct AIToolsScanner: CategoryScanner {
         }
         // LM Studio can link to Hugging Face files without a matching model row.
         let links = models.isEmpty ? LocalModelStores.ExternalLinks() : LocalModelStores.lmStudioLinks(home: home)
-        let activity = models.isEmpty ? nil : try await captureModelActivity(models.map(\.primary))
+        let activity = models.isEmpty ? nil : try await captureFileActivity(models.map(\.primary))
         var countedInodes: Set<String> = []
         for model in models {
             try Task.checkCancellation()
@@ -341,6 +384,7 @@ final class ModelFiles: @unchecked Sendable {
 
     /// Files with more than one hard link, once for each measured path.
     var hardLinks: [HardLink] { lock.withLock { linkedFiles } }
+    var hasSymbolicLinks: Bool { lock.withLock { !symbolicLinks.isEmpty } }
 
     func measure(_ url: URL, with measurer: AllocatedSizeMeasurer) async throws -> SizeMeasurement {
         let root = url.standardizedFileURL

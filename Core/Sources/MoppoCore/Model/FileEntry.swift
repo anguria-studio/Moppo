@@ -262,6 +262,7 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var aiTool: AITool?
     public var aiStorageSection: AIStorageSection?
     public var codexSession: CodexSessionReview?
+    var cursorCLIVersion: CursorCLIVersions.Review?
     public var simulatorDevice: SimulatorDevice?
 
     /// Child items that support separate removal after a user data review.

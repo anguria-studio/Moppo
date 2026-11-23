@@ -235,6 +235,10 @@ Active sessions and unknown files stay locked. The parent folder never enters th
 Select **Clean Up** to confirm. Codex deletes the history permanently, and Put Back cannot restore it.
 Claude Code, Claude, and Cursor conversations stay protected. Delete them in those applications.
 
+Under **Cursor**, expand **CLI versions** to review the versions Moppo can verify.
+Select an older version, then select **Clean Up** to review the move to Trash.
+Moppo keeps the active version, rollback versions, and saved sessions.
+
 ### Open items elsewhere
 
 Use a Cleanup row's **More actions** menu to select **Show in Storage Explorer** or **Reveal in Finder**.

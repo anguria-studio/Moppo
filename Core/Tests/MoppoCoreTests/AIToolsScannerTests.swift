@@ -18,6 +18,135 @@ struct AIToolsScannerTests {
         }
     }
 
+    private struct CursorInstallation {
+        let sandbox: Sandbox
+        let older: URL
+        let rollback: URL
+        let active: URL
+
+        init() throws {
+            let sandbox = try Sandbox()
+            self.sandbox = sandbox
+            let home = sandbox.home
+            func install(_ version: String) throws -> URL {
+                let path = ".local/share/cursor-agent/versions/" + version
+                for name in ["cursor-agent", "node"] {
+                    let executable = try sandbox.file(path + "/" + name, bytes: 4096)
+                    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+                }
+                try sandbox.file(path + "/index.js", bytes: 4096)
+                try Data(#"{"name":"@anysphere/agent-cli-runtime"}"#.utf8)
+                    .write(to: home.appendingPathComponent(path + "/package.json"))
+                return home.appendingPathComponent(path).standardizedFileURL
+            }
+            older = try install("2026.06.12-19-59-36-f6aba9a")
+            rollback = try install("2026.10.22-27dcf5f")
+            active = try install("2026.11.22-e9042b2")
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(".local/bin"),
+                                                     withIntermediateDirectories: true)
+            try setLauncher("agent", version: active)
+            try setLauncher("cursor-agent", version: active)
+        }
+
+        func setLauncher(_ name: String, version: URL) throws {
+            let link = sandbox.home.appendingPathComponent(".local/bin/" + name)
+            if !FileIdentity.isAbsent(link) { try FileManager.default.removeItem(at: link) }
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: version.appendingPathComponent("cursor-agent"))
+        }
+
+        func scan() async throws -> ScanCategoryResult {
+            var scanner = AIToolsScanner(home: sandbox.home)
+            scanner.captureFileActivity = { WorktreeActivity(roots: $0, processes: [:]) }
+            return try await scanner.scan(context: ScanContext())
+        }
+    }
+
+    @Test("Cleanup moves only an older Cursor CLI version to Trash")
+    func cursorVersionCleanup() async throws {
+        let fixture = try CursorInstallation()
+        let session = try fixture.sandbox.file(".cursor/chats/workspace/session")
+        let project = try fixture.sandbox.file(".cursor/projects/workspace/task")
+        let result = try await fixture.scan()
+        let root = try #require(result.entries.first { $0.aiStorageSection?.title == "CLI versions" })
+        let older = try #require(root.children.first { $0.url == fixture.older })
+        #expect(root.isRemovalLocked)
+        #expect(root.children.filter(\.isRemovalLocked).map(\.url) == [fixture.active, fixture.rollback])
+        #expect(!older.isRemovalLocked)
+        #expect(older.requiresRemovalReview)
+        #expect(root.displayBytes == (try await ScanContext().measurer.measure(root.url)).allocatedBytes)
+        #expect(result.safeToRemoveBytes == 0)
+        #expect(result.entries.filter { $0.id != root.id }.allSatisfy { $0.isRemovalLocked })
+
+        let log = RemovalLog(directory: fixture.sandbox.home.appendingPathComponent("logs"))
+        let service = CleanupService(measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: log,
+                                    captureCursorActivity: { WorktreeActivity(roots: $0, processes: [:]) })
+        let outcome = try await service.remove(entries: [older], trashFirst: false)
+        let receipt = try #require(log.recentEntries().first)
+        defer {
+            if let path = receipt.trashedPath { try? FileManager.default.removeItem(atPath: path) }
+        }
+        #expect(outcome.trashedCount == 1)
+        #expect(outcome.deletedCount == 0)
+        #expect(receipt.disposition == .trashed)
+        #expect(FileIdentity.isAbsent(fixture.older))
+        for path in [fixture.active, fixture.rollback, session, project] {
+            #expect(FileManager.default.fileExists(atPath: path.path))
+        }
+        let rescanned = try await fixture.scan()
+        #expect(rescanned.entries.flatMap(\.children).allSatisfy { $0.isRemovalLocked })
+    }
+
+    enum CursorChange: CaseIterable {
+        case launcherSwitch, splitLaunchers, removedRollback, staging, replacedFolder, newLink, runningMarker,
+             openFile, incompleteProcessCheck, stagingDuringCheck
+    }
+
+    @Test("Cursor CLI cleanup rechecks the installation and process activity", arguments: CursorChange.allCases)
+    func cursorVersionRecheck(change: CursorChange) async throws {
+        let fixture = try CursorInstallation()
+        let result = try await fixture.scan()
+        let older = try #require(result.entries.flatMap(\.children).first { $0.url == fixture.older })
+        #expect(!older.isRemovalLocked)
+        let files = FileManager.default
+        let payload = fixture.older.appendingPathComponent("node")
+        let staging = fixture.older.deletingLastPathComponent().appendingPathComponent(".tmp-update")
+        switch change {
+        case .launcherSwitch:
+            try fixture.setLauncher("agent", version: fixture.older)
+            try fixture.setLauncher("cursor-agent", version: fixture.older)
+        case .splitLaunchers: try fixture.setLauncher("cursor-agent", version: fixture.older)
+        case .removedRollback:
+            try files.moveItem(at: fixture.rollback, to: fixture.sandbox.home.appendingPathComponent("rollback"))
+        case .staging:
+            try files.createDirectory(at: staging, withIntermediateDirectories: false)
+        case .replacedFolder:
+            let backup = fixture.sandbox.home.appendingPathComponent("original")
+            try files.moveItem(at: fixture.older, to: backup)
+            try files.copyItem(at: backup, to: fixture.older)
+        case .newLink:
+            try files.createSymbolicLink(at: fixture.older.appendingPathComponent("link"), withDestinationURL: fixture.active)
+        case .runningMarker:
+            try fixture.sandbox.file(".local/share/cursor-agent/versions/" + fixture.older.lastPathComponent + "/.running/123")
+        case .openFile, .incompleteProcessCheck, .stagingDuringCheck: break
+        }
+
+        let opened: [String: Set<String>] = change == .openFile ? [try #require(FileIdentity.of(payload)): ["Cursor"]] : [:]
+        let issue = change == .incompleteProcessCheck ? "Incomplete fixture" : nil
+        let log = RemovalLog(directory: fixture.sandbox.home.appendingPathComponent("logs"))
+        let service = CleanupService(measureSize: { try await AllocatedSizeMeasurer().measure($0) }, log: log,
+                                    captureCursorActivity: { roots in
+            if change == .stagingDuringCheck {
+                try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+            }
+            return WorktreeActivity(roots: roots, processes: opened, issue: issue)
+        })
+        let outcome = try await service.remove(entries: [older], trashFirst: true)
+        #expect(outcome.failed == [older.id])
+        #expect(outcome.failureReasons[older.id] != nil)
+        #expect(outcome.removedCount == 0)
+        #expect(files.fileExists(atPath: payload.path))
+    }
+
     @Test("History, unknown caches, and downloaded runtimes remain visible and locked")
     func inventoryProtection() async throws {
         let sandbox = try Sandbox()
