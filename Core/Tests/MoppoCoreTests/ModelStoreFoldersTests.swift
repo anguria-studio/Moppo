@@ -161,7 +161,7 @@ struct ModelStoreFoldersTests {
             "TORCH_HOME": sandbox.outside.path
         ]
         var scanner = AIToolsScanner(home: sandbox.home)
-        scanner.captureModelActivity = { WorktreeActivity(roots: $0, processes: [:], issue: nil) }
+        scanner.captureFileActivity = { WorktreeActivity(roots: $0, processes: [:], issue: nil) }
         let result = try await scanner.scan(context: ScanContext(environment: environment))
 
         let ollama = result.entries.filter { $0.aiTool == .ollama }
@@ -195,7 +195,7 @@ struct ModelStoreFoldersTests {
         try FileManager.default.createDirectory(at: link.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: weights)
         var scanner = AIToolsScanner(home: sandbox.home)
-        scanner.captureModelActivity = { WorktreeActivity(roots: $0, processes: [:], issue: nil) }
+        scanner.captureFileActivity = { WorktreeActivity(roots: $0, processes: [:], issue: nil) }
         let result = try await scanner.scan(context: ScanContext(environment: ["HF_HOME": sandbox.path("models/hf")]))
         let model = try #require(result.entries.first { $0.url.path == sandbox.path("models/hf/hub/models--org--model") })
         #expect(model.protectionReason == .inventory)
@@ -220,7 +220,7 @@ struct ModelStoreFoldersTests {
         try sandbox.hubModel(".cache/huggingface/hub2")
         try sandbox.file(".cache/huggingface/token", bytes: 64)
         var scanner = AIToolsScanner(home: sandbox.home)
-        scanner.captureModelActivity = { WorktreeActivity(roots: $0, processes: [:], issue: nil) }
+        scanner.captureFileActivity = { WorktreeActivity(roots: $0, processes: [:], issue: nil) }
         let result = try await scanner.scan(context: ScanContext(
             environment: ["HF_HUB_CACHE": sandbox.path(".cache/huggingface/hub2")]))
         let paths = result.entries.filter { $0.aiTool == .huggingFace }.map(\.url.path)

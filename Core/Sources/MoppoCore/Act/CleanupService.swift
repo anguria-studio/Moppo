@@ -51,6 +51,7 @@ public struct CleanupOutcome: Sendable, Equatable {
     /// can say "freed 3.2 GB, 2 items could not be removed" instead of claiming a
     /// clean run.
     public var failed: [String]
+    public var failureReasons: [String: String] = [:]
     /// Paths that failed because macOS denied access.
     public var permissionDenied: [String]
     /// Worktree paths kept because macOS blocked access to the Trash.
@@ -101,6 +102,7 @@ public struct CleanupOutcome: Sendable, Equatable {
         trashedCount += other.trashedCount
         deletedCount += other.deletedCount
         failed.append(contentsOf: other.failed)
+        failureReasons.merge(other.failureReasons) { _, latest in latest }
         permissionDenied.append(contentsOf: other.permissionDenied)
         trashAccessDenied.append(contentsOf: other.trashAccessDenied)
         administratorApprovalCancelled = administratorApprovalCancelled || other.administratorApprovalCancelled
@@ -138,6 +140,7 @@ public struct CleanupService: Sendable {
     private let deleteCodexSession: @Sendable (CodexSessionReview) async throws -> Void
     private let reviewBuildCache: @Sendable (XcodeBuildCache.Review) async throws -> SizeMeasurement?
     private let reviewVendorFolder: @Sendable (VendorFolder) async throws -> Bool
+    private let captureCursorActivity: @Sendable ([URL]) async throws -> WorktreeActivity
     private let worktreeTrashDirectory: @Sendable (URL) throws -> URL
 
     public init(
@@ -170,6 +173,7 @@ public struct CleanupService: Sendable {
         reviewVendorFolder: @escaping @Sendable (VendorFolder) async throws -> Bool = {
             try await $0.isStillRemovable()
         },
+        captureCursorActivity: @escaping @Sendable ([URL]) async throws -> WorktreeActivity = WorktreeActivity.capture,
         worktreeTrashDirectory: @escaping @Sendable (URL) throws -> URL = {
             try FileManager.default.url(for: .trashDirectory, in: .userDomainMask, appropriateFor: $0, create: true)
         },
@@ -186,6 +190,7 @@ public struct CleanupService: Sendable {
         self.deleteCodexSession = deleteCodexSession
         self.reviewBuildCache = reviewBuildCache
         self.reviewVendorFolder = reviewVendorFolder
+        self.captureCursorActivity = captureCursorActivity
         self.worktreeTrashDirectory = worktreeTrashDirectory
         self.applicationRemovalFallback = applicationRemovalFallback
     }
@@ -423,7 +428,15 @@ public struct CleanupService: Sendable {
 
                 let landed: URL?
                 do {
-                    if GitWorktreeDetector.isWorktree(target.url) {
+                    if let review = target.cursorCLIVersion {
+                        if let reason = try await review.failureBeforeRemoval(of: target.url, capture: captureCursorActivity) {
+                            outcome.failed.append(target.id)
+                            outcome.failureReasons[target.id] = reason
+                            records.append(Self.failureRecord(for: target, bytes: measured))
+                            continue
+                        }
+                        landed = try Self.discard(target.url, disposition: .trashed)
+                    } else if GitWorktreeDetector.isWorktree(target.url) {
                         let trash: URL
                         do { trash = try worktreeTrashDirectory(target.url) }
                         catch where FileAccessFailure.isPermissionDenied(error) {
@@ -451,6 +464,8 @@ public struct CleanupService: Sendable {
                             landed = try await administratorTrash(library)
                         }
                     }
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch let error as CocoaError where error.code == .fileNoSuchFile {
                     // Already gone: someone else removed it since the scan. That is
                     // the outcome the user wanted, not a failure — reporting it as
@@ -897,6 +912,7 @@ public struct CleanupService: Sendable {
         return (entry.kind == .appBundle && CategoryID.applications.alwaysMovesToTrash)
             || entry.protectionReason == .userData
             || entry.soundLibrary != nil
+            || entry.cursorCLIVersion != nil
             || entry.xcodeBuildCacheReview.map { !$0.isRegenerable } == true
             || entry.isGitWorktree || GitWorktreeDetector.isWorktree(entry.url)
             || entry.children.contains { $0.isGitWorktree || GitWorktreeDetector.isWorktree($0.url) }

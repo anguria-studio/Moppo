@@ -82,7 +82,8 @@ public struct PlanExecutionService: Sendable {
                     : outcome.removedCount == 0 ? .skipped : outcome.deletedCount > 0 ? .deleted : .trashed
                 if status == .skipped { recordSkipped(original) }
                 results.append(.init(itemId: item.id, status: status,
-                    reason: failed ? "removal_failed" : outcome.removedCount == 0 ? "not_removed" : nil,
+                    reason: failed ? (outcome.failureReasons[entry.id] == nil ? "removal_failed" : "final_check_failed")
+                        : outcome.removedCount == 0 ? "not_removed" : nil,
                     removedCount: outcome.removedCount, trashedCount: outcome.trashedCount, deletedCount: outcome.deletedCount,
                     removedBytes: outcome.removedBytes, privateBytes: outcome.freedBytes,
                     unmeasuredCount: outcome.unreportedFreedCount))

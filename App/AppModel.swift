@@ -685,6 +685,8 @@ final class AppModel {
             return toolCommandSummary(outcome)
         }
         guard !outcome.failed.isEmpty || !outcome.skippedWorktrees.isEmpty else { return nil }
+        let reasons = Set(outcome.failureReasons.values).sorted().joined(separator: "\n")
+        let failureDetails = reasons.isEmpty ? "" : "\n" + reasons
         let removedSummary = "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
         if !outcome.trashAccessDenied.isEmpty {
             let denied = Set(outcome.trashAccessDenied)
@@ -705,7 +707,7 @@ final class AppModel {
             }
             return Notice(
                 title: needsDiskAccess ? "Full Disk Access Needed" : "Trash Access Was Denied",
-                message: message,
+                message: message + failureDetails,
                 finderURLs: (outcome.failed + outcome.skippedWorktrees).map { URL(fileURLWithPath: $0) },
                 showsFullDiskAccessAction: needsDiskAccess
             )
@@ -739,6 +741,7 @@ final class AppModel {
         if !outcome.permissionDenied.isEmpty {
             notice.message += "\nmacOS denied access to some items. Review them in Finder."
         }
+        notice.message += failureDetails
         return notice
     }
 
