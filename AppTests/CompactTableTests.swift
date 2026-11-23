@@ -105,6 +105,38 @@ struct CompactTableTests {
         }
     }
 
+    @Test("A narrow table keeps a long action visible")
+    func tableFitsLongAction() async throws {
+        let title = "Sacar de la papelera"
+        let actionWidth = CompactTableActionStyle.minimumColumnWidth(for: title)
+        let view = CompactTable(
+            items: [Item(id: 1)], selection: .constant([]),
+            sortOrder: .constant([KeyPathComparator(\Item.id)]),
+            columns: [
+                CompactTableColumn("Name", width: 400, min: 150, sort: KeyPathComparator(\Item.id)) { item, _ in
+                    Text(item.name)
+                },
+                CompactTableColumn("Size", width: 90, min: 80) { _, _ in Text("125 MB") },
+                CompactTableColumn("", width: actionWidth, min: actionWidth, max: actionWidth) { _, _ in
+                    Button(title) {}
+                        .buttonStyle(CompactTableActionStyle())
+                }
+            ],
+            itemName: { $0.name }
+        )
+        let host = NSHostingView(rootView: view)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 240),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        try await waitUntil { findTable(in: host)?.numberOfRows == 1 }
+        let table = try #require(findTable(in: host))
+        let scroll = try #require(table.enclosingScrollView)
+        scroll.tile()
+        #expect(table.rect(ofColumn: 2).maxX <= scroll.contentSize.width)
+    }
+
     @Test("History offers item and run recovery through its table actions")
     func historyRecoveryActions() async throws {
         let folder = try TemporaryFolder()

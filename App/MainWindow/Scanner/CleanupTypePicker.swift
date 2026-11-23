@@ -12,9 +12,9 @@ struct CleanupTypePicker: View {
             Picker("Filter results", selection: $model.dataTypeFilter) {
                 ForEach(options) { option in
                     if option.type == .all {
-                        Text(option.type.title).tag(option.type)
+                        Text(option.type.localizedTitle).tag(option.type)
                     } else {
-                        Text("\(option.type.title) · \(option.count) · \(ByteFormatting.string(option.bytes))")
+                        Text("\(option.type.localizedTitle) · \(option.count) · \(ByteFormatting.localizedString(option.bytes))")
                             .tag(option.type)
                     }
                 }
@@ -23,7 +23,7 @@ struct CleanupTypePicker: View {
             .labelsHidden()
         } label: {
             HStack(spacing: 7) {
-                Text(model.dataTypeFilter.title)
+                Text(model.dataTypeFilter.localizedTitle)
                 if let selected, selected.type != .all {
                     Text(selected.count.formatted())
                         .foregroundStyle(Token.Text.secondary)
@@ -40,8 +40,8 @@ struct CleanupTypePicker: View {
         .fixedSize()
         .disabled(model.isBusyWithDisk)
         .accessibilityLabel("Filter results")
-        .accessibilityValue(model.dataTypeFilter == .all ? model.dataTypeFilter.title
-            : "\(model.dataTypeFilter.title), \(selected?.count ?? 0) \(selected?.count == 1 ? "item" : "items")")
+        .accessibilityValue(model.dataTypeFilter == .all ? model.dataTypeFilter.localizedTitle
+            : String(localized: "\(model.dataTypeFilter.localizedTitle), \(selected?.count ?? 0) item", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         .help("Filter items found by this scan.")
     }
 }

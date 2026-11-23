@@ -34,6 +34,13 @@ struct AppUninstallerView: View {
     private enum SortOrder: String, CaseIterable {
         case name = "Name"
         case largest = "Largest"
+
+        var title: String {
+            switch self {
+            case .name: String(localized: "Name")
+            case .largest: String(localized: "Largest")
+            }
+        }
     }
 
     var body: some View {
@@ -101,11 +108,11 @@ struct AppUninstallerView: View {
                             let shown = visibleApplications(applications)
                             if shown.isEmpty {
                                 PageState(
-                                    title: applications.isEmpty ? "No Applications" : "No Results",
+                                    title: applications.isEmpty ? String(localized: "No Applications") : String(localized: "No Results"),
                                     symbol: "xmark.app",
                                     detail: applications.isEmpty
-                                        ? "Nothing removable was found in /Applications or ~/Applications."
-                                        : "No application matches “\(searchText)”."
+                                        ? String(localized: "Nothing removable was found in /Applications or ~/Applications.")
+                                        : String(localized: "No application matches “\(searchText)”.")
                                 )
                             } else {
                                 LazyVGrid(
@@ -172,8 +179,8 @@ struct AppUninstallerView: View {
         let selected = identifiers.intersection(model.selectedLeftoverIdentifiers)
         return HStack(spacing: 12) {
             SelectionCheckbox(
-                title: "Select All",
-                detail: "\(identifiers.count) \(identifiers.count == 1 ? "application" : "applications")",
+                title: String(localized: "Select All"),
+                detail: String(localized: "\(identifiers.count) application", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
                 state: !identifiers.isEmpty && identifiers.isSubset(of: selected) ? .on : .off,
                 isEnabled: !identifiers.isEmpty && !model.isBusyWithDisk && !model.isLoadingApplicationLeftovers
             ) { isOn in
@@ -182,7 +189,7 @@ struct AppUninstallerView: View {
             }
             .fixedSize()
             Spacer(minLength: 12)
-            Text("\(selected.count) selected · \(ByteFormatting.string(model.selectedLeftoverBytes))")
+            Text("\(selected.count) selected · \(ByteFormatting.localizedString(model.selectedLeftoverBytes))")
                 .font(.mcCaption)
                 .foregroundStyle(Token.Text.secondary)
                 .animatedTotal(model.selectedLeftoverBytes)
@@ -199,8 +206,8 @@ struct AppUninstallerView: View {
         if let leftovers = model.applicationLeftovers {
             if leftovers.groups.isEmpty {
                 PageState(
-                    title: "No Leftovers", symbol: "checkmark.circle",
-                    detail: "Nothing was found that a removed application left behind."
+                    title: String(localized: "No Leftovers"), symbol: "checkmark.circle",
+                    detail: String(localized: "Nothing was found that a removed application left behind.")
                 )
             } else {
                 // Never ticked for the user: whether a removed application's
@@ -252,10 +259,10 @@ struct AppUninstallerView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("\(group.items.count) files")
+            .help("\(group.items.count) file")
 
             SelectionCheckbox(
-                title: "Select \(group.displayName ?? group.bundleIdentifier)",
+                title: String(localized: "Select \(group.displayName ?? group.bundleIdentifier)"),
                 state: isSelected ? .on : .off,
                 isEnabled: !model.isBusyWithDisk && !model.isLoadingApplicationLeftovers,
                 showsTitle: false
@@ -273,11 +280,12 @@ struct AppUninstallerView: View {
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    if holdsUserData { Badge(text: "includes user data").fixedSize() }
+                    if holdsUserData { Badge(text: String(localized: "includes user data")).fixedSize() }
                 }
-                Text((group.displayName == nil ? "" : "\(group.bundleIdentifier) · ")
-                     + "No installed application owner · "
-                     + (group.items.count == 1 ? "1 file" : "\(group.items.count) files"))
+                let count = String(localized: "\(group.items.count) file", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+                Text(group.displayName == nil
+                     ? String(localized: "No installed application owner · \(count)")
+                     : String(localized: "\(group.bundleIdentifier) · No installed application owner · \(count)"))
                     .font(.mcMonoSmall)
                     .foregroundStyle(Token.Text.tertiary)
                     .lineLimit(1)
@@ -285,7 +293,7 @@ struct AppUninstallerView: View {
 
             Spacer()
 
-            Text(ByteFormatting.string(group.totalBytes))
+            Text(ByteFormatting.localizedString(group.totalBytes))
                 .font(.mcRowValue)
                 .foregroundStyle(Token.Text.secondary)
                 .fixedSize()
@@ -305,7 +313,7 @@ struct AppUninstallerView: View {
             HStack(spacing: 8) {
                 PageSegmentedControl(selection: $model.uninstallerTab, segments:
                     AppUninstallerModel.UninstallerTab.allCases.map { tab in
-                        .init(id: tab, title: tab.rawValue,
+                        .init(id: tab, title: tab.title,
                               symbol: tab == .installed ? "app" : "archivebox")
                     }
                 )
@@ -349,13 +357,13 @@ struct AppUninstallerView: View {
     private var installedActions: some View {
         Menu {
             Picker("Sort", selection: $sortOrder) {
-                ForEach(SortOrder.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                ForEach(SortOrder.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.inline)
             .labelsHidden()
         } label: {
             HStack(spacing: 7) {
-                Text(sortOrder.rawValue)
+                Text(sortOrder.title)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .accessibilityHidden(true)
@@ -365,7 +373,7 @@ struct AppUninstallerView: View {
         .buttonStyle(PageActionButtonStyle(size: .small))
         .menuIndicator(.hidden)
         .accessibilityLabel("Sort")
-        .accessibilityValue(sortOrder.rawValue)
+        .accessibilityValue(sortOrder.title)
         .fixedSize()
 
         // The one thing in this header that may narrow. At a fixed 180 pt it
@@ -382,11 +390,11 @@ struct AppUninstallerView: View {
     /// The total appears only once every card has its figure; a sum of the bundles
     /// measured so far would read as the whole and grow under the user's eyes.
     private var librarySummary: String {
-        guard let applications = model.installedApplications else { return "Reading applications…" }
-        let count = applications.count == 1 ? "1 application" : "\(applications.count) applications"
+        guard let applications = model.installedApplications else { return String(localized: "Reading applications…") }
+        let count = String(localized: "\(applications.count) application", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         let sizes = applications.compactMap { model.installedApplicationBytes[$0.id] }
-        guard sizes.count == applications.count else { return "\(count) · measuring…" }
-        return "\(count) · \(ByteFormatting.string(sizes.reduce(0, +)))"
+        guard sizes.count == applications.count else { return String(localized: "\(count) · measuring…") }
+        return String(localized: "\(count) · \(ByteFormatting.localizedString(sizes.reduce(0, +)))")
     }
 
     private func visibleApplications(_ applications: [InstalledApplication]) -> [InstalledApplication] {
@@ -414,7 +422,7 @@ struct AppUninstallerView: View {
     /// the window-wide `ActivityOverlay`; a second spinner here said the same thing.
     private var busyState: some View {
         PageProgressView(
-            title: "Finding related files",
+            title: String(localized: "Finding related files"),
             detail: model.appUninstallPlanningDetail
         )
     }
@@ -422,19 +430,19 @@ struct AppUninstallerView: View {
     // MARK: Done state
 
     private func doneState(_ outcome: CleanupOutcome) -> some View {
-        let applicationName = model.lastUninstalledApplicationName ?? "Application"
+        let applicationName = model.lastUninstalledApplicationName ?? String(localized: "Application")
         let failed = outcome.failed
         let applicationFailed = model.appUninstallError != nil && outcome.removedCount == 0
 
         return PageCompletionView(
-            title: applicationFailed ? "Could not uninstall \(applicationName)" : "\(applicationName) uninstalled",
+            title: applicationFailed ? String(localized: "Could not uninstall \(applicationName)") : String(localized: "\(applicationName) uninstalled"),
             isSuccess: failed.isEmpty && !applicationFailed
         ) {
             VStack(spacing: 12) {
                 if outcome.removedCount > 0 {
                     Text(outcome.deletedCount > 0
-                         ? "Removed \(ByteFormatting.string(outcome.removedBytes))."
-                         : "Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                         ? String(localized: "Removed \(ByteFormatting.localizedString(outcome.removedBytes)).")
+                         : String(localized: "Moved \(ByteFormatting.localizedString(outcome.removedBytes)) to the Trash."))
                 }
                 if outcome.deletedCount > 0 {
                     Text("The application was permanently deleted. It cannot be restored from the Trash.")
@@ -443,7 +451,7 @@ struct AppUninstallerView: View {
                     Text(error)
                         .foregroundStyle(Token.textColor(.orange))
                 } else if !failed.isEmpty {
-                    Text("\(failed.count) related \(failed.count == 1 ? "item remains" : "items remain") on disk.")
+                    Text("\(failed.count) related item remains on disk.")
                         .foregroundStyle(Token.textColor(.orange))
                 }
             }
@@ -482,7 +490,7 @@ struct AppUninstallerView: View {
                         batchPlanGroup(homebrew, usesHomebrew: true)
                     }
                     if !review.setAside.isEmpty {
-                        setAsideBox(review.setAside, title: "Not attempted")
+                        setAsideBox(review.setAside, title: String(localized: "Not attempted"))
                     }
                 }
                 .padding(.horizontal, Token.Size.pageGutter)
@@ -497,11 +505,11 @@ struct AppUninstallerView: View {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(usesHomebrew ? "Uninstall with Homebrew" : "Uninstall with Moppo")
+                        Text(usesHomebrew ? String(localized: "Uninstall with Homebrew") : String(localized: "Uninstall with Moppo"))
                             .font(.mcBody.weight(.semibold))
                             .foregroundStyle(Token.Text.primary)
                         Spacer(minLength: 0)
-                        Text("\(plans.count) \(plans.count == 1 ? "application" : "applications")")
+                        Text("\(plans.count) application")
                             .font(.mcCaption)
                             .foregroundStyle(Token.Text.secondary)
                             .fixedSize()
@@ -527,7 +535,7 @@ struct AppUninstallerView: View {
 
     private func batchReviewHeader(_ review: AppUninstallerModel.BatchUninstallReview) -> some View {
         HStack(spacing: 10) {
-            Text("\(review.plans.count) \(review.plans.count == 1 ? "application" : "applications") to review")
+            Text("\(review.plans.count) application to review")
                 .font(.mcCaption)
                 .foregroundStyle(Token.Text.secondary)
                 .lineLimit(1)
@@ -549,6 +557,17 @@ struct AppUninstallerView: View {
         .padding(.vertical, 10)
     }
 
+    private func batchPlanDetail(_ plan: AppUninstallPlan) -> String {
+        let related = plan.items.count - 1
+        if let package = plan.managedPackage {
+            return String(localized: "Homebrew · \(package.name) · \(related) related item", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+        }
+        if plan.isApplicationOnly {
+            return String(localized: "Application only — related files cannot be identified safely")
+        }
+        return String(localized: "Application and \(related) related item", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+    }
+
     private func batchPlanRow(_ plan: AppUninstallPlan) -> some View {
         HStack(spacing: 10) {
             Image(nsImage: NSWorkspace.shared.icon(forFile: plan.applicationURL.path))
@@ -562,13 +581,10 @@ struct AppUninstallerView: View {
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                     if !plan.protectedItems.isEmpty {
-                        Badge(text: "includes user data").fixedSize()
+                        Badge(text: String(localized: "includes user data")).fixedSize()
                     }
                 }
-                Text(plan.managedPackage.map { "Homebrew · \($0.name) · \(plan.items.count - 1) related \(plan.items.count == 2 ? "item" : "items")" } ?? (plan.isApplicationOnly
-                    ? "Application only — related files cannot be identified safely"
-                    : "Application and \(plan.items.count - 1) related "
-                        + (plan.items.count == 2 ? "item" : "items")))
+                Text(batchPlanDetail(plan))
                     .font(.mcCaption)
                     .foregroundStyle(plan.isApplicationOnly
                         ? Token.textColor(.orange) : Token.Text.tertiary)
@@ -577,7 +593,7 @@ struct AppUninstallerView: View {
 
             Spacer()
 
-            Text(ByteFormatting.string(plan.totalBytes))
+            Text(ByteFormatting.localizedString(plan.totalBytes))
                 .font(.mcRowValue)
                 .foregroundStyle(Token.Text.secondary)
                 .fixedSize()
@@ -651,7 +667,7 @@ private struct ApplicationCard: View {
                     .truncationMode(.middle)
                 ZStack {
                     if let bytes {
-                        Text(ByteFormatting.string(bytes))
+                        Text(ByteFormatting.localizedString(bytes))
                             .font(.mcCaption)
                             .foregroundStyle(Token.Text.secondary)
                             .transition(.opacity)
@@ -686,7 +702,7 @@ private struct ApplicationCard: View {
             .contentShape(shape)
         }
         .buttonStyle(CardPressButtonStyle())
-        .accessibilityLabel(bytes.map { "\(application.name), \(ByteFormatting.string($0))" }
+        .accessibilityLabel(bytes.map { "\(application.name), \(ByteFormatting.localizedString($0))" }
             ?? application.name)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityHint("Selects this application for uninstall")
@@ -753,19 +769,19 @@ struct UninstallerItemRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(item.displayName)
+                    Text(item.localizedDisplayName)
                         .font(.mcBody)
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if item.isProtectedUserData {
-                        Badge(text: "user data").fixedSize()
+                        Badge(text: String(localized: "user data")).fixedSize()
                     } else if item.content == .regenerable {
-                        Badge(text: "regenerable", style: .safe).fixedSize()
+                        Badge(text: String(localized: "Regenerable"), style: .safe).fixedSize()
                     } else if item.content == .logs {
-                        Badge(text: "not regenerable").fixedSize()
+                        Badge(text: String(localized: "Not regenerable")).fixedSize()
                     } else if item.content == .appComponent {
-                        Badge(text: "app component").fixedSize()
+                        Badge(text: String(localized: "app component")).fixedSize()
                     }
                 }
 
@@ -778,7 +794,7 @@ struct UninstallerItemRow: View {
 
             Spacer()
 
-            Text(ByteFormatting.string(item.allocatedBytes))
+            Text(ByteFormatting.localizedString(item.allocatedBytes))
                 .font(.mcRowValue)
                 .foregroundStyle(Token.Text.secondary)
                 .fixedSize()

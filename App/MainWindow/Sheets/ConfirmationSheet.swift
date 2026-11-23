@@ -91,7 +91,7 @@ struct ConfirmationSheet: View {
 
             if let notRegenerableNote {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Badge(text: FileEntry.RegenerationLabel.notRegenerable(reason: nil).text)
+                    Badge(text: String(localized: "Not regenerable"))
                         .fixedSize()
                     Text(notRegenerableNote)
                         .font(.mcSubtitle)
@@ -130,29 +130,12 @@ struct ConfirmationSheet: View {
                     .padding(.top, 14)
             }
 
-            HStack(spacing: 9) {
-                Spacer()
-                Button("Cancel", action: onCancel)
-                    .keyboardShortcut(.cancelAction)
-
-                if let onQuitAndConfirm, !runningOwnerNames.isEmpty {
-                    // Return goes to the quit-first button: the default action of a
-                    // sheet should be the one that cannot leave an app half-working.
-                    Button(confirmLabel, action: onConfirm)
-                    Button("Quit and Clean", action: onQuitAndConfirm)
-                        .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
-                        .tint(isDestructive ? Token.color(.red) : Color.accentColor)
-                } else {
-                    Button(confirmLabel, action: onConfirm)
-                        .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
-                        // The design's own note: the prototype reused one label for
-                        // both variants and it was wrong for the destructive one.
-                        // Erasing is not "moving", and it gets the destructive tint.
-                        .tint(isDestructive ? Token.color(.red) : Color.accentColor)
-                }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 9) { actionButtons }
+                    .fixedSize()
+                VStack(alignment: .trailing, spacing: 9) { actionButtons }
             }
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.top, 18)
         }
         .padding(.horizontal, 24)
@@ -166,6 +149,24 @@ struct ConfirmationSheet: View {
         .presentationBackground(Token.chrome)
     }
 
+    @ViewBuilder
+    private var actionButtons: some View {
+        Button("Cancel", action: onCancel)
+            .keyboardShortcut(.cancelAction)
+        if let onQuitAndConfirm, !runningOwnerNames.isEmpty {
+            Button(confirmLabel, action: onConfirm)
+            Button("Quit and Clean", action: onQuitAndConfirm)
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(isDestructive ? Token.color(.red) : Color.accentColor)
+        } else {
+            Button(confirmLabel, action: onConfirm)
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(isDestructive ? Token.color(.red) : Color.accentColor)
+        }
+    }
+
     // MARK: - Variant copy
 
     /// What the sheet says about open applications, or nothing.
@@ -176,20 +177,13 @@ struct ConfirmationSheet: View {
     private var runningOwnersNote: String? {
         guard !runningOwnerNames.isEmpty else { return nil }
         let names = ListFormatter.localizedString(byJoining: runningOwnerNames)
-        let plural = runningOwnerNames.count > 1
-        return "\(names) \(plural ? "are" : "is") open and using some of these files. "
-            + "Removing them now frees the same space, but \(plural ? "those apps" : "it") "
-            + "may misbehave until relaunched. \u{201C}Quit and Clean\u{201D} asks "
-            + "\(plural ? "them" : "it") to quit first; nothing is removed unless "
-            + "\(plural ? "they do" : "it does")."
+        return String(localized: "Some files are in use by \(names). Removing them now frees the same space but can disrupt those apps until they restart. Quit and Clean removes items only after the apps quit.")
     }
 
     /// Says how many selected items cannot come back, with the same label as the rows.
     var notRegenerableNote: String? {
         guard notRegenerableCount > 0 else { return nil }
-        return notRegenerableCount == 1
-            ? "1 selected item does not regenerate. If you empty the Trash, you lose its contents."
-            : "\(notRegenerableCount) selected items do not regenerate. If you empty the Trash, you lose their contents."
+        return String(localized: "\(notRegenerableCount) selected item does not regenerate. If you empty the Trash, you lose its contents.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 
     private var isDestructive: Bool {
@@ -209,45 +203,39 @@ struct ConfirmationSheet: View {
     private var dockerWarning: String {
         var sentences: [String] = []
         if dockerImageCount > 0 {
-            sentences.append("Docker permanently removes \(dockerImageCount) selected \(dockerImageCount == 1 ? "image" : "images"). "
-                + "These images do not move to the Trash. "
-                + "Image sizes include shared layers, so removal can recover less space.")
+            sentences.append(String(localized: "Docker permanently removes \(dockerImageCount) selected image. It does not move to the Trash. Image sizes include shared layers, so removal can recover less space.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         }
         if dockerVolumeCount > 0 {
-            let one = dockerVolumeCount == 1
-            sentences.append("Docker permanently removes \(dockerVolumeCount) selected \(one ? "volume" : "volumes") "
-                + "and all the data in \(one ? "it" : "them"). "
-                + "Docker keeps no backup, so you cannot restore this data.")
+            sentences.append(String(localized: "Docker permanently removes \(dockerVolumeCount) selected volume and all the data in it. Docker keeps no backup, so you cannot restore this data.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         }
         return sentences.joined(separator: " ")
     }
 
     private var title: String {
         if toolCommandEntry != nil, case .cleanUp(let count, _, _, _) = variant {
-            return count == 1 ? "Remove selected item?" : "Remove selected items?"
+            return count == 1 ? String(localized: "Remove selected item?") : String(localized: "Remove selected items?")
         }
-        if codexSessionCount > 0 { return "Remove selected items, including Codex sessions?" }
+        if codexSessionCount > 0 { return String(localized: "Remove selected items, including Codex sessions?") }
         switch variant {
         case .cleanUp(let count, _, let protected, _):
-            let noun = count == 1 ? "item" : "items"
             if protected > 0 {
-                return "Remove \(count) \(noun), including protected data?"
+                return String(localized: "Remove \(count) item, including protected data?", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             }
             if dockerCount == count {
-                let dockerNoun = dockerVolumeCount == 0 ? (count == 1 ? "image" : "images")
-                    : dockerImageCount == 0 ? (count == 1 ? "volume" : "volumes") : "items"
-                return "Permanently remove \(count) Docker \(dockerNoun)?"
+                if dockerVolumeCount == 0 { return String(localized: "Permanently remove \(count) Docker image?", bundle: MoppoResources.bundle, locale: MoppoResources.locale) }
+                if dockerImageCount == 0 { return String(localized: "Permanently remove \(count) Docker volume?", bundle: MoppoResources.bundle, locale: MoppoResources.locale) }
+                return String(localized: "Permanently remove \(count) Docker item?", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             }
-            if dockerCount > 0 { return "Remove \(count) \(noun)?" }
-            return "Move \(count) \(noun) to the Trash?"
+            if dockerCount > 0 { return String(localized: "Remove \(count) item?", bundle: MoppoResources.bundle, locale: MoppoResources.locale) }
+            return String(localized: "Move \(count) item to the Trash?", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         case .permanentApplication(let name):
-            return "Permanently delete \(name)?"
+            return String(localized: "Permanently delete \(name)?")
         case .emptyTrash(let count, _):
-            return "Permanently erase the \(count) items in the Trash?"
+            return String(localized: "Permanently erase \(count) item in the Trash?", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         case .soundLibrary:
-            return "Move downloaded sound content to the Trash?"
+            return String(localized: "Move downloaded sound content to the Trash?")
         case .photos(let count):
-            return "Move \(count) \(count == 1 ? "photo" : "photos") to Recently Deleted?"
+            return String(localized: "Move \(count) photo to Recently Deleted?", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
 
         }
     }
@@ -255,63 +243,52 @@ struct ConfirmationSheet: View {
     var message: String {
         if let entry = toolCommandEntry {
             guard case .cleanUp(let count, _, let protected, _) = variant else { return "" }
-            var message = "This selection contains \(entry.displayName), which you cannot restore."
+            var message = String(localized: "This selection contains \(entry.localizedDisplayName), which you cannot restore.")
             if let command = entry.toolCommand, case .simulatorRuntimeAbsent = command.expectedResult {
-                message += " Download available runtimes again manually in Xcode Components."
+                message += String(localized: " Download available runtimes again manually in Xcode Components.")
             } else if entry.toolCommand?.isHomebrewVersion == true {
-                message += " Homebrew keeps the other installed versions of this formula."
+                message += String(localized: " Homebrew keeps the other installed versions of this formula.")
             } else {
-                message += " Projects may need another dependency download."
+                message += String(localized: " Projects may need another dependency download.")
             }
             if count > toolCommandCount {
-                message += " Other files move to the Trash."
+                message += String(localized: " Other files move to the Trash.")
             }
             if dockerCount > 0 { message += " " + dockerWarning }
-            if protected > 0 { message += " Protected data removal can erase profiles, history, or settings." }
+            if protected > 0 { message += String(localized: " Protected data removal can erase profiles, history, or settings.") }
             return message
         }
         if codexSessionCount > 0 {
-            let sessions = "Codex permanently deletes \(codexSessionCount) \(codexSessionCount == 1 ? "session" : "sessions") and related session files. "
+            let sessions = String(localized: "Codex permanently deletes \(codexSessionCount) session and its related files. ", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             let docker = dockerCount > 0 ? dockerWarning + " " : ""
-            return sessions + docker + "Other selected files move to the Trash."
+            return sessions + docker + String(localized: "Other selected files move to the Trash.")
         }
         switch variant {
         case .cleanUp(_, let bytes, let protected, let saving):
             let warning: String
             if protected > 0 {
-                let noun = protected == 1 ? "item" : "items"
-                let pronoun = protected == 1 ? "it" : "them"
-                warning = " This includes \(protected) protected user-data \(noun); "
-                    + "removing \(pronoun) can sign you out and erase profiles, history, or settings."
+                warning = String(localized: " This includes \(protected) protected user-data item. Removal can sign you out and erase profiles, history, or settings.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             } else {
                 warning = ""
             }
             if dockerCount > 0 {
                 let fileBytes = max(0, bytes - dockerBytes)
                 let files = fileBytes > 0
-                    ? " Other selected items move to the Trash (\(ByteFormatting.string(fileBytes)))." : ""
+                    ? String(localized: " Other selected items move to the Trash (\(ByteFormatting.localizedString(fileBytes))).") : ""
                 return dockerWarning + files + warning
             }
             let sharing = Self.sharedStorageClause(selected: bytes, saving: saving)
-            return "\(ByteFormatting.string(bytes)) will be moved to the Trash. "
-                + "Nothing is erased until you empty it."
+            return String(localized: "\(ByteFormatting.localizedString(bytes)) will be moved to the Trash. Nothing is erased until you empty it.")
                 + sharing
                 + warning
         case .permanentApplication:
-            return "This application cannot move to the Trash. Deletion cannot be undone. "
-                + "Related files will move to the Trash."
+            return String(localized: "This application cannot move to the Trash. Deletion cannot be undone. Related files will move to the Trash.")
         case .emptyTrash(_, let bytes):
-            return "This erases \(ByteFormatting.string(bytes)) immediately. "
-                + "Items already in the Trash cannot be put back afterwards."
+            return String(localized: "This erases \(ByteFormatting.localizedString(bytes)) immediately. Items already in the Trash cannot be put back afterwards.")
         case .soundLibrary(let bytes):
-            return "This moves \(ByteFormatting.string(bytes)) of downloaded sound content to the Trash. "
-                + "Your application and music projects stay on this Mac. "
-                + "Projects that use these sounds may need another download. "
-                + "Empty the Trash to recover disk space."
+            return String(localized: "This moves \(ByteFormatting.localizedString(bytes)) of downloaded sound content to the Trash. Your application and music projects stay on this Mac. Projects that use these sounds may need another download. Empty the Trash to recover disk space.")
         case .photos:
-            return "Photos moves the selected photos to Recently Deleted. "
-                + "You can recover them in Photos for up to 30 days. "
-                + "With iCloud Photos on, this change applies to your linked devices."
+            return String(localized: "Photos moves the selected photos to Recently Deleted. You can recover them in Photos for up to 30 days. With iCloud Photos on, this change applies to your linked devices.")
 
         }
     }
@@ -332,34 +309,31 @@ struct ConfirmationSheet: View {
         let shared = selected - saving.freedBytes
         guard shared >= max(16 * 1_048_576, selected / 10) else { return "" }
 
-        let amount = ByteFormatting.string(saving.freedBytes)
+        let amount = ByteFormatting.localizedString(saving.freedBytes)
         // "Will get back", not "will be freed": these items may be going to the
         // Trash, where they keep holding their blocks until it is emptied. Both
         // sentences have to stay true under either disposition.
         guard saving.isMinimum else {
-            return " Only about \(amount) of that is storage this Mac will get back — "
-                + "the rest is shared with other copies still on this disk."
+            return String(localized: " Only about \(amount) of that is storage this Mac will get back — the rest is shared with other copies still on this disk.")
         }
         // The selection holds two or more members of one clone family. Their shared
         // blocks are private to neither, so the figure is a floor — and "only at
         // least 0 B" is not a sentence. The selection total is the safe thing to
         // rule out instead: when items share blocks with each other, their sizes
         // add up to more storage than exists, so the whole of it can never return.
-        return " Some of these items share storage with each other and with copies "
-            + "still on this disk, so this Mac will get back at least \(amount) of "
-            + "that — never the whole \(ByteFormatting.string(selected))."
+        return String(localized: " Some of these items share storage with each other and with copies still on this disk, so this Mac will get back at least \(amount) of that — never the whole \(ByteFormatting.localizedString(selected)).")
     }
 
     private var confirmLabel: String {
-        if toolCommandEntry != nil { return "Remove" }
-        if codexSessionCount > 0 { return "Delete Sessions and Clean Up" }
+        if toolCommandEntry != nil { return String(localized: "Remove") }
+        if codexSessionCount > 0 { return String(localized: "Delete Sessions and Clean Up") }
         switch variant {
         case .cleanUp(_, _, let protected, _):
-            return protected > 0 ? "Remove Anyway" : dockerCount > 0 ? "Remove" : "Move to Trash"
-        case .emptyTrash:   return "Erase"
-        case .permanentApplication: return "Delete Permanently"
-        case .soundLibrary: return "Move to Trash"
-        case .photos: return "Move to Recently Deleted"
+            return protected > 0 ? String(localized: "Remove Anyway") : dockerCount > 0 ? String(localized: "Remove") : String(localized: "Move to Trash")
+        case .emptyTrash:   return String(localized: "Erase")
+        case .permanentApplication: return String(localized: "Delete Permanently")
+        case .soundLibrary: return String(localized: "Move to Trash")
+        case .photos: return String(localized: "Move to Recently Deleted")
         }
     }
 

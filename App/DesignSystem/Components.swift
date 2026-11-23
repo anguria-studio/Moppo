@@ -106,7 +106,7 @@ struct SelectionCheckbox: NSViewRepresentable {
                 .foregroundColor: NSColor.secondaryLabelColor
             ]))
             button.attributedTitle = label
-            button.setAccessibilityLabel("\(title), \(detail)")
+            button.setAccessibilityLabel(String(localized: "\(title), \(detail)"))
         }
         button.state = state
         button.isEnabled = isEnabled && environmentEnabled
@@ -448,7 +448,7 @@ struct HoverTip: View {
 struct FindField: View {
     @Binding var text: String
     let findRequest: Int
-    var prompt = "Search"
+    var prompt = String(localized: "Search")
 
     @FocusState private var isFocused: Bool
 
@@ -490,7 +490,7 @@ struct SortableColumnHeader: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(isActive ? "Reverse the sort order" : "Sort by \(title.lowercased())")
+        .help(isActive ? Text("Reverse the sort order") : Text("Sort by \(title)"))
     }
 }
 
@@ -976,7 +976,7 @@ struct OperationPresentationDuration: Sendable {
 
 /// Confirms a stop request in buttons and status controls.
 struct ScanInterruptionView: View {
-    static let title = "Interrupting Scan"
+    static let title = String(localized: "Interrupting Scan")
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1014,8 +1014,8 @@ struct PageProgressView: View {
     var isCancelling = false
     var cancellingTitle = PageProgressView.stoppingWaitTitle
 
-    static let stoppingWaitTitle = "Stopping the wait"
-    static let stoppingRemovalTitle = "Stopping the removal"
+    static let stoppingWaitTitle = String(localized: "Stopping the wait")
+    static let stoppingRemovalTitle = String(localized: "Stopping the removal")
 
     private var displayedTitle: String {
         if isCancelling { return cancellingTitle }
@@ -1034,20 +1034,18 @@ struct PageProgressView: View {
                     VStack(spacing: 6) {
                         if let detail { Text(detail) }
                         if let counts {
-                            let completed = counts.completed.formatted()
-                            let total = counts.total.formatted()
-                            HStack(spacing: 0) {
-                                Text(total)
-                                    .hidden()
-                                    .overlay(alignment: .trailing) { Text(completed) }
-                                Text(" of \(total)")
-                            }
-                            .monospacedDigit()
-                            .fixedSize()
-                            .opacity(counts.total > 0 ? 1 : 0)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("\(completed) of \(total)")
-                            .accessibilityHidden(counts.total == 0)
+                            Text("\(counts.total) of \(counts.total)")
+                                .hidden()
+                                .overlay(alignment: .trailing) {
+                                    Text("\(counts.completed) of \(counts.total)",
+                                         comment: "Progress counts. First is the completed count, second is the total.")
+                                }
+                                .monospacedDigit()
+                                .fixedSize()
+                                .opacity(counts.total > 0 ? 1 : 0)
+                                .accessibilityElement(children: .ignore)
+                                .accessibilityLabel("\(counts.completed) of \(counts.total)")
+                                .accessibilityHidden(counts.total == 0)
                         }
                     }
                     .opacity(isInterrupting ? 0 : 1)

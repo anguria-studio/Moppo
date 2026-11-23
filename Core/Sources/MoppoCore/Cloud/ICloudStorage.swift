@@ -68,7 +68,10 @@ public struct ICloudStorage: Sendable, Equatable, Codable {
 public enum ICloudSegmentID: String, Sendable, Codable, CaseIterable {
     case documents, unmeasured, free
 
-    public var displayName: String {
+    public var displayName: String { displayNameText.english }
+    public var localizedDisplayName: String { displayNameText.localized }
+
+    var displayNameText: EngineText {
         switch self {
         case .documents:  "iCloud Drive"
         case .unmeasured: "Unmeasured"
@@ -78,13 +81,15 @@ public enum ICloudSegmentID: String, Sendable, Codable, CaseIterable {
 
     /// What the segment covers, for the row's tooltip. `Unmeasured` says plainly why
     /// it cannot be broken down rather than leaving the user to wonder.
-    public var explanation: String? {
+    public var explanation: String? { explanationText?.english }
+    public var localizedExplanation: String? { explanationText?.localized }
+
+    var explanationText: EngineText? {
         switch self {
         case .documents:
             "Documents and app data in iCloud Drive, including files not downloaded here."
         case .unmeasured:
-            "Photos, device backups and Mail. macOS exposes no public way to measure "
-                + "these, so they are reported together rather than guessed at."
+            "Photos, device backups and Mail. macOS exposes no public way to measure these, so they are reported together rather than guessed at."
         case .free:
             nil
         }
@@ -109,5 +114,6 @@ public struct ICloudSegment: Sendable, Equatable, Codable, Identifiable {
     }
 
     public var displayName: String { id.displayName }
+    public var localizedDisplayName: String { id.localizedDisplayName }
     public var color: ColorToken { id.color }
 }

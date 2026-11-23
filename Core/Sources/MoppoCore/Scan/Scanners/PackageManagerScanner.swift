@@ -91,13 +91,13 @@ public struct PackageManagerScanner: CategoryScanner {
             let measured = try await context.measurer.measure(moduleCache)
             unreadableCount += measured.unreadableCount
             if measured.allocatedBytes > 0, !measured.containsProtectedPattern {
-                entries.append(FileEntry(url: moduleCache, displayName: "Go module cache", kind: .cache,
+                entries.append(FileEntry(url: moduleCache, nameText: "Go module cache", kind: .cache,
                     allocatedBytes: measured.allocatedBytes, isRegenerable: true,
                     protectionReason: measured.unreadableCount > 0 ? .inventory : nil,
-                    protectionExplanation: measured.unreadableCount > 0
-                        ? "Some cache files could not be checked. Scan again before removal." : review.lockReason,
+                    protectionText: measured.unreadableCount > 0
+                        ? "Some cache files could not be checked. Scan again before removal." : review.lockText,
                     removalMethod: .toolCommand(review),
-                    safetyCaveat: "Go removes this cache permanently. Projects may need another download."))
+                    caveatText: "Go removes this cache permanently. Projects may need another download."))
                 totalBytes += measured.allocatedBytes
             }
         }
@@ -140,12 +140,12 @@ public struct PackageManagerScanner: CategoryScanner {
 
             entries.append(FileEntry(
                 url: url,
-                displayName: root.label,
+                nameText: .rule(root.label),
                 kind: .cache,
                 allocatedBytes: measured.allocatedBytes,
                 lastOpened: lastOpened,
                 isRegenerable: root.reviewCaveat == nil,
-                safetyCaveat: root.reviewCaveat,
+                caveatText: root.reviewCaveat.map(EngineText.rule),
                 childCount: (try? FileManager.default.contentsOfDirectory(atPath: url.path))?.count
             ))
             totalBytes += measured.allocatedBytes
@@ -169,9 +169,8 @@ public struct PackageManagerScanner: CategoryScanner {
             let editor = extensionFolder.editor
             entries.append(FileEntry(
                 url: url,
-                displayName: EditorExtensionStores.displayName(forFolder: url.lastPathComponent),
-                parentDisplay: "\(editor.name) marked this version for removal · "
-                    + FileEntry.abbreviate(url.deletingLastPathComponent().path),
+                nameText: .verbatim(EditorExtensionStores.displayName(forFolder: url.lastPathComponent)),
+                parentText: "\(editor.name) marked this version for removal · \(FileEntry.abbreviate(url.deletingLastPathComponent().path))",
                 kind: .cache,
                 allocatedBytes: measured.allocatedBytes,
                 lastOpened: lastOpenedDate(for: url),

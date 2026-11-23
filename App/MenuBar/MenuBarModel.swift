@@ -58,24 +58,26 @@ final class MenuBarModel {
         case .scanFinished(let completed, let removeSafeToRemove):
             guard status?.isFailure != true else { return }
             if !completed {
-                status = Status(message: "Scan stopped. No items were removed.")
+                status = Status(message: String(localized: "Scan stopped. No items were removed."))
             } else if removeSafeToRemove, cleanup.showsOutdatedResultsNotice {
-                status = Status(message: "Scan settings changed. No items were removed.", isFailure: true)
+                status = Status(message: String(localized: "Scan settings changed. No items were removed."), isFailure: true)
             } else if removeSafeToRemove, !cleanup.isRemoving {
                 if let blocked = operations.blockedAction {
                     status = Status(message: blocked.message, isFailure: true)
                 } else {
-                    status = Status(message: "No Safe to Remove items were removed.")
+                    status = Status(message: String(localized: "No Safe to Remove items were removed."))
                 }
             } else if !removeSafeToRemove {
-                status = Status(message: "Scan complete.")
+                status = Status(message: String(localized: "Scan complete."))
             }
         case .removed(let outcome):
             let remaining = outcome.failed.count + outcome.skippedWorktrees.count
             let needsReview = remaining > 0 || outcome.toolCommandResults.contains(where: \.needsAttention)
-            let removed = "\(ByteFormatting.string(outcome.removedBytes)) removed."
+            let removedBytes = ByteFormatting.localizedString(outcome.removedBytes)
             status = Status(
-                message: needsReview ? "\(removed) Some items need review in Moppo." : removed,
+                message: needsReview
+                    ? String(localized: "\(removedBytes) removed. Some items need review in Moppo.")
+                    : String(localized: "\(removedBytes) removed."),
                 isFailure: needsReview
             )
         case .failure(_, let message):

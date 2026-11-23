@@ -62,6 +62,13 @@ public struct SimulatorRuntimeReview: Sendable, Equatable {
         }
 
         var name: String { "\(platform) \(version ?? "Unknown version") Simulator Runtime (\(build ?? "Unknown build"))" }
+        var nameText: EngineText {
+            let system = platform == "Unknown platform" ? EngineText("Unknown platform").localized : platform
+            let version = version ?? EngineText("Unknown version").localized
+            let build = build ?? EngineText("Unknown build").localized
+            return EngineText(english: name, display: "\(system) \(version) Simulator Runtime (\(build))")
+        }
+
         var matchKey: String { "\(platform):\(build ?? "")" }
     }
 
@@ -74,7 +81,20 @@ public struct SimulatorRuntimeReview: Sendable, Equatable {
     let runtime: Runtime
     let developerDirectory: String
     let toolchains: [Toolchain]
-    let protectionExplanation: String?
+    let protectionText: EngineText?
+    var protectionExplanation: String? { protectionText?.english }
+
+    init(runtime: Runtime, developerDirectory: String, toolchains: [Toolchain], protectionExplanation: String?) {
+        self.init(runtime: runtime, developerDirectory: developerDirectory, toolchains: toolchains,
+                  protectionText: protectionExplanation.map(EngineText.verbatim))
+    }
+
+    init(runtime: Runtime, developerDirectory: String, toolchains: [Toolchain], protectionText: EngineText?) {
+        self.runtime = runtime
+        self.developerDirectory = developerDirectory
+        self.toolchains = toolchains
+        self.protectionText = protectionText
+    }
 
     var toolsAreUnchanged: Bool {
         toolchains.allSatisfy { ToolCommandRemoval.fileVersion($0.simctl) == $0.identity }
@@ -92,11 +112,14 @@ struct SimulatorRuntimeService: Sendable {
     enum RemovalVerification: Sendable {
         case removed, stillPresent, unavailable(String)
 
+        static let unavailableReason = "Runtime removal could not be verified. Scan again."
+        static let inventoryTimeout: EngineText = "The runtime inventory command reached its time limit."
+
         var failureReason: String? {
             switch self {
             case .removed: nil
             case .stillPresent: "The runtime is still listed after removal. Scan again."
-            case .unavailable: "Runtime removal could not be verified. Scan again."
+            case .unavailable: Self.unavailableReason
             }
         }
     }
@@ -109,10 +132,10 @@ struct SimulatorRuntimeService: Sendable {
         let activeRuntimes: Set<String>
         /// The state of each device by UDID. `nil` when Moppo could not check every Xcode toolchain.
         let devices: [String: DeviceState]?
-        let failureReason: String?
+        let failureReason: EngineText?
 
         func review(_ runtime: SimulatorRuntimeReview.Runtime) -> SimulatorRuntimeReview {
-            let reason: String?
+            let reason: EngineText?
             if let failureReason { reason = failureReason }
             else if UUID(uuidString: runtime.identifier) == nil || runtime.runtimeIdentifier?.isEmpty != false
                 || runtime.version?.isEmpty != false || runtime.build?.isEmpty != false || runtime.platform == "Unknown platform" {
@@ -130,7 +153,7 @@ struct SimulatorRuntimeService: Sendable {
                 reason = "Other runtimes share this backing image. Manage these runtimes in Xcode Components."
             } else { reason = nil }
             return SimulatorRuntimeReview(runtime: runtime, developerDirectory: developerDirectory,
-                toolchains: toolchains, protectionExplanation: reason)
+                toolchains: toolchains, protectionText: reason)
         }
 
         /// A device is unavailable only when every toolchain reports it as unavailable and shut down,
@@ -169,7 +192,7 @@ struct SimulatorRuntimeService: Sendable {
     func snapshot() async throws -> Snapshot {
         // The selected toolchain supplies the inventory even when discovery is incomplete.
         let directories: [URL]
-        var failureReason: String?
+        var failureReason: EngineText?
         do {
             directories = try await discover()
             if directories.isEmpty { failureReason = "Installed Xcode versions could not be verified. Scan again before removal." }
@@ -241,7 +264,7 @@ struct SimulatorRuntimeService: Sendable {
                 if !records.contains(where: { $0.identifier == review.runtime.identifier }) { return .removed }
                 result = .stillPresent
             } catch ProcessError.timedOut {
-                result = .unavailable("The runtime inventory command reached its time limit.")
+                result = .unavailable(RemovalVerification.inventoryTimeout.english)
             } catch { result = .unavailable(String(describing: error)) }
             let remainingAfterCheck = clock.now.duration(to: deadline)
             guard remainingAfterCheck >= .seconds(1) else { return result }
@@ -258,21 +281,44 @@ struct SimulatorRuntimeService: Sendable {
     }
 
     static func retainedImageGuidance(developerDirectory: String) -> String? {
-        let fix = "Apple lists a fix in Xcode 27.2."
-        let unknownVersion = "Older Xcode versions can have this simulator deletion issue. \(fix) "
-            + "If you use an older version, update Xcode before you retry removal in Xcode Components."
+        retainedImageGuidanceText(developerDirectory: developerDirectory)?.english
+    }
+
+    private static let retainedImageGuidanceForUnknownVersion: EngineText =
+        "Older Xcode versions can have this simulator deletion issue. Apple lists a fix in Xcode 27.2. If you use an older version, update Xcode before you retry removal in Xcode Components."
+
+    static func retainedImageGuidanceText(developerDirectory: String) -> EngineText? {
+        let unknownVersion = retainedImageGuidanceForUnknownVersion
         guard developerDirectory.hasPrefix("/") else { return unknownVersion }
         let infoURL = URL(fileURLWithPath: developerDirectory).deletingLastPathComponent().appendingPathComponent("Info.plist")
         guard let data = try? Data(contentsOf: infoURL),
               let info = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               info["CFBundleIdentifier"] as? String == "com.apple.dt.Xcode",
-              let version = info["CFBundleShortVersionString"] as? String else { return unknownVersion }
-        let parts = version.split(separator: ".", omittingEmptySubsequences: false)
-        let numbers = parts.compactMap { Int($0) }
-        guard !numbers.isEmpty, numbers.count == parts.count, numbers.allSatisfy({ $0 >= 0 }) else { return unknownVersion }
+              let version = info["CFBundleShortVersionString"] as? String,
+              isValidXcodeVersion(version) else { return unknownVersion }
         guard version.compare("27.2", options: .numeric) == .orderedAscending else { return nil }
-        return "This can result from an Xcode \(version) issue. \(fix) "
-            + "After you update Xcode, retry removal in Xcode Components."
+        return retainedImageGuidanceText(version: version)
+    }
+
+    /// Reads guidance that Cleanup History saved before localization.
+    static func retainedImageGuidanceText(savedEnglish: String) -> EngineText? {
+        let unknownVersion = retainedImageGuidanceForUnknownVersion
+        if savedEnglish == unknownVersion.english { return unknownVersion }
+        let start = "This can result from an Xcode "
+        guard savedEnglish.hasPrefix(start) else { return nil }
+        let version = String(savedEnglish.dropFirst(start.count).prefix { !$0.isWhitespace })
+        guard isValidXcodeVersion(version) else { return nil }
+        let text = retainedImageGuidanceText(version: version)
+        return text.english == savedEnglish ? text : nil
+    }
+
+    private static func retainedImageGuidanceText(version: String) -> EngineText {
+        "This can result from an Xcode \(version) issue. Apple lists a fix in Xcode 27.2. After you update Xcode, retry removal in Xcode Components."
+    }
+
+    private static func isValidXcodeVersion(_ version: String) -> Bool {
+        let parts = version.split(separator: ".", omittingEmptySubsequences: false)
+        return !parts.isEmpty && parts.allSatisfy { (Int($0) ?? -1) >= 0 }
     }
 
     /// Every simulator runtime download folder that macOS keeps, one for each platform.
@@ -284,7 +330,7 @@ struct SimulatorRuntimeService: Sendable {
     }
 
     static func downloadEntries(in roots: [URL], registeredRuntimes: [SimulatorRuntimeReview.Runtime]?,
-                                context: ScanContext, removalGuidance: String? = nil) async throws -> (entries: [FileEntry], unreadableCount: Int) {
+                                context: ScanContext, removalGuidance: EngineText? = nil) async throws -> (entries: [FileEntry], unreadableCount: Int) {
         struct AssetInfo: Decodable {
             let CFBundleIdentifier: String
             let MobileAssetProperties: Properties?

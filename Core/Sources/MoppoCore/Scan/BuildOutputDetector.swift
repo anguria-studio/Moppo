@@ -39,11 +39,18 @@ public enum BuildOutputDetector {
         /// The label names the tool, e.g. "npm dependencies".
         case dependencyStore(String)
 
-        public var label: String {
+        func parentText(_ path: String) -> EngineText {
+            let display = labelText.localized
+            return EngineText(english: "\(path) · \(label)", display: "\(path) · \(display)")
+        }
+
+        public var label: String { labelText.english }
+
+        var labelText: EngineText {
             switch self {
             case .xcodeDerivedData: "Xcode derived data"
             case .swiftPackageBuild: "Swift package build"
-            case .dependencyStore(let tool): tool
+            case .dependencyStore(let tool): .rule(tool)
             }
         }
 

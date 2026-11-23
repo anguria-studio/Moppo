@@ -14,7 +14,11 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
 
     public var id: String { rawValue }
 
-    public var displayName: String {
+    public var displayName: String { nameText.english }
+
+    public var localizedDisplayName: String { nameText.localized }
+
+    var nameText: EngineText {
         switch self {
         case .documentsAndFiles: "Documents & Files"
         case .applications:      "Applications"
@@ -28,7 +32,11 @@ public enum CategoryID: String, Sendable, CaseIterable, Identifiable {
         }
     }
 
-    public var subtitle: String {
+    public var subtitle: String { subtitleText.english }
+
+    public var localizedSubtitle: String { subtitleText.localized }
+
+    var subtitleText: EngineText {
         switch self {
         case .documentsAndFiles:
             "Largest folders in Documents, Downloads, Desktop, Movies, Pictures, Music"
@@ -113,7 +121,16 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
     public let categoryID: CategoryID
     public var totalBytes: Int64
     public var entries: [FileEntry]
-    public var availability: CategoryAvailability
+    public var availability: CategoryAvailability {
+        didSet {
+            if availability != oldValue { unavailableText = nil }
+        }
+    }
+    private var unavailableText: EngineText?
+    public var localizedUnavailableReason: String? {
+        guard case .unavailable(let reason) = availability else { return nil }
+        return unavailableText?.localized ?? reason
+    }
     /// Entries this scanner could not read, surfaced rather than swallowed.
     public var unreadableCount: Int
     /// The reviewed identities behind the Application Leftovers rows.
@@ -175,8 +192,8 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
                 return safeChildren.map { child in
                     var child = child
                     if child.aiStorageSection == nil, let section = entry.aiStorageSection {
-                        child.aiStorageSection = .init(owner: section.owner, title: child.displayName,
-                            summary: FileEntryPresentation(entry: child).summary)
+                        child.aiStorageSection = .init(owner: section.owner, titleText: child.nameText,
+                            summaryText: FileEntryPresentation.summaryText(for: child))
                     }
                     return child
                 }
@@ -311,7 +328,7 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
             entry.children = entry.children.compactMap(filtered)
             if context.isExcluded(entry.url) {
                 entry.protectionReason = .inventory
-                entry.protectionExplanation = "This folder contains an excluded item. Review its other child items separately."
+                entry.protectionText = "This folder contains an excluded item. Review its other child items separately."
             }
             return entry
         }
@@ -326,6 +343,13 @@ public struct ScanCategoryResult: Sendable, Equatable, Identifiable {
     /// A category that measured zero renders disabled, with no disclosure triangle.
     public static func empty(_ id: CategoryID) -> Self {
         ScanCategoryResult(categoryID: id, availability: .empty)
+    }
+
+    static func unavailable(_ id: CategoryID, text: EngineText, unreadableCount: Int = 0) -> Self {
+        var result = Self(categoryID: id, availability: .unavailable(reason: text.english),
+                          unreadableCount: unreadableCount)
+        result.unavailableText = text
+        return result
     }
 
     public static func unavailable(_ id: CategoryID, reason: String) -> Self {

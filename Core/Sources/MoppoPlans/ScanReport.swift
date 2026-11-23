@@ -61,6 +61,11 @@ public struct ScanReport: Codable, Sendable {
             }
         }
 
+        /// Uses the current entry to explain the reviewed classification.
+        public func localizedReason(for entry: FileEntry) -> String {
+            entry.scanReviewReason(eligibility: eligibility, safeToRemove: safeToRemove, localized: true)
+        }
+
         /// Keeps the reviewed identifier and classification with sizes from a fresh scan.
         /// `status` records the result of the fresh measurement of this item.
         func withMeasurements(of fresh: Item, status: Status) -> Item {
@@ -113,22 +118,7 @@ public struct ScanReport: Codable, Sendable {
                 }
                 else { eligibility = "review_required" }
                 let safe = parent == nil ? category.isCountedSafe(entry) : entry.regeneratesSafely
-                let reason: String
-                switch eligibility {
-                case "protected": reason = "Moppo protects this item from ordinary cleanup."
-                case "parent_review": reason = "Review this item with its parent."
-                case "app_review": reason = "This item requires an application removal review."
-                default:
-                    if safe {
-                        reason = "The scan identifies this item as safe to regenerate."
-                    } else if entry.isRegenerable, let explanation = entry.projectActivity?.explanation {
-                        reason = explanation
-                    } else if let vendor = entry.vendorFolder {
-                        reason = vendor.explanation
-                    } else {
-                        reason = "Review this item before removal. You may need its contents."
-                    }
-                }
+                let reason = entry.scanReviewReason(eligibility: eligibility, safeToRemove: safe)
                 let regeneration: String?
                 let regenerationReason: String?
                 switch entry.regenerationLabel {

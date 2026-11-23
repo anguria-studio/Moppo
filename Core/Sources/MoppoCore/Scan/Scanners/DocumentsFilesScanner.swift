@@ -194,17 +194,20 @@ public struct DocumentsFilesScanner: CategoryScanner {
                     // A lockfile shows that the store can come back. The project
                     // state shows whether removal costs nothing now.
                     let activity = activities[carved.root.url.standardizedFileURL.path]
+                    let path = FileEntry.abbreviate(carved.root.url.deletingLastPathComponent().path)
+                    let label = vendor?.tool.labelText ?? carved.root.kind.labelText
+                    let lockfiles = vendor?.lockfileDescription ?? evidence ?? "no lockfile"
+                    let localizedLockfiles = vendor?.localizedLockfileDescription
+                        ?? evidence ?? EngineText("no lockfile").localized
                     var entry = FileEntry(
-                        url: carved.root.url,
-                        parentDisplay: FileEntry.abbreviate(
-                            carved.root.url.deletingLastPathComponent().path
-                        ) + " · " + carved.root.kind.label
-                            + " · " + (vendor?.lockfileDescription ?? evidence ?? "no lockfile"),
+                        url: carved.root.url, nameText: nil,
+                        parentText: EngineText(english: "\(path) · \(label.english) · \(lockfiles)",
+                                               display: "\(path) · \(label.localized) · \(localizedLockfiles)"),
                         kind: .cache,
                         allocatedBytes: carved.measurement.allocatedBytes,
                         lastOpened: lastOpenedDate(for: carved.root.url),
                         isRegenerable: evidence != nil,
-                        safetyCaveat: vendor?.caveat ?? (evidence == nil ? "no lockfile" : activity?.caveat),
+                        caveatText: vendor?.caveatText ?? (evidence == nil ? "no lockfile" : activity?.caveatText),
                         childCount: (try? FileManager.default.contentsOfDirectory(
                             atPath: carved.root.url.path
                         ))?.count
@@ -234,13 +237,8 @@ public struct DocumentsFilesScanner: CategoryScanner {
         }
 
         if presentRoots > 0 && readableRoots == 0 {
-            return ScanCategoryResult(
-                categoryID: id,
-                availability: .unavailable(reason: "Moppo cannot read Documents, "
-                    + "Downloads or Desktop. Grant it Full Disk Access in System Settings → "
-                    + "Privacy & Security, then scan again."),
-                unreadableCount: unreadableCount
-            )
+            return .unavailable(id, text: "Moppo cannot read Documents, Downloads or Desktop. Grant it Full Disk Access in System Settings → Privacy & Security, then scan again.",
+                                unreadableCount: unreadableCount)
         }
 
         let sorted = Self.sortedBySize(entries)

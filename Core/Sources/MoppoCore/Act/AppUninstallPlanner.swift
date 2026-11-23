@@ -21,7 +21,10 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
             case unreadable
 
             /// The review shows this text below the path.
-            public var explanation: String {
+            public var explanation: String { explanationText.english }
+            public var localizedExplanation: String { explanationText.localized }
+
+            private var explanationText: EngineText {
                 switch self {
                 case .excluded:
                     "Your exclusion list includes this path or an item in it."
@@ -124,6 +127,9 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         public var id: String { url.standardizedFileURL.path }
         public let url: URL
         public let displayName: String
+        public var localizedDisplayName: String {
+            soundLibrary == nil ? displayName : EngineText.rule(displayName).localized
+        }
         public let category: Category
         public let content: Content
         public let allocatedBytes: Int64
@@ -241,6 +247,24 @@ public struct AppUninstallPlan: Sendable, Equatable, Identifiable {
         case let count: return removal + " \(count) related paths stay on disk."
         }
     }
+    public var localizedReviewTitle: String {
+        if isApplicationOnly { return EngineText("Application-only uninstall").localized }
+        let title: EngineText = preservedPaths.isEmpty ? "Complete uninstall" : "Partial uninstall"
+        return title.localized
+    }
+
+    public var localizedReviewDetail: String {
+        if isApplicationOnly {
+            return EngineText("Moppo cannot identify related files safely. Removal includes only the application.").localized
+        }
+        let removal: EngineText = protectedItems.isEmpty
+            ? "Every verified related file below will move to the Trash."
+            : "Every verified related file below will move to the Trash, including profiles and settings."
+        let count = preservedPaths.count
+        return count == 0 ? removal.localized
+            : removal.localized + " " + EngineText("\(count) related paths stay on disk.").localized
+    }
+
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.allocatedBytes } }
 
     /// A copy of the plan that also removes the selected shared group containers.
@@ -311,7 +335,7 @@ public enum AppUninstallPlanningError: Error, Sendable, Equatable, LocalizedErro
     case packageOwnershipUnavailable
 
     public var errorDescription: String? {
-        switch self {
+        let text: EngineText = switch self {
         case .notAnApplication:
             "Choose a valid macOS application bundle."
         case .applicationMissing:
@@ -319,8 +343,7 @@ public enum AppUninstallPlanningError: Error, Sendable, Equatable, LocalizedErro
         case .untrustedLocation:
             "Only applications installed in /Applications or your Applications folder can be uninstalled."
         case .protectedApplication:
-            "System applications and Moppo itself cannot be removed here. An application "
-                + "with an Apple identifier needs an App Store receipt to be offered."
+            "System applications and Moppo itself cannot be removed here. An application with an Apple identifier needs an App Store receipt to be offered."
         case .symbolicLink:
             "This application is reached through a symbolic link. Reveal and remove the original application instead."
         case .applicationExcluded:
@@ -330,6 +353,7 @@ public enum AppUninstallPlanningError: Error, Sendable, Equatable, LocalizedErro
         case .packageOwnershipUnavailable:
             "Homebrew is installed but its package catalog could not be read. Try again before removing this application."
         }
+        return text.localized
     }
 }
 

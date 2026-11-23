@@ -54,5 +54,5 @@ struct FileTableGroup: Identifiable {
         }
     }
 
-    private var name: String { owner?.rawValue ?? entries[0].displayName }
+    private var name: String { owner?.rawValue ?? entries[0].localizedDisplayName }
 }

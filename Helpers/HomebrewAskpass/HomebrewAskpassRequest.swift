@@ -11,6 +11,7 @@ struct HomebrewAskpassRequest: Sendable {
 
     let applicationPID: pid_t
     let package: String
+    let language: String?
     let deadline: Date
 
     init?(environment: [String: String], now: Date = .now) {
@@ -23,6 +24,7 @@ struct HomebrewAskpassRequest: Sendable {
         else { return nil }
         self.applicationPID = pid
         self.package = package
+        self.language = environment["HOMEBREW_MOPPO_LANGUAGE"].flatMap { $0.isEmpty ? nil : $0 }
         self.deadline = Date(timeIntervalSince1970: seconds)
     }
 

@@ -133,10 +133,10 @@ public struct DockerService: Sendable {
                 )
                 entries.append(FileEntry(
                     url: try Self.itemURL(kind: "images", context: context, name: image.Id),
-                    displayName: metadata.tags.isEmpty
-                        ? "Untagged image \(image.Id.dropFirst(7).prefix(12))"
-                        : metadata.tags.joined(separator: ", "),
-                    parentDisplay: "Docker",
+                    nameText: metadata.tags.isEmpty
+                        ? "Untagged image \(String(image.Id.dropFirst(7).prefix(12)))"
+                        : .verbatim(metadata.tags.joined(separator: ", ")),
+                    parentText: .verbatim("Docker"),
                     kind: .diskImage,
                     allocatedBytes: image.Size,
                     docker: .image(metadata)
@@ -168,8 +168,8 @@ public struct DockerService: Sendable {
             )
             entries.append(FileEntry(
                 url: try itemURL(kind: "volumes", context: context, name: row.Name),
-                displayName: volume.isAnonymous ? "Anonymous volume \(row.Name.prefix(12))" : row.Name,
-                parentDisplay: "Docker",
+                nameText: volume.isAnonymous ? "Anonymous volume \(String(row.Name.prefix(12)))" : .verbatim(row.Name),
+                parentText: .verbatim("Docker"),
                 kind: .diskImage,
                 allocatedBytes: bytes,
                 notRegenerable: Self.volumeData,
@@ -181,7 +181,7 @@ public struct DockerService: Sendable {
 
     /// Docker cannot download a volume again, as it can for an image.
     static let volumeData = FileEntry.NotRegenerable(
-        reason: "This volume can hold the only copy of its data, such as a database."
+        reasonText: "This volume can hold the only copy of its data, such as a database."
     )
 
     /// The row identity, such as `docker://volumes/<context>/<name>`. It is never a file path.

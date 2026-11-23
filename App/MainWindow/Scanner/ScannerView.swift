@@ -83,8 +83,8 @@ struct ScannerView: View {
                 .transition(.opacity)
             } else {
                 PageState(
-                    title: "Ready to scan", symbol: "magnifyingglass",
-                    detail: "Use Scan to find cleanup items."
+                    title: String(localized: "Ready to scan"), symbol: "magnifyingglass",
+                    detail: String(localized: "Use Scan to find cleanup items.")
                 )
             }
         }
@@ -139,9 +139,9 @@ struct ScannerView: View {
 
     private var outdatedResultsNotice: some View {
         PageState(
-            title: "Cleanup data might be outdated",
+            title: String(localized: "Cleanup data might be outdated"),
             symbol: "clock.arrow.circlepath",
-            detail: "Files or scan settings have changed since the last scan."
+            detail: String(localized: "Files or scan settings have changed since the last scan.")
         ) {
             PageStateActions {
                 Button("Scan again") { model.startScan() }
@@ -157,14 +157,14 @@ struct ScannerView: View {
         let names = ListFormatter.localizedString(byJoining: model.cleanupRunningOwners.map(\.name))
         let bytes = model.runningAppCaches.reduce(Int64(0)) { $0 + $1.allocatedBytes }
         return NoticeBanner(
-            title: "Some apps are using cached files",
+            title: String(localized: "Some apps are using cached files"),
             dismiss: { model.dismissRunningAppsNotice() }
         ) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Some apps are using cached files")
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
-                Text("\(names) · \(ByteFormatting.string(bytes)) of caches")
+                Text("\(names) · \(ByteFormatting.localizedString(bytes)) of caches")
                     .font(.mcControlLabel)
                     .foregroundStyle(Token.Text.secondary)
                     .lineLimit(2)
@@ -193,7 +193,7 @@ struct ScannerView: View {
 
     private var scanProgress: some View {
         PageProgressView(
-            title: "Scanning for cleanup items",
+            title: String(localized: "Scanning for cleanup items"),
             detail: model.scanProgressDetail,
             progress: model.scanProgress > 0 ? Double(model.scanProgress) / 100 : nil,
             isInterrupting: model.isInterruptingScan,
@@ -211,8 +211,8 @@ struct ScannerView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 SelectionCheckbox(
-                    title: "Select All",
-                    detail: "\(count) \(count == 1 ? "item" : "items")",
+                    title: String(localized: "Select All"),
+                    detail: String(localized: "\(count) item", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
                     state: model.selectAllStateInCurrentView,
                     isEnabled: !model.isBusyWithDisk
                         && (model.hasSelectableItemsInCurrentView || model.hasSelectionInCurrentView)
@@ -225,7 +225,7 @@ struct ScannerView: View {
                 CleanupTypePicker(model: model)
             }
             if model.hiddenSelectionCount > 0 {
-                Text("\(model.hiddenSelectionCount) selected \(model.hiddenSelectionCount == 1 ? "item is" : "items are") outside this view. Removal includes them.")
+                Text("\(model.hiddenSelectionCount) selected item is outside this view. Removal includes it.")
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -236,18 +236,18 @@ struct ScannerView: View {
 
     /// The banner heading. It names permanent removals and Trash moves differently.
     static func completionTitle(_ outcome: CleanupOutcome) -> String {
-        if outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) { return "Cleanup incomplete" }
-        if outcome.removedCount == 0 { return "No items removed" }
+        if outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) { return String(localized: "Cleanup incomplete") }
+        if outcome.removedCount == 0 { return String(localized: "No items removed") }
         if outcome.deletedCount > 0 {
-            return "\(outcome.removedCount) \(outcome.removedCount == 1 ? "item removed" : "items removed")"
+            return String(localized: "\(outcome.removedCount) item removed", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
-        return "\(ByteFormatting.string(outcome.removedBytes)) moved to Trash"
+        return String(localized: "\(ByteFormatting.localizedString(outcome.removedBytes)) moved to Trash")
     }
 
     static func failureNote(_ outcome: CleanupOutcome) -> String? {
         let count = outcome.failed.count
         guard count > 0 else { return nil }
-        return "\(count) \(count == 1 ? "item" : "items") could not be removed."
+        return String(localized: "\(count) item could not be removed.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 
     private func completion(_ outcome: CleanupOutcome) -> some View {
@@ -257,7 +257,7 @@ struct ScannerView: View {
             let recoveredBytes = outcome.toolCommandResults
                 .compactMap { $0.status == .completed ? $0.freedBytes : nil }.reduce(0, +)
             if recoveredBytes > 0, !outcome.toolCommandResults.contains(where: { $0.remainingStorageReason != nil }) {
-                Text("\(ByteFormatting.string(recoveredBytes)) recovered")
+                Text("\(ByteFormatting.localizedString(recoveredBytes)) recovered")
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
             }
@@ -276,9 +276,9 @@ struct ScannerView: View {
     private func filterPicker(_ results: ScanResults) -> some View {
         PageSegmentedControl(selection: $model.scanFilter, segments: [
             .init(id: .all, title: CleanupModel.ScanFilter.all.title, symbol: "square.grid.2x2",
-                  detail: ByteFormatting.string(results.totalBytes)),
+                  detail: ByteFormatting.localizedString(results.totalBytes)),
             .init(id: .safeToRemove, title: CleanupModel.ScanFilter.safeToRemove.title, symbol: "checkmark.circle.fill",
-                  detail: ByteFormatting.string(results.safeToRemoveBytes), tint: .green)
+                  detail: ByteFormatting.localizedString(results.safeToRemoveBytes), tint: .green)
         ])
         .frame(maxWidth: .infinity, alignment: .leading)
         .disabled(model.isBusyWithDisk)
@@ -297,8 +297,8 @@ struct ScannerView: View {
     private func categoryOutline(_ categories: [ScanCategoryResult]) -> some View {
         if hasNoCleanupItems(categories) {
             ScanCompletionView(
-                title: model.scanFilter == .safeToRemove ? "No safe cleanup items found" : "No cleanup items found",
-                detail: "The scan found no items in this group.",
+                title: model.scanFilter == .safeToRemove ? String(localized: "No safe cleanup items found") : String(localized: "No cleanup items found"),
+                detail: String(localized: "The scan found no items in this group."),
                 animate: animateEmptyResult
             )
         } else {

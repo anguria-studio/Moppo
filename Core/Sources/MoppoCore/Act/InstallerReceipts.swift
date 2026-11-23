@@ -30,6 +30,15 @@ public struct InstallerReceipts: Sendable {
         public let otherLocations: [String]
 
         public var reviewTitle: String { "Installed by \(fileName ?? identifier)" }
+        public var localizedReviewTitle: String { EngineText("Installed by \(fileName ?? identifier)").localized }
+
+        public var localizedReviewDetail: String {
+            guard !otherLocations.isEmpty else {
+                return EngineText("An installer package put this application in place. Its receipt lists nothing written anywhere else.").localized
+            }
+            let locations = otherLocations.formatted(.list(type: .and))
+            return EngineText("The same installer also wrote to \(locations). Those paths stay in place when you uninstall the application.").localized
+        }
 
         /// What the review says. It states what is on record and no more: that these
         /// folders were written by the same installer, not that the application

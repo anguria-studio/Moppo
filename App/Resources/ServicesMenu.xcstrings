@@ -1,0 +1,66 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Open the selected application in Moppo for uninstall review.": {
+      "comment": "Finder service description. The service opens a review and performs no removal.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open the selected application in Moppo for uninstall review."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre la app seleccionada en Moppo para revisar las opciones de desinstalación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez l’app sélectionnée dans Moppo pour examiner les options de désinstallation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri l’app selezionata in Moppo per controllare le opzioni di disinstallazione."
+          }
+        }
+      }
+    },
+    "Review Uninstall with Moppo": {
+      "comment": "Finder Services menu item. Opens Moppo to review uninstall options. Invoking it performs no removal.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Uninstall with Moppo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revisar desinstalación con Moppo"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifier la désinstallation avec Moppo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controlla la disinstallazione con Moppo"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

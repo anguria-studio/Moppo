@@ -52,12 +52,33 @@ public struct ProjectActivity: Sendable, Equatable {
     }
 
     /// The short text after the row path, in the style of `no lockfile`.
-    public var caveat: String? {
+    public var caveat: String? { caveatText?.english }
+    public var localizedCaveat: String? { caveatText?.localized }
+
+    var caveatText: EngineText? {
         switch hold {
         case .recentActivity: "recent project changes"
         case .notIgnoredByGit: "Git does not ignore it"
         case .unknown: "project state unknown"
         case nil: nil
+        }
+    }
+
+    /// Guidance for a dependency store that needs review.
+    public var localizedExplanation: String? {
+        switch hold {
+        case .recentActivity:
+            if let lastActivity {
+                let date = lastActivity.formatted(date: .abbreviated, time: .omitted)
+                return EngineText("The project changed on \(date). Moppo waits until the project has no changes for 14 days. Moppo does not count it as safe to remove. You can still select it.").localized
+            }
+            return EngineText("Moppo waits until the project has no changes for 14 days. Moppo does not count it as safe to remove. You can still select it.").localized
+        case .notIgnoredByGit:
+            return EngineText("Git does not ignore this folder, or the repository tracks files in it. Moppo does not count it as safe to remove. You can still select it.").localized
+        case .unknown:
+            return EngineText("Moppo could not read the state of this project. Moppo does not count it as safe to remove. You can still select it.").localized
+        case nil:
+            return nil
         }
     }
 

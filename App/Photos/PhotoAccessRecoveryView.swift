@@ -27,7 +27,7 @@ struct PhotoAccessRecoveryView: View {
                     Text(Self.resetCommand)
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
-                    Button(didCopyCommand ? "Copy Command Again" : "Copy Command") {
+                    Button(didCopyCommand ? String(localized: "Copy Command Again") : String(localized: "Copy Command")) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(Self.resetCommand, forType: .string)
                         didCopyCommand = true

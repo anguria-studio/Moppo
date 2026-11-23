@@ -24,7 +24,7 @@ struct CategoryRow: View {
                     .buttonStyle(.plain)
                     .hoverHighlight(fill: Token.Fill.cleanupHeaderHover, restingFill: Token.Fill.groupHeader)
                     .accessibilityLabel(accessibilityDescription)
-                    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                    .accessibilityValue(isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
             } else if onCheck == nil {
                 rowContent
                     .accessibilityElement(children: .ignore)
@@ -52,7 +52,7 @@ struct CategoryRow: View {
                 .frame(width: 28, height: 28)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(category.displayName)
+                Text(category.localizedDisplayName)
                     .font(.mcToolbarTitle)
                     .foregroundStyle(isActionable ? Token.Text.primary : Token.Text.secondary)
                     .lineLimit(1)
@@ -62,7 +62,7 @@ struct CategoryRow: View {
                     .lineLimit(onCheck != nil && !isActionable ? 3 : 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .help(category.subtitle)
+            .help(category.localizedSubtitle)
             .accessibilityElement(children: .combine)
             if let onCheck, !isActionable {
                 HStack(spacing: 8) {
@@ -71,10 +71,10 @@ struct CategoryRow: View {
                             .controlSize(.mini)
                             .accessibilityHidden(true)
                     }
-                    Button(isChecking ? "Stop" : "Check Now", action: onCheck)
+                    Button(isChecking ? String(localized: "Stop") : String(localized: "Check Now"), action: onCheck)
                         .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
                         .disabled(isCheckDisabled)
-                        .accessibilityLabel(isChecking ? "Stop Docker scan" : "Check Now")
+                        .accessibilityLabel(isChecking ? String(localized: "Stop Docker scan") : String(localized: "Check Now"))
                 }
             }
             VStack(alignment: .trailing, spacing: 4) {
@@ -83,7 +83,7 @@ struct CategoryRow: View {
                     .foregroundStyle(Token.Text.primary)
                     .lineLimit(1)
                 if isActionable, selectedBytes > 0 {
-                    Text("\(ByteFormatting.string(selectedBytes)) selected")
+                    Text("\(ByteFormatting.localizedString(selectedBytes)) selected")
                         .font(.mcCaption)
                         .foregroundStyle(Token.color(.accent))
                         .lineLimit(1)
@@ -98,12 +98,12 @@ struct CategoryRow: View {
     }
 
     private var detail: String {
-        if isChecking { return isCheckDisabled ? "Stopping the Docker scan…" : "Checking Docker storage…" }
-        if case .unavailable(let reason) = result.availability { return reason }
+        if isChecking { return isCheckDisabled ? String(localized: "Stopping the Docker scan…") : String(localized: "Checking Docker storage…") }
+        if let reason = result.localizedUnavailableReason { return reason }
         let count = result.entries.count
         let worktrees = result.entries.reduce(0) { $0 + $1.worktreeCount }
-        let suffix = worktrees > 0 ? " · \(worktrees) Git \(worktrees == 1 ? "worktree" : "worktrees")" : ""
-        return "\(count) \(count == 1 ? "item" : "items")" + suffix
+        let suffix = worktrees > 0 ? String(localized: " · \(worktrees) Git worktree", bundle: MoppoResources.bundle, locale: MoppoResources.locale) : ""
+        return String(localized: "\(count) item", bundle: MoppoResources.bundle, locale: MoppoResources.locale) + suffix
     }
 
     private var iconStyle: (symbol: String, color: ColorToken) {
@@ -122,13 +122,13 @@ struct CategoryRow: View {
 
     private var totalDisplay: String {
         if case .unavailable = result.availability { return "—" }
-        return ByteFormatting.string(result.applicationInstalledBytes ?? result.totalBytes)
+        return ByteFormatting.localizedString(result.applicationInstalledBytes ?? result.totalBytes)
     }
 
     private var accessibilityDescription: String {
         let selection = selectedBytes > 0
-            ? ", \(ByteFormatting.string(selectedBytes)) selected" : ""
-        return "\(category.displayName), \(detail), \(totalDisplay)\(selection)"
+            ? String(localized: ", \(ByteFormatting.localizedString(selectedBytes)) selected") : ""
+        return "\(category.localizedDisplayName), \(detail), \(totalDisplay)\(selection)"
     }
 }
 

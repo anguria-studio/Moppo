@@ -38,10 +38,21 @@ public struct AgentSetup: Sendable {
         case blocked
     }
 
-    public enum SetupError: Error, Equatable, Sendable {
+    public enum SetupError: LocalizedError, Equatable, Sendable {
         case sourceMissing, blocked, confirmationRequired
         /// Moppo cannot safely change the file that holds the client's sandbox rule.
         case sandboxRuleBlocked(Client)
+
+        public var errorDescription: String? {
+            let text: EngineText = switch self {
+            case .sourceMissing: "Moppo could not find the files to install."
+            case .blocked: "An item that Moppo cannot replace uses this location."
+            case .confirmationRequired: "Confirm that Moppo can replace the installed item."
+            case .sandboxRuleBlocked(let client):
+                "Moppo could not update the sandbox rule for \(client.displayName)."
+            }
+            return text.localized
+        }
     }
 
     public static let skillName = "moppo-cleanup"

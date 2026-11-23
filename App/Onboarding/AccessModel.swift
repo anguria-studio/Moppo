@@ -13,13 +13,13 @@ final class AccessModel {
 
         var label: String {
             switch self {
-            case .checking: "Checking"
-            case .undecided: "Not Set"
-            case .allowed: "On"
-            case .limited: "Limited"
-            case .denied: "Off"
-            case .restricted: "Restricted"
-            case .unavailable: "Unavailable"
+            case .checking: String(localized: "Checking")
+            case .undecided: String(localized: "Not Set")
+            case .allowed: String(localized: "On")
+            case .limited: String(localized: "Limited")
+            case .denied: String(localized: "Off")
+            case .restricted: String(localized: "Restricted")
+            case .unavailable: String(localized: "Unavailable")
             }
         }
 
@@ -92,7 +92,7 @@ final class AccessModel {
         let previousDiskStatus = disk
         disk = client.diskStatus() ? .allowed : .denied
         if disk != previousDiskStatus {
-            _ = try? ScanLog.recordApplicationEvent("full_disk_access_changed", details: ["status": disk.label])
+            _ = try? ScanLog.recordApplicationEvent("full_disk_access_changed", details: ["status": disk == .allowed ? "On" : "Off"])
         }
         photos = client.photoStatus()
         let status = await client.notificationStatus()
@@ -117,7 +117,7 @@ final class AccessModel {
                 if permission == .photos { await client.requestPhotos() }
                 else { try await client.requestNotifications() }
             } catch {
-                self.error = "Moppo could not request notification access. Try again or open System Settings."
+                self.error = String(localized: "Moppo could not request notification access. Try again or open System Settings.")
             }
             await refresh()
         } else {

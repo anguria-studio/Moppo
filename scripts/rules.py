@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RULES_DIRECTORY = ROOT / "rules"
 GENERATED_SWIFT = Path("Core/Sources/MoppoCore/Generated/ToolRules.swift")
+ENGINE_CATALOG = Path("Core/Sources/MoppoCore/Resources/Engine.xcstrings")
 
 TYPES = {
     "cache": "Cache",
@@ -728,8 +729,8 @@ def render_ai_roots(sections, tools):
                          f"explanation: {swift_string(part['explanation'])})")
         lines += swift_comment(storage)
         arguments = [f"path: {swift_string(relative)}", f"name: {swift_string(storage['name'])}",
-                     f"section: .init(owner: .{tool['owner']['case']}, title: {swift_string(storage['section']['title'])}, "
-                     f"summary: {swift_string(storage['section']['summary'])})"]
+                     f"section: .init(owner: .{tool['owner']['case']}, titleText: {swift_string(storage['section']['title'])}, "
+                     f"summaryText: {swift_string(storage['section']['summary'])})"]
         if base != ".home":
             arguments.append(f"base: {base}")
         if storage.get("explanation"):
@@ -1190,6 +1191,51 @@ def check(root=ROOT):
             if not path.exists() or path.read_text() != text]
 
 
+def engine_text_keys(sections, tools):
+    """List rule values that the application presents as localized text."""
+    for _, _, storage in rows(sections, tools):
+        table = storage.get("table")
+        treatment = storage.get("treatment")
+        if table == "databaseStorage":
+            yield storage["name"]
+            if storage.get("contents"):
+                yield storage["contents"]
+        elif table in HOME_TABLES:
+            if treatment == "protect":
+                yield storage["explanation"]
+                if table == "toolHomeLocations":
+                    yield storage["name"]
+            elif storage.get("caveat"):
+                yield storage["caveat"]
+        elif table == "aiToolStorage":
+            yield storage["name"]
+            if storage.get("explanation"):
+                yield storage["explanation"]
+            if section := storage.get("section"):
+                yield section["title"]
+                yield section["summary"]
+            if storage.get("curated"):
+                yield storage["remainderName"]
+        elif table == "containerCaches" or (table == "packageManagerCaches" and not storage.get("check")):
+            yield storage["name"]
+            if treatment == "review":
+                yield storage["caveat"]
+        elif table == "curations":
+            if treatment == "protect":
+                yield storage["name"]
+            if treatment == "review":
+                yield storage["caveat"]
+
+
+def check_engine_localizations(root=ROOT):
+    """List absent application translations for registry text."""
+    sections, tools = load(root / "rules")
+    catalog = json.loads((root / ENGINE_CATALOG).read_text())["strings"]
+    return [(language, key) for key in sorted(set(engine_text_keys(sections, tools)))
+            for language in ("it", "fr", "es")
+            if not catalog.get(key, {}).get("localizations", {}).get(language, {}).get("stringUnit", {}).get("value")]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["generate", "check", "audit"])
@@ -1207,7 +1253,10 @@ def main(argv=None):
             stale = check()
             for path in stale:
                 print(f"{path} is out of date. Run python3 scripts/rules.py generate.")
-            return 1 if stale else 0
+            missing = check_engine_localizations()
+            for language, key in missing:
+                print(f"{ENGINE_CATALOG}: Add the {language} translation for {key!r}.")
+            return 1 if stale or missing else 0
     except RuleError as error:
         print(f"rules: {error}", file=sys.stderr)
         return 2

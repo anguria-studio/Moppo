@@ -25,8 +25,7 @@ struct CategoriesPane: View {
     var body: some View {
         PrefPane(spacing: Metrics.gap) {
             Text(
-                "Categories that are off are never measured and never appear in the "
-                + "Scanner. Turning a category off does not delete anything."
+                "Categories that are off are never measured and never appear in Cleanup. Turning a category off does not delete anything."
             )
             .font(.mcBody)
             .foregroundStyle(Token.Text.tertiary)
@@ -54,15 +53,15 @@ struct CategoriesPane: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: PrefMetrics.labelGap) {
-                Text(category.displayName)
+                Text(category.localizedDisplayName)
                     .font(.mcRowTitleRegular)
                     .foregroundStyle(Token.Text.primary)
-                Text(category.subtitle)
+                Text(category.localizedSubtitle)
                     .font(category.subtitleIsPath ? .mcMonoPath : .mcSubtitle)
                     .foregroundStyle(Token.Text.tertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .help(category.subtitle)
+                    .help(category.localizedSubtitle)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -75,7 +74,7 @@ struct CategoriesPane: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
-                .accessibilityLabel(Text(category.displayName))
+                .accessibilityLabel(Text(category.localizedDisplayName))
                 .accessibilityValue(Text(sizeText(for: category)))
         }
         .padding(.horizontal, PrefMetrics.rowPaddingH)
@@ -87,7 +86,7 @@ struct CategoriesPane: View {
     /// looked at and found clean — and it is not one this pane can make before a scan.
     private func sizeText(for category: CategoryID) -> String {
         guard let bytes = sizes[category] else { return "—" }
-        return ByteFormatting.string(bytes)
+        return ByteFormatting.localizedString(bytes)
     }
 
     // MARK: - Warning callout
@@ -114,16 +113,16 @@ struct CategoriesPane: View {
     /// number the user is about to stop seeing.
     private var warningCallout: some View {
         let hidden = hiddenCategories
-        let names = hidden.map { $0.category.displayName }.formatted(.list(type: .and))
+        let names = hidden.map { $0.category.localizedDisplayName }.formatted(.list(type: .and))
         let total = hidden.reduce(0) { $0 + $1.bytes }
         // One literal, not concatenated pieces: the emphasised run is a `Text`
         // interpolation, which only works inside a single string literal.
         let sentence = Text("""
             Turning off \
             \(Text(names).foregroundStyle(Token.Text.emphasis).fontWeight(.medium)) \
-            hides \(ByteFormatting.string(total)) from the Scanner. \
+            hides \(ByteFormatting.localizedString(total)) from Cleanup. \
             Your Dashboard totals will still include it.
-            """)
+            """, comment: "The first value is a list of disabled cleanup categories. The second value is their total storage size.")
 
         return HStack(alignment: .top, spacing: 9) {
             Image(systemName: "exclamationmark.triangle")

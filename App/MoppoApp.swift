@@ -4,6 +4,16 @@ import MoppoPlans
 import UserNotifications
 import AppIntents
 
+enum MoppoResources {
+    static let bundle = Bundle(for: AppDelegate.self)
+
+    static var locale: Locale {
+        let identifier = bundle.preferredLocalizations.first ?? bundle.developmentLocalization ?? "en"
+        let language = Locale(identifier: identifier).language.languageCode?.identifier ?? "en"
+        return PresentationLocale.appLanguage(language)
+    }
+}
+
 #if !MOPPO_APP_TESTS
 @main
 #endif
@@ -31,7 +41,7 @@ struct MoppoApp: App {
         AppIdentity.migratePreferences()
         // One store, handed to the model so the engine actually receives the
         // preferences the panes edit.
-        let settings = SettingsStore()
+        let settings = SettingsStore(languageDomain: Bundle.main.bundleIdentifier)
         settings.appearance.apply()
         let model = AppModel(
             settings: settings, launchAccess: OnboardingView.launchAccess,
@@ -53,6 +63,7 @@ struct MoppoApp: App {
         _access = State(initialValue: AccessModel())
         _updates = State(initialValue: UpdateController(operations: model.operations))
         appDelegate.operations = model.operations
+        appDelegate.dashboard = model.dashboard
         MainWindowRequestCenter.uninstall.install { [weak model] applicationURL in
             model?.uninstaller.planAppUninstall(applicationURL)
         }
@@ -99,6 +110,7 @@ struct MoppoApp: App {
                 access: access,
                 updates: updates,
                 dashboard: model.dashboard,
+                appDelegate: Self.isRunningPreview ? nil : appDelegate,
                 categorySizes: model.categorySizes,
                 onRebuildIndex: {
                     Task { await model.dashboard.rebuildSizeIndex() }
@@ -136,7 +148,87 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     private let finderUninstallServiceProvider = FinderUninstallServiceProvider()
     weak var operations: OperationCoordinator?
+    weak var dashboard: DashboardModel?
     var completeTermination: (NSApplication) -> Void = { $0.reply(toApplicationShouldTerminate: true) }
+    var requestTermination: () -> Void = { NSApp.terminate(nil) }
+    var prepareLanguageRelaunch: @MainActor () -> (() -> Void)? = AppDelegate.makeLanguageRelaunch
+    private var relaunchAfterTermination: (() -> Void)?
+
+    enum LanguageRestartFailure {
+        case busy, unavailable
+    }
+
+    enum LanguageRestartAvailability {
+        case ready, stopCleanupScan, closePlanReview, afterCleanup, waitingForCleanup, blocked
+
+        var canRestart: Bool { self != .waitingForCleanup && self != .blocked }
+
+        var message: String {
+            switch self {
+            case .ready: String(localized: "Restart Moppo to apply the language change.")
+            case .stopCleanupScan: String(localized: "Moppo will stop the Cleanup scan and restart.")
+            case .closePlanReview: String(localized: "Moppo will close the saved cleanup plan review and restart.")
+            case .afterCleanup, .waitingForCleanup: String(localized: "Moppo will restart when Cleanup finishes.")
+            case .blocked: String(localized: "Wait for the current operation to finish before you restart Moppo.")
+            }
+        }
+    }
+
+    var languageRestartAvailability: LanguageRestartAvailability {
+        if operations?.isPreparingLanguageRestart == true { return .waitingForCleanup }
+        if operations?.isTerminating == true || dashboard?.hasActiveFileChanges == true { return .blocked }
+        if let kind = operations?.activeOperation?.kind, kind.cleanupRestartBehavior != nil {
+            switch kind {
+            case .cleanupScan: return .stopCleanupScan
+            case .cleanupPlanReview: return .closePlanReview
+            default: return .afterCleanup
+            }
+        }
+        return operations?.isBusy == true || dashboard?.hasActiveDiskWork == true ? .blocked : .ready
+    }
+
+    func restartForLanguage(onDeferredFailure: (() -> Void)? = nil) -> LanguageRestartFailure? {
+        let availability = languageRestartAvailability
+        guard relaunchAfterTermination == nil, availability.canRestart else { return .busy }
+        if availability == .ready { return terminateForLanguageRestart() }
+        guard prepareLanguageRelaunch() != nil else { return .unavailable }
+        guard let operations, operations.prepareForLanguageRestart(whenReady: { [weak self, weak operations] in
+            Task { @MainActor in
+                guard let self, let operations, operations.isPreparingLanguageRestart else { return }
+                if self.terminateForLanguageRestart() != nil { onDeferredFailure?() }
+            }
+        }) else { return .busy }
+        return nil
+    }
+
+    private func terminateForLanguageRestart() -> LanguageRestartFailure? {
+        defer {
+            relaunchAfterTermination = nil
+            operations?.endLanguageRestart()
+        }
+        guard let relaunch = prepareLanguageRelaunch() else { return .unavailable }
+        relaunchAfterTermination = relaunch
+        requestTermination()
+        if relaunchAfterTermination == nil { return nil }
+        return languageRestartAvailability == .blocked ? .busy : .unavailable
+    }
+
+    private static func makeLanguageRelaunch() -> (() -> Void)? {
+        let bundle = Bundle.main
+        let open = URL(fileURLWithPath: "/usr/bin/open")
+        let files = FileManager.default
+        guard bundle.bundleURL.pathExtension.lowercased() == "app",
+              let executable = bundle.executableURL,
+              files.isExecutableFile(atPath: executable.path),
+              files.isExecutableFile(atPath: open.path) else { return nil }
+        return {
+            do {
+                try Process.run(open, arguments: ["-n", bundle.bundlePath])
+            } catch {
+                NSLog("Moppo could not launch the app again: %@", error.localizedDescription)
+            }
+        }
+    }
 
     /// True while a login launch is still settling: SwiftUI can present the
     /// restored window just after `applicationDidFinishLaunching`, and without this
@@ -196,7 +288,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         let operation = operations?.activeOperation.map { String(describing: $0.kind) } ?? "none"
         let reply: NSApplication.TerminateReply
         let completeTermination = completeTermination
-        if let operations, operations.isBusy, operations.activeOperation?.kind != .updateInstallation {
+        if relaunchAfterTermination != nil {
+            let readyToRestart = languageRestartAvailability == .ready
+                || (operations?.isPreparingLanguageRestart == true && operations?.activeOperation == nil
+                    && dashboard?.hasActiveFileChanges != true)
+            reply = readyToRestart ? .terminateNow : .terminateCancel
+        } else if let operations, operations.isBusy, operations.activeOperation?.kind != .updateInstallation {
             reply = operations.cancelForTermination(whenReady: {
                 // Reply after AppKit receives terminateLater, including immediate cancellation.
                 Task { @MainActor in
@@ -214,6 +311,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationWillTerminate(_ notification: Notification) {
         _ = try? ScanLog.recordApplicationEvent("application_terminating")
+        let relaunch = relaunchAfterTermination
+        relaunchAfterTermination = nil
+        relaunch?()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -318,7 +418,7 @@ private struct MoppoCommands: Commands {
                 .keyboardShortcut("r")
                 .disabled(model.isShowingWelcome || model.isBusyWithDisk
                           || model.uninstaller.isShowingAppUninstallDetail)
-            Button(model.cleanup.isInterruptingScan ? ScanInterruptionView.title : "Stop Scan") { model.cleanup.cancelScan() }
+            Button(model.cleanup.isInterruptingScan ? ScanInterruptionView.title : String(localized: "Stop Scan")) { model.cleanup.cancelScan() }
                 .keyboardShortcut(".")
                 .disabled(!model.cleanup.isScanning || model.cleanup.isInterruptingScan)
         }

@@ -47,7 +47,10 @@ public struct FileDuplicateGroup: Sendable, Equatable, Identifiable {
         case firstByName
         case chosenByUser
 
-        public var label: String {
+        public var label: String { labelText.english }
+        public var localizedLabel: String { labelText.localized }
+
+        var labelText: EngineText {
             switch self {
             case .oldestCopy:   "oldest copy"
             case .newestCopy:   "newest copy"

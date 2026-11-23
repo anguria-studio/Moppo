@@ -17,6 +17,8 @@ struct AdvancedPane: View {
     /// Called after the store has been reset, for state the store does not own
     /// (selections, cached measurements).
     var onResetSettings: (() -> Void)?
+    var onLanguageChange: (() -> Void)?
+    var isLanguageRestartPending = false
 
     @State private var isConfirmingReset = false
 
@@ -28,10 +30,10 @@ struct AdvancedPane: View {
     var body: some View {
         PrefPane {
             removalBehaviour
-            PrefSection("Photos and iCloud") {
+            PrefSection(String(localized: "Photos and iCloud")) {
                 PrefToggleRow(
-                    title: "Allow photo downloads from iCloud",
-                    description: "On by default. Changes apply to new requests; active requests can finish.",
+                    title: String(localized: "Allow photo downloads from iCloud"),
+                    description: String(localized: "On by default. Changes apply to new requests; active requests can finish."),
                     isOn: $settings.allowPhotoDownloads
                 )
                 PhotoAccessGuide().padding()
@@ -43,31 +45,34 @@ struct AdvancedPane: View {
         .alert("Reset all settings?", isPresented: $isConfirmingReset) {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) {
-                settings.resetToDefaults()
+                guard !isLanguageRestartPending else { return }
+                let languageNeedsRestart = settings.resetToDefaults()
                 onResetSettings?()
+                if languageNeedsRestart { onLanguageChange?() }
             }
         } message: {
-            // Says what is *not* affected, because "reset" next to a disk cleaner reads
-            // as something that touches files.
-            Text("Categories, exclusions and schedules return to their defaults. Nothing on disk is removed.")
+            if settings.appLanguage == .system {
+                Text("Categories, exclusions and schedules return to their defaults. Nothing on disk is removed.")
+            } else {
+                Text("Reset restores the default settings and keeps your files. Moppo uses the macOS language setting after a restart.")
+            }
         }
     }
 
     // MARK: - Removal behaviour
 
     private var removalBehaviour: some View {
-        PrefSection("Removal behaviour") {
+        PrefSection(String(localized: "Removal behaviour")) {
             // Tool commands always require separate confirmation.
             PrefToggleRow(
-                title: "Confirm before every clean-up",
-                description: "Tool commands always require confirmation.",
+                title: String(localized: "Confirm before every clean-up"),
+                description: String(localized: "Tool commands always require confirmation."),
                 isOn: $settings.confirmBeforeCleanup
             )
             PrefDivider()
             PrefToggleRow(
-                title: "Keep Put Back receipts",
-                description: "Save original locations to restore items from the Trash within Moppo. "
-                    + "Without receipts, Moppo cannot put back newly removed items. Tool command results always enter Cleanup History.",
+                title: String(localized: "Keep Put Back receipts"),
+                description: String(localized: "Save original locations to restore items from the Trash within Moppo. Without receipts, Moppo cannot put back newly removed items. Tool command results always enter Cleanup History.", comment: "Put Back receipts store original paths so Moppo can move items back from the Trash."),
                 isOn: $settings.keepReceipt
             )
             // "Follow symlinks while measuring" used to live here. It was removed
@@ -86,9 +91,9 @@ struct AdvancedPane: View {
     // MARK: - Diagnostics
 
     private var diagnostics: some View {
-        PrefSection("Diagnostics") {
+        PrefSection(String(localized: "Diagnostics")) {
             PrefRow(
-                title: "Keep a removal log",
+                title: String(localized: "Keep a removal log"),
                 description: RemovalLog.displayPath,
                 descriptionIsPath: true
             ) {
@@ -97,11 +102,11 @@ struct AdvancedPane: View {
             }
             PrefDivider()
             PrefRow(
-                title: "Rebuild the size index",
+                title: String(localized: "Rebuild the size index"),
                 // The design's "Last built 16 Aug at 9:41 AM · 1.2M paths" needs a
                 // timestamp nothing records yet; this says what the button does
                 // instead of inventing the line.
-                description: "Discards the cached measurements and measures every folder again."
+                description: String(localized: "Discards the cached measurements and measures every folder again.")
             ) {
                 Button("Rebuild") { onRebuildIndex?() }
                     .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
@@ -109,11 +114,10 @@ struct AdvancedPane: View {
             }
             PrefDivider()
             PrefRow(
-                title: "Clear measurement history",
+                title: String(localized: "Clear measurement history"),
                 // Says what goes and what the cost is. The Dashboard's growth card
                 // has nothing to subtract until two measurements exist again.
-                description: "Removes the stored measurements that the Dashboard "
-                    + "compares. The next two measurements start a new history."
+                description: String(localized: "Removes the stored measurements that the Dashboard compares. The next two measurements start a new history.")
             ) {
                 Button("Clear") { onClearMeasurementHistory?() }
                     .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
@@ -128,14 +132,18 @@ struct AdvancedPane: View {
     private var resetRow: some View {
         HStack(spacing: PrefMetrics.controlGap) {
             PrefLabel(
-                title: "Reset all settings",
-                description: "Categories, exclusions and schedules return to defaults."
+                title: String(localized: "Reset all settings"),
+                description: String(localized: "Categories, exclusions and schedules return to defaults.")
             )
 
             Spacer(minLength: PrefMetrics.controlGap)
 
-            Button("Reset") { isConfirmingReset = true }
-                .buttonStyle(DestructiveButtonStyle())
+            Button("Reset") {
+                settings.reloadAppLanguage()
+                isConfirmingReset = true
+            }
+            .buttonStyle(DestructiveButtonStyle())
+            .disabled(isLanguageRestartPending)
         }
         .padding(.horizontal, Metrics.resetPaddingH)
         .padding(.vertical, Metrics.resetPaddingV)

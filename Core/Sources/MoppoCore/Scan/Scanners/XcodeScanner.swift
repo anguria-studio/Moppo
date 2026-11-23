@@ -85,12 +85,12 @@ public struct XcodeScanner: CategoryScanner {
 
     /// An archive holds the only debug symbols for a build that has shipped.
     static let archives = FileEntry.NotRegenerable(
-        reason: "Only copy of the debug symbols for these builds."
+        reasonText: "Only copy of the debug symbols for these builds."
     )
 
     /// The apps and app data in a simulator that runs or that Xcode can start.
     static let simulatorAppData = FileEntry.NotRegenerable(
-        reason: "The apps and app data in this simulator do not come back."
+        reasonText: "The apps and app data in this simulator do not come back."
     )
 
     private static func roots(developer: URL) -> [Root] {
@@ -236,10 +236,8 @@ public struct XcodeScanner: CategoryScanner {
                     else { continue }
                     entries.append(FileEntry(
                         url: output.url,
-                        displayName: "\(project.lastPathComponent) build output",
-                        parentDisplay: FileEntry.abbreviate(
-                            output.url.deletingLastPathComponent().path
-                        ) + " · " + output.kind.label,
+                        nameText: "\(project.lastPathComponent) build output",
+                        parentText: output.kind.parentText(FileEntry.abbreviate(output.url.deletingLastPathComponent().path)),
                         kind: .cache,
                         allocatedBytes: measurement.allocatedBytes,
                         lastOpened: lastOpenedDate(for: output.url),
@@ -279,7 +277,7 @@ public struct XcodeScanner: CategoryScanner {
                 unreadableCount += total.unreadableCount
                 let owner = Self.runningOwner(of: root, context: context)
                 func protection(for url: URL, measured: SizeMeasurement, isRegenerable: Bool)
-                    -> (FileEntry.ProtectionReason?, String?) {
+                    -> (FileEntry.ProtectionReason?, EngineText?) {
                     if let issue = inspection.issue(for: url) { return (.inventory, issue) }
                     if measured.unreadableCount > 0 || measured.containsProtectedPattern || measured.containsCloudOnlyItem {
                         return (.inventory, "Some files are unreadable, protected, or stored only in the cloud.")
@@ -305,9 +303,9 @@ public struct XcodeScanner: CategoryScanner {
                     let (reason, explanation) = protection(for: url, measured: measured, isRegenerable: regenerable)
                     let kind: FileEntry.Kind = regenerable ? .cache
                         : ((try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true ? .folder : .file)
-                    children.append(FileEntry(url: url, kind: kind, allocatedBytes: measured.allocatedBytes,
+                    children.append(FileEntry(url: url, nameText: nil, kind: kind, allocatedBytes: measured.allocatedBytes,
                         lastOpened: lastOpenedDate(for: url), isRegenerable: regenerable,
-                        protectionReason: reason, protectionExplanation: explanation,
+                        protectionReason: reason, protectionText: explanation,
                         inUseBy: owner, xcodeBuildCacheReview: review))
                 }
                 let review = inspection.review(for: root, in: folder, context: context)
@@ -316,10 +314,10 @@ public struct XcodeScanner: CategoryScanner {
                     root.path.hasPrefix($0.resolvingSymlinksInPath().path + "/")
                 }
                 entries.append(FileEntry(url: root,
-                    displayName: folder.projectName + (temporary ? " — temporary build cache" : " — release build cache"),
-                    parentDisplay: FileEntry.abbreviate(root.path), kind: .cache,
+                    nameText: temporary ? "\(folder.projectName) — temporary build cache" : "\(folder.projectName) — release build cache",
+                    parentText: .verbatim(FileEntry.abbreviate(root.path)), kind: .cache,
                     allocatedBytes: max(0, total.allocatedBytes - children.reduce(0) { $0 + $1.allocatedBytes }),
-                    protectionReason: reason, protectionExplanation: explanation,
+                    protectionReason: reason, protectionText: explanation,
                     inUseBy: owner, xcodeBuildCacheReview: review ?? folder, children: children))
                 ScanDiagnostics.current?.record("xcode_build_cache", details: [
                     "path": root.path, "allocated_bytes": "\(total.allocatedBytes)",
@@ -442,7 +440,7 @@ public struct XcodeScanner: CategoryScanner {
         entry.displayName = record?.name ?? url.lastPathComponent
         entry.isRegenerable = device.isSafeToRemove
         entry.notRegenerable = device.holdsAppData ? Self.simulatorAppData : nil
-        entry.safetyCaveat = device.status
+        entry.caveatText = device.statusText
         entry.simulatorDevice = device
         return entry
     }
@@ -477,9 +475,9 @@ public struct XcodeScanner: CategoryScanner {
             catch {
                 // Device rows show their own status. Only the runtime section needs this row.
                 if scanInstalled {
-                    entries.append(FileEntry(url: root, displayName: "Simulator runtime inventory unavailable", kind: .diskImage,
+                    entries.append(FileEntry(url: root, nameText: "Simulator runtime inventory unavailable", kind: .diskImage,
                         allocatedBytes: 0, protectionReason: .inventory,
-                        protectionExplanation: "Runtime details could not be read. Open Xcode Components, then scan again."))
+                        protectionText: "Runtime details could not be read. Open Xcode Components, then scan again."))
                     unreadableCount += 1
                 }
             }
@@ -495,7 +493,7 @@ public struct XcodeScanner: CategoryScanner {
             let command = ToolCommandRemoval.simulatorRuntime(review,
                 fallbackURL: root.appendingPathComponent(runtime.identifier), protectedPatterns: context.excludedPatterns)
             var size = SizeMeasurement.zero
-            var caveat = "Size includes the backing image only. Mounted contents and shared caches are excluded."
+            var caveat: EngineText = "Size includes the backing image only. Mounted contents and shared caches are excluded."
             if let backing = runtime.backingURL, let key = runtime.storageKey, measured.insert(key).inserted {
                 size = try await context.measurer.measure(backing)
                 unreadableCount += size.unreadableCount
@@ -507,16 +505,16 @@ public struct XcodeScanner: CategoryScanner {
                 caveat = "The runtime size could not be measured."
             }
             guard !size.containsProtectedPattern, !size.containsCloudOnlyItem else { continue }
-            let lockReason = command.lockReason ?? (size.unreadableCount > 0 ? caveat : nil)
-            entries.append(FileEntry(url: command.targetURL, displayName: runtime.name,
-                parentDisplay: "Simulator runtime · " + runtime.identifier, kind: .diskImage,
+            let lockReason = command.lockText ?? (size.unreadableCount > 0 ? caveat : nil)
+            entries.append(FileEntry(url: command.targetURL, nameText: runtime.nameText,
+                parentText: "Simulator runtime · \(runtime.identifier)", kind: .diskImage,
                 allocatedBytes: size.allocatedBytes, protectionReason: lockReason == nil ? nil : .inventory,
-                protectionExplanation: lockReason,
-                removalMethod: .toolCommand(command), safetyCaveat: caveat))
+                protectionText: lockReason,
+                removalMethod: .toolCommand(command), caveatText: caveat))
         }
         let downloads = try await SimulatorRuntimeService.downloadEntries(in: simulatorAssetRoots,
             registeredRuntimes: snapshot?.runtimes, context: context,
-            removalGuidance: snapshot.flatMap { SimulatorRuntimeService.retainedImageGuidance(developerDirectory: $0.developerDirectory) })
+            removalGuidance: snapshot.flatMap { SimulatorRuntimeService.retainedImageGuidanceText(developerDirectory: $0.developerDirectory) })
         entries += downloads.entries
         unreadableCount += downloads.unreadableCount
         return (entries, unreadableCount)

@@ -66,7 +66,10 @@ public enum PhotoSimilarity: String, Sendable, CaseIterable, Identifiable {
 
     /// Named for what it does to the results, not for how strict it sounds: "fewer
     /// groups" and "more groups" are the things the user is about to see.
-    public var title: String {
+    public var title: String { titleText.english }
+    public var localizedTitle: String { titleText.localized }
+
+    var titleText: EngineText {
         switch self {
         case .identicalOnly: "Identical only"
         case .veryStrict: "Nearly identical"
@@ -77,11 +80,13 @@ public enum PhotoSimilarity: String, Sendable, CaseIterable, Identifiable {
         }
     }
 
-    public var detail: String {
+    public var detail: String { detailText.english }
+    public var localizedDetail: String { detailText.localized }
+
+    var detailText: EngineText {
         switch self {
         case .identicalOnly:
-            "Only bursts and identical copies. Nothing here was decided by how alike "
-                + "two photographs look, so nothing here is a judgement call."
+            "Only bursts and identical copies. Nothing here was decided by how alike two photographs look, so nothing here is a judgement call."
         case .veryStrict:
             "Fewest groups. The same shot re-saved or re-imported, little else."
         case .strict:
@@ -99,6 +104,10 @@ public enum PhotoSimilarity: String, Sendable, CaseIterable, Identifiable {
     /// where there is no threshold, rather than a zero that would read as one.
     public var thresholdLabel: String {
         threshold.map { String(format: "%.2f", $0) } ?? ""
+    }
+
+    public var localizedThresholdLabel: String {
+        threshold?.formatted(.number.precision(.fractionLength(2))) ?? ""
     }
 
     public static let `default` = PhotoSimilarity.standard

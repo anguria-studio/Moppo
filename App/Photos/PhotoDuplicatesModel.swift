@@ -154,8 +154,8 @@ final class PhotoDuplicatesModel {
     /// Photo removal reports counts because PhotoKit does not provide a measured size.
     var removeLabel: String {
         let count = selection.count
-        guard count > 0 else { return "Delete Photos" }
-        return "Delete \(count) \(count == 1 ? "Photo" : "Photos")"
+        guard count > 0 else { return String(localized: "Delete Photos") }
+        return String(localized: "Delete \(count) Photo", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 
     func startScan() {
@@ -213,8 +213,8 @@ final class PhotoDuplicatesModel {
             } catch {
                 guard self.scanID == scanID, !Task.isCancelled else { return }
                 onEvent(.failure(
-                    title: "The Photo Sweep Did Not Finish",
-                    message: "Moppo could not finish comparing the library. Nothing was deleted. Try again."
+                    title: String(localized: "The Photo Sweep Did Not Finish"),
+                    message: String(localized: "Moppo could not finish comparing the library. Nothing was deleted. Try again.")
                 ))
             }
             try? await presentation.wait()
@@ -249,8 +249,8 @@ final class PhotoDuplicatesModel {
             } catch {
                 guard self.regroupID == regroupID, !Task.isCancelled else { return }
                 onEvent(.failure(
-                    title: "The Photos Could Not Be Regrouped",
-                    message: "Moppo could not apply that setting to the sweep it has. Scan again to use it."
+                    title: String(localized: "The Photos Could Not Be Regrouped"),
+                    message: String(localized: "Moppo could not apply that setting to the sweep it has. Scan again to use it.")
                 ))
             }
         }
@@ -273,9 +273,9 @@ final class PhotoDuplicatesModel {
     private static func describe(_ unavailable: PhotoSweepUnavailable) -> String {
         switch unavailable {
         case .access(let access):
-            access.unavailableReason ?? "The photo library is unavailable."
+            access.localizedUnavailableReason ?? String(localized: "The photo library is unavailable.")
         case .librarySyncing(let count):
-            "Only \(count) photos have arrived from iCloud so far. Let Photos finish syncing before you scan again."
+            String(localized: "Only \(count) photo has arrived from iCloud so far. Let Photos finish syncing before you scan again.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
     }
 
@@ -370,11 +370,11 @@ final class PhotoDuplicatesModel {
         } catch PhotoDeletionUnavailable.missingAssets {
             results = nil
             selection.removeAll()
-            unavailableReason = "Some photos are no longer available. Scan again before you delete photos."
+            unavailableReason = String(localized: "Some photos are no longer available. Scan again before you delete photos.")
         } catch {
             onEvent(.failure(
-                title: "Those Photos Were Not Deleted",
-                message: "Photos refused the deletion. Nothing was removed from the library."
+                title: String(localized: "Those Photos Were Not Deleted"),
+                message: String(localized: "Photos refused the deletion. Nothing was removed from the library.")
             ))
         }
     }

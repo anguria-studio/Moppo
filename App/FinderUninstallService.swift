@@ -20,13 +20,13 @@ final class FinderUninstallServiceProvider: NSObject {
             .compactMap { ($0 as? NSURL)?.absoluteURL } ?? []
 
         guard urls.count == 1, let applicationURL = urls.first else {
-            error.pointee = "Select one application in Finder, then try again."
+            error.pointee = String(localized: "Select one application in Finder, then try again.") as NSString
             return
         }
         guard applicationURL.isFileURL,
               applicationURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame
         else {
-            error.pointee = "Finder did not provide a valid application."
+            error.pointee = String(localized: "Finder did not provide a valid application.") as NSString
             return
         }
 

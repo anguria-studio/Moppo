@@ -6,7 +6,33 @@ public struct ScanProgress: Sendable, Equatable {
     public var percent: Int
     public var completedCategories: Int
     public var totalCategories: Int
-    public var phase: String? = nil
+    var phaseText: EngineText?
+    var phaseCategory: CategoryID?
+    public var phase: String? {
+        get { phaseText?.english ?? phaseCategory.map { "Scanning \($0.displayName)" } }
+        set {
+            phaseText = newValue.map(EngineText.verbatim)
+            phaseCategory = nil
+        }
+    }
+
+    public var localizedPhase: String? {
+        phaseText?.localized ?? phaseCategory.map { EngineText("Scanning \($0.localizedDisplayName)").localized }
+    }
+
+    public init(percent: Int, completedCategories: Int, totalCategories: Int, phase: String? = nil) {
+        self.init(percent: percent, completedCategories: completedCategories,
+                  totalCategories: totalCategories, phaseText: phase.map(EngineText.verbatim), phaseCategory: nil)
+    }
+
+    init(percent: Int, completedCategories: Int, totalCategories: Int,
+         phaseText: EngineText?, phaseCategory: CategoryID?) {
+        self.percent = percent
+        self.completedCategories = completedCategories
+        self.totalCategories = totalCategories
+        self.phaseText = phaseText
+        self.phaseCategory = phaseCategory
+    }
 }
 
 /// Everything a finished scan produced.
@@ -189,7 +215,7 @@ public actor ScanCoordinator {
                         do {
                             var categoryContext = context
                             categoryContext.onPhase = { phase in
-                                categoryDiagnostics?.record("scan_phase", details: ["phase": phase])
+                                categoryDiagnostics?.record("scan_phase", details: ["phase": phase.english])
                                 tracker.setPhase(phase, for: scanner.id)
                             }
                             let result = try await scanner.scan(context: categoryContext)
@@ -205,7 +231,7 @@ public actor ScanCoordinator {
                             categoryDiagnostics?.update(categorySpan, details: ["error": "\(error)"])
                             // One category failure must not lose the whole scan. The row
                             // reports that category as unavailable and gives the reason.
-                            return .unavailable(scanner.id, reason: Self.describe(error))
+                            return .unavailable(scanner.id, text: Self.describe(error))
                         }
                     }
                 }
@@ -412,7 +438,7 @@ public actor ScanCoordinator {
         }
     }
 
-    private static func describe(_ error: Error) -> String {
+    private static func describe(_ error: Error) -> EngineText {
         if let processError = error as? ProcessError {
             switch processError {
             case .executableMissing(let path):
@@ -436,7 +462,7 @@ private final class ProgressTracker: @unchecked Sendable {
     private let diagnostics: ScanDiagnostics.Context?
     private let onProgress: (@Sendable (ScanProgress) -> Void)?
     private var remaining: Set<CategoryID>
-    private var phases: [CategoryID: String] = [:]
+    private var phases: [CategoryID: EngineText] = [:]
     private var completedWeight = 0.0
     private var previousProgress: ScanProgress?
     private var releasedCloudWorkers = false
@@ -461,7 +487,7 @@ private final class ProgressTracker: @unchecked Sendable {
         report()
     }
 
-    func setPhase(_ phase: String, for category: CategoryID) {
+    func setPhase(_ phase: EngineText, for category: CategoryID) {
         lock.lock()
         defer { lock.unlock() }
         guard remaining.contains(category) else { return }
@@ -482,7 +508,8 @@ private final class ProgressTracker: @unchecked Sendable {
             percent: min(100, Int((completedWeight / totalWeight) * 100)),
             completedCategories: totalCategories - remaining.count,
             totalCategories: totalCategories,
-            phase: category.map { phases[$0] ?? "Scanning \($0.displayName)" }
+            phaseText: category.flatMap { phases[$0] },
+            phaseCategory: category
         )
         guard progress != previousProgress else { return }
         previousProgress = progress

@@ -48,10 +48,10 @@ public struct AIToolsScanner: CategoryScanner {
             guard total.allocatedBytes > 0, !total.containsProtectedPattern else { continue }
 
             var entry = FileEntry(
-                url: url, displayName: root.name, kind: .folder,
+                url: url, nameText: .rule(root.name), kind: .folder,
                 allocatedBytes: total.allocatedBytes, lastOpened: lastOpenedDate(for: url),
                 protectionReason: .inventory,
-                protectionExplanation: root.explanation,
+                protectionText: .rule(root.explanation),
                 aiTool: root.tool, aiStorageSection: root.section
             )
             if let identifier = root.curationIdentifier,
@@ -82,9 +82,9 @@ public struct AIToolsScanner: CategoryScanner {
                 for path in paths {
                     guard var child = try await measuredPart(path, under: base, context: context,
                         measurement: measured.measurements[path.standardizedFileURL] ?? .zero) else { continue }
-                    child.displayName = part.name
+                    child.nameText = .rule(part.name)
                     child.protectionReason = .inventory
-                    child.protectionExplanation = part.explanation
+                    child.protectionText = .rule(part.explanation)
                     append(child, to: &entry)
                 }
             }
@@ -96,14 +96,17 @@ public struct AIToolsScanner: CategoryScanner {
         let folders = ModelStoreFolders(home: home, environment: context.environment)
         try await appendLocalModels(folders, context: context, to: &found)
         found.entries.sort { $0.displayBytes > $1.displayBytes }
-        var result = ScanCategoryResult(
-            categoryID: id, totalBytes: found.entries.reduce(0) { $0 + $1.displayBytes },
-            entries: found.entries,
-            availability: found.entries.isEmpty
-                ? (found.unreadableCount == 0 ? .empty : .unavailable(reason: "Moppo could not read AI storage. Check file access in System Settings."))
-                : .available,
-            unreadableCount: found.unreadableCount
-        )
+        var result: ScanCategoryResult
+        if found.entries.isEmpty, found.unreadableCount > 0 {
+            result = .unavailable(id, text: "Moppo could not read AI storage. Check file access in System Settings.",
+                                  unreadableCount: found.unreadableCount)
+        } else {
+            result = ScanCategoryResult(
+                categoryID: id, totalBytes: found.entries.reduce(0) { $0 + $1.displayBytes },
+                entries: found.entries, availability: found.entries.isEmpty ? .empty : .available,
+                unreadableCount: found.unreadableCount
+            )
+        }
         result.claimedStoragePaths = AIToolStorage.claimedPaths(home: home, applications: applications)
             + LocalModelStores.claimedPaths(home: home) + folders.claimedPaths
         return result
@@ -159,9 +162,9 @@ public struct AIToolsScanner: CategoryScanner {
     }
 
     /// The folder and the variable that set it, for a row in a custom store.
-    private static func origin(_ folder: ModelStoreFolder?) -> String? {
+    private static func origin(_ folder: ModelStoreFolder?) -> EngineText? {
         guard let folder, let variable = folder.variable else { return nil }
-        return "Set by \(variable) · " + FileEntry.abbreviate(folder.url.path)
+        return "Set by \(variable) · \(FileEntry.abbreviate(folder.url.path))"
     }
 
     private func appendLocalModels(
@@ -174,13 +177,13 @@ public struct AIToolsScanner: CategoryScanner {
             let measurement = try await context.measurer.measure(ollama)
             found.unreadableCount += measurement.unreadableCount
             guard measurement.allocatedBytes > 0, !measurement.containsProtectedPattern else { continue }
-            let explanation = "Moppo cannot verify all Ollama model references or active models. Use Ollama to manage these files."
+            let explanation: EngineText = "Moppo cannot verify all Ollama model references or active models. Use Ollama to manage these files."
             found.entries.append(FileEntry(
-                url: ollama, displayName: "Ollama models", parentDisplay: Self.origin(folder), kind: .folder,
+                url: ollama, nameText: "Ollama models", parentText: Self.origin(folder), kind: .folder,
                 allocatedBytes: measurement.allocatedBytes, lastOpened: lastOpenedDate(for: ollama),
-                protectionReason: .inventory, protectionExplanation: explanation,
+                protectionReason: .inventory, protectionText: explanation,
                 aiTool: .ollama,
-                aiStorageSection: .init(owner: .ollama, title: "Models", summary: explanation)
+                aiStorageSection: .init(owner: .ollama, titleText: "Models", summaryText: explanation)
             ))
         }
 
@@ -229,21 +232,35 @@ public struct AIToolsScanner: CategoryScanner {
             if check == .clear, !targetsChecked { check = .unknown("Some link targets could not be checked.") }
             let (reason, explanation) = Self.protection(for: model, files: files, links: links, activity: check)
 
-            var qualifier = model.memberNames.count == 1
+            let modelCount = model.memberNames.count
+            let sharedNames = model.memberNames.formatted(.list(type: .and))
+            let groupName: EngineText = modelCount == 1
+                ? "\(model.runtime) model"
+                : "\(modelCount) \(model.runtime) models that share their weights: \(sharedNames)"
+            let path = FileEntry.abbreviate(model.primary.deletingLastPathComponent().path)
+            var display: EngineText = "\(groupName.localized) · \(path)"
+
+            var qualifier = modelCount == 1
                 ? "\(model.runtime) model"
                 : "\(model.memberNames.count) \(model.runtime) models that share their weights: "
                     + model.memberNames.joined(separator: ", ")
-            qualifier += " · " + FileEntry.abbreviate(model.primary.deletingLastPathComponent().path)
-            if let variable = model.folder?.variable { qualifier += " · set by \(variable)" }
+            qualifier += " · " + path
+            if let variable = model.folder?.variable {
+                qualifier += " · set by \(variable)"
+                display = "\(display.localized) · set by \(variable)"
+            }
             if model.sharedBytes > 0 {
                 qualifier += " · \(ByteFormatting.string(model.sharedBytes)) shared with another model stays"
+                display = "\(display.localized) · \(ByteFormatting.localizedString(model.sharedBytes)) shared with another model stays"
             }
+            let qualifierText = EngineText(english: qualifier, display: "\(display.localized)")
+            let nameText = model.nameText
             let isFolder = (try? model.primary.resourceValues(forKeys: [.isDirectoryKey]))?
                 .isDirectory == true
             var row = FileEntry(
                 url: model.primary,
-                displayName: model.name,
-                parentDisplay: qualifier,
+                nameText: nameText,
+                parentText: qualifierText,
                 kind: isFolder ? .folder : .file,
                 allocatedBytes: ownBytes,
                 lastOpened: children.compactMap(\.lastOpened).max()
@@ -252,12 +269,12 @@ public struct AIToolsScanner: CategoryScanner {
                 children: children
             )
             row.protectionReason = reason
-            row.protectionExplanation = explanation
+            row.protectionText = explanation
             row.removesAsUnit = true
             row.localModelPaths = model.memberPaths
             if let owner = AIStorageSection.Owner(rawValue: model.runtime) {
                 row.aiTool = owner.tool
-                row.aiStorageSection = .init(owner: owner, title: model.name, summary: qualifier)
+                row.aiStorageSection = .init(owner: owner, titleText: nameText, summaryText: qualifierText)
             }
             found.entries.append(row)
         }
@@ -274,14 +291,14 @@ public struct AIToolsScanner: CategoryScanner {
                 guard !context.isExcluded(child), isOwned(child, in: folder),
                       measurement.allocatedBytes > 0, !measurement.containsProtectedPattern else { continue }
                 found.entries.append(FileEntry(
-                    url: child, displayName: "Hugging Face " + child.lastPathComponent,
-                    parentDisplay: Self.origin(folder),
+                    url: child, nameText: .verbatim("Hugging Face " + child.lastPathComponent),
+                    parentText: Self.origin(folder),
                     kind: .folder, allocatedBytes: measurement.allocatedBytes,
                     lastOpened: lastOpenedDate(for: child), protectionReason: .inventory,
-                    protectionExplanation: "Additional model store files. Use Hugging Face tools to manage them.",
+                    protectionText: "Additional model store files. Use Hugging Face tools to manage them.",
                     aiTool: .huggingFace,
-                    aiStorageSection: .init(owner: .huggingFace, title: child.lastPathComponent,
-                        summary: "Additional model store files. Use Hugging Face tools to manage them.")
+                    aiStorageSection: .init(owner: .huggingFace, titleText: .verbatim(child.lastPathComponent),
+                        summaryText: "Additional model store files. Use Hugging Face tools to manage them.")
                 ))
             }
         }
@@ -291,7 +308,7 @@ public struct AIToolsScanner: CategoryScanner {
     static func protection(
         for model: LocalModel, files: ModelFiles, links: LocalModelStores.ExternalLinks,
         activity: GitWorktreeReview.Check
-    ) -> (FileEntry.ProtectionReason?, String?) {
+    ) -> (FileEntry.ProtectionReason?, EngineText?) {
         if model.folder?.isOutsideHome == true {
             return (.inventory, "This model folder is outside your home folder. Moppo shows the models but does not remove them.")
         }

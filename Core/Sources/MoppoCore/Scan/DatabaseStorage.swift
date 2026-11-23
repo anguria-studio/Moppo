@@ -36,14 +36,21 @@ enum DatabaseStorage {
         let url: URL
 
         /// The folder name follows the rule name when the rule path ends in a glob.
-        var displayName: String {
+        var nameText: EngineText {
             let last = root.path.split(separator: "/").last.map(String.init) ?? ""
-            guard last.contains(where: { "*?[".contains($0) }) else { return root.name }
-            return "\(root.name) (\(url.lastPathComponent))"
+            guard last.contains(where: { "*?[".contains($0) }) else { return .rule(root.name) }
+            let name = EngineText.rule(root.name).localized
+            return EngineText(english: "\(root.name) (\(url.lastPathComponent))",
+                              display: "\(name) (\(url.lastPathComponent))")
         }
 
-        var explanation: String {
-            "This folder contains \(root.contents ?? root.tool + " database files"). Moppo never removes database data. Use \(root.tool) to manage this data."
+        var explanationText: EngineText {
+            let tool = root.tool
+            if let contents = root.contents {
+                return EngineText(english: "This folder contains \(contents). Moppo never removes database data. Use \(tool) to manage this data.",
+                                  display: "This folder contains \(EngineText.rule(contents).localized). Moppo never removes database data. Use \(tool) to manage this data.")
+            }
+            return "This folder contains \(tool) database files. Moppo never removes database data. Use \(tool) to manage this data."
         }
     }
 

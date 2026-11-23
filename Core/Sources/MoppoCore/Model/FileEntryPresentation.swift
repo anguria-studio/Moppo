@@ -13,14 +13,16 @@ public struct FileEntryPresentation: Sendable, Equatable {
     public let runningGuidance: String?
     public let runningOwner: FileEntry.RunningOwner?
 
-    public init(entry: FileEntry, project: Project? = nil, showsSafetyCaveat: Bool = true) {
-        badge = entry.toolCommand?.isHomebrewVersion == true ? "Old Homebrew version" : nil
+    public init(entry: FileEntry, project: Project? = nil, showsSafetyCaveat: Bool = true, localized: Bool = false) {
+        func text(_ value: EngineText) -> String { value.string(localized: localized) }
+        let safetyCaveat = localized ? entry.localizedSafetyCaveat : entry.safetyCaveat
+        badge = entry.toolCommand?.isHomebrewVersion == true ? text("Old Homebrew version") : nil
         let isBuildCacheGroup = entry.xcodeBuildCacheReview?.isWholeFolder == true || entry.children.contains { $0.xcodeBuildCacheReview?.root == entry.url }
         runningOwner = entry.inUseBy ?? (isBuildCacheGroup ? entry.children.compactMap(\.inUseBy).first : nil)
-        if entry.protectionReason == .running, let explanation = entry.protectionExplanation {
+        if entry.protectionReason == .running, let explanation = (localized ? entry.localizedProtectionExplanation : entry.protectionExplanation) {
             runningGuidance = explanation
         } else if let owner = entry.inUseBy, entry.protectionReason == nil || entry.protectionReason == .running {
-            runningGuidance = "\(owner.name) is open. Close \(owner.name), then scan again to check whether these files are safe to remove."
+            runningGuidance = text("\(owner.name) is open. Close \(owner.name), then scan again to check whether these files are safe to remove.")
         } else {
             runningGuidance = nil
         }
@@ -33,36 +35,38 @@ public struct FileEntryPresentation: Sendable, Equatable {
         let location = context.isEmpty ? "" : " · \(context)"
         let type: String
         let symbol: Icon
+        var countsFolderItems = false
 
         if badge != nil {
-            summary = entry.safetyCaveat ?? ""
+            summary = safetyCaveat ?? ""
             icon = .cache
             return
         } else if let item = entry.docker {
             let usage: String
             if let count = item.containerCount {
-                usage = count == 0 ? "Unused"
-                    : "Used by \(count) \(count == 1 ? "container" : "containers")"
+                usage = count == 0 ? text("Unused")
+                    : text(EngineText(english: "Used by \(count) \(count == 1 ? "container" : "containers")",
+                                      display: "Used by \(count) containers"))
             } else {
-                usage = "Container use unavailable"
+                usage = text("Container use unavailable")
             }
             switch item {
             case .image:
-                summary = "Docker image · " + usage
+                summary = text("Docker image · \(usage)")
                 icon = .package
             case .volume(let volume):
-                summary = (["Docker volume", volume.composeProject.map { "Compose project \($0)" }, usage])
+                summary = ([text("Docker volume"), volume.composeProject.map { text("Compose project \($0)") }, usage])
                     .compactMap { $0 }.joined(separator: " · ")
                 icon = .diskImage
             }
             return
         } else if let device = entry.simulatorDevice {
-            summary = (["Simulator device", device.runtime] + (showsSafetyCaveat ? [entry.safetyCaveat] : []))
+            summary = ([text("Simulator device"), device.runtime] + (showsSafetyCaveat ? [safetyCaveat] : []))
                 .compactMap { $0 }.joined(separator: " · ")
             icon = .simulator
             return
         } else if entry.url.scheme == "docker" {
-            summary = "Docker storage · Docker Desktop"
+            summary = text("Docker storage · Docker Desktop")
             icon = .diskImage
             return
         } else if isBuildCacheGroup {
@@ -70,99 +74,116 @@ public struct FileEntryPresentation: Sendable, Equatable {
             icon = .cache
             return
         } else if entry.isGitWorktree {
-            type = entry.gitWorktreeReview?.branch ?? "Branch unknown"
+            type = (localized ? entry.gitWorktreeReview?.localizedBranch : entry.gitWorktreeReview?.branch) ?? text("Branch unknown")
             symbol = .folder
         } else if entry.removalAction != nil {
-            type = "Files left by a removed app"
+            type = text("Files left by a removed app")
             symbol = .application
         } else if entry.kind == .appBundle || entry.kind == .downloadedApp {
-            type = entry.kind == .appBundle ? "Installed application" : "Downloaded application"
+            type = entry.kind == .appBundle ? text("Installed application") : text("Downloaded application")
             symbol = .application
         } else if let vendor = entry.vendorFolder {
-            type = "\(vendor.tool.label) · \(vendor.lockfileDescription)"
+            let label = text(vendor.tool.labelText)
+            let lockfiles = localized ? vendor.localizedLockfileDescription : vendor.lockfileDescription
+            type = text("\(label) · \(lockfiles)")
             symbol = .package
         } else if name == "node_modules" {
-            type = "Node.js dependencies"
+            type = text("Node.js dependencies")
             symbol = .node
         } else if name == "pods", entry.kind == .cache {
-            type = "iOS project dependencies"
+            type = text("iOS project dependencies")
             symbol = .package
         } else if [".venv", "venv"].contains(name), entry.kind == .cache {
-            type = "Python project environment"
+            type = text("Python project environment")
             symbol = .code
         } else if ["__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"].contains(name) {
-            type = "Python tool cache"
+            type = text("Python tool cache")
             symbol = .code
         } else if name == ".gradle" {
-            type = "Gradle build cache"
+            type = text("Gradle build cache")
             symbol = .code
         } else if ["lrdata", "lrprev"].contains(ext) {
-            type = "Lightroom photo previews"
+            type = text("Lightroom photo previews")
             symbol = .photo
         } else if ["photoslibrary", "photolibrary"].contains(ext) {
-            type = "Photo library"
+            type = text("Photo library")
             symbol = .photo
         } else if ["imovielibrary", "fcpbundle"].contains(ext) {
-            type = "Video project library"
+            type = text("Video project library")
             symbol = .video
         } else if let project {
-            type = project.rawValue
+            type = text(project.labelText)
             symbol = project == .react || project == .reactNative ? .react : .node
         } else if entry.kind == .archive {
-            type = "Compressed archive"
+            type = text("Compressed archive")
             symbol = .archive
         } else if entry.kind == .diskImage {
-            type = "Disk image"
+            type = text("Disk image")
             symbol = .diskImage
         } else if entry.kind == .file {
             switch ext {
             case "jpg", "jpeg", "png", "heic", "heif", "tiff", "tif", "gif", "webp", "raw", "dng", "svg":
-                type = "Image file"; symbol = .photo
+                type = text("Image file"); symbol = .photo
             case "mov", "mp4", "m4v", "mkv", "avi", "webm":
-                type = "Video file"; symbol = .video
+                type = text("Video file"); symbol = .video
             case "mp3", "m4a", "wav", "aiff", "flac", "aac":
-                type = "Audio file"; symbol = .music
+                type = text("Audio file"); symbol = .music
             case "log":
-                type = "Activity log"; symbol = .log
+                type = text("Activity log"); symbol = .log
             case "pdf":
-                type = "PDF document"; symbol = .document
+                type = text("PDF document"); symbol = .document
             case "pkg":
-                type = "Installer package"; symbol = .package
+                type = text("Installer package"); symbol = .package
             case "swift", "js", "jsx", "ts", "tsx", "py", "rs", "go", "html", "css":
-                type = "Source code"; symbol = .code
+                type = text("Source code"); symbol = .code
             default:
-                type = "File"; symbol = .document
+                type = text("File"); symbol = .document
             }
         } else if entry.kind == .cache {
-            type = "Cached files"
+            type = text("Cached files")
             symbol = .cache
         } else if entry.url.pathComponents.contains("Logs") {
-            type = "Activity logs"
+            type = text("Activity logs")
             symbol = .log
         } else if entry.url.pathComponents.contains("MobileSync") && parent == "Backup" {
-            type = "iPhone or iPad backup"
+            type = text("iPhone or iPad backup")
             symbol = .backup
         } else {
-            type = "Folder"
+            type = text("Folder")
             symbol = .folder
+            countsFolderItems = true
         }
 
         var detail = type + location
         // The row shows a project activity reason as a badge, so the subtitle does not repeat it.
-        if showsSafetyCaveat, let caveat = entry.safetyCaveat, caveat != entry.projectActivity?.caveat {
+        if showsSafetyCaveat, let caveat = safetyCaveat, entry.safetyCaveat != entry.projectActivity?.caveat {
             detail += " · \(caveat)"
         }
-        if type == "Folder", let count = entry.childCount {
-            detail += " · \(count.formatted()) \(count == 1 ? "item" : "items")"
+        if countsFolderItems, let count = entry.childCount {
+            detail = text(EngineText(english: detail + " · \(count.formatted()) \(count == 1 ? "item" : "items")",
+                                     display: "\(detail) · \(count) items"))
         }
         summary = detail
         icon = symbol
+    }
+
+    static func summaryText(for entry: FileEntry) -> EngineText {
+        EngineText(english: Self(entry: entry).summary,
+                   display: "\(Self(entry: entry, localized: true).summary)")
     }
 
     public enum Project: String, Sendable {
         case node = "Node.js project"
         case react = "React project"
         case reactNative = "React Native project"
+
+        var labelText: EngineText {
+            switch self {
+            case .node: "Node.js project"
+            case .react: "React project"
+            case .reactNative: "React Native project"
+            }
+        }
     }
 
     /// Reads one small manifest. Call this outside the main thread.

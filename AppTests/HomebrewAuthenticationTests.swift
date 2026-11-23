@@ -71,9 +71,54 @@ struct HomebrewAuthenticationTests {
         #expect(!HomebrewAskpassRequest.isSignedMoppo(1))
     }
 
+    @Test("App resources include supported languages and use the source language as fallback")
+    func localizations() throws {
+        let resources = MoppoResources.bundle
+        #expect(resources.developmentLocalization == "en")
+        let expected = [
+            "en": "Full Disk Access",
+            "it": "Accesso completo al disco",
+            "fr": "Accès complet au disque",
+            "es": "Acceso total al disco",
+        ]
+        for (language, label) in expected {
+            let bundle = try #require(HomebrewPasswordPrompt.localizationBundle(in: resources, language: language))
+            #expect(String(localized: "Full Disk Access", bundle: bundle) == label)
+            #expect(bundle.localizedString(forKey: "NSPhotoLibraryUsageDescription", value: nil, table: "InfoPlist")
+                != "NSPhotoLibraryUsageDescription")
+            #expect(bundle.url(forResource: "Privacy", withExtension: "md") != nil)
+        }
+        let spanish = try #require(HomebrewPasswordPrompt.localizationBundle(in: resources, language: "es"))
+        #expect(String(localized: "Moppo", bundle: spanish) == "Moppo")
+        let fallback = try #require(HomebrewPasswordPrompt.localizationBundle(in: resources, language: "unavailable"))
+        #expect(String(localized: "Full Disk Access", bundle: fallback) == "Full Disk Access")
+    }
+
+    @Test("The exclusion count uses the plural rules of the selected language")
+    func exclusionCountLocalization() throws {
+        let resources = MoppoResources.bundle
+        let expected = [
+            "en": ["0 rules", "1 rule", "2 rules"],
+            "fr": ["0 règle", "1 règle", "2 règles"],
+        ]
+        for (language, forms) in expected {
+            let bundle = try #require(HomebrewPasswordPrompt.localizationBundle(in: resources, language: language))
+            let counts = (0...2).map { count in
+                String(localized: "\(count) rules", bundle: bundle, locale: Locale(identifier: language))
+            }
+            #expect(counts == forms)
+        }
+    }
+
     @Test("The password dialog identifies the package and uses a secure field")
     func prompt() throws {
         _ = NSApplication.shared
+        let spanish = try #require(HomebrewPasswordPrompt.localizationBundle(in: MoppoResources.bundle, language: "es"))
+        let (localizedAlert, localizedPassword) = HomebrewPasswordPrompt.makeAlert(package: "ferdium", bundle: spanish)
+        #expect(localizedAlert.messageText == "Homebrew requiere acceso de administrador")
+        #expect(localizedAlert.informativeText.contains("ferdium"))
+        #expect(localizedPassword.placeholderString == "Contraseña de inicio de sesión")
+
         let (alert, password) = HomebrewPasswordPrompt.makeAlert(package: "ferdium")
         #expect(alert.informativeText.contains("ferdium"))
         #expect(alert.informativeText.contains(NSUserName()))

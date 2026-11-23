@@ -9,6 +9,12 @@ public struct LocalModel: Sendable, Equatable {
             ? memberNames.joined(separator: " + ")
             : "\(memberNames[0]) + \(memberNames.count - 1) more"
     }
+    var nameText: EngineText {
+        if memberNames.count <= 2 { return .verbatim(name) }
+        let remaining = memberNames.count - 1
+        return EngineText(english: name, display: "\(memberNames[0]) + \(remaining) more")
+    }
+
     /// One name, or every model in a set.
     public let memberNames: [String]
     public let runtime: String

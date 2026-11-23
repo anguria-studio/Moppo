@@ -117,7 +117,7 @@ struct SidebarView: View {
                 Text(view.title)
                     .font(.system(size: 13, weight: isSelected(view) ? .semibold : .regular))
                     .foregroundStyle(Token.Text.primary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
                 if let count = count(for: view) {
                     Text(count, format: .number)
@@ -126,6 +126,7 @@ struct SidebarView: View {
                 }
             }
             .padding(.horizontal, 10)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, minHeight: Token.Size.sidebarRow, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -210,7 +211,7 @@ struct SidebarView: View {
     /// Shows storage information below navigation without a separate card.
     private var capacityFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(model.dashboard.volume.map { "\(ByteFormatting.string($0.freeBytes)) free" } ?? "—")
+            Text(model.dashboard.volume.map { String(localized: "\(ByteFormatting.localizedString($0.freeBytes)) free") } ?? "—")
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.Text.primary)
                 .lineLimit(1)
@@ -247,13 +248,13 @@ struct SidebarView: View {
     /// Shows a shared unit once. Shows both units when they differ.
     private var usedSummary: String? {
         guard let volume = model.dashboard.volume else { return nil }
-        let used = ByteFormatting.string(volume.usedBytes)
-        let capacity = ByteFormatting.string(volume.capacityBytes)
+        let used = ByteFormatting.localizedString(volume.usedBytes)
+        let capacity = ByteFormatting.localizedString(volume.capacityBytes)
         guard let usedUnit = used.split(separator: " ").last,
               let capacityUnit = capacity.split(separator: " ").last,
               usedUnit == capacityUnit
-        else { return "\(used) of \(capacity) used" }
-        return "\(used.dropLast(usedUnit.count + 1)) of \(capacity) used"
+        else { return String(localized: "\(used) of \(capacity) used") }
+        return String(localized: "\(used.dropLast(usedUnit.count + 1)) of \(capacity) used")
     }
 
     /// Shows the item count beside Trash.

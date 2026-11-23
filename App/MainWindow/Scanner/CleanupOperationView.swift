@@ -14,7 +14,7 @@ struct CleanupOperationView: View {
 
     var body: some View {
         if isComplete {
-            PageCompletionView(title: "Moved to Trash") {
+            PageCompletionView(title: String(localized: "Moved to Trash")) {
                 Text(summary)
             } actions: {
                 PageStateActions {
@@ -26,7 +26,7 @@ struct CleanupOperationView: View {
             }
         } else {
             PageProgressView(
-                title: "Removing selected items",
+                title: String(localized: "Removing selected items"),
                 detail: summary,
                 onCancel: onCancel,
                 isCancelling: isCancelling,
@@ -36,7 +36,7 @@ struct CleanupOperationView: View {
     }
 
     private var summary: String {
-        "\(itemCount) \(itemCount == 1 ? "item" : "items") · \(ByteFormatting.string(totalBytes))"
+        String(localized: "\(itemCount) item · \(ByteFormatting.localizedString(totalBytes))", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 }
 

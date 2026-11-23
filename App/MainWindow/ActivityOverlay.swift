@@ -33,7 +33,7 @@ struct RemovalOperationSurface: View {
                             .environment(\.isEnabled, true)
                             .transition(.opacity)
                     } else if model.photoDuplicates.isDeleting {
-                        PageProgressView(title: "Deleting photos", detail: "Waiting for Photos to finish.")
+                        PageProgressView(title: String(localized: "Deleting photos"), detail: String(localized: "Waiting for Photos to finish."))
                             .transition(.opacity)
                     } else if let completion = model.removalCompletion, completion.destination == model.view {
                         RemovalCompletionView(

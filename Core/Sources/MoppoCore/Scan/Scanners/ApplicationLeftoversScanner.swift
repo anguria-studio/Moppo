@@ -17,7 +17,7 @@ public struct ApplicationLeftoversScanner: CategoryScanner {
     /// Nothing regenerates the settings, saved state, or licenses of a removed
     /// application. See `CategoryID.isSafe`.
     static let notRegenerable = FileEntry.NotRegenerable(
-        reason: "Can contain settings, saved state, and licenses of the removed app."
+        reasonText: "Can contain settings, saved state, and licenses of the removed app."
     )
 
     public func scan(context: ScanContext) async throws -> ScanCategoryResult {
@@ -37,8 +37,8 @@ public struct ApplicationLeftoversScanner: CategoryScanner {
                 // The system's name for the container when it has one, and the
                 // identifier always: the name is macOS's, the identifier is what the
                 // classification rests on.
-                displayName: group.displayName ?? group.bundleIdentifier,
-                parentDisplay: group.displayName == nil
+                nameText: .verbatim(group.displayName ?? group.bundleIdentifier),
+                parentText: group.displayName == nil
                     ? "No installed application owner"
                     : "\(group.bundleIdentifier) · No installed application owner",
                 kind: .folder,
@@ -52,17 +52,15 @@ public struct ApplicationLeftoversScanner: CategoryScanner {
             )
         }
 
-        let availability: CategoryAvailability = if entries.isEmpty,
-                                                     plan.unreadableCount > 0 {
-            .unavailable(
-                reason: "Moppo cannot read other application data. Allow access "
-                    + "in System Settings › Privacy & Security. Then scan again."
+        if entries.isEmpty, plan.unreadableCount > 0 {
+            var result = ScanCategoryResult.unavailable(
+                id, text: "Moppo cannot read other application data. Allow access in System Settings › Privacy & Security. Then scan again.",
+                unreadableCount: plan.unreadableCount
             )
-        } else if entries.isEmpty {
-            .empty
-        } else {
-            .available
+            result.applicationLeftoverPlan = plan
+            return result
         }
+        let availability: CategoryAvailability = entries.isEmpty ? .empty : .available
 
         return ScanCategoryResult(
             categoryID: id,

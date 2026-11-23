@@ -366,7 +366,7 @@ struct OperationFlowTests {
             (CleanupOutcome(failed: ["runtime"]), "No items removed", "1 item could not be removed."),
             (CleanupOutcome(removedCount: 1, deletedCount: 1), "1 item removed", nil),
             (CleanupOutcome(removedBytes: 2_048, removedCount: 2, failed: ["a", "b"], trashedCount: 2),
-             "\(ByteFormatting.string(2_048)) moved to Trash", "2 items could not be removed."),
+             "\(ByteFormatting.localizedString(2_048)) moved to Trash", "2 items could not be removed."),
         ]
         for (outcome, title, note) in cases {
             #expect(ScannerView.completionTitle(outcome) == title)

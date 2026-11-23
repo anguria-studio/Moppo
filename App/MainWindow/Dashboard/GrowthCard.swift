@@ -84,7 +84,7 @@ struct GrowthCard: View {
                 Text(lastScanLabel(at: context.date))
                     .font(.mcSubtitle)
                     .foregroundStyle(Token.Text.tertiary)
-                    .help(lastScanAt.map(Self.stamp) ?? "Run a scan to find cleanup items.")
+                    .help(lastScanAt.map(Self.stamp) ?? String(localized: "Run a scan to find cleanup items."))
             }
         }
     }
@@ -93,7 +93,7 @@ struct GrowthCard: View {
     private var comparisonControls: some View {
         baselineControl
         if case .report(let report) = presentation {
-            Text(ByteFormatting.signedString(report.usedDeltaBytes))
+            Text(ByteFormatting.localizedSignedString(report.usedDeltaBytes))
                 .font(.mcSecondaryHero)
                 .monospacedDigit()
                 .foregroundStyle(Token.Text.emphasis)
@@ -101,14 +101,14 @@ struct GrowthCard: View {
                 .minimumScaleFactor(0.85)
                 .help("Used space change since \(Self.stamp(report.baselineDate))")
                 .accessibilityLabel("Used space change")
-                .accessibilityValue("\(ByteFormatting.signedString(report.usedDeltaBytes)) since \(Self.stamp(report.baselineDate))")
+                .accessibilityValue("\(ByteFormatting.localizedSignedString(report.usedDeltaBytes)) since \(Self.stamp(report.baselineDate))")
         }
     }
 
     private func lastScanLabel(at now: Date) -> String {
-        guard let lastScanAt else { return "No scan yet" }
-        guard now.timeIntervalSince(lastScanAt) >= 60 else { return "Last scan · Just now" }
-        return "Last scan · \(growthScanFormatter.localizedString(for: lastScanAt, relativeTo: now))"
+        guard let lastScanAt else { return String(localized: "No scan yet") }
+        guard now.timeIntervalSince(lastScanAt) >= 60 else { return String(localized: "Last scan · Just now") }
+        return String(localized: "Last scan · \(growthScanFormatter.localizedString(for: lastScanAt, relativeTo: now))")
     }
 
     /// A menu for two or more different comparisons, plain text for one, and nothing without a comparison.
@@ -143,18 +143,18 @@ struct GrowthCard: View {
     }
 
     private var comparisonHelp: String {
-        guard case .report(let report) = presentation else { return "Choose a comparison period" }
-        return "Compared with the measurement from \(Self.stamp(report.baselineDate))"
+        guard case .report(let report) = presentation else { return String(localized: "Choose a comparison period") }
+        return String(localized: "Compared with the measurement from \(Self.stamp(report.baselineDate))")
     }
 
     /// The same text names an option in the menu and on the button.
     /// "Last 7 days" names its real start until seven days of measurements exist.
     func label(for choice: GrowthBaseline) -> String {
-        guard choice == .sevenDays, let start = sevenDayStart else { return choice.displayName }
+        guard choice == .sevenDays, let start = sevenDayStart else { return choice.localizedDisplayName }
         let day = Calendar.current.isDateInToday(start)
             ? start.formatted(date: .omitted, time: .shortened)
             : start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-        return "Since \(day)"
+        return String(localized: "Since \(day)")
     }
 
     // MARK: - Body
@@ -167,7 +167,7 @@ struct GrowthCard: View {
         case .insufficientHistory:
             firstComparison
         case .notComparable:
-            message("These measurements cannot be compared.", hint: "Storage changes need measurements with the same access and settings.")
+            message(String(localized: "These measurements cannot be compared."), hint: String(localized: "Storage changes need measurements with the same access and settings."))
         }
     }
 
@@ -180,12 +180,12 @@ struct GrowthCard: View {
                     .frame(width: 40, height: 40)
                     .background(Token.Fill.control, in: RoundedRectangle(cornerRadius: Token.Radius.box))
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(hasMeasurement ? "Your first comparison is on its way" : "Your first comparison starts here")
+                    Text(hasMeasurement ? String(localized: "Your first comparison is on its way") : String(localized: "Your first comparison starts here"))
                         .font(.mcRowTitle)
                         .foregroundStyle(Token.Text.primary)
                     Text(hasMeasurement
-                         ? "Moppo saved a storage measurement. After your next cleanup or Refresh Dashboard, this card shows which folders grew or shrank."
-                         : "After your first cleanup or Refresh Dashboard, Moppo saves a storage measurement for this card.")
+                         ? String(localized: "Moppo saved a storage measurement. After your next cleanup or Refresh Dashboard, this card shows which folders grew or shrank.")
+                         : String(localized: "After your first cleanup or Refresh Dashboard, Moppo saves a storage measurement for this card."))
                         .font(.mcBody)
                         .foregroundStyle(Token.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -342,7 +342,7 @@ private struct AttributionRow: View {
             CategoryDot(color: attribution.segment.color, size: 8)
 
             HStack(spacing: 8) {
-                Text(attribution.segment.displayName)
+                Text(attribution.segment.localizedDisplayName)
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
                     .fixedSize()
@@ -363,7 +363,7 @@ private struct AttributionRow: View {
                 .frame(width: 104, height: 34)
                 .padding(.horizontal, 12)
 
-            Text(ByteFormatting.signedString(attribution.deltaBytes))
+            Text(ByteFormatting.localizedSignedString(attribution.deltaBytes))
                 .font(.mcRowValue)
                 .foregroundStyle(attribution.deltaBytes < 0 ? Token.textColor(.green) : Token.Text.secondary)
                 .frame(width: 90, alignment: .trailing)
@@ -385,15 +385,15 @@ private struct AttributionRow: View {
         case .grew, .shrank:
             nil
         case .appeared:
-            ("New", "This folder was not there at the earlier measurement.")
+            (String(localized: "New"), String(localized: "This folder was not there at the earlier measurement."))
         case .disappeared:
-            ("Gone", "This folder was there at the earlier measurement.")
+            (String(localized: "Gone"), String(localized: "This folder was there at the earlier measurement."))
         case .movedIn(let from):
-            ("Moved from \(placeName(from))",
-             "This folder was at \(FileEntry.abbreviate(from)).")
+            (String(localized: "Moved from \(placeName(from))"),
+             String(localized: "This folder was at \(FileEntry.abbreviate(from))."))
         case .movedOut(let to):
-            ("Moved to \(placeName(to))",
-             "This folder is now at \(FileEntry.abbreviate(to)).")
+            (String(localized: "Moved to \(placeName(to))"),
+             String(localized: "This folder is now at \(FileEntry.abbreviate(to))."))
         }
     }
 
@@ -403,7 +403,7 @@ private struct AttributionRow: View {
     /// `~/Documents/Projects/Renewals/build` would be wider than the row it labels.
     private static func placeName(_ path: String) -> String {
         let parent = (path as NSString).deletingLastPathComponent
-        if parent == NSHomeDirectory() { return "Home" }
+        if parent == NSHomeDirectory() { return String(localized: "Home") }
         let name = (parent as NSString).lastPathComponent
         return name.isEmpty ? FileEntry.abbreviate(parent) : name
     }

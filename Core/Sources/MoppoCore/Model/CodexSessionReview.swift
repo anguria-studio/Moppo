@@ -28,6 +28,23 @@ public struct CodexSessionReview: Sendable, Equatable {
         self.members = members
     }
 
+    public var localizedWarning: String { Self.localizedWarning(for: [self]) }
+
+    public static func localizedWarning(for reviews: [Self]) -> String {
+        warningText(for: reviews).localized
+    }
+
+    func warningText() -> EngineText { Self.warningText(for: [self]) }
+
+    private static func warningText(for reviews: [Self]) -> EngineText {
+        let children = reviews.reduce(0) { $0 + max(0, $1.members.count - 1) }
+        if children == 0 {
+            return "Codex permanently deletes the selected conversation history and related session files. This includes messages, tool results, and images stored in the history. Credentials, settings, and separate attachment, image, and memory folders stay protected. This deletion does not use the Trash and cannot be undone."
+        }
+        return EngineText(english: warning(for: reviews),
+                          display: "Codex permanently deletes the selected conversation history and related session files. This also deletes \(children) child sessions. This includes messages, tool results, and images stored in the history. Credentials, settings, and separate attachment, image, and memory folders stay protected. This deletion does not use the Trash and cannot be undone.")
+    }
+
     public var warning: String {
         Self.warning(for: [self])
     }

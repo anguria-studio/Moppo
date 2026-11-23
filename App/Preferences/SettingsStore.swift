@@ -25,9 +25,9 @@ enum ScanSchedule: String, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .never:  "Never"
-        case .weekly: "Weekly"
-        case .daily:  "Daily"
+        case .never:  String(localized: "Never")
+        case .weekly: String(localized: "Weekly")
+        case .daily:  String(localized: "Daily")
         }
     }
 }
@@ -45,13 +45,13 @@ enum ICloudPlan: String, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
-        case .automatic: "Detect automatically"
-        case .gb5:       "5 GB"
-        case .gb50:      "50 GB"
-        case .gb200:     "200 GB"
-        case .tb2:       "2 TB"
-        case .tb6:       "6 TB"
-        case .tb12:      "12 TB"
+        case .automatic: String(localized: "Detect automatically")
+        case .gb5:       ByteFormatting.localizedGigabytes(5)
+        case .gb50:      ByteFormatting.localizedGigabytes(50)
+        case .gb200:     ByteFormatting.localizedGigabytes(200)
+        case .tb2:       Measurement(value: 2, unit: UnitInformationStorage.terabytes).formatted(.measurement(width: .abbreviated, usage: .asProvided))
+        case .tb6:       Measurement(value: 6, unit: UnitInformationStorage.terabytes).formatted(.measurement(width: .abbreviated, usage: .asProvided))
+        case .tb12:      Measurement(value: 12, unit: UnitInformationStorage.terabytes).formatted(.measurement(width: .abbreviated, usage: .asProvided))
         }
     }
 
@@ -88,9 +88,9 @@ extension ExclusionRule {
     /// the row has to answer, and answering it on one row implies the others differ.
     var qualifier: String? {
         switch kind {
-        case .folder:  "and everything inside"
-        case .pattern: isLocked ? "pattern · locked" : "pattern"
-        case .item: "item"
+        case .folder:  String(localized: "and everything inside")
+        case .pattern: isLocked ? String(localized: "pattern · locked") : String(localized: "pattern")
+        case .item: String(localized: "item")
         }
     }
 }
@@ -134,6 +134,10 @@ final class SettingsStore {
     // MARK: Storage
 
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let languageDomain: String?
+    private let runningAppLanguage: AppLanguage
+    @ObservationIgnored private let readSystemAppLanguage: () -> AppLanguage
+    private var systemAppLanguage: AppLanguage
     /// Previews and tests drive the store without touching the user's login items.
     @ObservationIgnored private let managesLoginItem: Bool
     @ObservationIgnored private var isSyncingLoginItem = false
@@ -162,6 +166,29 @@ final class SettingsStore {
 
     var appearance: AppAppearance {
         didSet { defaults.set(appearance.rawValue, forKey: AppAppearance.defaultsKey) }
+    }
+
+    private(set) var appLanguage: AppLanguage
+
+    private var effectiveAppLanguage: AppLanguage {
+        appLanguage == .system ? systemAppLanguage : appLanguage
+    }
+
+    var hasPendingAppLanguageChange: Bool { effectiveAppLanguage != runningAppLanguage }
+
+    /// Returns true when the effective language changes and requires a restart.
+    @discardableResult
+    func setAppLanguage(_ language: AppLanguage) -> Bool {
+        let previous = effectiveAppLanguage
+        if let languageDomain { language.save(in: languageDomain) }
+        appLanguage = language
+        return effectiveAppLanguage != previous && hasPendingAppLanguageChange
+    }
+
+    func reloadAppLanguage() {
+        systemAppLanguage = readSystemAppLanguage()
+        guard let languageDomain else { return }
+        appLanguage = AppLanguage.saved(in: languageDomain)
     }
 
     // MARK: Startup
@@ -350,10 +377,18 @@ final class SettingsStore {
 
     // MARK: Lifecycle
 
-    init(defaults: UserDefaults = .standard, managesLoginItem: Bool = true) {
+    init(
+        defaults: UserDefaults = .standard, managesLoginItem: Bool = true, languageDomain: String? = nil,
+        runningAppLanguage: AppLanguage = .running, readSystemAppLanguage: @escaping () -> AppLanguage = { .macOSDefault }
+    ) {
         self.defaults = defaults
+        self.languageDomain = languageDomain
+        self.runningAppLanguage = runningAppLanguage
+        self.readSystemAppLanguage = readSystemAppLanguage
+        self.systemAppLanguage = readSystemAppLanguage()
         self.managesLoginItem = managesLoginItem
         self.appearance = AppAppearance.saved(in: defaults)
+        self.appLanguage = languageDomain.map(AppLanguage.saved(in:)) ?? .system
 
         // `defaults.bool(forKey:)` answers `false` for a key that was never written,
         // which would silently turn every on-by-default switch off on first launch.
@@ -433,8 +468,10 @@ final class SettingsStore {
 
     /// Everything back to the design's defaults. Touches no files: the Advanced pane's
     /// alert says as much, and this is what makes that true.
-    func resetToDefaults() {
+    @discardableResult
+    func resetToDefaults() -> Bool {
         appearance = Defaults.appearance
+        let languageNeedsRestart = setAppLanguage(.system)
         launchAtLogin = Defaults.launchAtLogin
         showInMenuBar = Defaults.showInMenuBar
         scanSchedule = Defaults.scanSchedule
@@ -453,6 +490,7 @@ final class SettingsStore {
         allowPhotoDownloads = Defaults.allowPhotoDownloads
         duplicateKeeperRule = .oldest
         exclusions = Defaults.exclusions
+        return languageNeedsRestart
     }
 
     /// Applies the switch to the real login item, then corrects the switch if the

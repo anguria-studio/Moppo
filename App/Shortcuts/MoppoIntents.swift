@@ -8,7 +8,7 @@ struct GetFreeSpaceIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let volume = try await DiskInfoService().volumeInfo()
-        let free = ByteFormatting.string(volume.freeBytes)
+        let free = ByteFormatting.localizedString(volume.freeBytes)
         return .result(value: Int(volume.freeBytes), dialog: "\(free) free on \(volume.name).")
     }
 }
@@ -27,7 +27,7 @@ struct GetTrashSizeIntent: AppIntent {
         } catch TrashError.unreadable {
             throw MoppoOperationError.trashAccessRequired
         }
-        let size = ByteFormatting.string(summary.totalBytes)
+        let size = ByteFormatting.localizedString(summary.totalBytes)
         return .result(value: Int(summary.totalBytes), dialog: "\(summary.itemCount) items use \(size) in the Trash.")
     }
 }
@@ -42,7 +42,7 @@ struct GetSafeToRemoveSizeIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         guard let results = model.cleanup.scanResults else { throw MoppoOperationError.scanRequired }
-        let size = ByteFormatting.string(results.safeToRemoveBytes)
+        let size = ByteFormatting.localizedString(results.safeToRemoveBytes)
         let date = results.finishedAt.formatted(date: .abbreviated, time: .shortened)
         return .result(value: Int(results.safeToRemoveBytes), dialog: "\(size) Safe to Remove. Scanned on \(date).")
     }

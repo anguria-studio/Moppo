@@ -18,6 +18,7 @@ struct PreferencesView: View {
     let access: AccessModel
     var updates: UpdateController? = nil
     var dashboard: DashboardModel?
+    var appDelegate: AppDelegate?
 
     /// Per-category sizes from the last scan. A category the caller has no figure for
     /// renders an em dash: `0 B` would claim it was measured and found clean.
@@ -29,9 +30,37 @@ struct PreferencesView: View {
     var onClearMeasurementHistory: (() -> Void)?
     var onResetSettings: (() -> Void)?
 
+    @State private var isShowingLanguageRestart = false
+    @State private var isShowingRestartFailure = false
+
+    private var languageRestartAvailability: AppDelegate.LanguageRestartAvailability {
+        appDelegate?.languageRestartAvailability ?? .blocked
+    }
+
     var body: some View {
+        tabs
+        .containerBackground(Token.pageBackground, for: .window)
+        .toolbarBackground(Token.pageBackground, for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+        .alert("Language preference saved", isPresented: $isShowingLanguageRestart) {
+            if languageRestartAvailability.canRestart {
+                Button("Restart Moppo") { restartForLanguage() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            Button("Later", role: .cancel) {}
+        } message: {
+            Text(languageRestartAvailability.message)
+        }
+        .alert("Moppo could not restart", isPresented: $isShowingRestartFailure) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Quit and reopen Moppo to apply the language change.")
+        }
+    }
+
+    private var tabs: some View {
         TabView {
-            GeneralPane(settings: settings, dashboard: dashboard, access: access)
+            general
                 .tabItem { Label("General", systemImage: "gearshape") }
 
             if let updates {
@@ -52,13 +81,41 @@ struct PreferencesView: View {
                 settings: settings,
                 onRebuildIndex: onRebuildIndex,
                 onClearMeasurementHistory: onClearMeasurementHistory,
-                onResetSettings: onResetSettings
+                onResetSettings: onResetSettings,
+                onLanguageChange: { showLanguageRestart() },
+                isLanguageRestartPending: languageRestartAvailability == .waitingForCleanup
             )
             .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
         }
-        .containerBackground(Token.pageBackground, for: .window)
-        .toolbarBackground(Token.pageBackground, for: .windowToolbar)
-        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
+    }
+
+    private var general: some View {
+        let restart: (() -> Void)? = appDelegate == nil ? nil : { restartForLanguage() }
+        return GeneralPane(
+            settings: settings,
+            dashboard: dashboard,
+            access: access,
+            languageRestartAvailability: languageRestartAvailability,
+            onLanguageChange: { showLanguageRestart() },
+            onRestartLanguage: restart
+        )
+    }
+
+    private func showLanguageRestart() {
+        guard appDelegate != nil, settings.hasPendingAppLanguageChange else { return }
+        isShowingLanguageRestart = true
+    }
+
+    private func restartForLanguage() {
+        guard settings.hasPendingAppLanguageChange, let appDelegate else { return }
+        switch appDelegate.restartForLanguage(onDeferredFailure: { isShowingRestartFailure = true }) {
+        case .busy:
+            break
+        case .unavailable:
+            isShowingRestartFailure = true
+        case nil:
+            break
+        }
     }
 }
 

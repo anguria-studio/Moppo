@@ -187,12 +187,12 @@ class AITableTests(unittest.TestCase):
         RULES.validate(self.SECTIONS, tools)
         swift = RULES.render_swift(self.SECTIONS, tools)
         self.assertIn('Root(path: "Library/Application Support/Claude", name: "Claude desktop data", '
-                      'section: .init(owner: .claude, title: "Desktop data", summary: "Desktop profiles and caches."), '
+                      'section: .init(owner: .claude, titleText: "Desktop data", summaryText: "Desktop profiles and caches."), '
                       'curationIdentifier: "com.anthropic.claudefordesktop", parts: [\n'
                       '            Part(path: "vm_bundles/*/rootfs.img", name: "Claude VM system disk", explanation: "Linux and tools.")\n'
                       '        ]),', swift)
-        self.assertIn('Root(path: ".claude", name: "Claude Code data", section: .init(owner: .claudeCode, title: "Task data", '
-                      'summary: "Conversations."), explanation: "Protected.", reviewsWorktrees: false)', swift)
+        self.assertIn('Root(path: ".claude", name: "Claude Code data", section: .init(owner: .claudeCode, titleText: "Task data", '
+                      'summaryText: "Conversations."), explanation: "Protected.", reviewsWorktrees: false)', swift)
         self.assertIn('"com.anthropic.claudefordesktop": AppDataCuration(root: "Library/Application Support/Claude", '
                       'regenerable: electronRegenerable + ["Partitions/*/Cache"], remainderName: "Claude settings and data")', swift)
         self.assertIn('        case claude = "Claude"\n', swift)

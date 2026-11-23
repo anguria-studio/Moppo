@@ -24,7 +24,7 @@ struct AgentSetupSection: View {
     }
 
     var body: some View {
-        PrefSection("Command line and agents") {
+        PrefSection(String(localized: "Command line and agents")) {
             toolRow
             PrefDivider()
             pathRow
@@ -68,7 +68,8 @@ struct AgentSetupSection: View {
     private var pathRow: some View {
         HStack(spacing: PrefMetrics.controlGap) {
             VStack(alignment: .leading, spacing: PrefMetrics.labelGap) {
-                PrefLabel(title: "Terminal path", description: "If Terminal cannot find moppo, add this line to ~/.zprofile.")
+                PrefLabel(title: String(localized: "Terminal path"),
+                    description: String(localized: "If Terminal cannot find moppo, add this line to ~/.zprofile."))
                 Text(AgentSetup.pathLine)
                     .font(.mcMonoPath)
                     .foregroundStyle(Token.Text.tertiary)
@@ -89,12 +90,12 @@ struct AgentSetupSection: View {
     private var toolRow: some View {
         let state = setup.toolState
         let description: String = switch state {
-        case .notInstalled: "Adds moppo to ~/.local/bin. App updates also update the command."
-        case .installed: "~/.local/bin/moppo uses this copy of Moppo."
-        case .different: "~/.local/bin/moppo uses another copy of Moppo."
-        case .blocked: "Another file uses ~/.local/bin/moppo. Moppo does not replace it."
+        case .notInstalled: String(localized: "Adds moppo to ~/.local/bin. App updates also update the command.")
+        case .installed: String(localized: "~/.local/bin/moppo uses this copy of Moppo.")
+        case .different: String(localized: "~/.local/bin/moppo uses another copy of Moppo.")
+        case .blocked: String(localized: "Another file uses ~/.local/bin/moppo. Moppo does not replace it.")
         }
-        return PrefRow(title: "Command-line tool", description: description) {
+        return PrefRow(title: String(localized: "Command-line tool"), description: description) {
             switch state {
             case .notInstalled: button("Install") { try setup.installTool() }
             case .installed: button("Remove") { try setup.removeTool() }
@@ -113,17 +114,17 @@ struct AgentSetupSection: View {
         let folder = (setup.skillFolder(for: client).path as NSString).abbreviatingWithTildeInPath
         let description: String = switch state {
         case .notInstalled:
-            ["Lets \(client.displayName) scan and clean up with moppo. Removal always needs your approval.",
-             rule == nil ? nil : Self.sandboxSentence(client, action: "Setup also"),
-             client == .cursor ? "In Cursor Settings, add moppo to the command allowlist." : nil]
+            [String(localized: "Lets \(client.displayName) scan and clean up with moppo. Removal always needs your approval."),
+             rule == nil ? nil : Self.sandboxSentence(client),
+             client == .cursor ? String(localized: "In Cursor Settings, add moppo to the command allowlist.") : nil]
                 .compactMap { $0 }.joined(separator: " ")
-        case .installed where ruleMissing: Self.sandboxSentence(client, action: "Allow")
+        case .installed where ruleMissing: Self.sandboxSentence(client)
         case .installed where rule == .blocked: Self.blockedRuleMessage(client)
         case .installed: folder
-        case .different: "A different version is in \(folder)."
-        case .blocked: "A file uses \(folder). Moppo does not replace it."
+        case .different: String(localized: "A different version is in \(folder).")
+        case .blocked: String(localized: "A file uses \(folder). Moppo does not replace it.")
         }
-        return PrefRow(title: "\(client.displayName) skill", description: description,
+        return PrefRow(title: String(localized: "\(client.displayName) skill", comment: "An agent skill for the named product."), description: description,
                        descriptionIsPath: state == .installed && !ruleMissing && rule != .blocked) {
             switch state {
             case .notInstalled: button("Install") { try setup.installSkill(for: client) }
@@ -139,28 +140,28 @@ struct AgentSetupSection: View {
 
     /// Says what setup changes outside the skill folder.
     /// The Cursor app keeps its own allowlist, so setup changes only the Cursor CLI.
-    private static func sandboxSentence(_ client: AgentSetup.Client, action: String) -> String {
+    private static func sandboxSentence(_ client: AgentSetup.Client) -> String {
         switch client {
-        case .claudeCode: "\(action) lets moppo run outside the Claude Code sandbox."
-        case .codex: "\(action) lets moppo run outside the Codex sandbox. Restart Codex after this change."
-        case .cursor: "\(action) lets moppo run outside the Cursor CLI sandbox."
+        case .claudeCode: String(localized: "This lets moppo run outside the Claude Code sandbox.")
+        case .codex: String(localized: "This lets moppo run outside the Codex sandbox. Restart Codex after this change.")
+        case .cursor: String(localized: "This lets moppo run outside the Cursor CLI sandbox.")
         }
     }
 
     private static func blockedRuleMessage(_ client: AgentSetup.Client) -> String {
         switch client {
         case .claudeCode:
-            #"Moppo cannot change ~/.claude/settings.json. Edit the "moppo *" entry in sandbox.excludedCommands yourself."#
+            String(localized: #"Moppo cannot change ~/.claude/settings.json. Edit the "moppo *" entry in sandbox.excludedCommands yourself."#)
         case .codex:
-            "Another file uses ~/.codex/rules/moppo.rules. Moppo does not replace it."
+            String(localized: "Another file uses ~/.codex/rules/moppo.rules. Moppo does not replace it.")
         case .cursor:
-            #"Moppo cannot change ~/.cursor/cli-config.json. Edit the "Shell(moppo)" entry in permissions.allow yourself."#
+            String(localized: #"Moppo cannot change ~/.cursor/cli-config.json. Edit the "Shell(moppo)" entry in permissions.allow yourself."#)
         }
     }
 
     // MARK: Actions
 
-    private func button(_ title: String, action: @escaping () throws -> Void) -> some View {
+    private func button(_ title: LocalizedStringKey, action: @escaping () throws -> Void) -> some View {
         Button(title) { run(action) }
             .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
     }
@@ -170,11 +171,11 @@ struct AgentSetupSection: View {
             try action()
             message = nil
         } catch AgentSetup.SetupError.sourceMissing {
-            message = "This copy of Moppo does not include the command-line tool or the skill."
+            message = String(localized: "This copy of Moppo does not include the command-line tool or the skill.")
         } catch AgentSetup.SetupError.sandboxRuleBlocked(let client) {
             message = Self.blockedRuleMessage(client)
         } catch {
-            message = "Moppo could not change this item. " + error.localizedDescription
+            message = String(localized: "Moppo could not change this item. \(error.localizedDescription)")
         }
         revision += 1
     }

@@ -10,7 +10,10 @@ public struct HomebrewUninstallOutcome: Sendable, Equatable {
 
     public let status: Status
     public let message: String
-    public let details: String?
+    public var localizedMessage: String { EngineText.rule(message).localized }
+    private let detailsText: EngineText?
+    public var details: String? { detailsText?.english }
+    public var localizedDetails: String? { detailsText?.localized }
     public let applicationRemoved: Bool
     public let relatedCleanup: CleanupOutcome
 
@@ -18,9 +21,15 @@ public struct HomebrewUninstallOutcome: Sendable, Equatable {
         status: Status, message: String, details: String? = nil,
         applicationRemoved: Bool = false, relatedCleanup: CleanupOutcome = CleanupOutcome()
     ) {
+        self.init(status: status, message: message, detailsText: details.map(EngineText.verbatim),
+                  applicationRemoved: applicationRemoved, relatedCleanup: relatedCleanup)
+    }
+
+    init(status: Status, message: String, detailsText: EngineText?,
+         applicationRemoved: Bool = false, relatedCleanup: CleanupOutcome = CleanupOutcome()) {
         self.status = status
         self.message = message
-        self.details = details
+        self.detailsText = detailsText
         self.applicationRemoved = applicationRemoved
         self.relatedCleanup = relatedCleanup
     }
@@ -34,12 +43,12 @@ public struct HomebrewUninstallService: Sendable {
     private let askpassExecutable: String?
     private let cleanupService: CleanupService
 
-    public init(log: RemovalLog = RemovalLog(), askpassExecutable: String? = nil) {
+    public init(log: RemovalLog = RemovalLog(), askpassExecutable: String? = nil, askpassLanguage: String? = nil) {
         self.init(log: log, askpassExecutable: askpassExecutable) { executable, arguments in
             try await ProcessRunner().run(
                 executable, arguments,
                 timeout: arguments.first == "uninstall" ? .seconds(300) : .seconds(20),
-                environment: Self.environment(for: arguments, askpassExecutable: askpassExecutable),
+                environment: Self.environment(for: arguments, askpassExecutable: askpassExecutable, askpassLanguage: askpassLanguage),
                 allowsInput: false
             )
         }
@@ -55,7 +64,9 @@ public struct HomebrewUninstallService: Sendable {
         self.cleanupService = cleanupService ?? CleanupService(log: log)
     }
 
-    static func environment(for arguments: [String], askpassExecutable: String?) -> [String: String] {
+    static func environment(
+        for arguments: [String], askpassExecutable: String?, askpassLanguage: String? = nil
+    ) -> [String: String] {
         var environment = [
             "NONINTERACTIVE": "1",
             "HOMEBREW_NO_AUTO_UPDATE": "1",
@@ -66,6 +77,7 @@ public struct HomebrewUninstallService: Sendable {
             // Homebrew removes custom variables unless their names start with HOMEBREW_.
             "HOMEBREW_MOPPO_APP_PID": "",
             "HOMEBREW_MOPPO_CASK": "",
+            "HOMEBREW_MOPPO_LANGUAGE": "",
             "HOMEBREW_MOPPO_AUTH_DEADLINE": "",
         ]
         if arguments.count == 3, arguments[0] == "uninstall", arguments[1] == "--cask",
@@ -73,6 +85,7 @@ public struct HomebrewUninstallService: Sendable {
             environment["SUDO_ASKPASS"] = askpassExecutable
             environment["HOMEBREW_MOPPO_APP_PID"] = String(ProcessInfo.processInfo.processIdentifier)
             environment["HOMEBREW_MOPPO_CASK"] = arguments[2]
+            environment["HOMEBREW_MOPPO_LANGUAGE"] = askpassLanguage ?? ""
             // Close an unanswered prompt before the command reaches its time limit.
             environment["HOMEBREW_MOPPO_AUTH_DEADLINE"] = String(Date().addingTimeInterval(290).timeIntervalSince1970)
         }
@@ -109,11 +122,11 @@ public struct HomebrewUninstallService: Sendable {
             return .init(
                 status: .notStarted,
                 message: "Moppo could not verify Homebrew ownership. No removal command was run.",
-                details: Self.errorDetail(error)
+                detailsText: Self.errorDetail(error)
             )
         }
 
-        var commandError: String?
+        var commandError: EngineText?
         do {
             _ = try await run(package.executable, ["uninstall", "--cask", package.name])
         } catch {
@@ -166,7 +179,7 @@ public struct HomebrewUninstallService: Sendable {
             )
         case .success(let packageRemoved):
             let state: String
-            if commandError == Self.authenticationCancelled {
+            if commandError?.english == Self.authenticationCancelled {
                 state = "Administrator authentication was cancelled. Homebrew removal may be incomplete."
             } else if removed {
                 state = "The application was removed. Homebrew removal is incomplete."
@@ -176,20 +189,23 @@ public struct HomebrewUninstallService: Sendable {
                 state = "Homebrew could not finish removal. Some files may have changed."
             }
             return .init(
-                status: .incomplete, message: state, details: commandError,
+                status: .incomplete, message: state, detailsText: commandError,
                 applicationRemoved: removed
             )
         case .failure(let error):
+            let details = [commandError, Self.errorDetail(error)].compactMap { $0 }
+            let english = details.map(\.english).joined(separator: "\n")
+            let localized = details.map(\.localized).joined(separator: "\n")
             return .init(
                 status: .incomplete,
                 message: "Moppo could not verify the Homebrew result. Some files may have changed.",
-                details: [commandError, Self.errorDetail(error)].compactMap { $0 }.joined(separator: "\n"),
+                detailsText: EngineText(english: english, display: "\(localized)"),
                 applicationRemoved: removed
             )
         }
     }
 
-    private static func errorDetail(_ error: Error) -> String {
+    private static func errorDetail(_ error: Error) -> EngineText {
         if error is CancellationError { return "The Homebrew command was interrupted." }
         if let error = error as? ProcessError {
             switch error {
@@ -198,12 +214,12 @@ public struct HomebrewUninstallService: Sendable {
             case .timedOut:
                 return "The Homebrew command exceeded its time limit."
             case .failed(_, let status, let stderr):
-                if stderr.contains(Self.authenticationCancelled) { return Self.authenticationCancelled }
+                if stderr.contains(Self.authenticationCancelled) { return .rule(Self.authenticationCancelled) }
                 let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-                return detail.isEmpty ? "Homebrew exited with status \(status)." : String(detail.suffix(4_000))
+                return detail.isEmpty ? "Homebrew exited with status \(status)." : .verbatim(String(detail.suffix(4_000)))
             }
         }
-        return error.localizedDescription
+        return .verbatim(error.localizedDescription)
     }
 
     private static let authenticationCancelled = "Moppo: administrator authentication was cancelled."

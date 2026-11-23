@@ -1,8 +1,7 @@
 import SwiftUI
 import MoppoCore
 
-private let freeSpaceExplanation = "Free is unused disk space. Available space can also include temporary files that macOS can remove when needed. "
-    + "System Settings can therefore show more available space than Moppo shows as free."
+private let freeSpaceExplanation = String(localized: "Free is unused disk space. Available space can also include temporary files that macOS can remove when needed. System Settings can therefore show more available space than Moppo shows as free.")
 
 /// The Dashboard's capacity card: how full the volume is, and what is filling it.
 ///
@@ -96,7 +95,7 @@ struct CapacityCard: View {
     private var hero: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(ByteFormatting.string(freeBytes))
+                Text(ByteFormatting.localizedString(freeBytes))
                     .animatedTotal(freeBytes)
                     .font(.mcHero)
                     .mcTracked(-0.68)
@@ -109,12 +108,12 @@ struct CapacityCard: View {
             .minimumScaleFactor(0.7)
             .layoutPriority(1)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(ByteFormatting.string(freeBytes)) free")
+            .accessibilityLabel("\(ByteFormatting.localizedString(freeBytes)) free")
             .help(freeSpaceExplanation)
 
             Spacer(minLength: 12)
 
-            Text("\(ByteFormatting.string(usedBytes)) of \(ByteFormatting.string(capacityBytes)) used")
+            Text("\(ByteFormatting.localizedString(usedBytes)) of \(ByteFormatting.localizedString(capacityBytes)) used")
                 .font(.mcControlLabel)
                 .fontWeight(.semibold)
                 .foregroundStyle(Token.Text.primary)
@@ -175,7 +174,7 @@ private struct LegendRow: View {
         HStack(spacing: 8) {
             CategoryDot(color: entry.color, size: 8)
 
-            Text(entry.displayName)
+            Text(entry.localizedDisplayName)
                 .font(.mcBody)
                 .foregroundStyle(Token.Text.primary)
                 .lineLimit(1)
@@ -198,7 +197,7 @@ private struct LegendRow: View {
                 SkeletonBone(width: 52, height: 10)
                     .skeletonPulse()
             } else {
-                Text(ByteFormatting.string(entry.bytes))
+                Text(ByteFormatting.localizedString(entry.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize()   // the name truncates first; the figure never does
@@ -216,48 +215,29 @@ private struct LegendRow: View {
         case .free:
             return freeSpaceExplanation
         case .applications:
-            return "This category measures disk space in /Applications and ~/Applications. "
-                + "App data, caches, and apps stored elsewhere count in their folder categories. "
-                + "System Settings uses different category rules."
+            return String(localized: "This category measures disk space in /Applications and ~/Applications. App data, caches, and apps stored elsewhere count in their folder categories. System Settings uses different category rules.")
         case .documentsDesktop:
-            return "This category measures your Documents and Desktop folders. "
-                + "Downloads and files elsewhere count in their folder categories. "
-                + "The Documents category in System Settings covers more locations."
+            return String(localized: "This category measures your Documents and Desktop folders. Downloads and files elsewhere count in their folder categories. The Documents category in System Settings covers more locations.")
         case .macOSSystem:
-            return "This category includes system files and supporting volumes, such as Preboot, Recovery, and VM. "
-                + "It also includes readable system files on the Data volume. "
-                + "It differs from the macOS category in System Settings."
+            return String(localized: "This category includes system files and supporting volumes, such as Preboot, Recovery, and VM. It also includes readable system files on the Data volume. It differs from the macOS category in System Settings.")
         case .systemData:
-            return "Machine-wide files outside your home folder: /Library (support "
-                + "files for all apps and users), Homebrew in /opt, and service data "
-                + "in /private. Some of this is reclaimable, for example Homebrew "
-                + "caches and old logs."
+            return String(localized: "Machine-wide files outside your home folder: /Library (support files for all apps and users), Homebrew in /opt, and service data in /private. Some of this is reclaimable, for example Homebrew caches and old logs.")
         case .unmeasured:
             var sentences: [String] = []
             if unreadableCount > 0 {
-                let count = NumberFormatter.localizedString(
-                    from: NSNumber(value: unreadableCount),
-                    number: .decimal
-                )
-                let locationText = unreadableCount == 1 ? "location" : "locations"
-                sentences.append("The scan could not read \(count) \(locationText).")
+                sentences.append(String(localized: "The scan could not read \(unreadableCount) location.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
             }
             sentences.append(
-                "This total includes APFS metadata and files that only macOS can read."
+                String(localized: "This total includes APFS metadata and files that only macOS can read.")
             )
-            sentences.append("Moppo does not mark this space as removable.")
+            sentences.append(String(localized: "Moppo does not mark this space as removable."))
             return sentences.joined(separator: " ")
         case .otherFilesInHome:
-            return "This group contains home folder items that no named category "
-                + "claims. It can include top-level folders, hidden tool data, "
-                + "and loose files. Use Finder to review these items."
+            return String(localized: "This group contains home folder items that no named category claims. It can include top-level folders, hidden tool data, and loose files. Use Finder to review these items.")
         case .photos:
-            return "This category measures files in ~/Pictures, including Photos and "
-                + "Photo Booth libraries. Moppo does not offer these libraries "
-                + "for removal. Images elsewhere count in their folder category."
+            return String(localized: "This category measures files in ~/Pictures, including Photos and Photo Booth libraries. Moppo does not offer these libraries for removal. Images elsewhere count in their folder category.")
         case .other:
-            return "This group contains measured categories that each use less than "
-                + "0.5% of the disk. It can include Developer, Movies, and Music."
+            return String(localized: "This group contains measured categories that each use less than 0.5% of the disk. It can include Developer, Movies, and Music.")
         default:
             return nil
         }
@@ -316,8 +296,8 @@ private struct CapacityBar: View {
                         if inside { hovered = slice.id }
                         else if hovered == slice.id { hovered = nil }
                     }
-                    .accessibilityLabel(slice.segment.displayName)
-                    .accessibilityValue(ByteFormatting.string(slice.segment.bytes))
+                    .accessibilityLabel(slice.segment.localizedDisplayName)
+                    .accessibilityValue(ByteFormatting.localizedString(slice.segment.bytes))
                 }
             }
             .overlay(alignment: .topLeading) { tooltip(for: slices, in: proxy.size.width) }
@@ -344,10 +324,10 @@ private struct CapacityBar: View {
 
             HStack(spacing: 7) {
                 CategoryDot(color: slice.segment.color, size: 8)
-                Text(slice.segment.displayName)
+                Text(slice.segment.localizedDisplayName)
                     .font(.mcRowTitle)
                     .foregroundStyle(Token.Text.primary)
-                Text(ByteFormatting.string(slice.segment.bytes))
+                Text(ByteFormatting.localizedString(slice.segment.bytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.secondary)
             }

@@ -36,15 +36,15 @@ struct WorktreeReviewSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 14) {
-                FileEntryIcon(entry: entry, presentation: FileEntryPresentation(entry: entry), symbolSize: 32)
+                FileEntryIcon(entry: entry, presentation: FileEntryPresentation(entry: entry, localized: true), symbolSize: 32)
                     .frame(width: 40, height: 40)
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 4) {
-                        Text(entry.displayName).foregroundStyle(Token.Text.primary)
+                        Text(entry.localizedDisplayName).foregroundStyle(Token.Text.primary)
                             .lineLimit(1).truncationMode(.middle)
-                        Text("· " + ByteFormatting.string(entry.displayBytes)).foregroundStyle(Token.Text.secondary).fixedSize()
+                        Text("· " + ByteFormatting.localizedString(entry.displayBytes)).foregroundStyle(Token.Text.secondary).fixedSize()
                     }.font(.mcToolbarTitle)
-                    Label(review.branch, systemImage: "arrow.triangle.branch")
+                    Label(review.localizedBranch, systemImage: "arrow.triangle.branch")
                         .font(.mcSubtitle).foregroundStyle(Token.Text.secondary).lineLimit(1).truncationMode(.middle)
                     Text(FileEntry.abbreviate(entry.url.path)).font(.mcMonoPath)
                         .foregroundStyle(Token.Text.secondary).lineLimit(1).truncationMode(.middle).help(entry.url.path)
@@ -68,7 +68,7 @@ struct WorktreeReviewSheet: View {
                                 text: isChecking ? verdict : verificationDetails,
                                 color: isSafe ? Token.color(.green) : hasProblem ? Token.color(.orange) : Token.Text.disabled)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(isChecking ? "Checking worktree" : review.statusLabel)
+                                Text(isChecking ? String(localized: "Checking worktree") : review.localizedStatusLabel)
                                     .font(.mcSectionHeader)
                                 Text(verdict).font(.mcBody).foregroundStyle(Token.Text.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
@@ -77,42 +77,42 @@ struct WorktreeReviewSheet: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
                     }
-                    section("Checks") {
-                        check("Merge", state: review.mergeCheck,
+                    section(String(localized: "Checks")) {
+                        check(String(localized: "Merge"), state: review.localizedMergeCheck,
                             clear: review.mergedInto.map { target in
-                                review.mergePullRequestNumber.map { "PR #\($0) → " + target } ?? "Into " + target
+                                review.mergePullRequestNumber.map { String(localized: "PR #\($0) → \(target)") } ?? String(localized: "Into \(target)")
                             } ?? "",
-                            detail: review.mergePullRequestNumber == nil ? "Confirmed using saved remote data."
-                                : "Confirmed by GitHub and saved Git history.",
-                            unknown: review.openPullRequestNumber.map { "PR #\($0) open" } ?? "Not confirmed")
+                            detail: review.mergePullRequestNumber == nil ? String(localized: "Confirmed using saved remote data.")
+                                : String(localized: "Confirmed by GitHub and saved Git history."),
+                            unknown: review.openPullRequestNumber.map { String(localized: "PR #\($0) open") } ?? String(localized: "Not confirmed"))
                         Divider()
-                        check("Uncommitted changes", state: review.localFilesCheck)
+                        check(String(localized: "Uncommitted changes"), state: review.localizedLocalFilesCheck)
                         Divider()
-                        check("Unpushed commits", state: review.pushCheck,
-                            clear: review.lastFetchDate == nil ? "None" : "None · last fetch " + fetchDate,
-                            detail: "Compared with saved remote data. Last fetch: " + fetchDate)
+                        check(String(localized: "Unpushed commits"), state: review.localizedPushCheck,
+                            clear: review.lastFetchDate == nil ? String(localized: "None") : String(localized: "None · last fetch \(fetchDate)"),
+                            detail: String(localized: "Compared with saved remote data. Last fetch: \(fetchDate)"))
                         Divider()
-                        check("Ignored files", state: review.ignoredFilesCheck,
-                            clear: review.ignoredFiles.isEmpty ? "None" : review.mergedInto != nil
-                                ? "Included with merged worktree"
-                                : review.copiedIgnoredFiles.isEmpty ? "Regenerable files only" : "Regenerable files and copies")
+                        check(String(localized: "Ignored files"), state: review.localizedIgnoredFilesCheck,
+                            clear: review.ignoredFiles.isEmpty ? String(localized: "None") : review.mergedInto != nil
+                                ? String(localized: "Included with merged worktree")
+                                : review.copiedIgnoredFiles.isEmpty ? String(localized: "Regenerable files only") : String(localized: "Regenerable files and copies"))
                         Divider()
-                        check("Git locks", state: review.locks)
+                        check(String(localized: "Git locks"), state: review.localizedLocks)
                         Divider()
-                        check("In use", state: review.activity, clear: "Not detected")
+                        check(String(localized: "In use"), state: review.localizedActivity, clear: String(localized: "Not detected"))
                     }
-                    if !review.localFiles.isEmpty { files("Files only on this Mac", items: review.localFiles) }
+                    if !review.localFiles.isEmpty { files(String(localized: "Files only on this Mac"), items: review.localFiles) }
                     if !review.localIgnoredFiles.isEmpty {
-                        files("Local ignored files", items: review.localIgnoredFiles, showsBytes: true)
+                        files(String(localized: "Local ignored files"), items: review.localIgnoredFiles, showsBytes: true)
                     }
                     if !review.copiedIgnoredFiles.isEmpty {
-                        files("Copies in the main checkout", items: review.copiedIgnoredFiles, showsBytes: true)
+                        files(String(localized: "Copies in the main checkout"), items: review.copiedIgnoredFiles, showsBytes: true)
                     }
                     if !review.unverifiedIgnoredFiles.isEmpty {
-                        files("Unverified files", items: review.unverifiedIgnoredFiles, showsBytes: true)
+                        files(String(localized: "Unverified files"), items: review.unverifiedIgnoredFiles, showsBytes: true)
                     }
                     if !review.regenerableIgnoredFiles.isEmpty {
-                        files("Regenerable files", items: review.regenerableIgnoredFiles, showsBytes: true)
+                        files(String(localized: "Regenerable files"), items: review.regenerableIgnoredFiles, showsBytes: true)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -163,64 +163,63 @@ struct WorktreeReviewSheet: View {
     }
 
     private var fetchDate: String {
-        review.lastFetchDate?.formatted(date: .abbreviated, time: .omitted) ?? "Unavailable"
+        review.lastFetchDate?.formatted(date: .abbreviated, time: .omitted) ?? String(localized: "Unavailable")
     }
 
     private var verificationDetails: String {
         [
-            ("Merge", review.mergeCheck),
-            ("Uncommitted changes", review.localFilesCheck),
-            ("Unpushed commits", review.pushCheck),
-            ("Ignored files", review.ignoredFilesCheck),
-            ("Git locks", review.locks),
-            ("In use", review.activity)
+            (String(localized: "Merge"), review.localizedMergeCheck),
+            (String(localized: "Uncommitted changes"), review.localizedLocalFilesCheck),
+            (String(localized: "Unpushed commits"), review.localizedPushCheck),
+            (String(localized: "Ignored files"), review.localizedIgnoredFilesCheck),
+            (String(localized: "Git locks"), review.localizedLocks),
+            (String(localized: "In use"), review.localizedActivity)
         ].compactMap { title, state in
-            state.reason.map { "\(title): \($0)" }
+            state.reason.map { String(localized: "\(title): \($0)") }
         }.joined(separator: "\n")
     }
 
     private var verdict: String {
-        if isChecking { return "Moppo is checking local files, commits, locks, and open files." }
+        if isChecking { return String(localized: "Moppo is checking local files, commits, locks, and open files.") }
         if isSafe {
             if review.mergedInto != nil {
                 if review.mergePullRequestNumber != nil {
-                    return "GitHub and saved Git history confirm this merge. Removal includes all ignored local files, including environment files."
+                    return String(localized: "GitHub and saved Git history confirm this merge. Removal includes all ignored local files, including environment files.")
                 }
-                return "Saved remote data contains these commits. Removal includes all ignored local files, including environment files."
+                return String(localized: "Saved remote data contains these commits. Removal includes all ignored local files, including environment files.")
             }
             if !review.copiedIgnoredFiles.isEmpty {
-                return "All checks passed using saved remote data. Project tools can recreate the ignored files, or the main checkout has identical copies."
+                return String(localized: "All checks passed using saved remote data. Project tools can recreate the ignored files, or the main checkout has identical copies.")
             }
-            return "All checks passed using saved remote data. Git and project tools can recreate these files."
+            return String(localized: "All checks passed using saved remote data. Git and project tools can recreate these files.")
         }
         if let path = review.missingGitData {
-            return "Git cannot read this worktree because its Git data is missing at \(path). "
-                + "Someone removed the main repository, or a virtual machine, such as the Claude VM, owns this worktree."
+            return String(localized: "Git cannot read this worktree because its Git data is missing at \(path). Someone removed the main repository, or a virtual machine, such as the Claude VM, owns this worktree.")
         }
         var findings: [String] = []
         if let number = review.openPullRequestNumber {
-            findings.append("Pull request #\(number) is open. GitHub has all commits of this worktree, but the merge is not complete.")
+            findings.append(String(localized: "Pull request #\(number) is open. GitHub has all commits of this worktree, but the merge is not complete."))
         }
         if review.status == .uncommittedChanges || !review.localFiles.isEmpty {
             let count = review.localFiles.count
-            findings.append(count == 0 ? "This worktree has uncommitted changes."
-                : "\(count) \(count == 1 ? "file has" : "files have") local changes.")
+            findings.append(count == 0 ? String(localized: "This worktree has uncommitted changes.")
+                : String(localized: "\(count) file has local changes.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         }
-        if case .found = review.pushCheck, let count = review.unpushedCommitCount {
-            findings.append("\(count) \(count == 1 ? "commit is" : "commits are") absent from the saved remote data.")
+        if case .found = review.localizedPushCheck, let count = review.unpushedCommitCount {
+            findings.append(String(localized: "\(count) commit is absent from the saved remote data.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         }
-        if case .found = review.ignoredFilesCheck {
-            findings.append("Some ignored files need review. Verified caches and dependencies appear separately.")
+        if case .found = review.localizedIgnoredFilesCheck {
+            findings.append(String(localized: "Some ignored files need review. Verified caches and dependencies appear separately."))
         }
-        if case .found = review.locks { findings.append("Git locks are present.") }
-        if case .found = review.activity { findings.append("An open process uses this worktree.") }
-        if let reason = review.activity.reason { findings.append(reason) }
+        if case .found = review.localizedLocks { findings.append(String(localized: "Git locks are present.")) }
+        if case .found = review.localizedActivity { findings.append(String(localized: "An open process uses this worktree.")) }
+        if let reason = review.localizedActivity.reason { findings.append(reason) }
         if !findings.isEmpty { return findings.joined(separator: " ") }
-        return "Moppo could not complete every check."
+        return String(localized: "Moppo could not complete every check.")
     }
 
-    private func check(_ title: String, state: GitWorktreeReview.Check, clear: String = "None",
-                       detail: String? = nil, unknown: String = "Couldn't check") -> some View {
+    private func check(_ title: String, state: GitWorktreeReview.Check, clear: String = String(localized: "None"),
+                       detail: String? = nil, unknown: String = String(localized: "Couldn't check")) -> some View {
         let problem: Bool = if case .found = state { true } else { false }
         let value: String = switch state {
         case .clear: clear
@@ -261,7 +260,7 @@ struct WorktreeReviewSheet: View {
     }
 
     private func files(_ title: String, items: [GitWorktreeReview.File], showsBytes: Bool = false) -> some View {
-        let detail = String(items.count) + (showsBytes ? " · " + ByteFormatting.string(items.reduce(0) { $0 + $1.allocatedBytes }) : "")
+        let detail = String(items.count) + (showsBytes ? " · " + ByteFormatting.localizedString(items.reduce(0) { $0 + $1.allocatedBytes }) : "")
         return section(title, detail: detail) {
             VStack(spacing: 0) {
                 ForEach(items) { file in
@@ -271,10 +270,10 @@ struct WorktreeReviewSheet: View {
                         Spacer(minLength: 8)
                         let included = review.includesAfterMerge(file)
                         let label = file.status == .ignored
-                            ? (file.regeneratesSafely == true ? "Regenerable" : included ? "Included"
-                               : file.hasMainCheckoutCopy ? "Copy"
-                               : file.regeneratesSafely == false ? "Review" : "Unverified")
-                            : file.status.rawValue
+                            ? (file.regeneratesSafely == true ? String(localized: "Regenerable") : included ? String(localized: "Included")
+                               : file.hasMainCheckoutCopy ? String(localized: "Copy")
+                               : file.regeneratesSafely == false ? String(localized: "Review") : String(localized: "Unverified"))
+                            : file.status.localizedLabel
                         Badge(text: label, style: file.regeneratesSafely == true || included || file.hasMainCheckoutCopy ? .safe
                             : file.status == .changed || file.regeneratesSafely == false ? .review : .neutral).fixedSize()
                     }.padding(.horizontal, 14).padding(.vertical, 7)

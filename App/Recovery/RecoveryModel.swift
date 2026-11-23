@@ -118,8 +118,8 @@ final class RecoveryModel {
                 guard trashLoadID == id, !Task.isCancelled else { return }
                 hasLoadedTrash = true
                 trashReadError = error is TrashError
-                    ? "Grant Full Disk Access to Moppo in System Settings to read the Trash."
-                    : "Moppo could not read the Trash. Try Reload again."
+                    ? String(localized: "Grant Full Disk Access to Moppo in System Settings to read the Trash.", comment: "macOS Trash recovery. Put Back restores the item to its original location.")
+                    : String(localized: "Moppo could not read the Trash. Try Reload again.", comment: "macOS Trash recovery. Put Back restores the item to its original location.")
                 return
             }
             guard trashLoadID == id, !Task.isCancelled else { return }
@@ -134,7 +134,7 @@ final class RecoveryModel {
                 }), let identity = request.trashedIdentity, FileIdentity.of(item.url) == identity {
                     selectedTrashItemIDs = [item.id]
                 } else {
-                    onEvent(.failure(title: "Item Not Found", message: "This item is no longer available in the Trash."))
+                    onEvent(.failure(title: String(localized: "Item Not Found"), message: String(localized: "This item is no longer available in the Trash.", comment: "macOS Trash recovery. Put Back restores the item to its original location.")))
                 }
             }
             selectedTrashItemIDs.formIntersection(Set(summary.items.map(\.id)))
@@ -159,8 +159,8 @@ final class RecoveryModel {
                 onEvent(.emptiedTrash(freedBytes: result.freedBytes, skippedURLs: result.skippedURLs))
             } catch {
                 onEvent(.failure(
-                    title: "The Trash Could Not Be Read",
-                    message: "Grant Moppo Full Disk Access in System Settings, Privacy & Security, then try again."
+                    title: String(localized: "The Trash Could Not Be Read"),
+                    message: String(localized: "Grant Moppo Full Disk Access in System Settings, Privacy & Security, then try again.")
                 ))
             }
             await refreshListsAfterMutation()
@@ -205,22 +205,21 @@ final class RecoveryModel {
                 } catch TrashError.destinationOccupied {
                     finderURLs.append(item.url)
                     failures.append((item.name,
-                        "Something is already at the place it came from. "
-                            + "Move that aside, or drag this out of the Trash yourself."))
+                        String(localized: "Something is already at the place it came from. Move that aside, or drag this out of the Trash yourself.", comment: "macOS Trash recovery. Put Back restores the item to its original location.")))
                 } catch {
                     finderURLs.append(item.url)
                     let message = FileAccessFailure.isPermissionDenied(error)
-                        ? "macOS denied access. The item remains in the Trash. Review it in Finder."
-                        : "The item remains in the Trash."
+                        ? String(localized: "macOS denied access. The item remains in the Trash. Review it in Finder.", comment: "macOS Trash recovery. Put Back restores the item to its original location.")
+                        : String(localized: "The item remains in the Trash.", comment: "macOS Trash recovery. Put Back restores the item to its original location.")
                     failures.append((item.name, message))
                 }
             }
             if restored { onEvent(.restored) }
             if failures.count == 1, let failure = failures.first {
-                onEvent(.failure(title: "\(failure.name) Was Not Put Back", message: failure.message, finderURLs: finderURLs))
+                onEvent(.failure(title: String(localized: "\(failure.name) Was Not Put Back", comment: "macOS Trash recovery. Put Back restores the item to its original location."), message: failure.message, finderURLs: finderURLs))
             } else if !failures.isEmpty {
                 onEvent(.failure(
-                    title: "\(failures.count) Items Were Not Put Back",
+                    title: String(localized: "\(failures.count) Item Was Not Put Back", comment: "macOS Trash recovery. Put Back restores the item to its original location."),
                     message: failures.map { "\($0.name): \($0.message)" }.joined(separator: "\n\n"),
                     finderURLs: finderURLs
                 ))

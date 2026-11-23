@@ -81,14 +81,14 @@ struct OnboardingView: View {
 
     private var heading: some View {
         VStack(spacing: 12) {
-            Text(isWelcome ? "Welcome to Moppo" : "Set Your Preferences")
+            Text(isWelcome ? String(localized: "Welcome to Moppo") : String(localized: "Set Your Preferences"))
                 .font(.mcSecondaryHero)
                 .foregroundStyle(Token.Text.primary)
                 .accessibilityAddTraits(.isHeader)
                 .modifier(OnboardingEntrance(index: 1))
             Text(isWelcome
-                 ? "Make room for what matters.\nFiles go to Trash first, so you can always restore them."
-                 : "You can change these settings at any time in Settings.")
+                 ? String(localized: "Review items before removal.\nYou can restore files from the Trash while they remain there.")
+                 : String(localized: "You can change these settings at any time in Settings."))
                 .font(.system(size: 15))
                 .foregroundStyle(Token.Text.secondary)
                 .multilineTextAlignment(.center)
@@ -100,7 +100,10 @@ struct OnboardingView: View {
 
     private var preferences: some View {
         VStack(spacing: 10) {
-            preferenceRow("Scan automatically", detail: scanDetail, symbol: "calendar", index: 3) {
+            preferenceRow(
+                String(localized: "Scan automatically"), detail: scanDetail, symbol: "calendar", index: 3,
+                wrapsControl: true
+            ) {
                 Picker("Scan automatically", selection: $settings.scanSchedule) {
                     ForEach(ScanSchedule.allCases) { schedule in
                         Text(schedule.displayName).tag(schedule)
@@ -108,20 +111,20 @@ struct OnboardingView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 238)
+                .fixedSize(horizontal: true, vertical: false)
                 .disabled(access.disk != .allowed)
             }
             preferenceRow(
-                "Low-space alerts",
+                String(localized: "Low-space alerts"),
                 detail: access.notifications.permitsAccess
-                    ? "Notify me below \(settings.warnBelowGB) GB free."
-                    : "Enable notifications on Welcome to receive alerts.",
+                    ? String(localized: "Notify me when free space drops below \(ByteFormatting.localizedGigabytes(Double(settings.warnBelowGB))).")
+                    : String(localized: "Enable notifications on Welcome to receive alerts."),
                 symbol: "bell", index: 4
             ) {
                 Toggle("Low-space alerts", isOn: $settings.lowSpaceAlertsEnabled)
                     .toggleStyle(.switch).labelsHidden()
             }
-            preferenceRow("Show in menu bar", detail: "See free space at a glance.", symbol: "menubar.rectangle", index: 5) {
+            preferenceRow(String(localized: "Show in menu bar"), detail: String(localized: "See free space at a glance."), symbol: "menubar.rectangle", index: 5) {
                 Toggle("Show in menu bar", isOn: $settings.showInMenuBar)
                     .toggleStyle(.switch).labelsHidden()
             }
@@ -129,26 +132,37 @@ struct OnboardingView: View {
     }
 
     private var scanDetail: String {
-        if access.disk != .allowed { return "Requires Full Disk Access. You can still scan in Cleanup." }
-        return settings.idleOnly ? "When plugged in and idle." : "Uses your saved scan schedule."
+        if access.disk != .allowed { return String(localized: "Requires Full Disk Access. You can still scan in Cleanup.") }
+        return settings.idleOnly ? String(localized: "When plugged in and idle.") : String(localized: "Uses your saved scan schedule.")
     }
 
     private func preferenceRow<Control: View>(
-        _ title: String, detail: String, symbol: String, index: Int, @ViewBuilder control: () -> Control
+        _ title: String, detail: String, symbol: String, index: Int,
+        wrapsControl: Bool = false, @ViewBuilder control: () -> Control
     ) -> some View {
-        HStack(spacing: 12) {
+        let label = VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Token.Text.primary)
+            Text(detail).font(.system(size: 13)).foregroundStyle(Token.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        return HStack(spacing: 12) {
             Image(systemName: symbol)
                 .font(.system(size: 18))
                 .foregroundStyle(Token.Text.primary)
                 .frame(width: 20)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(Token.Text.primary)
-                Text(detail).font(.system(size: 13)).foregroundStyle(Token.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    label.fixedSize(horizontal: wrapsControl, vertical: false)
+                    Spacer(minLength: 8)
+                    control()
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    label
+                    control().frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
-            Spacer(minLength: 8)
-            control()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minHeight: 40)
         .padding(.horizontal, 16)
@@ -172,14 +186,14 @@ struct OnboardingView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 12) {
-                    stepButton(1, title: "Welcome", destination: .welcome)
+                    stepButton(1, title: String(localized: "Welcome"), destination: .welcome)
                     Rectangle().fill(Token.separator).frame(width: 24, height: 1)
-                    stepButton(2, title: "Preferences", destination: .preferences)
+                    stepButton(2, title: String(localized: "Preferences"), destination: .preferences)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Setup steps")
                 // Get Started opens Cleanup. Without Full Disk Access, Cleanup scans only the folders it can read.
-                Button(isWelcome ? "Continue" : "Get Started") {
+                Button(isWelcome ? String(localized: "Continue") : String(localized: "Get Started")) {
                     if isWelcome { changeStep(to: .preferences) } else { onFinish() }
                 }
                 .buttonStyle(PageActionButtonStyle(tint: Token.color(.accent)))
@@ -212,8 +226,8 @@ struct OnboardingView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Step \(number) of 2: \(title)")
-        .accessibilityValue(active ? "Current step" : "")
-        .help("Show \(title)")
+        .accessibilityValue(active ? String(localized: "Current step") : "")
+        .help(destination == .welcome ? Text("Show the welcome step") : Text("Show the preferences step"))
     }
 
     private func changeStep(to step: Step) {

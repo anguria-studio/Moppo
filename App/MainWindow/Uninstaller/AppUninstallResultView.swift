@@ -8,8 +8,8 @@ struct HomebrewRemovalExplanation: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(isBatchReview
-                ? "Apps removed with Homebrew cannot be restored from the Trash."
-                : "Only Homebrew can uninstall this app. You cannot restore it from the Trash.")
+                ? String(localized: "Apps removed with Homebrew cannot be restored from the Trash.")
+                : String(localized: "Only Homebrew can uninstall this app. You cannot restore it from the Trash."))
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.textColor(.orange))
             if isBatchReview {
@@ -49,12 +49,12 @@ struct CopyHomebrewCommandButton: View {
         .buttonStyle(PageActionButtonStyle(size: .small))
         .animation(reduceMotion ? nil : .easeOut(duration: 0.1), value: copied)
         .help(package.uninstallCommand)
-        .accessibilityLabel(copied ? "Command copied for \(package.name)" : "Copy Homebrew command for \(package.name)")
+        .accessibilityLabel(copied ? String(localized: "Command copied for \(package.name)") : String(localized: "Copy Homebrew command for \(package.name)"))
         .task(id: copyCount) {
             guard copyCount > 0 else { return }
             NSAccessibility.post(
                 element: NSApplication.shared, notification: .announcementRequested,
-                userInfo: [.announcement: "Command copied for \(package.name)",
+                userInfo: [.announcement: String(localized: "Command copied for \(package.name)"),
                            .priority: NSAccessibilityPriorityLevel.medium.rawValue]
             )
             do { try await Task.sleep(for: .seconds(1)) }
@@ -140,11 +140,11 @@ struct AppUninstallResultView: View {
                 let failed = outcome.setAside.filter { $0.kind == .failed }
                 let skipped = outcome.setAside.filter { $0.kind == .notAttempted }
                 if !failed.isEmpty {
-                    UninstallAttentionList(applications: failed, title: "Removal incomplete", review: review, isCentered: true)
+                    UninstallAttentionList(applications: failed, title: String(localized: "Removal incomplete"), review: review, isCentered: true)
                         .frame(maxWidth: 640)
                 }
                 if !skipped.isEmpty {
-                    UninstallAttentionList(applications: skipped, title: "Not attempted", review: review, isCentered: true)
+                    UninstallAttentionList(applications: skipped, title: String(localized: "Not attempted"), review: review, isCentered: true)
                         .frame(maxWidth: 640)
                 }
                 PageStateActions {
@@ -165,20 +165,18 @@ struct AppUninstallResultView: View {
                 Text(ListFormatter.localizedString(byJoining: outcome.uninstalled))
                 if outcome.removedBytes > 0 {
                     Text(outcome.permanentlyRemovedCount > 0
-                         ? "Removed \(ByteFormatting.string(outcome.removedBytes))."
-                         : "Moved \(ByteFormatting.string(outcome.removedBytes)) to the Trash.")
+                         ? String(localized: "Removed \(ByteFormatting.localizedString(outcome.removedBytes)).")
+                         : String(localized: "Moved \(ByteFormatting.localizedString(outcome.removedBytes)) to the Trash."))
                 }
                 if !outcome.homebrewUninstalled.isEmpty {
                     Text("Removed through Homebrew: \(ListFormatter.localizedString(byJoining: outcome.homebrewUninstalled)).")
                     Text("Reinstall the application through Homebrew. Put Back can restore its recorded profiles and settings.")
                 }
                 if outcome.permanentlyRemovedCount > 0 {
-                    Text(outcome.permanentlyRemovedCount == 1
-                         ? "One application was permanently deleted. It cannot be restored from the Trash."
-                         : "\(outcome.permanentlyRemovedCount) applications were permanently deleted. They cannot be restored from the Trash.")
+                    Text("\(outcome.permanentlyRemovedCount) application was permanently deleted. It cannot be restored from the Trash.")
                 }
                 if outcome.survivorCount > 0 {
-                    Text("Moppo could not move \(outcome.survivorCount) related items to the Trash.")
+                    Text("Moppo could not move \(outcome.survivorCount) related item to the Trash.")
                         .foregroundStyle(Token.textColor(.orange))
                 }
             }

@@ -69,11 +69,9 @@ struct FileDuplicatesView: View {
 
     private var intro: some View {
         PageState(
-            title: "Find duplicate files",
+            title: String(localized: "Find duplicate files"),
             symbol: "doc.on.doc",
-            detail: "Select one or more folders. Moppo verifies file contents and keeps "
-                + "one copy in each set. Hidden files, cloud-only files and documents saved "
-                + "as packages, such as Pages and Keynote files, are not compared."
+            detail: String(localized: "Select one or more folders. Moppo verifies file contents and keeps one copy in each set. Hidden files, cloud-only files and documents saved as packages, such as Pages and Keynote files, are not compared.")
         ) {
             Button("Choose Folders", systemImage: "folder") { model.chooseFolders() }
                 .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
@@ -83,7 +81,7 @@ struct FileDuplicatesView: View {
 
     private var scanning: some View {
         PageProgressView(
-            title: "Scanning for duplicate files",
+            title: String(localized: "Scanning for duplicate files"),
             detail: progressLabel,
             counts: progressCounts,
             progress: model.progress?.fractionCompleted,
@@ -94,16 +92,16 @@ struct FileDuplicatesView: View {
     }
 
     private var progressLabel: String {
-        guard let progress = model.progress else { return "Preparing…" }
+        guard let progress = model.progress else { return String(localized: "Preparing…") }
         switch progress.stage {
         case .enumerating:
-            return "Reading the selected folders…"
+            return String(localized: "Reading the selected folders…")
         case .sampling:
-            return "Checking likely matches"
+            return String(localized: "Checking likely matches")
         case .verifying:
-            return "Verifying file contents"
+            return String(localized: "Verifying file contents")
         case .done:
-            return "Finishing…"
+            return String(localized: "Finishing…")
         }
     }
 
@@ -117,13 +115,13 @@ struct FileDuplicatesView: View {
     private var nothingFound: some View {
         if hasFilteredResults {
             PageState(
-                title: "No duplicates match this size",
+                title: String(localized: "No duplicates match this size"),
                 symbol: "line.3.horizontal.decrease",
-                detail: "Choose a smaller minimum file size to show more results."
+                detail: String(localized: "Choose a smaller minimum file size to show more results.")
             )
         } else {
             ScanCompletionView(
-                title: "No duplicate files found",
+                title: String(localized: "No duplicate files found"),
                 detail: model.results.map { resultSummary($0) },
                 animate: animateEmptyResult
             )
@@ -139,8 +137,8 @@ struct FileDuplicatesView: View {
         return VStack(spacing: 0) {
             HStack {
                 SelectionCheckbox(
-                    title: "Select All",
-                    detail: "\(selectable.count) \(selectable.count == 1 ? "item" : "items")",
+                    title: String(localized: "Select All"),
+                    detail: String(localized: "\(selectable.count) item", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
                     state: !selectable.isEmpty && selectable.isSubset(of: model.selection) ? .on : .off,
                     isEnabled: !selectable.isEmpty
                 ) { isOn in
@@ -234,13 +232,13 @@ struct FileDuplicatesView: View {
     }
 
     private func resultSummary(_ results: FileDuplicateResults) -> String {
-        var text = "Checked \(results.examinedCount.formatted()) files. "
-            + "\(results.eligibleCount.formatted()) were eligible for comparison."
+        var text = String(localized: "Checked \(results.examinedCount) file.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+        text += String(localized: " \(results.eligibleCount) file was eligible for comparison.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         if !results.groups.isEmpty {
-            text += " Found \(results.groups.count.formatted()) verified duplicate sets."
+            text += String(localized: " Found \(results.groups.count) verified duplicate set.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
         if results.skippedCount > 0 {
-            text += " Skipped \(results.skippedCount.formatted()) unreadable, changed, or cloud-only items."
+            text += String(localized: " Skipped \(results.skippedCount) unreadable, changed, or cloud-only item.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
         return text
     }
@@ -273,7 +271,7 @@ struct FileDuplicatesView: View {
                                         .strokeBorder(Token.Fill.cardBorder, lineWidth: Token.hairline)
                                 }
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(group.sharedFilename ?? "\(group.count) identical files, different names")
+                                Text(group.sharedFilename ?? String(localized: "\(group.count) identical files, different names"))
                                     .font(.mcRowTitle)
                                     .foregroundStyle(Token.Text.primary)
                                     .lineLimit(1)
@@ -289,17 +287,17 @@ struct FileDuplicatesView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityValue(isCollapsed ? "Collapsed" : "Expanded")
-                    .help(isCollapsed ? "Show copies" : "Hide copies")
+                    .accessibilityValue(isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded"))
+                    .help(isCollapsed ? String(localized: "Show copies") : String(localized: "Hide copies"))
 
                     Text(selectedCopies.isEmpty
-                        ? "Up to \(ByteFormatting.string(group.reclaimableBytes)) available"
-                        : "\(ByteFormatting.string(selectedBytes)) selected")
+                        ? String(localized: "Up to \(ByteFormatting.localizedString(group.reclaimableBytes)) available")
+                        : String(localized: "\(ByteFormatting.localizedString(selectedBytes)) selected"))
                         .font(.mcControlLabel.weight(.medium))
                         .foregroundStyle(selectedCopies.isEmpty
                             ? Token.Text.duplicateAvailableStorage : Token.color(.accent))
                         .fixedSize()
-                    Button(model.isGroupSelected(group.id) ? "Deselect" : "Select Copies") {
+                    Button(model.isGroupSelected(group.id) ? String(localized: "Deselect") : String(localized: "Select Copies")) {
                         model.toggleGroup(group.id)
                     }
                     .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
@@ -360,12 +358,12 @@ struct FileDuplicateRow: View {
                     .allowsHitTesting(false)
             } else {
                 SelectionCheckbox(
-                    title: "Select \(file.url.lastPathComponent) in \(group.locationLabel(for: file))",
+                    title: String(localized: "Select \(file.url.lastPathComponent) in \(group.locationLabel(for: file))"),
                     state: selected ? .on : .off,
                     showsTitle: false
                 ) { _ in model.toggle(file.id) }
                 .frame(width: 24, height: 28)
-                .help(selected ? "Keep this copy" : "Move this copy to the Trash")
+                .help(selected ? String(localized: "Keep this copy") : String(localized: "Move this copy to the Trash"))
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -375,7 +373,7 @@ struct FileDuplicateRow: View {
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    if isKeeper { Badge(text: "keep", style: .safe) }
+                    if isKeeper { Badge(text: String(localized: "Keep"), style: .safe) }
                 }
                 Text((file.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
                     .font(.mcMonoSmall)
@@ -389,7 +387,7 @@ struct FileDuplicateRow: View {
             .allowsHitTesting(false)
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(isHighlighted ? [.isSelected, .isButton] : .isButton)
-            .accessibilityValue(isKeeper ? "Kept copy" : (selected ? "Selected for removal" : "Not selected for removal"))
+            .accessibilityValue(isKeeper ? String(localized: "Kept copy") : (selected ? String(localized: "Selected for removal") : String(localized: "Not selected for removal")))
             .accessibilityAction { selectCopy() }
             .accessibilityAction(named: "Quick Look") { onPreview() }
 
@@ -457,9 +455,9 @@ struct FileDuplicateKeeperMenu: View {
 
     var body: some View {
         Menu {
-            ruleButton("Oldest copy", rule: .oldest)
-            ruleButton("Newest copy", rule: .newest)
-            ruleButton("Shortest path", rule: .shortestPath)
+            ruleButton(String(localized: "Oldest copy"), rule: .oldest)
+            ruleButton(String(localized: "Newest copy"), rule: .newest)
+            ruleButton(String(localized: "Shortest path"), rule: .shortestPath)
             Divider()
             Button { model.chooseKeeperFolder() } label: {
                 if case .inFolder = model.keeperRule {
@@ -505,10 +503,10 @@ struct FileDuplicateMinimumPicker: View {
     @Bindable var model: FileDuplicatesModel
 
     private let minimumOptions: [(String, Int64)] = [
-        ("All files (0 MB)", 0),
-        ("At least 1 MB", 1_000_000),
-        ("At least 10 MB", 10_000_000),
-        ("At least 100 MB", 100_000_000)
+        (String(localized: "All files (0 MB)"), 0),
+        (String(localized: "At least 1 MB"), 1_000_000),
+        (String(localized: "At least 10 MB"), 10_000_000),
+        (String(localized: "At least 100 MB"), 100_000_000)
     ]
 
     var body: some View {
@@ -527,7 +525,7 @@ struct FileDuplicateMinimumPicker: View {
             } label: {
                 HStack(spacing: 7) {
                     Text(minimumOptions.first { $0.1 == model.minimumBytes }?.0
-                         ?? ByteFormatting.string(model.minimumBytes))
+                         ?? ByteFormatting.localizedString(model.minimumBytes))
                     Image(systemName: "chevron.down")
                         .font(.system(size: 10, weight: .semibold))
                         .accessibilityHidden(true)
@@ -610,17 +608,17 @@ extension FileDuplicateGroup {
     var headerDetail: String {
         let reason: String
         switch keeperReason {
-        case .oldestCopy: reason = "keeping the oldest"
-        case .newestCopy: reason = "keeping the newest"
-        case .shortestPath: reason = "keeping the shortest path"
-        case .inSelectedFolder: reason = "keeping a copy in the selected folder"
-        case .firstByName: reason = "keeping the first by name"
-        case .chosenByUser: reason = "keeping your choice"
+        case .oldestCopy: reason = String(localized: "keeping the oldest")
+        case .newestCopy: reason = String(localized: "keeping the newest")
+        case .shortestPath: reason = String(localized: "keeping the shortest path")
+        case .inSelectedFolder: reason = String(localized: "keeping a copy in the selected folder")
+        case .firstByName: reason = String(localized: "keeping the first by name")
+        case .chosenByUser: reason = String(localized: "keeping your choice")
         }
-        if sharedFilename != nil { return "\(count) identical files · \(reason)" }
+        if sharedFilename != nil { return String(localized: "\(count) identical file · \(reason)", bundle: MoppoResources.bundle, locale: MoppoResources.locale) }
         let extensions = Set(files.map { $0.url.pathExtension.lowercased() })
         let fileType = extensions.count == 1 && !keeper.url.pathExtension.isEmpty
-            ? ".\(keeper.url.pathExtension.lowercased())" : "Multiple file types"
+            ? ".\(keeper.url.pathExtension.lowercased())" : String(localized: "Multiple file types")
         return "\(fileType) · \(reason)"
     }
 

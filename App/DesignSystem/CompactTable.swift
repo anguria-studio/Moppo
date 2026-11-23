@@ -58,7 +58,7 @@ struct CompactTable<Item: Identifiable, Comparator: SortComparator>: NSViewRepre
             }
             table.addTableColumn(column)
         }
-        let scroll = NSScrollView()
+        let scroll = CompactTableScrollView()
         scroll.borderType = .noBorder
         scroll.drawsBackground = true
         scroll.hasVerticalScroller = true
@@ -211,6 +211,24 @@ struct CompactTableMenuAction {
     let perform: () -> Void
 }
 
+private final class CompactTableScrollView: NSScrollView {
+    private var isFittingColumns = false
+
+    override func tile() {
+        super.tile()
+        guard !isFittingColumns, contentSize.width > 0,
+              let table = documentView as? NSTableView,
+              let first = table.tableColumns.first else { return }
+        let rightEdge = table.rect(ofColumn: table.numberOfColumns - 1).maxX
+        let width = max(first.minWidth, first.width - (rightEdge - contentSize.width))
+        if width < first.width {
+            isFittingColumns = true
+            first.width = width
+            isFittingColumns = false
+        }
+    }
+}
+
 private final class CompactNativeTable: NSTableView {
     var contextActions: (IndexSet) -> [CompactTableMenuAction] = { _ in [] }
     private var actions: [CompactTableMenuAction] = []
@@ -324,11 +342,11 @@ struct CompactTableDate: View {
 
     var body: some View {
         Text(date.map {
-            $0.formatted(.dateTime.day().month(.abbreviated)) + " " + $0.formatted(.dateTime.hour().minute())
+            $0.formatted(.dateTime.day().month(.abbreviated).hour().minute())
         } ?? "—")
         .foregroundStyle(isSelected ? Color.white : Token.Text.tableDetail)
         .lineLimit(1)
-        .help(date?.formatted(date: .complete, time: .shortened) ?? "Date unknown")
+        .help(date?.formatted(date: .complete, time: .shortened) ?? String(localized: "Date unknown"))
     }
 }
 
@@ -358,6 +376,15 @@ struct CompactTableItem: View {
 
 /// A small row action remains distinct from the selected row.
 struct CompactTableActionStyle: ButtonStyle {
+    private static let fontSize: CGFloat = 11
+    private static let horizontalPadding: CGFloat = 9
+
+    static func minimumColumnWidth(for title: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        let titleWidth = (title as NSString).size(withAttributes: [.font: font]).width
+        return max(80, ceil(titleWidth) + 2 * horizontalPadding)
+    }
+
     var isSelected = false
     @Environment(\.isEnabled) private var isEnabled
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -366,9 +393,9 @@ struct CompactTableActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         let highlighted = isEnabled && (isHovering || configuration.isPressed)
         return configuration.label
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: Self.fontSize, weight: .medium))
             .foregroundStyle(isSelected ? Color.white : Token.Text.primary)
-            .padding(.horizontal, 9)
+            .padding(.horizontal, Self.horizontalPadding)
             .frame(height: 18)
             .background(
                 isSelected ? Color.white.opacity(highlighted ? 0.36 : 0.22)

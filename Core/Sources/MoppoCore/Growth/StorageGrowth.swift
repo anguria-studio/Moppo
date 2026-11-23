@@ -8,7 +8,10 @@ public enum GrowthBaseline: String, Codable, Sendable, CaseIterable {
 
     /// Interface text. The Dashboard replaces "Last 7 days" with the real start date
     /// until seven days of measurements exist.
-    public var displayName: String {
+    public var displayName: String { displayNameText.english }
+    public var localizedDisplayName: String { displayNameText.localized }
+
+    var displayNameText: EngineText {
         switch self {
         case .previousMeasurement: "Previous measurement"
         case .sevenDays:           "Last 7 days"
@@ -36,7 +39,10 @@ public enum GrowthClass: String, Sendable, CaseIterable, Codable {
     /// named segments do not account for.
     case unmeasured
 
-    public var displayName: String {
+    public var displayName: String { displayNameText.english }
+    public var localizedDisplayName: String { displayNameText.localized }
+
+    var displayNameText: EngineText {
         switch self {
         case .user:             "Your Files"
         case .applications:     "Applications"

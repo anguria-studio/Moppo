@@ -66,16 +66,16 @@ struct StatTiles: View {
             Grid(alignment: .topLeading, horizontalSpacing: Token.Size.pageGutter, verticalSpacing: 0) {
                 GridRow {
                     linkedTile(
-                        label: "Safe to Remove",
-                        value: safeToRemoveBytes.map { ByteFormatting.string($0) },
-                        emptyValue: savedScanNeedsRefresh ? "Scan Again" : nil,
+                        label: String(localized: "Safe to Remove"),
+                        value: safeToRemoveBytes.map { ByteFormatting.localizedString($0) },
+                        emptyValue: savedScanNeedsRefresh ? String(localized: "Scan Again") : nil,
                         action: onSafeTap,
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
                     linkedTile(
-                        label: "All",
-                        value: totalBytes.map { ByteFormatting.string($0) },
-                        emptyValue: savedScanNeedsRefresh ? "Scan Again" : nil,
+                        label: String(localized: "All"),
+                        value: totalBytes.map { ByteFormatting.localizedString($0) },
+                        emptyValue: savedScanNeedsRefresh ? String(localized: "Scan Again") : nil,
                         action: onAllTap,
                         emptyAction: savedScanNeedsRefresh ? onScan : nil
                     )
@@ -116,7 +116,7 @@ struct StatTiles: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(value == nil ? "Run a new scan" : "Show these items")
+            .help(value == nil ? String(localized: "Run a new scan") : String(localized: "Show these items"))
         } else {
             StatTile(
                 label: label,
@@ -170,7 +170,7 @@ private struct StatTile: View {
                     .lineLimit(1)
                     // A narrow window must not truncate the figure to "5.6…".
                     .minimumScaleFactor(0.7)
-                    .accessibilityLabel(value ?? emptyValue ?? "Not measured yet")
+                    .accessibilityLabel(value ?? emptyValue ?? String(localized: "Not measured yet"))
                     .padding(.top, 4)
             }
             .padding(.vertical, 12)

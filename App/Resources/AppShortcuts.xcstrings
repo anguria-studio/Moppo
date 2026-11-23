@@ -1,0 +1,126 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Delete Safe to Remove items with ${applicationName}": {
+      "comment": "Spoken App Shortcut phrase. Preserve the application name placeholder.",
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar los elementos seguros con ${applicationName}"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer les éléments sans risque avec ${applicationName}"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina gli elementi rimovibili in sicurezza con ${applicationName}"
+          }
+        }
+      }
+    },
+    "Get Safe to Remove size in ${applicationName}": {
+      "comment": "Spoken App Shortcut phrase. Preserve the application name placeholder.",
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener el tamaño de los elementos seguros en ${applicationName}"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir la taille des éléments supprimables sans risque dans ${applicationName}"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni le dimensioni degli elementi rimovibili in sicurezza in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Get Trash size in ${applicationName}": {
+      "comment": "Spoken App Shortcut phrase. Preserve the application name placeholder.",
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener el tamaño de la Papelera en ${applicationName}"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir la taille de la Corbeille dans ${applicationName}"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni le dimensioni del Cestino in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Get free space in ${applicationName}": {
+      "comment": "Spoken App Shortcut phrase. Preserve the application name placeholder.",
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtener el espacio libre en ${applicationName}"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obtenir l’espace libre dans ${applicationName}"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ottieni lo spazio libero in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Scan with ${applicationName}": {
+      "comment": "Spoken App Shortcut phrase. Preserve the application name placeholder.",
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar un análisis con ${applicationName}"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lancer une analyse avec ${applicationName}"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esegui un’analisi con ${applicationName}"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

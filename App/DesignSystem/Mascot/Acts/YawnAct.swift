@@ -85,7 +85,7 @@ final class YawnAct: MascotAct {
             let a = (time - born) / Tuning.letterLife
             var context = graphics
             context.opacity = sin(a * .pi) * 0.9
-            let letter = frame.bodyColored(Text("z")
+            let letter = frame.bodyColored(Text(verbatim: "z")
                 .font(.system(size: Tuning.letterSize * (0.6 + 0.6 * a), weight: .bold, design: .rounded)))
             context.draw(letter, at: CGPoint(x: from.x + facing * (40 + 70 * a) + sin(a * 6) * 18, y: from.y - 160 * a))
         }

@@ -94,9 +94,11 @@ enum GitWorktreeDetector {
 
     struct CommitComparison {
         var status: FileEntry.GitWorktreePushStatus
-        var reason: String?
+        var reasonText: EngineText?
+        var reason: String? { reasonText?.english }
         var mergedInto: String? = nil
-        var mergeIssue = "Saved default-branch data does not confirm this merge."
+        var mergeIssueText: EngineText = "Saved default-branch data does not confirm this merge."
+        var mergeIssue: String { mergeIssueText.english }
         var mergeCandidate: GitHubMergeVerifier.Candidate?
     }
 
@@ -106,7 +108,7 @@ enum GitWorktreeDetector {
         if let suppliedExecutable { resolvedExecutable = suppliedExecutable }
         else { resolvedExecutable = try await executable() }
         guard let executable = resolvedExecutable else {
-            return .init(status: .unknown, reason: "Git is not installed.", mergeIssue: "Git is not installed.")
+            return .init(status: .unknown, reasonText: "Git is not installed.", mergeIssueText: "Git is not installed.")
         }
         func git(_ arguments: [String]) async throws -> String {
             try Task.checkCancellation()
@@ -117,18 +119,18 @@ enum GitWorktreeDetector {
             )
             return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        var result = CommitComparison(status: .unknown, reason: nil)
+        var result = CommitComparison(status: .unknown, reasonText: nil)
         do {
             guard try await git(["rev-parse", "--is-shallow-repository"]) == "false" else {
-                result.mergeIssue = "Incomplete Git history prevents the commit comparison."
-                result.reason = result.mergeIssue
+                result.mergeIssueText = "Incomplete Git history prevents the commit comparison."
+                result.reasonText = result.mergeIssueText
                 return result
             }
             let head = try await git(["rev-parse", "--verify", "HEAD"])
             let remotes = try await git(["for-each-ref", "--format=%(refname)%00%(symref)", "refs/remotes/"])
             guard !remotes.isEmpty else {
-                result.mergeIssue = "No saved remote branches are available."
-                result.reason = result.mergeIssue
+                result.mergeIssueText = "No saved remote branches are available."
+                result.reasonText = result.mergeIssueText
                 return result
             }
             let upstream: String?
@@ -148,7 +150,7 @@ enum GitWorktreeDetector {
                     _ = try await git(["merge-base", "--is-ancestor", head, target.ref])
                     result.status = .noUnpushedCommits
                     result.mergedInto = String(target.ref.dropFirst("refs/remotes/".count))
-                    result.mergeIssue = ""
+                    result.mergeIssueText = ""
                     return result
                 } catch ProcessError.failed(_, let status, _) where status == 1 { }
                 do {
@@ -157,18 +159,18 @@ enum GitWorktreeDetector {
                         result.mergeCandidate = .init(request: .init(repository: repository, head: head),
                                                       defaultRef: target.ref, remote: target.remote)
                     } else {
-                        result.mergeIssue = "Saved history does not confirm this merge. GitHub verification requires a supported github.com remote."
+                        result.mergeIssueText = "Saved history does not confirm this merge. GitHub verification requires a supported github.com remote."
                     }
                 } catch is CancellationError { throw CancellationError() }
-                catch { result.mergeIssue = "The saved remote URL could not be read." }
+                catch { result.mergeIssueText = "The saved remote URL could not be read." }
             } else {
-                result.mergeIssue = "The saved remote default branch is missing or ambiguous."
+                result.mergeIssueText = "The saved remote default branch is missing or ambiguous."
             }
             let comparison: [String]
             var hasBranchWithoutUpstream = false
             if let upstream {
                 guard upstream.hasPrefix("refs/remotes/") else {
-                    result.reason = "The upstream is a local branch."
+                    result.reasonText = "The upstream is a local branch."
                     return result
                 }
                 comparison = [head, "^" + upstream, "--"]
@@ -178,13 +180,13 @@ enum GitWorktreeDetector {
             }
             let output = try await git(["rev-list", "--count"] + comparison)
             guard let count = Int(output), count >= 0 else {
-                result.reason = "Git did not return a valid commit count."
+                result.reasonText = "Git did not return a valid commit count."
                 return result
             }
             // A branch without an upstream passes only when saved remote branches contain all of its commits.
             // Other commits can be local work or the commits of a deleted, squash-merged branch.
             if hasBranchWithoutUpstream, count > 0 {
-                result.reason = "The branch has no upstream, and saved remote branches do not contain \(count) of its commits."
+                result.reasonText = "The branch has no upstream, and saved remote branches do not contain \(count) of its commits."
                 return result
             }
             result.status = count == 0 ? .noUnpushedCommits : .unpushedCommits(count)
@@ -192,8 +194,8 @@ enum GitWorktreeDetector {
         } catch is CancellationError { throw CancellationError() }
         catch {
             try Task.checkCancellation()
-            let reason = GitWorktreeReview.failureReason(error, tool: "Git")
-            return .init(status: .unknown, reason: reason, mergeIssue: reason)
+            let reason = GitWorktreeReview.failureReason(error, tool: .git)
+            return .init(status: .unknown, reasonText: reason, mergeIssueText: reason)
         }
     }
 
@@ -251,16 +253,18 @@ enum GitWorktreeDetector {
                 result.children[index].allocatedBytes -= bytes
                 if splitGroups.insert(owner.id).inserted {
                     // Remove these files only with the parent, after the worktree checks.
-                    result.children[index].displayName += " · Other files"
+                    let name = result.children[index].nameText
+                    result.children[index].nameText = EngineText(english: "\(name.english) · Other files",
+                                                                  display: "\(name.localized) · Other files")
                     result.children[index].kind = .folder
                     result.children[index].isRegenerable = false
-                    result.children[index].safetyCaveat = nil
+                    result.children[index].caveatText = nil
                     if owner.protectionReason == nil, !owner.isRemovalLocked {
                         result.children[index].protectionReason = .folderRemainder
-                        result.children[index].protectionExplanation = "This row shows files outside the listed worktrees. Select the parent folder to include these files in its removal review."
+                        result.children[index].protectionText = "This row shows files outside the listed worktrees. Select the parent folder to include these files in its removal review."
                     } else if result.protectionReason == nil {
                         result.protectionReason = .inventory
-                        result.protectionExplanation = "This folder contains protected files. Review its removable child items separately."
+                        result.protectionText = "This folder contains protected files. Review its removable child items separately."
                     }
                 }
             } else {
@@ -269,12 +273,12 @@ enum GitWorktreeDetector {
             }
             record(root, outcome: "shown", bytes: bytes)
             result.children.append(applyingReview(review, to: FileEntry(
-                url: root,
+                url: root, nameText: nil,
                 kind: .folder,
                 allocatedBytes: bytes,
                 lastOpened: DocumentsFilesScanner.lastOpenedDate(for: root),
                 protectionReason: owner?.protectionReason ?? (owner?.isRemovalLocked == true ? .inventory : nil),
-                protectionExplanation: owner?.protectionExplanation,
+                protectionText: owner?.protectionText,
                 inUseBy: owner?.inUseBy
             )))
         }
@@ -283,10 +287,14 @@ enum GitWorktreeDetector {
 
     private static func applyingReview(_ review: GitWorktreeReview, to entry: FileEntry) -> FileEntry {
         var result = entry
-        if !result.isGitWorktree { result.parentDisplay += " · Git worktree" }
+        if !result.isGitWorktree {
+            let parent = result.parentText
+            result.parentText = EngineText(english: "\(parent.english) · Git worktree",
+                                           display: "\(parent.localized) · Git worktree")
+        }
         result.kind = .folder
         result.isRegenerable = false
-        result.safetyCaveat = "Git worktree"
+        result.caveatText = "Git worktree"
         result.gitWorktreeReview = review
         return result
     }

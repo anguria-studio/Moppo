@@ -562,7 +562,8 @@ struct AppUninstallerModelTests {
         let (_, shared) = sharedContainerPlan(claimants: knowsClaimants ? claimants : nil)
         let warning = AppUninstallerModel.sharedContainerWarning(shared)
         if knowsClaimants {
-            #expect(warning.contains("These applications also use this group container: Writer, Notes Helper."))
+            let names = ListFormatter.localizedString(byJoining: ["Writer", "Notes Helper"])
+            #expect(warning.contains("These applications also use this group container: \(names)."))
             #expect(!warning.contains("cannot confirm"))
         } else {
             #expect(warning.contains("Moppo cannot confirm which applications use this group container."))

@@ -3,6 +3,7 @@ name: Moppo
 # The .xcodeproj is generated from this file — never hand-edited. Regenerate with:
 #   xcodegen generate
 options:
+  developmentLanguage: en
   bundleIdPrefix: com.tommasolaterza
   deploymentTarget:
     macOS: "15.0"
@@ -138,6 +139,7 @@ targets:
         MOPPO_DETAILED_SCAN_LOGGING: "NO"
         SWIFT_VERSION: "6.0"
         SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_EMIT_LOC_STRINGS: YES
 
         # Moppo must traverse the whole disk, read other volumes, and shell out
         # to diskutil. A sandboxed app cannot do any of that, and Full Disk Access is

@@ -25,7 +25,10 @@ public struct DuplicateGroup: Sendable, Equatable, Identifiable {
     public enum KeeperReason: String, Sendable, Equatable {
         case favorite, burstPick, edited, resolution, earliest, chosenByYou
 
-        public var label: String {
+        public var label: String { labelText.english }
+        public var localizedLabel: String { labelText.localized }
+
+        var labelText: EngineText {
             switch self {
             case .favorite:    "favourite"
             case .burstPick:   "your pick from the burst"

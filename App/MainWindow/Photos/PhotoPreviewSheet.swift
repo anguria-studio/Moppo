@@ -11,7 +11,7 @@ struct PhotoPreviewWindowPresenter: View {
     var body: some View {
         FloatingDialogWindowPresenter(
             isPresented: item != nil,
-            title: "Photo preview",
+            title: String(localized: "Photo preview"),
             size: NSSize(width: 790, height: 570),
             minimumSize: NSSize(width: 680, height: 460),
             onClose: { model.preview = nil }
@@ -110,9 +110,9 @@ struct PhotoPreviewContent: View {
                     .font(.mcSubtitle.monospacedDigit())
                     .foregroundStyle(Token.Text.secondary)
                 HStack(spacing: 0) {
-                    navigationButton("Previous photo", symbol: "chevron.left", direction: -1)
+                    navigationButton(String(localized: "Previous photo"), symbol: "chevron.left", direction: -1)
                     Rectangle().fill(Token.Fill.boxBorder).frame(width: 1, height: 14)
-                    navigationButton("Next photo", symbol: "chevron.right", direction: 1)
+                    navigationButton(String(localized: "Next photo"), symbol: "chevron.right", direction: 1)
                 }
                 .background(Token.Fill.button, in: Capsule())
             }
@@ -149,7 +149,7 @@ struct PhotoPreviewContent: View {
                         ProgressView(value: fraction)
                             .progressViewStyle(.linear)
                             .frame(width: 160)
-                        Text("Downloading from iCloud… \(Int(fraction * 100))%")
+                        Text("Downloading from iCloud… \(fraction, format: .percent.precision(.fractionLength(0)))")
                     } else {
                         ProgressView().controlSize(.small)
                         Text("Loading full resolution…")
@@ -207,8 +207,8 @@ struct PhotoPreviewContent: View {
                             }
                             .buttonStyle(.plain)
                             .id(asset.id)
-                            .accessibilityLabel(asset.filename ?? "Photo \(siblings.firstIndex(where: { $0.id == asset.id }).map { $0 + 1 } ?? 1)")
-                            .accessibilityValue(asset.id == group?.keeper.id ? "Kept photo" : (model.selection.contains(asset.id) ? "Selected for deletion" : "Not selected"))
+                            .accessibilityLabel(asset.filename ?? String(localized: "Photo \(siblings.firstIndex(where: { $0.id == asset.id }).map { $0 + 1 } ?? 1)"))
+                            .accessibilityValue(asset.id == group?.keeper.id ? String(localized: "Kept photo") : (model.selection.contains(asset.id) ? String(localized: "Selected for deletion") : String(localized: "Not selected")))
                             .accessibilityAddTraits(asset.id == shown.id ? .isSelected : [])
                         }
                     }
@@ -226,7 +226,7 @@ struct PhotoPreviewContent: View {
             } else {
                 Button { model.toggle(shown.id) } label: {
                     Label(
-                        isSelected ? "Selected for deletion" : "Not selected",
+                        isSelected ? String(localized: "Selected for deletion") : String(localized: "Not selected"),
                         systemImage: isSelected ? "checkmark.circle.fill" : "circle"
                     )
                     .font(.mcCaption)
@@ -235,9 +235,9 @@ struct PhotoPreviewContent: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isSelected ? "Deselect photo" : "Select photo for deletion")
-                .accessibilityValue(isSelected ? "Selected" : "Not selected")
-                .help(isSelected ? "Deselect this photo" : "Select this photo for deletion")
+                .accessibilityLabel(isSelected ? String(localized: "Deselect photo") : String(localized: "Select photo for deletion"))
+                .accessibilityValue(isSelected ? String(localized: "Selected") : String(localized: "Not selected"))
+                .help(isSelected ? String(localized: "Deselect this photo") : String(localized: "Select this photo for deletion"))
             }
             Spacer(minLength: 0)
             if !isKeeper {
@@ -246,7 +246,7 @@ struct PhotoPreviewContent: View {
                     model.keepInstead(groupID: group.id, assetID: shown.id)
                 }
                 .buttonStyle(PageActionButtonStyle(size: .small))
-                Button(isSelected ? "Deselect" : "Select for deletion") { model.toggle(shown.id) }
+                Button(isSelected ? String(localized: "Deselect") : String(localized: "Select for deletion")) { model.toggle(shown.id) }
                     .buttonStyle(PageActionButtonStyle(
                         tint: isSelected ? nil : Token.color(.accent),
                         size: .small,
@@ -306,7 +306,7 @@ final class PhotoZoomScrollView: NSScrollView {
         verticalScrollElasticity = .none
         photoView.imageScaling = .scaleProportionallyUpOrDown
         photoView.imageAlignment = .alignCenter
-        photoView.setAccessibilityLabel("Photo preview")
+        photoView.setAccessibilityLabel(String(localized: "Photo preview"))
         documentView = photoView
     }
 

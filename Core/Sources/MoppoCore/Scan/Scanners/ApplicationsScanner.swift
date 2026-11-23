@@ -215,7 +215,7 @@ public struct ApplicationsScanner: CategoryScanner {
                     guard let database = DatabaseStorage.location(overlapping: children[index].url, in: databaseFolders)
                     else { continue }
                     children[index].protectionReason = .inventory
-                    children[index].protectionExplanation = database.explanation
+                    children[index].protectionText = database.explanationText
                 }
 
                 // A running app's caches stay listed and removable, but are not
@@ -263,18 +263,11 @@ public struct ApplicationsScanner: CategoryScanner {
             return lhs.displayName.localizedStandardCompare(rhs.displayName) == .orderedAscending
         }
 
-        let availability: CategoryAvailability
         if !readAnyDirectory {
-            availability = .unavailable(
-                reason: "No application folder could be read. Check that /Applications "
-                    + "exists and that Moppo has Full Disk Access in System Settings › "
-                    + "Privacy & Security."
-            )
-        } else if entries.isEmpty {
-            availability = .empty
-        } else {
-            availability = .available
+            return .unavailable(id, text: "No application folder could be read. Check that /Applications exists and that Moppo has Full Disk Access in System Settings › Privacy & Security.",
+                                unreadableCount: unreadableCount)
         }
+        let availability: CategoryAvailability = entries.isEmpty ? .empty : .available
 
         return ScanCategoryResult(
             categoryID: id,
@@ -525,6 +518,7 @@ public struct ApplicationsScanner: CategoryScanner {
                 }
                 entries.append(FileEntry(
                     url: url,
+                    nameText: nil,
                     kind: .cache,
                     allocatedBytes: size.allocatedBytes,
                     // Never `nil` for want of asking. A missing date renders as the
@@ -534,7 +528,7 @@ public struct ApplicationsScanner: CategoryScanner {
                     lastOpened: lastOpenedDate(for: url),
                     isRegenerable: true,
                     requiresRemovalReview: caveat != nil,
-                    safetyCaveat: caveat
+                    caveatText: caveat.map(EngineText.rule)
                 ))
             }
         }
@@ -553,7 +547,7 @@ public struct ApplicationsScanner: CategoryScanner {
                 .filter { !curatedTopLevel.contains($0) }
             entries.append(FileEntry(
                 url: root,
-                displayName: curation.remainderName,
+                nameText: .rule(curation.remainderName),
                 kind: .folder,
                 allocatedBytes: preserveBytes,
                 lastOpened: lastOpenedDate(for: root),

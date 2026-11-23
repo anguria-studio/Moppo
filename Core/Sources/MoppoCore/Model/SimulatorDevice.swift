@@ -33,7 +33,9 @@ public struct SimulatorDevice: Sendable, Equatable {
     public var holdsAppData: Bool { availability == .available || availability == .running }
 
     /// The status text for the row and for the scan report.
-    public var status: String {
+    public var status: String { statusText.english }
+
+    var statusText: EngineText {
         switch availability {
         case .available: "Removal deletes the apps and app data in this simulator"
         case .unavailable: "Runtime not installed"

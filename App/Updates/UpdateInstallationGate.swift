@@ -31,7 +31,7 @@ final class UpdateInstallationGate {
         if operations.isBusy {
             isWaiting = true
             withObservationTracking {
-                _ = operations.activeOperation
+                _ = operations.isBusy
             } onChange: { [weak self] in
                 Task { @MainActor [weak self] in self?.resumeWhenIdle() }
             }

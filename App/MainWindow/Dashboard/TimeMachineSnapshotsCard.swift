@@ -59,8 +59,7 @@ struct TimeMachineSnapshotsCard: View {
             Button("Delete Snapshots", role: .destructive) { delete() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("If you did not connect your backup disk recently, these snapshots can be your only recent backup. "
-                 + "You cannot undo this action. macOS also deletes them automatically when it needs space.")
+            Text("If you did not connect your backup disk recently, these snapshots can be your only recent backup. You cannot undo this action. macOS also deletes them automatically when it needs space.")
         }
         .alert(
             "Moppo could not delete all snapshots",
@@ -88,7 +87,7 @@ struct TimeMachineSnapshotsCard: View {
             Spacer(minLength: 8)
             if let purgeableBytes {
                 VStack(alignment: .trailing, spacing: 3) {
-                    Text(ByteFormatting.string(purgeableBytes))
+                    Text(ByteFormatting.localizedString(purgeableBytes))
                         .font(.mcSecondaryHero)
                         .foregroundStyle(Token.Text.emphasis)
                         .lineLimit(1)
@@ -110,14 +109,15 @@ struct TimeMachineSnapshotsCard: View {
         var parts: [String] = []
         switch dates.count {
         case 0: break
-        case 1: parts.append("1 local snapshot from \(when(dates[0], now: now)).")
-        default: parts.append("\(dates.count) local snapshots. The oldest is from \(when(dates[0], now: now)).")
+        case 1: parts.append(String(localized: "1 local snapshot from \(when(dates[0], now: now))."))
+        default: parts.append(String(localized: "\(dates.count) local snapshots. The oldest is from \(when(dates[0], now: now))."))
         }
         if others > 0 {
-            parts.append(others == 1 ? "1 snapshot from another app." : "\(others) snapshots from other apps.")
+            parts.append(String(localized: "\(others) snapshot from another app.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         }
         if !dates.isEmpty {
-            parts.append("macOS deletes \(dates.count == 1 ? "it" : "them") when it needs space.")
+            parts.append(dates.count == 1 ? String(localized: "macOS deletes it when it needs space.")
+                : String(localized: "macOS deletes them when it needs space."))
         }
         return parts.joined(separator: " ")
     }
@@ -125,10 +125,10 @@ struct TimeMachineSnapshotsCard: View {
     private static func when(_ date: Date, now: Date) -> String {
         let time = date.formatted(date: .omitted, time: .shortened)
         let calendar = Calendar.current
-        if calendar.isDate(date, inSameDayAs: now) { return "today at \(time)" }
+        if calendar.isDate(date, inSameDayAs: now) { return String(localized: "today at \(time)") }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
-           calendar.isDate(date, inSameDayAs: yesterday) { return "yesterday at \(time)" }
-        return "\(date.formatted(.dateTime.day().month(.abbreviated))) at \(time)"
+           calendar.isDate(date, inSameDayAs: yesterday) { return String(localized: "yesterday at \(time)") }
+        return String(localized: "\(date.formatted(.dateTime.day().month(.abbreviated))) at \(time)")
     }
 
     // MARK: - Snapshot rows
@@ -179,16 +179,16 @@ struct TimeMachineSnapshotsCard: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    Text(isExpanded ? "Hide snapshots" : "Show snapshots")
+                    Text(isExpanded ? String(localized: "Hide snapshots") : String(localized: "Show snapshots"))
                 }
                 .font(.mcControlLabel)
                 .foregroundStyle(Token.Text.secondary)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityValue(isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
 
-            HelpButton(label: "About the boot snapshot") { isShowingHelp.toggle() }
+            HelpButton(label: String(localized: "About the boot snapshot")) { isShowingHelp.toggle() }
                 .popover(isPresented: $isShowingHelp) {
                     bootSnapshotHelp.presentationBackground(Token.chrome)
                 }
@@ -196,7 +196,7 @@ struct TimeMachineSnapshotsCard: View {
             Spacer(minLength: 12)
 
             if timeMachineCount > 0 {
-                Button(isDeleting ? "Deleting…" : "Delete Snapshots…") { isConfirmingDelete = true }
+                Button(isDeleting ? String(localized: "Deleting…") : String(localized: "Delete Snapshots…")) { isConfirmingDelete = true }
                     .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
                     .disabled(isDeleting)
                     .fixedSize()
@@ -205,16 +205,18 @@ struct TimeMachineSnapshotsCard: View {
     }
 
     private var confirmationTitle: String {
-        timeMachineCount == 1
-            ? "Delete 1 Time Machine snapshot?"
-            : "Delete \(timeMachineCount) Time Machine snapshots?"
+        String(localized: "Delete \(timeMachineCount) Time Machine snapshot?", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 
     private func delete() {
         isDeleting = true
         Task {
             defer { isDeleting = false }
-            do { try await onDelete() } catch { deleteFailure = error.localizedDescription }
+            do {
+                try await onDelete()
+            } catch {
+                deleteFailure = String(localized: "Some snapshots may already have been deleted. Check the remaining snapshots before trying again.")
+            }
         }
     }
 
@@ -224,12 +226,9 @@ struct TimeMachineSnapshotsCard: View {
                 .font(.mcRowTitle)
                 .foregroundStyle(Token.Text.primary)
 
-            Text("macOS starts from a sealed, read-only snapshot of the System volume. "
-                 + "Its name starts with com.apple.os.update-, but it is not an update leftover. "
-                 + "It is the copy of macOS that runs now.")
+            Text("macOS starts from a sealed, read-only snapshot of the System volume. Its name starts with com.apple.os.update-, but it is not an update leftover. It is the copy of macOS that runs now.")
 
-            Text("You cannot delete it from Recovery Mode or with System Integrity Protection off. "
-                 + "Deleting it would free no space, so Moppo does not show it.")
+            Text("You cannot delete it from Recovery Mode or with System Integrity Protection off. Deleting it would free no space, so Moppo does not show it.")
         }
         .font(.mcSubtitle)
         .foregroundStyle(Token.Text.secondary)

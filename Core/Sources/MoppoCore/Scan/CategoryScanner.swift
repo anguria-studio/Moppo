@@ -3,14 +3,14 @@ import Foundation
 /// Limits measurement updates to two each second. Phase changes appear immediately.
 final class ScanPhaseReporter: @unchecked Sendable {
     private let lock = NSLock()
-    private let onPhase: (@Sendable (String) -> Void)?
+    private let onPhase: (@Sendable (EngineText) -> Void)?
     private var nextReport = ContinuousClock.now
 
-    init(onPhase: (@Sendable (String) -> Void)?) {
+    init(onPhase: (@Sendable (EngineText) -> Void)?) {
         self.onPhase = onPhase
     }
 
-    func report(force: Bool = false, _ phase: @autoclosure () -> String) {
+    func report(force: Bool = false, _ phase: @autoclosure () -> EngineText) {
         guard let onPhase else { return }
         lock.withLock {
             let now = ContinuousClock.now
@@ -52,7 +52,7 @@ public struct ScanContext: Sendable {
     let applicationBundleWalks = ApplicationBundleWalks()
 
     /// Reports the current phase within this category.
-    var onPhase: (@Sendable (String) -> Void)?
+    var onPhase: (@Sendable (EngineText) -> Void)?
 
     public init(
         measurer: AllocatedSizeMeasurer = AllocatedSizeMeasurer(),

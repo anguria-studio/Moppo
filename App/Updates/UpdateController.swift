@@ -42,7 +42,7 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
     func start() {
         guard service == nil else { return }
         guard configuration != nil else {
-            statusMessage = "Updates are not available in this build."
+            statusMessage = String(localized: "Updates are not available in this build.")
             return
         }
         let service = makeService(self)
@@ -59,7 +59,7 @@ final class UpdateController: NSObject, SPUUpdaterDelegate {
         } catch {
             self.service = nil
             canCheckForUpdates = false
-            statusMessage = "Updates could not start. Contact support for help."
+            statusMessage = String(localized: "Updates could not start. Contact support for help.")
         }
     }
 
