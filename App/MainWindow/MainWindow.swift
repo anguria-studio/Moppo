@@ -47,7 +47,7 @@ struct MainWindow: View {
         .background {
             FloatingDialogWindowPresenter(
                 isPresented: showsAppUninstallDetail,
-                title: "Application details",
+                title: String(localized: "Application details"),
                 size: NSSize(width: 560, height: 720),
                 minimumSize: NSSize(width: 520, height: 460),
                 canClose: !model.uninstaller.isUninstallingApp,
@@ -93,8 +93,7 @@ struct MainWindow: View {
             Button("Not Now", role: .cancel) {}
         } message: {
             Text(
-                "Moppo could not move files from another app's container. "
-                    + "Allow access to other application data. Then try again."
+                "Moppo could not move files from another app's container. Allow access to other application data. Then try again."
             )
         }
         // What the footer's status line used to carry, minus the routine
@@ -411,10 +410,10 @@ struct MainWindow: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.removeLabel)
         .help(model.view == .scanner
               ? model.cleanup.hasSelectedPermanentItems
-                ? "Some selected items cannot go to the Trash. Their tools remove them permanently. Other selected items move to the Trash."
-                : "Moves selected items to the Trash."
+                ? String(localized: "Some selected items cannot go to the Trash. Their tools remove them permanently. Other selected items move to the Trash.")
+                : String(localized: "Moves selected items to the Trash.")
               : model.view == .uninstaller && model.uninstaller.uninstallerTab == .installed
-                ? "Checks each selected application before uninstall."
+                ? String(localized: "Checks each selected application before uninstall.")
                 : model.removeLabel)
     }
 
@@ -430,7 +429,7 @@ struct MainWindow: View {
             )
         } else if model.cleanup.isScanning, model.view != .scanner {
             backgroundWorkStatus(
-                title: "Cleanup scan",
+                title: String(localized: "Cleanup scan"),
                 detail: model.cleanup.scanProgressDetail,
                 progress: Double(model.cleanup.scanProgress) / 100,
                 isInterrupting: model.cleanup.isInterruptingScan,
@@ -438,9 +437,8 @@ struct MainWindow: View {
             )
         } else if model.storageExplorer.isLoading {
             backgroundWorkStatus(
-                title: "Storage Explorer scan",
-                detail: "\(model.storageExplorer.progress.fileCount.formatted()) files · "
-                    + ByteFormatting.string(model.storageExplorer.progress.allocatedBytes),
+                title: String(localized: "Storage Explorer scan"),
+                detail: String(localized: "\(model.storageExplorer.progress.fileCount) file · \(ByteFormatting.localizedString(model.storageExplorer.progress.allocatedBytes))", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
                 isInterrupting: model.storageExplorer.isInterrupting,
                 onStop: { model.storageExplorer.cancel() }
             )
@@ -448,9 +446,9 @@ struct MainWindow: View {
                   model.view != .duplicates || model.duplicateKind != .files {
             let progress = model.fileDuplicates.progress
             backgroundWorkStatus(
-                title: "Duplicate file scan",
-                detail: progress.map { "\($0.completed.formatted()) of \($0.total.formatted()) files" }
-                    ?? "Preparing scan",
+                title: String(localized: "Duplicate file scan"),
+                detail: progress.map { String(localized: "\($0.completed.formatted()) of \($0.total.formatted()) files") }
+                    ?? String(localized: "Preparing scan"),
                 progress: progress?.fractionCompleted,
                 isInterrupting: model.fileDuplicates.isInterrupting,
                 onStop: { model.fileDuplicates.cancelScan() }
@@ -458,16 +456,16 @@ struct MainWindow: View {
         } else if model.photoDuplicates.isScanning,
                   model.view != .duplicates || model.duplicateKind != .photos {
             backgroundWorkStatus(
-                title: "Duplicate photo scan",
-                detail: "\(model.photoDuplicates.progress?.percent ?? 0)% complete",
+                title: String(localized: "Duplicate photo scan"),
+                detail: String(localized: "\((Double(model.photoDuplicates.progress?.percent ?? 0) / 100).formatted(.percent)) complete"),
                 progress: Double(model.photoDuplicates.progress?.percent ?? 0) / 100,
                 isInterrupting: model.photoDuplicates.isInterrupting,
                 onStop: { model.photoDuplicates.cancelScan() }
             )
         } else if model.uninstaller.isPlanningAppUninstall, model.view != .uninstaller {
             backgroundWorkStatus(
-                title: "Checking selected apps",
-                detail: model.uninstaller.appUninstallPlanningDetail ?? "Finding related files",
+                title: String(localized: "Checking selected apps"),
+                detail: model.uninstaller.appUninstallPlanningDetail ?? String(localized: "Finding related files"),
                 isInterrupting: model.uninstaller.isInterruptingAppUninstall,
                 onStop: { model.uninstaller.resetAppUninstall() }
             )
@@ -517,8 +515,8 @@ struct MainWindow: View {
         }
         .help(isInterrupting ? ScanInterruptionView.title
               : "\(title): \(detail). " + (onStop == nil
-                ? "Wait for this operation to finish before starting another scan."
-                : "Finish or stop this operation to start another scan."))
+                ? String(localized: "Wait for this operation to finish before starting another scan.")
+                : String(localized: "Finish or stop this operation to start another scan.")))
         .accessibilityElement(children: .contain)
     }
 
@@ -534,7 +532,7 @@ struct MainWindow: View {
                     ScanInterruptionView()
                 } else {
                     Label(
-                        model.cleanup.isScanning ? "Stop Scan" : "Scan",
+                        model.cleanup.isScanning ? String(localized: "Stop Scan") : String(localized: "Scan"),
                         systemImage: model.cleanup.isScanning ? "stop.fill" : "magnifyingglass"
                     )
                 }
@@ -563,7 +561,7 @@ struct MainWindow: View {
                         model.uninstaller.loadApplicationLeftovers()
                     }
                 } label: {
-                    Label(model.uninstaller.uninstallerTab == .installed ? "Refresh Apps" : "Refresh Leftovers", systemImage: "arrow.clockwise")
+                    Label(model.uninstaller.uninstallerTab == .installed ? String(localized: "Refresh Apps") : String(localized: "Refresh Leftovers"), systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(PageActionButtonStyle())
                 .disabled(model.isBusyWithDisk || model.uninstaller.isLoadingApplicationLeftovers)

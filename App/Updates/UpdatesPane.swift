@@ -6,18 +6,18 @@ struct UpdatesPane: View {
 
     var body: some View {
         PrefPane {
-            PrefSection("Updates") {
+            PrefSection(String(localized: "Updates")) {
                 PrefToggleRow(
-                    title: "Check for updates automatically",
-                    description: "Moppo asks before it installs an update.",
+                    title: String(localized: "Check for updates automatically"),
+                    description: String(localized: "Moppo asks before it installs an update."),
                     isOn: $updates.automaticallyChecksForUpdates
                 )
                 .disabled(!updates.isAvailable)
                 PrefDivider()
                 PrefRow(
-                    title: "Check for updates",
+                    title: String(localized: "Check for updates"),
                     description: updates.installation.isWaiting
-                        ? "Installation will start after the current operation finishes."
+                        ? String(localized: "Installation will start after the current operation finishes.")
                         : updates.statusMessage
                 ) {
                     Button("Check Now", action: updates.checkForUpdates)

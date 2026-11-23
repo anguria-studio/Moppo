@@ -22,8 +22,8 @@ struct ICloudSetupView: View {
                 .foregroundStyle(Token.Text.secondary)
             GroupedBox {
                 VStack(spacing: 0) {
-                    PrefRow(title: "Full Disk Access", description: "Moppo requires this access to measure iCloud storage.") {
-                        Button(access.disk == .allowed ? "On" : "Enable") {
+                    PrefRow(title: String(localized: "Full Disk Access"), description: String(localized: "Moppo requires this access to measure iCloud storage.")) {
+                        Button(access.disk == .allowed ? String(localized: "On") : String(localized: "Enable")) {
                             model.beginICloudSetup()
                             Task { await access.performAction(for: .disk) }
                         }
@@ -37,8 +37,8 @@ struct ICloudSetupView: View {
                     if model.iCloudState == .unavailable {
                         PrefDivider()
                         PrefRow(
-                            title: "iCloud account",
-                            description: "Check that you are signed in. For iCloud Drive options, select Drive. Check “Sync this Mac” there."
+                            title: String(localized: "iCloud account"),
+                            description: String(localized: "Check that you are signed in. For iCloud Drive options, select Drive. Check “Sync this Mac” there.")
                         ) {
                             Button("Open Settings", action: ICloudCard.openICloudSettings)
                                 .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
@@ -85,13 +85,13 @@ struct ICloudSetupView: View {
     private var feedback: String {
         switch model.iCloudState {
         case .requiresAccess:
-            "Enable Full Disk Access to continue."
+            String(localized: "Enable Full Disk Access to continue.")
         case .unavailable:
-            "Moppo could not read iCloud storage. Check your account and connection. Moppo checks storage when you return."
+            String(localized: "Moppo could not read iCloud storage. Check your account and connection. Moppo checks storage when you return.")
         case .loading:
-            "Reading iCloud storage…"
+            String(localized: "Reading iCloud storage…")
         case .idle, .available:
-            "After you enable access, Moppo checks storage automatically."
+            String(localized: "After you enable access, Moppo checks storage automatically.")
         }
     }
 

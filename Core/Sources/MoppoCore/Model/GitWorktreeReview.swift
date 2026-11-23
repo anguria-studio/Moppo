@@ -11,6 +11,26 @@ public struct GitWorktreeReview: Sendable, Equatable {
         }
     }
 
+    enum CheckText: Sendable, Equatable {
+        case clear, found(EngineText), unknown(EngineText)
+
+        init(_ result: Check) {
+            self = switch result {
+            case .clear: .clear
+            case .found(let detail): .found(.verbatim(detail))
+            case .unknown(let detail): .unknown(.verbatim(detail))
+            }
+        }
+
+        func result(localized: Bool) -> Check {
+            switch self {
+            case .clear: .clear
+            case .found(let detail): .found(detail.string(localized: localized))
+            case .unknown(let detail): .unknown(detail.string(localized: localized))
+            }
+        }
+    }
+
     public enum Outcome: String, Sendable {
         case inUse = "In use"
         case uncommittedChanges = "Uncommitted changes"
@@ -23,7 +43,20 @@ public struct GitWorktreeReview: Sendable, Equatable {
     }
 
     public struct File: Sendable, Equatable, Identifiable {
-        public enum Status: String, Sendable { case changed = "Changed", untracked = "Untracked", ignored = "Ignored" }
+        public enum Status: String, Sendable {
+            case changed = "Changed"
+            case untracked = "Untracked"
+            case ignored = "Ignored"
+
+            public var localizedLabel: String {
+                let text: EngineText = switch self {
+                case .changed: "Changed"
+                case .untracked: "Untracked"
+                case .ignored: "Ignored"
+                }
+                return text.localized
+            }
+        }
         public var path: String
         public var status: Status
         public var allocatedBytes: Int64 = 0
@@ -40,25 +73,55 @@ public struct GitWorktreeReview: Sendable, Equatable {
         }
     }
 
-    public var branch = "Branch unknown"
+    var branchText: EngineText = "Branch unknown"
+    public var branch: String {
+        get { branchText.english }
+        set { branchText = .verbatim(newValue) }
+    }
     public var status: FileEntry.GitWorktreeStatus = .unavailable
     public var pushStatus: FileEntry.GitWorktreePushStatus = .unknown
     public var mergedInto: String?
     public var mergePullRequestNumber: Int?
     /// An open GitHub pull request whose head is the worktree commit. The merge is not complete.
     public var openPullRequestNumber: Int?
-    public var mergeIssue = "The merge was not checked."
+    var mergeIssueText: EngineText = "The merge was not checked."
+    public var mergeIssue: String {
+        get { mergeIssueText.english }
+        set { mergeIssueText = .verbatim(newValue) }
+    }
     public var localFiles: [File] = []
     public var ignoredFiles: [File] = []
     public var filesChecked = false
-    public var filesIssue = "Git file status was not checked."
-    public var ignoredFilesIssue = "Ignored files could not be read."
-    public var pushIssue = "The remote comparison was not checked."
+    var filesIssueText: EngineText = "Git file status was not checked."
+    public var filesIssue: String {
+        get { filesIssueText.english }
+        set { filesIssueText = .verbatim(newValue) }
+    }
+    var ignoredFilesIssueText: EngineText = "Ignored files could not be read."
+    public var ignoredFilesIssue: String {
+        get { ignoredFilesIssueText.english }
+        set { ignoredFilesIssueText = .verbatim(newValue) }
+    }
+    var pushIssueText: EngineText = "The remote comparison was not checked."
+    public var pushIssue: String {
+        get { pushIssueText.english }
+        set { pushIssueText = .verbatim(newValue) }
+    }
     public var lastFetchDate: Date?
     /// The Git metadata path that the `.git` file names when that path does not exist.
     public var missingGitData: String?
-    public var locks: Check = .unknown("Git locks were not checked.")
-    public var activity: Check = .unknown("Open files and processes were not checked.")
+    var locksText: CheckText = .unknown("Git locks were not checked.")
+    public var locks: Check {
+        get { locksText.result(localized: false) }
+        set { locksText = CheckText(newValue) }
+    }
+    public var localizedLocks: Check { locksText.result(localized: true) }
+    var activityText: CheckText = .unknown("Open files and processes were not checked.")
+    public var activity: Check {
+        get { activityText.result(localized: false) }
+        set { activityText = CheckText(newValue) }
+    }
+    public var localizedActivity: Check { activityText.result(localized: true) }
     var verifiedGeneratedProjects: Set<URL> = []
     /// The working folder of the main checkout. A bare repository has none.
     var mainCheckout: URL?
@@ -67,7 +130,10 @@ public struct GitWorktreeReview: Sendable, Equatable {
     public init() {}
 
     public var ignoredBytes: Int64 { ignoredFiles.reduce(0) { $0 + $1.allocatedBytes } }
-    public var mergeCheck: Check { mergedInto == nil ? .unknown(mergeIssue) : .clear }
+    public var localizedBranch: String { branchText.localized }
+    public var mergeCheck: Check { mergeCheckText.result(localized: false) }
+    public var localizedMergeCheck: Check { mergeCheckText.result(localized: true) }
+    private var mergeCheckText: CheckText { mergedInto == nil ? .unknown(mergeIssueText) : .clear }
     public var regenerableIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == true } }
     public var localIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false && !$0.hasMainCheckoutCopy } }
     public var copiedIgnoredFiles: [File] { ignoredFiles.filter { $0.regeneratesSafely == false && $0.hasMainCheckoutCopy } }
@@ -79,18 +145,27 @@ public struct GitWorktreeReview: Sendable, Equatable {
         case .unpushedCommits(let count): count
         }
     }
-    public var localFilesCheck: Check {
-        if !localFiles.isEmpty { return .found("\(localFiles.count) \(localFiles.count == 1 ? "file" : "files")") }
-        guard filesChecked, status != .unavailable else { return .unknown(filesIssue) }
+    public var localFilesCheck: Check { localFilesCheckText.result(localized: false) }
+    public var localizedLocalFilesCheck: Check { localFilesCheckText.result(localized: true) }
+
+    private var localFilesCheckText: CheckText {
+        if !localFiles.isEmpty {
+            let count = localFiles.count
+            return .found(EngineText(english: "\(count) \(count == 1 ? "file" : "files")", display: "\(count) files"))
+        }
+        guard filesChecked, status != .unavailable else { return .unknown(filesIssueText) }
         return .clear
     }
 
-    public var ignoredFilesCheck: Check {
+    public var ignoredFilesCheck: Check { ignoredFilesCheckText.result(localized: false) }
+    public var localizedIgnoredFilesCheck: Check { ignoredFilesCheckText.result(localized: true) }
+
+    private var ignoredFilesCheckText: CheckText {
         let local = localIgnoredFiles.filter { !includesAfterMerge($0) }
-        if !local.isEmpty { return .found(local.map(\.path).joined(separator: ", ")) }
-        guard filesChecked, status != .unavailable else { return .unknown(filesIssue) }
+        if !local.isEmpty { return .found(.verbatim(local.map(\.path).joined(separator: ", "))) }
+        guard filesChecked, status != .unavailable else { return .unknown(filesIssueText) }
         guard ignoredFiles.allSatisfy({ $0.regeneratesSafely == true || $0.hasMainCheckoutCopy || includesAfterMerge($0) }) else {
-            return .unknown(ignoredFilesIssue)
+            return .unknown(ignoredFilesIssueText)
         }
         return .clear
     }
@@ -99,9 +174,14 @@ public struct GitWorktreeReview: Sendable, Equatable {
         mergedInto != nil && file.status == .ignored && file.canRemoveWhenMerged
     }
 
-    public var pushCheck: Check {
-        guard let count = unpushedCommitCount else { return .unknown(pushIssue) }
-        if count > 0 { return .found("\(count) \(count == 1 ? "commit" : "commits")") }
+    public var pushCheck: Check { pushCheckText.result(localized: false) }
+    public var localizedPushCheck: Check { pushCheckText.result(localized: true) }
+
+    private var pushCheckText: CheckText {
+        guard let count = unpushedCommitCount else { return .unknown(pushIssueText) }
+        if count > 0 {
+            return .found(EngineText(english: "\(count) \(count == 1 ? "commit" : "commits")", display: "\(count) commits"))
+        }
         return .clear
     }
 
@@ -131,10 +211,27 @@ public struct GitWorktreeReview: Sendable, Equatable {
         return review
     }
     public var statusLabel: String { outcome.rawValue }
+    public var localizedStatusLabel: String {
+        let text: EngineText = switch outcome {
+        case .inUse: "In use"
+        case .uncommittedChanges: "Uncommitted changes"
+        case .unpushedCommits: "Unpushed commits"
+        case .hasLocalFiles: "Has local files"
+        case .couldNotVerify: "Could not verify"
+        case .safeToRemove: "Safe to remove"
+        }
+        return text.localized
+    }
 
-    static func failureReason(_ error: Error, tool: String) -> String {
-        if case ProcessError.timedOut = error { return "\(tool) timed out." }
-        if case ProcessError.executableMissing = error { return "\(tool) is not installed." }
+    enum CheckTool { case git, processes }
+
+    static func failureReason(_ error: Error, tool: CheckTool) -> EngineText {
+        if case ProcessError.timedOut = error {
+            return tool == .git ? "Git timed out." : "The process check timed out."
+        }
+        if case ProcessError.executableMissing = error {
+            return tool == .git ? "Git is not installed." : "The process check is not installed."
+        }
         if case ProcessError.failed(_, _, let stderr) = error {
             let message = stderr.lowercased()
             if message.contains("permission denied") || message.contains("operation not permitted") {
@@ -144,6 +241,6 @@ public struct GitWorktreeReview: Sendable, Equatable {
         if let error = error as? CocoaError, error.code == .fileReadNoPermission {
             return "Permission to read these files was denied."
         }
-        return "\(tool) could not complete this check."
+        return tool == .git ? "Git could not complete this check." : "The process check could not complete this check."
     }
 }

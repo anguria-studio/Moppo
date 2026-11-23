@@ -94,13 +94,16 @@ public struct ToolCommandRemoval: Sendable, Equatable {
         return scriptURL == HomebrewFormulaVersions.scriptURL
     }
 
-    public var lockReason: String? {
+    public var lockReason: String? { lockText?.english }
+    public var localizedLockReason: String? { lockText?.localized }
+
+    var lockText: EngineText? {
         guard let executable, executableIdentity != nil,
               FileManager.default.isExecutableFile(atPath: executable) else {
             return "The removal tool is missing. Install the tool, then scan again."
         }
         if let runtime = simulatorRuntime {
-            if let reason = runtime.protectionExplanation { return reason }
+            if let reason = runtime.protectionText { return reason }
             guard runtime.toolsAreUnchanged else { return "The Xcode toolchain changed. Scan again before removal." }
         }
         guard scriptURL == nil || scriptIdentity != nil else {
@@ -193,6 +196,12 @@ public struct ToolCommandRemovalResult: Sendable, Equatable, Codable {
     public var failureReason: String?
     public var remainingStorageReason: String?
 
+    static let maximumStandardErrorLength = 4096
+
+    static func retainedImageText(_ bytes: String) -> EngineText {
+        "macOS still stores the downloaded image (\(bytes))."
+    }
+
     public var removedBytes: Int64? {
         guard let beforeBytes, let afterBytes else { return nil }
         return max(0, beforeBytes - afterBytes)
@@ -204,29 +213,69 @@ public struct ToolCommandRemovalResult: Sendable, Equatable, Codable {
             || (beforeBytes != nil && freedBytes == nil)
     }
 
-    public var summary: String {
+    public var localizedSummary: String { summary(localized: true) }
+    public var summary: String { summary(localized: false) }
+
+    func localizedSummary(language: String, locale: Locale) -> String {
+        summary(localized: true, language: language, locale: locale)
+    }
+
+    private func summary(localized: Bool, language: String? = nil, locale: Locale = .current) -> String {
+        func text(_ value: EngineText) -> String {
+            if let language { return value.localized(language: language, locale: locale) }
+            return value.string(localized: localized)
+        }
+        func bytes(_ value: Int64) -> String {
+            localized ? ByteFormatting.localizedString(value, locale: locale) : ByteFormatting.string(value)
+        }
+        let reason = failureReason.map { text(.rule($0)) }
         let completed = remainingStorageReason == nil
-            ? "\(name) was removed permanently."
-            : "\(name) is no longer installed. Cleanup is incomplete."
-        var parts = [status == .completed ? completed : "\(name): \(failureReason ?? "Removal did not finish.")"]
+            ? text("\(name) was removed permanently.")
+            : text("\(name) is no longer installed. Cleanup is incomplete.")
+        var parts = [status == .completed ? completed : text("\(name): \(reason ?? text("Removal did not finish."))")]
         if let remainingStorageReason {
-            parts.append(remainingStorageReason)
-            parts.append("This space remains on disk.")
+            let lines = remainingStorageReason.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+            if localized, targetID.hasPrefix("simulator-runtime:"), let afterBytes, let heading = lines.first,
+               heading == Self.retainedImageText(ByteFormatting.string(afterBytes)).english {
+                parts.append(text(Self.retainedImageText(bytes(afterBytes))))
+                if lines.count == 2 {
+                    let savedGuidance = String(lines[1])
+                    let guidance = SimulatorRuntimeService.retainedImageGuidanceText(savedEnglish: savedGuidance)
+                    parts.append(guidance.map(text) ?? savedGuidance)
+                }
+            } else {
+                parts.append(remainingStorageReason)
+            }
+            parts.append(text("This space remains on disk."))
         }
         if let removedBytes, removedBytes > 0 {
-            parts.append("Item storage decreased by \(ByteFormatting.string(removedBytes)).")
+            parts.append(text("Item storage decreased by \(bytes(removedBytes))."))
         }
         if let freedBytes {
-            parts.append("Verified disk space recovery: \(ByteFormatting.string(freedBytes)).")
+            parts.append(text("Verified disk space recovery: \(bytes(freedBytes))."))
         } else if beforeBytes != nil, remainingStorageReason == nil {
-            parts.append("Disk space recovery could not be verified.")
+            parts.append(text("Disk space recovery could not be verified."))
         }
-        if status == .completed, let failureReason { parts.append(failureReason) }
-        if let exitStatus, exitStatus != 0 { parts.append("Exit status: \(exitStatus).") }
-        if let terminationSignal { parts.append("Terminated by signal \(terminationSignal).") }
-        if !standardError.isEmpty {
-            parts.append(String(standardError.prefix(512)) + (standardError.count > 512 ? "…" : ""))
+        if status == .completed, let reason { parts.append(reason) }
+        if let exitStatus, exitStatus != 0 { parts.append(text("Exit status: \(exitStatus).")) }
+        if let terminationSignal { parts.append(text("Terminated by signal \(terminationSignal).")) }
+        let details = localized ? displayStandardError(text: text) : standardError
+        if !details.isEmpty {
+            parts.append(String(details.prefix(512)) + (details.count > 512 ? "…" : ""))
         }
         return parts.joined(separator: "\n")
+    }
+
+    private func displayStandardError(text: (EngineText) -> String) -> String {
+        // After a successful command, Moppo appends the inventory check result.
+        guard targetID.hasPrefix("simulator-runtime:"), status == .failed, exitStatus == 0, terminationSignal == nil,
+              failureReason == SimulatorRuntimeService.RemovalVerification.unavailableReason,
+              standardError.count < Self.maximumStandardErrorLength
+        else { return standardError }
+
+        let timeout = SimulatorRuntimeService.RemovalVerification.inventoryTimeout
+        if standardError == timeout.english { return text(timeout) }
+        guard standardError.hasSuffix("\n" + timeout.english) else { return standardError }
+        return String(standardError.dropLast(timeout.english.count)) + text(timeout)
     }
 }

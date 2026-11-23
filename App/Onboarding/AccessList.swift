@@ -7,13 +7,13 @@ struct AccessList: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            permission(.disk, title: "Full Disk Access",
-                detail: "Enabling this lets Moppo scan more of your Mac.",
+            permission(.disk, title: String(localized: "Full Disk Access"),
+                detail: String(localized: "Enabling this lets Moppo scan more of your Mac."),
                 symbol: "externaldrive")
                 .modifier(OnboardingEntrance(index: 3, enabled: animateEntrance))
-            permission(.photos, title: "Photos Library", detail: "Useful if you want to scan for duplicates.", symbol: "photo")
+            permission(.photos, title: String(localized: "Photos Library"), detail: String(localized: "Useful if you want to scan for duplicates."), symbol: "photo")
                 .modifier(OnboardingEntrance(index: 4, enabled: animateEntrance))
-            permission(.notifications, title: "Notifications", detail: "Get notified when your Mac has little space left.", symbol: "bell")
+            permission(.notifications, title: String(localized: "Notifications"), detail: String(localized: "Get notified when your Mac has little space left."), symbol: "bell")
                 .modifier(OnboardingEntrance(index: 5, enabled: animateEntrance))
 
             if access.openedDiskSettings, access.disk != .allowed {
@@ -48,12 +48,12 @@ struct AccessList: View {
     ) -> some View {
         let status = access.status(for: permission)
         let isUnavailable = status == .restricted || status == .unavailable || status == .checking
-        let actionLabel = status.permitsAccess || isUnavailable ? status.label : "Enable"
+        let actionLabel = status.permitsAccess || isUnavailable ? status.label : String(localized: "Enable")
         let hint = isUnavailable ? status.label : (status == .undecided
-            ? "Enable \(title)" : "Open \(title) in System Settings")
+            ? String(localized: "Enable this permission") : String(localized: "Review this permission in System Settings"))
         return PermissionRow(
             title: title, detail: detail, symbol: symbol,
-            status: access.requesting == permission ? "Checking" : actionLabel,
+            status: access.requesting == permission ? String(localized: "Checking") : actionLabel,
             isEnabled: status.permitsAccess || isUnavailable,
             settingsHint: hint,
             accessibilityStatus: status.label

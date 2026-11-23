@@ -106,10 +106,10 @@ public enum XcodeBuildCache {
     struct Inspection {
         var children: [URL] = []
         var contents: [String: String] = [:]
-        var issues: [URL: String] = [:]
+        var issues: [URL: EngineText] = [:]
         var isComplete = true
 
-        func issue(for url: URL) -> String? {
+        func issue(for url: URL) -> EngineText? {
             if !isComplete { return "Folder contents could not be checked completely. Scan again before removal." }
             return issues.sorted { $0.key.path < $1.key.path }.first {
                 $0.key == url || $0.key.path.hasPrefix(url.path + "/")

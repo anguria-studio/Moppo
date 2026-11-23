@@ -4,6 +4,8 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+- Add Italian, French, and Spanish to the app. Select a language in Settings or use the macOS default.
+
 ## [0.7.1] - 2026-11-10
 
 Build 58.

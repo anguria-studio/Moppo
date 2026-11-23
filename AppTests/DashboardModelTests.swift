@@ -492,18 +492,22 @@ struct DashboardModelTests {
         let model = DashboardModel(service: service, persistence: HeldDashboardPersistence())
         let initial = Task { await model.loadICloud() }
         try await waitUntil { await service.cloudPlans.count == 1 }
+        #expect(model.hasActiveDiskWork)
         let measured = ICloudStorage(totalBytes: 200, freeBytes: 40, documentsBytes: 80)
         await service.finishCloud(0, measured)
         await initial.value
+        #expect(!model.hasActiveDiskWork)
 
         let refresh = Task { await model.loadICloud() }
         try await waitUntil { await service.cloudPlans.count == 2 }
+        #expect(model.hasActiveDiskWork)
         #expect(model.iCloudState == .available(measured))
         #expect(model.iCloudStorage == measured)
         let updated = ICloudStorage(totalBytes: 200, freeBytes: 30, documentsBytes: 90)
         await service.finishCloud(1, updated)
         await refresh.value
         #expect(model.iCloudState == .available(updated))
+        #expect(!model.hasActiveDiskWork)
     }
 
     enum ICloudSetupResult: CaseIterable { case missingAccess, failure, success }

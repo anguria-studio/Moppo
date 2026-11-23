@@ -46,9 +46,11 @@ final class LowDiskNotificationService {
         guard decision.shouldNotify, await authorizationAllowsDelivery() else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Storage is running low"
-        content.body = "\(ByteFormatting.string(freeBytes)) remains on \(volumeName), "
-            + "below your \(thresholdGB) GB warning threshold."
+        content.title = String(localized: "Storage is running low")
+        let free = ByteFormatting.localizedString(freeBytes)
+        let threshold = ByteFormatting.localizedGigabytes(Double(thresholdGB))
+        content.body = String(localized: "\(free) remains on \(volumeName), below your \(threshold) warning threshold.",
+            comment: "Low disk space notification. Arguments are free storage, volume name, and the alert threshold.")
         content.sound = .default
         content.userInfo = ["destination": "dashboard"]
 

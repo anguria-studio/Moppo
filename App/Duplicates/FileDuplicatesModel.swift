@@ -74,10 +74,10 @@ final class FileDuplicatesModel {
 
     var keeperRuleLabel: String {
         switch keeperRule {
-        case .oldest: "Oldest copy"
-        case .newest: "Newest copy"
-        case .shortestPath: "Shortest path"
-        case .inFolder: "Copies in a folder"
+        case .oldest: String(localized: "Oldest copy")
+        case .newest: String(localized: "Newest copy")
+        case .shortestPath: String(localized: "Shortest path")
+        case .inFolder: String(localized: "Copies in a folder")
         }
     }
 
@@ -102,16 +102,16 @@ final class FileDuplicatesModel {
     }
 
     var removeLabel: String {
-        guard !selection.isEmpty else { return "Move to Trash" }
-        return "Move to Trash (\(ByteFormatting.string(selectionBytes)))"
+        guard !selection.isEmpty else { return String(localized: "Move to Trash") }
+        return String(localized: "Move to Trash (\(ByteFormatting.localizedString(selectionBytes)))")
     }
 
     func chooseFolders() {
         guard !isBusyWithDisk, folderTask == nil else { return }
         let panel = NSOpenPanel()
-        panel.title = "Choose Folders to Scan"
-        panel.message = "Moppo compares the contents of files in these folders."
-        panel.prompt = "Scan"
+        panel.title = String(localized: "Choose Folders to Scan")
+        panel.message = String(localized: "Moppo compares the contents of files in these folders.")
+        panel.prompt = String(localized: "Scan")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
@@ -181,8 +181,8 @@ final class FileDuplicatesModel {
             } catch {
                 guard self.scanID == scanID, !Task.isCancelled else { return }
                 onEvent(.failure(
-                    title: "The Duplicate Scan Did Not Finish",
-                    message: "Moppo could not finish comparing those folders. Try scanning again."
+                    title: String(localized: "The Duplicate Scan Did Not Finish"),
+                    message: String(localized: "Moppo could not finish comparing those folders. Try scanning again.")
                 ))
             }
             try? await presentation.wait()
@@ -274,9 +274,9 @@ final class FileDuplicatesModel {
     func chooseKeeperFolder() {
         guard !isBusyWithDisk, folderTask == nil, let roots = results?.roots else { return }
         let panel = NSOpenPanel()
-        panel.title = "Choose Copies to Keep"
-        panel.message = "Choose a folder inside the scanned folders. Moppo keeps copies in this folder first."
-        panel.prompt = "Keep Copies Here"
+        panel.title = String(localized: "Choose Copies to Keep")
+        panel.message = String(localized: "Choose a folder inside the scanned folders. Moppo keeps copies in this folder first.")
+        panel.prompt = String(localized: "Keep Copies Here")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -344,8 +344,8 @@ final class FileDuplicatesModel {
             // The service stopped before it completed a removal.
         } catch {
             onEvent(.failure(
-                title: "The Duplicates Could Not Be Moved",
-                message: "The selected copies could not move to the Trash. Nothing was removed."
+                title: String(localized: "The Duplicates Could Not Be Moved"),
+                message: String(localized: "The selected copies could not move to the Trash. Nothing was removed.")
             ))
         }
     }
@@ -375,7 +375,7 @@ private final class KeeperFolderSelection: NSObject, NSOpenSavePanelDelegate {
     func panel(_ sender: Any, validate url: URL) throws {
         guard Self.contains(url, in: roots) else {
             throw NSError(domain: "Moppo.DuplicateKeeperFolder", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Choose a folder inside the scanned folders."
+                NSLocalizedDescriptionKey: String(localized: "Choose a folder inside the scanned folders.")
             ])
         }
     }

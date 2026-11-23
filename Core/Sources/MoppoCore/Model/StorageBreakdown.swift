@@ -34,7 +34,10 @@ public enum StorageSegmentID: String, Sendable, CaseIterable, Codable {
         self = id
     }
 
-    public var displayName: String {
+    public var displayName: String { displayNameText.english }
+    public var localizedDisplayName: String { displayNameText.localized }
+
+    var displayNameText: EngineText {
         switch self {
         case .macOSSystem:        "macOS System"
         case .systemData:         "System Data"
@@ -106,6 +109,7 @@ public struct StorageSegment: Sendable, Equatable, Identifiable, Codable {
     public var bytes: Int64
 
     public var displayName: String { id.displayName }
+    public var localizedDisplayName: String { id.localizedDisplayName }
     public var color: ColorToken { id.color }
 
     public init(id: StorageSegmentID, bytes: Int64) {

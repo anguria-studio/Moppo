@@ -5,7 +5,8 @@ enum HomebrewAuthentication {
     static func service() -> HomebrewUninstallService {
         HomebrewUninstallService(
             askpassExecutable: Bundle.main.bundleURL
-                .appendingPathComponent("Contents/Helpers/MoppoHomebrewAskpass").path
+                .appendingPathComponent("Contents/Helpers/MoppoHomebrewAskpass").path,
+            askpassLanguage: Bundle.main.preferredLocalizations.first
         )
     }
 }

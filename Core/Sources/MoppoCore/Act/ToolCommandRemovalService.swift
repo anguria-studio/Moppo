@@ -47,7 +47,7 @@ public struct ToolCommandRemovalService: Sendable {
         } catch {
             result.status = Task.isCancelled ? .cancelled : .notStarted
             result.failureReason = "Removal stopped before the command ran."
-            result.standardError = String(String(describing: error).prefix(4096))
+            result.standardError = String(String(describing: error).prefix(ToolCommandRemovalResult.maximumStandardErrorLength))
             return result
         }
         guard before.unreadableCount == 0, !before.containsProtectedPattern, !before.containsCloudOnlyItem,
@@ -60,7 +60,7 @@ public struct ToolCommandRemovalService: Sendable {
             let process = try await run(review)
             if process.terminatedBySignal { result.terminationSignal = process.exitStatus }
             else { result.exitStatus = process.exitStatus }
-            result.standardError = String(process.standardError.prefix(4096))
+            result.standardError = String(process.standardError.prefix(ToolCommandRemovalResult.maximumStandardErrorLength))
             switch process.completion {
             case .cancelled:
                 result.status = .cancelled
@@ -83,7 +83,7 @@ public struct ToolCommandRemovalService: Sendable {
         } catch {
             result.status = Task.isCancelled ? .cancelled : .failed
             result.failureReason = "The command could not finish. Some files may have been removed."
-            result.standardError = String(String(describing: error).prefix(4096))
+            result.standardError = String(String(describing: error).prefix(ToolCommandRemovalResult.maximumStandardErrorLength))
         }
 
         // Verification finishes after cancellation so completed removals retain their results.
@@ -108,7 +108,8 @@ public struct ToolCommandRemovalService: Sendable {
         if let runtime = review.simulatorRuntime, let bytes = result.afterBytes, bytes > 0 {
             let guidance = verification.removed
                 ? SimulatorRuntimeService.retainedImageGuidance(developerDirectory: runtime.developerDirectory) : nil
-            result.remainingStorageReason = ["macOS still stores the downloaded image (\(ByteFormatting.string(bytes))).", guidance]
+            let retainedImage = ToolCommandRemovalResult.retainedImageText(ByteFormatting.string(bytes))
+            result.remainingStorageReason = [retainedImage.english, guidance]
                 .compactMap { $0 }.joined(separator: "\n")
         }
         if verification.removed, review.targetIsAbsentAfterRemoval(), let privateSize, privateSize.unreportedCount == 0 {
@@ -120,7 +121,7 @@ public struct ToolCommandRemovalService: Sendable {
                 ?? "The item is still present, or Moppo could not check it. Scan again before removal."
             if let error = verification.error {
                 result.standardError = String([result.standardError, error].filter { !$0.isEmpty }
-                    .joined(separator: "\n").prefix(4096))
+                    .joined(separator: "\n").prefix(ToolCommandRemovalResult.maximumStandardErrorLength))
             }
         }
         return result

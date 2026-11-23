@@ -18,21 +18,21 @@ struct PhotoDuplicatesView: View {
         Group {
             if model.libraryAccess == .notDetermined {
                 PageState(
-                    title: "Allow Photos Access",
+                    title: String(localized: "Allow Photos Access"),
                     symbol: "photo",
                     detail: model.isRequestingAccess
-                        ? "Complete the Photos permission choice in the macOS dialog. This does not start a scan."
-                        : model.libraryAccess?.unavailableReason
+                        ? String(localized: "Complete the Photos permission choice in the macOS dialog. This does not start a scan.")
+                        : model.libraryAccess?.localizedUnavailableReason
                 ) {
-                    Button(model.isRequestingAccess ? "Waiting for macOS…" : "Allow") {
+                    Button(model.isRequestingAccess ? String(localized: "Waiting for macOS…") : String(localized: "Allow")) {
                         Task { await model.requestAccess() }
                     }
                     .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
                     .focused($actionIsFocused)
                 }
             } else if model.libraryAccess == nil {
-                PageProgressView(title: "Checking Photos access")
-            } else if let reason = model.libraryAccess?.unavailableReason {
+                PageProgressView(title: String(localized: "Checking Photos access"))
+            } else if let reason = model.libraryAccess?.localizedUnavailableReason {
                 accessUnavailable(reason)
             } else if model.isScanning {
                 sweeping
@@ -92,10 +92,9 @@ struct PhotoDuplicatesView: View {
 
     private var intro: some View {
         PageState(
-            title: "Find duplicate photos",
+            title: String(localized: "Find duplicate photos"),
             symbol: "photo.on.rectangle.angled",
-            detail: "Compares photos by appearance. Scans can download missing previews when photo downloads are enabled in Settings > Advanced. "
-                + "Opening a photo preview can download its original."
+            detail: String(localized: "Compares photos by appearance. Scans can download missing previews when photo downloads are enabled in Settings > Advanced. Opening a photo preview can download its original.")
         ) {
             Button { model.startScan() } label: {
                 Text("Find Duplicates")
@@ -109,8 +108,8 @@ struct PhotoDuplicatesView: View {
 
     private var sweeping: some View {
         PageProgressView(
-            title: "Scanning for duplicate photos",
-            detail: "\(progressLabel)\nThis may take a few minutes.",
+            title: String(localized: "Scanning for duplicate photos"),
+            detail: String(localized: "\(progressLabel)\nThis may take a few minutes."),
             progress: Double(model.progress?.percent ?? 0) / 100,
             isInterrupting: model.isInterrupting,
             icon: .mascot(.photoScanning),
@@ -119,20 +118,20 @@ struct PhotoDuplicatesView: View {
     }
 
     private var progressLabel: String {
-        guard let progress = model.progress else { return "Preparing…" }
+        guard let progress = model.progress else { return String(localized: "Preparing…") }
         return switch progress.stage {
-        case .fetching:      "Reading your photo library…"
-        case .grouping:      "Grouping bursts…"
-        case .comparing:     "Comparing \(progress.total.formatted()) photos to each other…"
+        case .fetching:      String(localized: "Reading your photo library…")
+        case .grouping:      String(localized: "Grouping bursts…")
+        case .comparing:     String(localized: "Comparing \(progress.total) photo…")
         case .fingerprinting:
-            "Comparing photos — \(progress.completed.formatted()) of \(progress.total.formatted())"
-        case .finishing, .done: "Finishing…"
+            String(localized: "Comparing photos — \(progress.completed.formatted()) of \(progress.total.formatted())")
+        case .finishing, .done: String(localized: "Finishing…")
         }
     }
 
     private func accessUnavailable(_ reason: String) -> some View {
         PageState(
-            title: model.libraryAccess == .restricted ? "Photos access is restricted" : "Photos access is unavailable",
+            title: model.libraryAccess == .restricted ? String(localized: "Photos access is restricted") : String(localized: "Photos access is unavailable"),
             symbol: "exclamationmark.triangle",
             detail: reason,
             iconColor: Token.textColor(.orange)
@@ -155,7 +154,7 @@ struct PhotoDuplicatesView: View {
 
     private func unavailable(_ reason: String) -> some View {
         PageState(
-            title: "Photos are unavailable",
+            title: String(localized: "Photos are unavailable"),
             symbol: "exclamationmark.triangle",
             detail: reason,
             iconColor: Token.textColor(.orange)
@@ -169,7 +168,7 @@ struct PhotoDuplicatesView: View {
 
     private var nothingFound: some View {
         ScanCompletionView(
-            title: "No duplicate photos found",
+            title: String(localized: "No duplicate photos found"),
             detail: model.results.map { summary($0) },
             animate: animateEmptyResult
         )
@@ -178,10 +177,9 @@ struct PhotoDuplicatesView: View {
     /// A skipped photo was never compared, so the result is a floor rather than a
     /// total. Saying so is the same rule the scanners follow with `unreadableCount`.
     private func summary(_ results: PhotoDuplicateResults) -> String {
-        var text = "Compared \(results.examinedCount.formatted()) photos."
+        var text = String(localized: "Compared \(results.examinedCount) photo.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         if results.skippedCount > 0 {
-            text += " \(results.skippedCount.formatted()) had no thumbnail available "
-                + "and were not compared."
+            text += String(localized: " \(results.skippedCount) photo had no thumbnail and was skipped.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
         return text
     }
@@ -191,8 +189,8 @@ struct PhotoDuplicatesView: View {
         return VStack(spacing: 0) {
             HStack {
                 SelectionCheckbox(
-                    title: "Select All",
-                    detail: "\(selectable.count) items",
+                    title: String(localized: "Select All"),
+                    detail: String(localized: "\(selectable.count) item", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
                     state: !selectable.isEmpty && selectable.isSubset(of: model.selection) ? .on : .off,
                     isEnabled: !selectable.isEmpty && !model.isBusyWithDisk && !model.isRegrouping
                 ) { isOn in
@@ -278,7 +276,7 @@ struct PhotoDuplicatesView: View {
                         HStack(spacing: 4) {
                             Text(kindLabel(group.kind))
                             if let distance = group.maximumDistance {
-                                Text("· \(String(format: "%.2f", distance)) match")
+                                Text("· \(distance, format: .number.precision(.fractionLength(2))) match")
                             }
                             if let date = group.assets.first?.creationDate {
                                 Text("·")
@@ -291,11 +289,11 @@ struct PhotoDuplicatesView: View {
                     }
                     Spacer(minLength: 4)
                     Text(selectedCount > 0
-                         ? "\(selectedCount) \(selectedCount == 1 ? "photo" : "photos") selected"
-                         : "\(group.removable.count) \(group.removable.count == 1 ? "photo" : "photos") available")
+                         ? String(localized: "\(selectedCount) photo selected", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+                         : String(localized: "\(group.removable.count) photo available", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
                         .font(.mcControlLabel)
                         .foregroundStyle(selectedCount > 0 ? Token.color(.accent) : Token.Text.duplicateAvailableStorage)
-                    Button(selectedCount == group.removable.count ? "Deselect" : "Select Copies") {
+                    Button(selectedCount == group.removable.count ? String(localized: "Deselect") : String(localized: "Select Copies")) {
                         model.toggleGroup(group.id)
                     }
                     .buttonStyle(PageActionButtonStyle(size: .compact, fill: Token.Fill.buttonOnCard))
@@ -336,25 +334,21 @@ struct PhotoDuplicatesView: View {
     private func badgeExplanation(_ kind: DuplicateGroup.Kind) -> String {
         switch kind {
         case .burst:
-            "Photos itself recorded these as one burst."
+            String(localized: "Photos itself recorded these as one burst.")
         case .exact:
-            "Same capture time, size and kind, and the pictures agree. "
-                + "Moppo is as sure of this as it gets."
+            String(localized: "Same capture time, size and kind, and the pictures agree. Moppo is as sure of this as it gets.")
         case .similar:
-            "Grouped because the pictures look alike, at the setting in the header — "
-                + "the number beside this says how alike. A tight one is often the same "
-                + "photograph re-saved, which misses Identical only because its capture "
-                + "time or size changed. Choose Identical only to be shown none of these."
+            String(localized: "Grouped because the pictures look alike, at the setting in the header — the number beside this says how alike. A tight one is often the same photograph re-saved, which misses Identical only because its capture time or size changed. Choose Identical only to be shown none of these.")
         }
     }
 
     private func kindLabel(_ kind: DuplicateGroup.Kind) -> String {
         switch kind {
-        case .burst:   "Burst"
-        case .exact:   "Identical"
+        case .burst:   String(localized: "Burst")
+        case .exact:   String(localized: "Identical")
         // Named for what it is. The certain tiers are visually confirmed matches;
         // this one is a judgement call, and the badge should not imply otherwise.
-        case .similar: "Looks similar"
+        case .similar: String(localized: "Looks similar")
         }
     }
 
@@ -373,15 +367,15 @@ struct PhotoDuplicatesView: View {
             )
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(asset.filename ?? "Photo")
-        .accessibilityValue(isKeeper ? "Kept photo" : (selected ? "Selected for deletion" : "Not selected for deletion"))
+        .accessibilityLabel(asset.filename ?? String(localized: "Photo"))
+        .accessibilityValue(isKeeper ? String(localized: "Kept photo") : (selected ? String(localized: "Selected for deletion") : String(localized: "Not selected for deletion")))
         .accessibilityAddTraits(highlighted ? [.isSelected, .isButton] : .isButton)
         .accessibilityAction { highlight(asset) }
         .accessibilityAction(named: "Quick Look") { showPreview(asset, in: group) }
         .overlay(alignment: .top) {
             if !isKeeper {
                 HStack(spacing: 4) {
-                    Button("Keep instead") {
+                    Button("Keep") {
                         model.keepInstead(groupID: group.id, assetID: asset.id)
                     }
                     .buttonStyle(PhotoKeepButtonStyle())
@@ -401,8 +395,8 @@ struct PhotoDuplicatesView: View {
                         .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(selected ? "Deselect photo" : "Select photo for deletion")
-                    .accessibilityValue(selected ? "Selected" : "Not selected")
+                    .accessibilityLabel(selected ? String(localized: "Deselect photo") : String(localized: "Select photo for deletion"))
+                    .accessibilityValue(selected ? String(localized: "Selected") : String(localized: "Not selected"))
                 }
                 .padding(7)
                 .disabled(model.isBusyWithDisk || model.isRegrouping)
@@ -507,20 +501,20 @@ struct PhotoReviewState {
 
 extension DuplicateGroup {
     var reviewTitle: String {
-        let kindText = switch kind {
-        case .burst: "photos in a burst"
-        case .exact: "identical photos"
-        case .similar: "similar photos"
+        let groupTitle = switch kind {
+        case .burst: String(localized: "\(count) photo in a burst", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+        case .exact: String(localized: "\(count) identical photo", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+        case .similar: String(localized: "\(count) similar photo", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
         let reason = switch keeperReason {
-        case .favorite: "a favorite"
-        case .burstPick: "your burst pick"
-        case .edited: "the edited photo"
-        case .resolution: "the highest resolution"
-        case .earliest: "the original"
-        case .chosenByYou: "your choice"
+        case .favorite: String(localized: "keeping a favorite")
+        case .burstPick: String(localized: "keeping your burst pick")
+        case .edited: String(localized: "keeping the edited photo")
+        case .resolution: String(localized: "keeping the highest resolution")
+        case .earliest: String(localized: "keeping the original")
+        case .chosenByYou: String(localized: "keeping your choice")
         }
-        return "\(count) \(kindText) · keeping \(reason)"
+        return String(localized: "\(groupTitle) · \(reason)")
     }
 }
 
@@ -559,16 +553,15 @@ struct PhotoSimilarityPicker: View {
             .accessibilityValue(similarityLabel(model.similarity))
             .fixedSize()
             .disabled(model.isBusyWithDisk)
-            .help(model.similarity.detail
-                  + " Bursts and identical copies are unaffected — neither is decided "
-                  + "by this number.")
+            .help(model.similarity.localizedDetail
+                  + String(localized: " Bursts and identical copies are unaffected — neither is decided by this number."))
         }
     }
 
     private func similarityLabel(_ similarity: PhotoSimilarity) -> String {
-        similarity.thresholdLabel.isEmpty
-            ? similarity.title
-            : "\(similarity.title) · \(similarity.thresholdLabel)"
+        similarity.localizedThresholdLabel.isEmpty
+            ? similarity.localizedTitle
+            : "\(similarity.localizedTitle) · \(similarity.localizedThresholdLabel)"
     }
 
 }

@@ -60,8 +60,65 @@ public enum ByteFormatting {
         return Self.fixed(Double(bytes) / 1024, decimals: 0) + " KB"
     }
 
-    /// Locale-independent fixed-point rendering. Always a period, never a comma —
-    /// the UI is a fixed-format spec, not localized prose.
+    /// Formats decimal storage values for the application.
+    public static func localizedString(_ bytes: Int64, locale: Locale = .current) -> String {
+        localized(bytes, units: [(bytesPerTB, .terabyte), (bytesPerGB, .gigabyte),
+                                 (bytesPerMB, .megabyte), (bytesPerKB, .kilobyte)], locale: locale)
+    }
+
+    /// Formats iCloud storage values in the units used by iCloud.
+    public static func localizedBinaryString(_ bytes: Int64, locale: Locale = .current) -> String {
+        localized(bytes, units: [(1_073_741_824, .gigabyte), (1_048_576, .megabyte), (1024, .kilobyte)],
+                  locale: locale)
+    }
+
+    public static func localizedSignedString(_ delta: Int64, locale: Locale = .current) -> String {
+        let magnitude = localizedString(Int64(clamping: delta.magnitude), locale: locale)
+        if delta == 0 { return magnitude }
+        return (delta > 0 ? "+" : "\u{2212}") + magnitude
+    }
+
+    /// Formats a chart value with a fixed gigabyte unit.
+    public static func localizedGigabytes(_ value: Double, decimals: Int = 0, locale: Locale = .current) -> String {
+        localized(value, unit: .gigabyte, decimals: decimals, locale: locale)
+    }
+
+    private enum Unit {
+        case byte, kilobyte, megabyte, gigabyte, terabyte
+
+        var precision: Int {
+            switch self {
+            case .byte, .kilobyte: 0
+            case .megabyte: 1
+            case .gigabyte, .terabyte: 2
+            }
+        }
+
+        var measurementUnit: UnitInformationStorage {
+            switch self {
+            case .byte: .bytes
+            case .kilobyte: .kilobytes
+            case .megabyte: .megabytes
+            case .gigabyte: .gigabytes
+            case .terabyte: .terabytes
+            }
+        }
+    }
+
+    private static func localized(_ bytes: Int64, units: [(Int64, Unit)], locale: Locale) -> String {
+        guard bytes > 0, let (divisor, unit) = units.first(where: { bytes >= $0.0 }) ?? units.last else {
+            return localized(Double(bytes), unit: .byte, decimals: 0, locale: locale)
+        }
+        return localized(Double(bytes) / Double(divisor), unit: unit, decimals: unit.precision, locale: locale)
+    }
+
+    private static func localized(_ value: Double, unit: Unit, decimals: Int, locale: Locale) -> String {
+        Measurement(value: value, unit: unit.measurementUnit)
+            .formatted(.measurement(width: .abbreviated, usage: .asProvided,
+                                    numberFormatStyle: .number.precision(.fractionLength(decimals))).locale(locale))
+    }
+
+    /// Uses a fixed format for command output.
     private static func fixed(_ value: Double, decimals: Int) -> String {
         String(format: "%.\(decimals)f", locale: Locale(identifier: "en_US_POSIX"), value)
     }

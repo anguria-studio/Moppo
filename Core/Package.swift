@@ -5,6 +5,7 @@ import PackageDescription
 // can be built and tested headlessly with `swift test` — no Xcode, no signing, no UI.
 let package = Package(
     name: "MoppoCore",
+    defaultLocalization: "en",
     platforms: [.macOS("15.0")],
     products: [
         .library(name: "MoppoCore", targets: ["MoppoCore"]),
@@ -23,7 +24,7 @@ let package = Package(
         .testTarget(name: "MoppoCLITests", dependencies: ["MoppoCLI"]),
         .target(
             name: "MoppoCore",
-            resources: [.copy("Resources/homebrew-versions.rb")],
+            resources: [.copy("Resources/homebrew-versions.rb"), .process("Resources/Engine.xcstrings")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(

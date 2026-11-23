@@ -362,7 +362,7 @@ struct CleanupModelTests {
         app.cleanup.scanResults = cleanupResults([command])
         app.cleanup.scannerSelection = [command.id]
         #expect(app.cleanup.hasSelectedPermanentItems)
-        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(command.allocatedBytes)))")
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.localizedString(command.allocatedBytes)))")
     }
 
     enum ToolCommandReviewCase: String, CaseIterable { case go, homebrew, runtime }
@@ -601,14 +601,14 @@ struct CleanupModelTests {
         cleanup.scanResults = cleanupResults([node, archive, image])
         cleanup.seedSafeToRemoveSelection()
         #expect(cleanup.scannerSelection == [node.id])
-        let safeLabel = "Move to Trash (\(ByteFormatting.string(node.allocatedBytes)))"
+        let safeLabel = "Move to Trash (\(ByteFormatting.localizedString(node.allocatedBytes)))"
         #expect(app.removeLabel == safeLabel)
         cleanup.scanFilter = .all
         #expect(cleanup.scannerSelection == [node.id])
         #expect(app.removeLabel == safeLabel)
         cleanup.setScannerSelection([node.id, archive.id, image.id])
         let totalBytes = node.allocatedBytes + archive.allocatedBytes + image.allocatedBytes
-        let allLabel = "Remove (\(ByteFormatting.string(totalBytes)))"
+        let allLabel = "Remove (\(ByteFormatting.localizedString(totalBytes)))"
         #expect(cleanup.hasSelectedPermanentItems)
         #expect(app.removeLabel == allLabel)
         cleanup.dataTypeFilter = .nodeModules
@@ -627,20 +627,20 @@ struct CleanupModelTests {
         #expect(cleanup.scannerSelection == [archive.id, image.id])
         #expect(cleanup.hasSelectedPermanentItems)
         let remainingBytes = archive.allocatedBytes + image.allocatedBytes
-        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.localizedString(remainingBytes)))")
         cleanup.scanFilter = .safeToRemove
         #expect(cleanup.hiddenSelectionCount == 2)
         #expect(cleanup.hasSelectedPermanentItems)
-        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.localizedString(remainingBytes)))")
         cleanup.requestCleanUp()
         #expect(Set(cleanup.pendingCleanUp?.entries.map(\.id) ?? []) == [archive.id, image.id])
         #expect(cleanup.pendingCleanUp?.totalBytes == remainingBytes)
         cleanup.cancelCleanUp()
         cleanup.scanFilter = .all
-        #expect(app.removeLabel == "Remove (\(ByteFormatting.string(remainingBytes)))")
+        #expect(app.removeLabel == "Remove (\(ByteFormatting.localizedString(remainingBytes)))")
         cleanup.deselectAllInCurrentView()
         #expect(cleanup.cleanupSelection.isEmpty)
-        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.string(0)))")
+        #expect(app.removeLabel == "Move to Trash (\(ByteFormatting.localizedString(0)))")
         cleanup.requestCleanUp()
         #expect(cleanup.pendingCleanUp == nil)
     }

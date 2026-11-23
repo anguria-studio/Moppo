@@ -24,9 +24,9 @@ struct CleanupHistoryView: View {
                 emptyState
             } else if visibleItems.isEmpty {
                 PageState(
-                    title: query.isEmpty ? "No matching items" : "No Results for “\(query)”",
+                    title: query.isEmpty ? String(localized: "No matching items") : String(localized: "No Results for “\(query)”"),
                     symbol: query.isEmpty ? filter.symbol : "magnifyingglass",
-                    detail: query.isEmpty ? "No history items match this filter." : "No history items match this search."
+                    detail: query.isEmpty ? String(localized: "No history items match this filter.") : String(localized: "No history items match this search.")
                 )
             } else {
                 historyTable
@@ -46,7 +46,7 @@ struct CleanupHistoryView: View {
             if let summary = model.cleanupHistory {
                 let visible = visibleItems
                 let bytes = visible.reduce(Int64(0)) { $0 + $1.bytes }
-                Text("\(visible.count) \(visible.count == 1 ? "item" : "items") · \(ByteFormatting.string(bytes))")
+                Text("\(visible.count) item · \(ByteFormatting.localizedString(bytes))")
                     .font(.mcControlLabel)
                     .foregroundStyle(Token.Text.secondary)
                     .lineLimit(1)
@@ -57,8 +57,8 @@ struct CleanupHistoryView: View {
                 .buttonStyle(PageActionButtonStyle(size: .small))
                 .disabled(selectedRunItems.isEmpty)
                 .help(model.isBusyWithDisk
-                      ? "Explain why Put Back must wait for the current operation."
-                      : "Restore all available items from the selected uninstall or cleanup run.")
+                      ? String(localized: "Explain why Put Back must wait for the current operation.")
+                      : String(localized: "Restore all available items from the selected uninstall or cleanup run."))
             FindField(text: $searchText, findRequest: findRequest)
                 .frame(width: 180)
                 .disabled(items.isEmpty)
@@ -72,7 +72,7 @@ struct CleanupHistoryView: View {
         Menu {
             Picker("Result", selection: $filter) {
                 ForEach(HistoryFilter.allCases) { choice in
-                    Text("\(choice.rawValue) (\(items.filter { choice.includes($0.state) }.count))")
+                    Text("\(choice.title) (\(items.filter { choice.includes($0.state) }.count))")
                         .tag(choice)
                         .help(choice.helpText)
                 }
@@ -81,7 +81,7 @@ struct CleanupHistoryView: View {
             .labelsHidden()
         } label: {
             HStack(spacing: 7) {
-                Text(filter.rawValue)
+                Text(filter.title)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .accessibilityHidden(true)
@@ -93,16 +93,17 @@ struct CleanupHistoryView: View {
         .fixedSize()
         .help("Select a history filter")
         .accessibilityLabel("History filter")
-        .accessibilityValue(filter.rawValue)
+        .accessibilityValue(filter.title)
     }
 
     private var historyTable: some View {
-        CompactTable(
+        let putBackWidth = CompactTableActionStyle.minimumColumnWidth(for: String(localized: "Put Back"))
+        return CompactTable(
             items: visibleItems,
             selection: tableSelection,
             sortOrder: $sortOrder,
             columns: [
-                CompactTableColumn("Item", width: 280, min: 150, sort: KeyPathComparator(\CleanupHistoryItem.name)) { item, selected in
+                CompactTableColumn(String(localized: "Item"), width: 280, min: 150, sort: KeyPathComparator(\CleanupHistoryItem.name)) { item, selected in
                     CompactTableItem(
                         name: item.name,
                         path: item.originalURL.scheme == "docker" ? "Docker"
@@ -111,25 +112,25 @@ struct CleanupHistoryView: View {
                         isSelected: selected
                     )
                 },
-                CompactTableColumn("Result", width: 160, min: 120, max: 200, sort: KeyPathComparator(\CleanupHistoryItem.resultSortRank)) { item, selected in
+                CompactTableColumn(String(localized: "Result"), width: 160, min: 120, max: 200, sort: KeyPathComparator(\CleanupHistoryItem.resultSortRank)) { item, selected in
                     ResultLabel(state: item.state, isSelected: selected, toolCommandResult: item.toolCommandResult)
                 },
-                CompactTableColumn("Date", width: 105, min: 95, max: 145, sort: KeyPathComparator(\CleanupHistoryItem.timestamp)) { item, selected in
+                CompactTableColumn(String(localized: "Date"), width: 105, min: 95, max: 145, sort: KeyPathComparator(\CleanupHistoryItem.timestamp)) { item, selected in
                     CompactTableDate(date: item.timestamp, isSelected: selected)
                 },
-                CompactTableColumn("Size", width: 78, min: 65, max: 100, sort: KeyPathComparator(\CleanupHistoryItem.bytes)) { item, selected in
-                    Text(item.bytes > 0 ? ByteFormatting.string(item.bytes) : "—")
+                CompactTableColumn(String(localized: "Size"), width: 78, min: 65, max: 100, sort: KeyPathComparator(\CleanupHistoryItem.bytes)) { item, selected in
+                    Text(item.bytes > 0 ? ByteFormatting.localizedString(item.bytes) : "—")
                         .monospacedDigit()
                         .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 },
-                CompactTableColumn("", width: 80, min: 80, max: 80) { item, selected in
+                CompactTableColumn("", width: putBackWidth, min: putBackWidth, max: putBackWidth) { item, selected in
                     if let trashItem = item.trashItem {
                         Button("Put Back") { model.requestPutBack([trashItem]) }
                             .buttonStyle(CompactTableActionStyle(isSelected: selected))
                             .help(model.isBusyWithDisk
-                                  ? "Explain why Put Back must wait for the current operation."
-                                  : "Restore this item to its original folder.")
+                                  ? String(localized: "Explain why Put Back must wait for the current operation.")
+                                  : String(localized: "Restore this item to its original folder."))
                     }
                 }
             ],
@@ -138,16 +139,16 @@ struct CleanupHistoryView: View {
                 guard let item = visibleItems.first(where: { ids.contains($0.id) }) else { return [] }
                 var actions: [CompactTableMenuAction] = []
                 if let trashItem = item.trashItem {
-                    actions.append(CompactTableMenuAction(title: "Put Back") { model.requestPutBack([trashItem]) })
+                    actions.append(CompactTableMenuAction(title: String(localized: "Put Back")) { model.requestPutBack([trashItem]) })
                 }
                 let runItems = model.restorableItems(inRunOf: item)
                 if !runItems.isEmpty {
-                    actions.append(CompactTableMenuAction(title: "Put Back Run (\(runItems.count) \(runItems.count == 1 ? "Item" : "Items"))") {
+                    actions.append(CompactTableMenuAction(title: String(localized: "Put Back Run (\(runItems.count) Item)", bundle: MoppoResources.bundle, locale: MoppoResources.locale)) {
                         model.requestPutBack(runItems)
                     })
                 }
                 if item.state == .availableInTrash, item.trashedURL != nil {
-                    actions.append(CompactTableMenuAction(title: "Show in Trash") { model.showInTrash(item) })
+                    actions.append(CompactTableMenuAction(title: String(localized: "Show in Trash")) { model.showInTrash(item) })
                 }
                 return actions
             }
@@ -168,13 +169,13 @@ struct CleanupHistoryView: View {
     }
 
     private var loadingState: some View {
-        PageProgressView(title: "Reading cleanup history")
+        PageProgressView(title: String(localized: "Reading cleanup history"))
     }
 
     private var emptyState: some View {
         PageState(
-            title: "No cleanup history", symbol: "clock",
-            detail: "Enable Put Back receipts in Settings to record Trash removals. Tool command results are always recorded."
+            title: String(localized: "No cleanup history"), symbol: "clock",
+            detail: String(localized: "Enable Put Back receipts in Settings to record Trash removals. Tool command results are always recorded.")
         )
     }
 
@@ -205,22 +206,22 @@ struct CleanupHistoryView: View {
 
     private func summaryText(_ summary: CleanupHistorySummary) -> String {
         var parts = [
-            "\(summary.removedCount) \(summary.removedCount == 1 ? "item" : "items") removed",
-            "Removed size \(ByteFormatting.string(summary.removedBytes))",
+            String(localized: "\(summary.removedCount) item removed", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
+            String(localized: "Removed size \(ByteFormatting.localizedString(summary.removedBytes))"),
         ]
         // Only when the two figures actually part company. They agree for every
         // ordinary removal, and repeating one number twice would read as a defect;
         // they diverge when APFS was sharing the removed files' blocks with copies
         // that are still on the disk, and then the second number is the true one.
         if summary.freedBytes != summary.removedBytes {
-            parts.append("Freed \(ByteFormatting.string(summary.freedBytes))")
+            parts.append(String(localized: "Freed \(ByteFormatting.localizedString(summary.freedBytes))"))
         }
-        parts.append("\(summary.availableInTrashCount) available in Trash")
+        parts.append(String(localized: "\(summary.availableInTrashCount) available in Trash"))
         if summary.permanentlyRemovedCount > 0 {
-            parts.append("\(summary.permanentlyRemovedCount) permanent")
+            parts.append(String(localized: "\(summary.permanentlyRemovedCount) permanent"))
         }
         if summary.failedCount > 0 {
-            parts.append("\(summary.failedCount) failed")
+            parts.append(String(localized: "\(summary.failedCount) failed"))
         }
         return parts.joined(separator: " · ")
     }
@@ -231,6 +232,15 @@ private enum HistoryFilter: String, CaseIterable, Identifiable {
     case inTrash = "In Trash"
     case restored = "Restored"
     case failed = "Failed"
+
+    var title: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .inTrash: String(localized: "In Trash")
+        case .restored: String(localized: "Restored")
+        case .failed: String(localized: "Failed")
+        }
+    }
 
     var id: Self { self }
 
@@ -245,10 +255,10 @@ private enum HistoryFilter: String, CaseIterable, Identifiable {
 
     var helpText: String {
         switch self {
-        case .all: "All recorded removal results."
-        case .inTrash: "Items that are still in the Trash."
-        case .restored: "Items that Moppo restored from the Trash to their original locations."
-        case .failed: "Items that Moppo could not remove."
+        case .all: String(localized: "All recorded removal results.")
+        case .inTrash: String(localized: "Items that are still in the Trash.")
+        case .restored: String(localized: "Items that Moppo restored from the Trash to their original locations.")
+        case .failed: String(localized: "Items that Moppo could not remove.")
         }
     }
 
@@ -310,13 +320,13 @@ private struct ResultLabel: View {
 
     private var title: String {
         switch state {
-        case .availableInTrash: "In Trash"
-        case .inTrash: "In Trash"
-        case .restored: "Restored"
-        case .removedPermanently: "Removed permanently"
-        case .noLongerInTrash: "No longer in Trash"
-        case .failed: "Could not remove"
-        case .skipped: "Skipped"
+        case .availableInTrash: String(localized: "In Trash")
+        case .inTrash: String(localized: "In Trash")
+        case .restored: String(localized: "Restored")
+        case .removedPermanently: String(localized: "Removed permanently")
+        case .noLongerInTrash: String(localized: "No longer in Trash")
+        case .failed: String(localized: "Could not remove")
+        case .skipped: String(localized: "Skipped")
         }
     }
 
@@ -342,22 +352,22 @@ private struct ResultLabel: View {
     }
 
     private var helpText: String {
-        if let toolCommandResult { return toolCommandResult.command + "\n" + toolCommandResult.summary }
+        if let toolCommandResult { return toolCommandResult.command + "\n" + toolCommandResult.localizedSummary }
         return switch state {
         case .availableInTrash:
-            "The receipt matches this item in the Trash. Use the Trash view to put it back."
+            String(localized: "The receipt matches this item in the Trash. Use the Trash view to put it back.")
         case .inTrash:
-            "The Trash path exists, but the receipt cannot prove that it contains the same item."
+            String(localized: "The Trash path exists, but the receipt cannot prove that it contains the same item.")
         case .restored:
-            "Moppo put this item back at its original location."
+            String(localized: "Moppo put this item back at its original location.")
         case .removedPermanently:
-            "This item did not move to the Trash, so it cannot be put back."
+            String(localized: "This item did not move to the Trash, so it cannot be put back.")
         case .noLongerInTrash:
-            "This receipt no longer matches an item in the Trash."
+            String(localized: "This receipt no longer matches an item in the Trash.")
         case .failed:
-            "Moppo did not remove this item."
+            String(localized: "Moppo did not remove this item.")
         case .skipped:
-            "Moppo kept this item because removal checks did not pass. Inspect the saved plan outcome for the reason."
+            String(localized: "Moppo kept this item because removal checks did not pass. Inspect the saved plan outcome for the reason.")
         }
     }
 }

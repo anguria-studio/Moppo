@@ -38,8 +38,8 @@ struct ICloudDashboardCard: View {
                         .accessibilityElement(children: .combine)
                     } else {
                         Text(state == .unavailable
-                             ? "Storage information is unavailable."
-                             : "See your iCloud storage here.")
+                             ? String(localized: "Storage information is unavailable.")
+                             : String(localized: "See your iCloud storage here."))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack(spacing: 8) {
@@ -75,12 +75,12 @@ struct ICloudCard: View {
     // Binary throughout, and labelled "GB" the way iCloud labels it: the plan
     // tiers are stored as GiB because that is what `brctl` and iCloud's own pages
     // agree on, and the decimal formatter turned the user's "200 GB" plan into
-    // "214.75 GB". See `ByteFormatting.binaryString`.
+    // "214.75 GB". See `ByteFormatting.localizedBinaryString`.
     private var summary: String {
-        let used = ByteFormatting.binaryString(storage.usedBytes)
-        let total = ByteFormatting.binaryString(storage.totalBytes)
-        let free = ByteFormatting.binaryString(storage.freeBytes)
-        return "\(used) of \(total) used · \(free) available"
+        let used = ByteFormatting.localizedBinaryString(storage.usedBytes)
+        let total = ByteFormatting.localizedBinaryString(storage.totalBytes)
+        let free = ByteFormatting.localizedBinaryString(storage.freeBytes)
+        return String(localized: "\(used) of \(total) used · \(free) available")
     }
 
     var body: some View {
@@ -88,7 +88,7 @@ struct ICloudCard: View {
             GroupedBox(radius: Token.Radius.card) {
                 VStack(alignment: .leading, spacing: 0) {
                     header
-                    Text(ByteFormatting.binaryString(storage.usedBytes))
+                    Text(ByteFormatting.localizedBinaryString(storage.usedBytes))
                         .animatedTotal(storage.usedBytes)
                         .font(.mcStatValue)
                         .foregroundStyle(Token.Text.primary)
@@ -106,7 +106,7 @@ struct ICloudCard: View {
         }
         .buttonStyle(CardPressButtonStyle())
         .accessibilityLabel("iCloud")
-        .accessibilityValue(summary + (storage.planWasInferred ? ". Plan size is estimated." : ""))
+        .accessibilityValue(summary + (storage.planWasInferred ? String(localized: ". Plan size is estimated.") : ""))
         .accessibilityHint("Open iCloud settings")
     }
 
@@ -178,8 +178,8 @@ private struct ICloudBar: View {
                             if inside { hovered = segment.id }
                             else if hovered == segment.id { hovered = nil }
                         }
-                        .accessibilityLabel(segment.displayName)
-                        .accessibilityValue(ByteFormatting.binaryString(segment.bytes))
+                        .accessibilityLabel(segment.localizedDisplayName)
+                        .accessibilityValue(ByteFormatting.localizedBinaryString(segment.bytes))
                 }
             }
             .clipShape(Capsule())
@@ -200,16 +200,16 @@ private struct ICloudBar: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
                     CategoryDot(color: segment.color, size: 8)
-                    Text(segment.displayName)
+                    Text(segment.localizedDisplayName)
                         .font(.mcRowTitle)
                         .foregroundStyle(Token.Text.primary)
-                    Text(ByteFormatting.binaryString(segment.bytes))
+                    Text(ByteFormatting.localizedBinaryString(segment.bytes))
                         .font(.mcRowValue)
                         .foregroundStyle(Token.Text.secondary)
                 }
                 .fixedSize()
 
-                if let explanation = segment.id.explanation {
+                if let explanation = segment.id.localizedExplanation {
                     Text(explanation)
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)

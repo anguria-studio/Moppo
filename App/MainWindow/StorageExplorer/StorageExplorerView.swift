@@ -129,7 +129,7 @@ struct StorageExplorerView: View {
         if model.currentURL == nil {
             startView
         } else if model.needsRefresh {
-            PageStateLayout(title: "Waiting for the Current Operation") {
+            PageStateLayout(title: String(localized: "Waiting for the Current Operation")) {
                 PageStateMascot(mode: .hourglass)
             } detail: {
                 Text("Finish or stop the current operation to measure this folder again.")
@@ -162,7 +162,7 @@ struct StorageExplorerView: View {
         PageHeader {
             PageSegmentedControl(selection: $presentation, segments:
                 StorageExplorerPresentation.allCases.map { option in
-                    .init(id: option, title: option.rawValue,
+                    .init(id: option, title: option.title,
                           symbol: option == .list ? "list.bullet" : "square.grid.2x2")
                 }
             )
@@ -184,13 +184,13 @@ struct StorageExplorerView: View {
 
     private var summaryText: String {
         guard let snapshot = model.snapshot else {
-            return model.isLoading ? "Reading folder contents…"
-                : model.currentURL?.lastPathComponent.nonEmpty ?? "This Mac"
+            return model.isLoading ? String(localized: "Reading folder contents…")
+                : model.currentURL?.lastPathComponent.nonEmpty ?? String(localized: "This Mac")
         }
         let count = snapshot.items.count
-        let noun = count == 1 ? "item" : "items"
-        let prefix = snapshot.isComplete ? "" : "Measuring · "
-        return "\(prefix)\(count) \(noun) · \(ByteFormatting.string(snapshot.allocatedBytes))"
+        let size = ByteFormatting.localizedString(snapshot.allocatedBytes)
+        return snapshot.isComplete ? String(localized: "\(count) item · \(size)", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+            : String(localized: "Measuring · \(count) item · \(size)", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 
     /// Where you are, and the two ways back — a row of its own, because both are
@@ -237,8 +237,8 @@ struct StorageExplorerView: View {
 
     private var startView: some View {
         PageState(
-            title: "Explore storage", symbol: "internaldrive",
-            detail: "Choose a folder or volume. Moppo will measure each item on disk."
+            title: String(localized: "Explore storage"), symbol: "internaldrive",
+            detail: String(localized: "Choose a folder or volume. Moppo will measure each item on disk.")
         ) {
             locationMenu
                 .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
@@ -247,7 +247,7 @@ struct StorageExplorerView: View {
 
     private func errorView(_ error: StorageExplorerError) -> some View {
         PageState(
-            title: "The folder could not be read", symbol: "folder.badge.questionmark",
+            title: String(localized: "The folder could not be read"), symbol: "folder.badge.questionmark",
             detail: errorDescription(error)
         ) {
             PageStateActions {
@@ -263,8 +263,8 @@ struct StorageExplorerView: View {
 
     private var cancelledView: some View {
         PageState(
-            title: "Measurement stopped", symbol: "stop.circle",
-            detail: "Measure this folder again or choose another location."
+            title: String(localized: "Measurement stopped"), symbol: "stop.circle",
+            detail: String(localized: "Measure this folder again or choose another location.")
         ) {
             PageStateActions {
                 Button("Measure Again") { model.refresh() }
@@ -278,7 +278,7 @@ struct StorageExplorerView: View {
     }
 
     private var emptyView: some View {
-        PageCompletionView(title: "No files found", animate: animateEmptyResult) {
+        PageCompletionView(title: String(localized: "No files found"), animate: animateEmptyResult) {
             Text("Choose another folder or return to the previous folder.")
         } actions: {
             locationMenu
@@ -290,23 +290,23 @@ struct StorageExplorerView: View {
         CompactTable(
             items: sortedItems, selection: $model.selection, sortOrder: $sortOrder,
             columns: [
-                CompactTableColumn("Name", width: 340, min: 200, sort: KeyPathComparator(\StorageExplorerItem.name)) { item, selected in
+                CompactTableColumn(String(localized: "Name"), width: 340, min: 200, sort: KeyPathComparator(\StorageExplorerItem.name)) { item, selected in
                     nameCell(item).foregroundStyle(selected ? Color.white : Token.Text.tableName)
                 },
-                CompactTableColumn("Kind", width: 90, min: 75, max: 160, sort: KeyPathComparator(\StorageExplorerItem.kindSortName)) { item, selected in
+                CompactTableColumn(String(localized: "Kind"), width: 90, min: 75, max: 160, sort: KeyPathComparator(\StorageExplorerItem.kindSortName)) { item, selected in
                     Text(item.kindTitle).foregroundStyle(selected ? Color.white : Token.Text.tableDetail)
                 },
-                CompactTableColumn("Files", width: 64, min: 50, max: 96, sort: KeyPathComparator(\StorageExplorerItem.fileCount)) { item, selected in
+                CompactTableColumn(String(localized: "Files"), width: 64, min: 50, max: 96, sort: KeyPathComparator(\StorageExplorerItem.fileCount)) { item, selected in
                     Text(item.fileCountLabel).monospacedDigit()
                         .foregroundStyle(selected ? Color.white : Token.Text.tableDetail)
                 },
-                CompactTableColumn("Modified", width: 110, min: 98, max: 150, sort: KeyPathComparator(\StorageExplorerItem.modificationSortValue)) { item, selected in
+                CompactTableColumn(String(localized: "Modified"), width: 110, min: 98, max: 150, sort: KeyPathComparator(\StorageExplorerItem.modificationSortValue)) { item, selected in
                     Text(item.modificationDate?.formatted(date: .abbreviated, time: .omitted) ?? "—")
                         .foregroundStyle(selected ? Color.white : Token.Text.tableDetail)
                 },
-                CompactTableColumn("Size", width: 90, min: 86, max: 124, sort: KeyPathComparator(\StorageExplorerItem.allocatedBytes)) { item, selected in
+                CompactTableColumn(String(localized: "Size"), width: 90, min: 86, max: 124, sort: KeyPathComparator(\StorageExplorerItem.allocatedBytes)) { item, selected in
                     Text(model.snapshot?.isComplete == false && item.allocatedBytes == 0
-                         ? "Measuring…" : ByteFormatting.string(item.allocatedBytes))
+                         ? String(localized: "Measuring…") : ByteFormatting.localizedString(item.allocatedBytes))
                         .monospacedDigit()
                         .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -324,12 +324,12 @@ struct StorageExplorerView: View {
                 var actions: [CompactTableMenuAction] = []
                 if selection.count == 1, let item = firstItem(in: selection) {
                     if item.opensAsDirectory {
-                        actions.append(CompactTableMenuAction(title: "Open", isEnabled: !isMeasurementBlocked) { model.open(item) })
+                        actions.append(CompactTableMenuAction(title: String(localized: "Open"), isEnabled: !isMeasurementBlocked) { model.open(item) })
                     }
-                    actions.append(CompactTableMenuAction(title: "Quick Look") { showPreview(item) })
+                    actions.append(CompactTableMenuAction(title: String(localized: "Quick Look")) { showPreview(item) })
                 }
                 if !selection.isEmpty {
-                    actions.append(CompactTableMenuAction(title: "Show in Finder") {
+                    actions.append(CompactTableMenuAction(title: String(localized: "Show in Finder")) {
                         NSWorkspace.shared.activateFileViewerSelecting(urls(in: selection))
                     })
                 }
@@ -472,9 +472,9 @@ struct StorageExplorerView: View {
     private func errorDescription(_ error: StorageExplorerError) -> String {
         switch error {
         case .unavailable:
-            "Moppo cannot access this folder. Check its permissions and try again."
+            String(localized: "Moppo cannot access this folder. Check its permissions and try again.")
         case .notDirectory:
-            "Choose a folder or mounted volume."
+            String(localized: "Choose a folder or mounted volume.")
         }
     }
 
@@ -483,27 +483,27 @@ struct StorageExplorerView: View {
     ) -> String {
         switch reason {
         case .excluded:
-            "This item contains an excluded path."
+            String(localized: "This item contains an excluded path.")
         case .protectedContents:
-            "This item contains protected data."
+            String(localized: "This item contains protected data.")
         case .unreadableContents:
-            "Moppo could not read all contents."
+            String(localized: "Moppo could not read all contents.")
         case .system:
-            "Moppo protects this system location."
+            String(localized: "Moppo protects this system location.")
         case .library:
-            "Library folders belong to the Scanner. Use Scanner to remove caches, logs and app data."
+            String(localized: "Library folders belong to the Scanner. Use Scanner to remove caches, logs and app data.")
         case .trash:
-            "This is the Trash. Use the Trash view to empty it or put items back."
+            String(localized: "This is the Trash. Use the Trash view to empty it or put items back.")
         case .application:
-            "Use App Uninstaller to remove this application."
+            String(localized: "Use App Uninstaller to remove this application.")
         case .mediaLibrary:
-            "Photos, Music or TV manages this library. Remove items in that app."
+            String(localized: "Photos, Music or TV manages this library. Remove items in that app.")
         case .volume:
-            "Moppo measures this volume separately. Use macOS tools to eject or erase it."
+            String(localized: "Moppo measures this volume separately. Use macOS tools to eject or erase it.")
         case .cloudOnly:
-            "This item contains iCloud files that are not on this Mac. Moppo protects them from removal."
+            String(localized: "This item contains iCloud files that are not on this Mac. Moppo protects them from removal.")
         case .unavailable:
-            "Moppo cannot verify this item."
+            String(localized: "Moppo cannot verify this item.")
         }
     }
 }
@@ -514,11 +514,11 @@ private extension StorageExplorerItem.CloudState {
         case .none:
             ""
         case .downloaded:
-            "This item is stored on this Mac and in iCloud. Moving it to the Trash removes it from other devices."
+            String(localized: "This item is stored on this Mac and in iCloud. Moving it to the Trash removes it from other devices.")
         case .cloudOnly:
-            "This iCloud item is not stored on this Mac."
+            String(localized: "This iCloud item is not stored on this Mac.")
         case .containsCloudOnlyItems:
-            "This item contains iCloud files that are not stored on this Mac."
+            String(localized: "This item contains iCloud files that are not stored on this Mac.")
         }
     }
 
@@ -610,6 +610,13 @@ private enum StorageExplorerPresentation: String, CaseIterable, Identifiable {
     case list = "List"
     case map = "Map"
 
+    var title: String {
+        switch self {
+        case .list: String(localized: "List")
+        case .map: String(localized: "Map")
+        }
+    }
+
     var id: Self { self }
 }
 
@@ -675,8 +682,8 @@ private struct StorageTreemapView: View {
             }
         } else {
             PageState(
-                title: "No allocated space to map", symbol: "square.grid.3x3",
-                detail: "Switch to List to see items that use 0 B."
+                title: String(localized: "No allocated space to map"), symbol: "square.grid.3x3",
+                detail: String(localized: "Switch to List to see items that use 0 B.")
             )
         }
     }
@@ -716,11 +723,11 @@ private struct StorageTreemapView: View {
         .accessibilityValue(accessibilityValue(item))
         .accessibilityHint(
             item.opensAsDirectory
-                ? "Double-click to open this folder."
-                : "Double-click to preview this file."
+                ? String(localized: "Double-click to open this folder.")
+                : String(localized: "Double-click to preview this file.")
         )
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityAction(named: item.opensAsDirectory ? "Open" : "Quick Look") {
+        .accessibilityAction(named: item.opensAsDirectory ? String(localized: "Open") : String(localized: "Quick Look")) {
             activate(item)
         }
         .overlay(alignment: .topLeading) {
@@ -768,8 +775,8 @@ private struct StorageTreemapView: View {
                 .buttonStyle(.plain)
                 .disabled(item.opensAsDirectory && isNavigationDisabled)
                 .padding(5)
-                .help(item.opensAsDirectory ? "Open this folder" : "Preview this file")
-                .accessibilityLabel("\(item.opensAsDirectory ? "Open" : "Preview") \(item.name)")
+                .help(item.opensAsDirectory ? String(localized: "Open this folder") : String(localized: "Preview this file"))
+                .accessibilityLabel(item.opensAsDirectory ? String(localized: "Open \(item.name)") : String(localized: "Preview \(item.name)"))
             }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isSelected)
@@ -817,7 +824,7 @@ private struct StorageTreemapView: View {
                     .lineLimit(2)
                     .truncationMode(.middle)
                     .multilineTextAlignment(.center)
-                Text(ByteFormatting.string(item.allocatedBytes))
+                Text(ByteFormatting.localizedString(item.allocatedBytes))
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
                     .lineLimit(1)
@@ -838,7 +845,7 @@ private struct StorageTreemapView: View {
                         .truncationMode(.middle)
                 }
                 if size.height >= 58 {
-                    Text(ByteFormatting.string(item.allocatedBytes))
+                    Text(ByteFormatting.localizedString(item.allocatedBytes))
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
                         .lineLimit(1)
@@ -858,7 +865,7 @@ private struct StorageTreemapView: View {
         let nameFont = NSFont.systemFont(ofSize: 13, weight: .medium)
         let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
         let name = item.name as NSString
-        let value = ByteFormatting.string(item.allocatedBytes) as NSString
+        let value = ByteFormatting.localizedString(item.allocatedBytes) as NSString
         if value.size(withAttributes: [.font: valueFont]).width > width { return true }
         if !isCentered {
             return name.size(withAttributes: [.font: nameFont]).width > nameWidth
@@ -907,9 +914,7 @@ private struct StorageTreemapView: View {
     private var zeroSizeNote: some View {
         let count = items.filter { $0.allocatedBytes <= 0 }.count
         if count > 0 {
-            let noun = count == 1 ? "item" : "items"
-            let verb = count == 1 ? "is" : "are"
-            Text("\(count) \(noun) using 0 B \(verb) not shown.")
+            Text("\(count) item using \(ByteFormatting.localizedString(0)) is not shown.")
                 .font(.mcCaption)
                 .foregroundStyle(Token.Text.secondary)
                 .padding(.horizontal, 9)
@@ -957,31 +962,34 @@ private struct StorageTreemapView: View {
 
     private func treemapDetail(_ item: StorageExplorerItem) -> String {
         let protection = item.protectionReason.map { " · " + protectionTitle($0) } ?? ""
-        return "\(ByteFormatting.string(item.allocatedBytes)) · \(item.kindTitle)" + protection
+        return "\(ByteFormatting.localizedString(item.allocatedBytes)) · \(item.kindTitle)" + protection
     }
 
     private func protectionTitle(
         _ reason: StorageExplorerItem.ProtectionReason
     ) -> String {
         switch reason {
-        case .excluded:           "Excluded"
-        case .protectedContents:  "Contains protected data"
-        case .unreadableContents: "Unreadable contents"
-        case .system:             "System location"
-        case .library:            "Use Scanner"
-        case .trash:              "Use Trash"
-        case .application:        "Use App Uninstaller"
-        case .mediaLibrary:       "Managed media library"
-        case .volume:             "Mounted volume"
-        case .cloudOnly:          "Cloud-only contents"
-        case .unavailable:        "Unavailable"
+        case .excluded:           String(localized: "Excluded")
+        case .protectedContents:  String(localized: "Contains protected data")
+        case .unreadableContents: String(localized: "Unreadable contents")
+        case .system:             String(localized: "System location")
+        case .library:            String(localized: "Use Scanner")
+        case .trash:              String(localized: "Use Trash")
+        case .application:        String(localized: "Use App Uninstaller")
+        case .mediaLibrary:       String(localized: "Managed media library")
+        case .volume:             String(localized: "Mounted volume")
+        case .cloudOnly:          String(localized: "Cloud-only contents")
+        case .unavailable:        String(localized: "Unavailable")
         }
     }
 
     private func accessibilityValue(_ item: StorageExplorerItem) -> String {
-        let protection = item.isRemovable ? "" : ", protected"
-        let cloud = item.cloudState == .none ? "" : ". " + item.cloudState.explanation
-        return "\(ByteFormatting.string(item.allocatedBytes)), \(item.kindTitle)" + protection + cloud
+        let size = ByteFormatting.localizedString(item.allocatedBytes)
+        let description = item.isRemovable
+            ? String(localized: "\(size), \(item.kindTitle)")
+            : String(localized: "\(size), \(item.kindTitle), protected")
+        return item.cloudState == .none
+            ? description : String(localized: "\(description). \(item.cloudState.explanation)")
     }
 }
 
@@ -1034,13 +1042,13 @@ private struct TreemapTooltipLayout: Layout {
 extension StorageExplorerItem {
     var kindTitle: String {
         switch kind {
-        case .file:         "File"
-        case .folder:       "Folder"
+        case .file:         String(localized: "File")
+        case .folder:       String(localized: "Folder")
         // A symbolic link, which Finder shows as one; an alias is a different thing.
-        case .symbolicLink: "Symbolic link"
-        case .package:      "Package"
-        case .application:  "Application"
-        case .volume:       "Volume"
+        case .symbolicLink: String(localized: "Symbolic link")
+        case .package:      String(localized: "Package")
+        case .application:  String(localized: "Application")
+        case .volume:       String(localized: "Volume")
         }
     }
 

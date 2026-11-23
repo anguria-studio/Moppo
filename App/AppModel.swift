@@ -135,6 +135,7 @@ final class AppModel {
         dashboard.canLoad = { [weak self] in self?.isShowingWelcome == false }
         dashboard.hasICloudAccess = hasFullDiskAccess
         dashboard.canMeasure = { [weak self] automatic in self?.checkDiskAccess(automatic: automatic) ?? false }
+        dashboard.canChangeDiskFiles = { [weak operations] in operations?.isPreparingLanguageRestart != true }
         dashboard.beforeMeasurement = { [weak cleanup] in await cleanup?.waitForScan() ?? true }
         dashboard.onVolumeChanged = { [weak self] volume in
             guard let self, let settings = self.settings, settings.lowSpaceAlertsEnabled else { return }
@@ -242,21 +243,21 @@ final class AppModel {
         /// Cleanup comes first. Tools and storage information follow it.
         static let sidebarSections: [SidebarSection] = [
             SidebarSection(title: "", views: [.scanner]),
-            SidebarSection(title: "Tools", views: [.storageExplorer, .uninstaller, .duplicates]),
-            SidebarSection(title: "Overview", views: [.dashboard, .history, .trash])
+            SidebarSection(title: String(localized: "Tools"), views: [.storageExplorer, .uninstaller, .duplicates]),
+            SidebarSection(title: String(localized: "Overview"), views: [.dashboard, .history, .trash])
         ]
 
         static var sidebarViews: [View] { sidebarSections.flatMap(\.views) }
 
         var title: String {
             switch self {
-            case .dashboard:    "Dashboard"
-            case .scanner:      "Cleanup"
-            case .storageExplorer: "Storage Explorer"
-            case .uninstaller:  "App Uninstaller"
-            case .history:      "History"
-            case .trash:        "Trash"
-            case .duplicates:   "Duplicates"
+            case .dashboard:    String(localized: "Dashboard")
+            case .scanner:      String(localized: "Cleanup")
+            case .storageExplorer: String(localized: "Storage Explorer")
+            case .uninstaller:  String(localized: "App Uninstaller")
+            case .history:      String(localized: "History")
+            case .trash:        String(localized: "Trash")
+            case .duplicates:   String(localized: "Duplicates")
             }
         }
 
@@ -310,8 +311,8 @@ final class AppModel {
 
         var title: String {
             switch self {
-            case .files:  "Files"
-            case .photos: "Photos"
+            case .files:  String(localized: "Files")
+            case .photos: String(localized: "Photos")
             }
         }
     }
@@ -420,16 +421,16 @@ final class AppModel {
             return
         }
         let count = outcome.removedCount
-        var detail = "\(count) \(count == 1 ? "item" : "items") · \(ByteFormatting.string(outcome.removedBytes))"
+        var detail = String(localized: "\(count) items · \(ByteFormatting.localizedString(outcome.removedBytes))", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         if remaining > 0 {
-            detail += "\n\(remaining) \(remaining == 1 ? "item was" : "items were") not removed."
+            detail += "\n" + String(localized: "\(remaining) items were not removed.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
         if !outcome.permissionDenied.isEmpty {
-            detail += "\nmacOS denied access to some items. Moppo left them in place. Review them in Finder."
+            detail += String(localized: "\nmacOS denied access to some items. Moppo left them in place. Review them in Finder.")
         }
         removalCompletion = RemovalCompletion(
             destination: destination,
-            title: success ? "Moved to Trash" : (count > 0 ? "Some items were not removed" : "Nothing was removed"),
+            title: success ? String(localized: "Moved to Trash") : (count > 0 ? String(localized: "Some items were not removed") : String(localized: "Nothing was removed")),
             detail: detail,
             isSuccess: success,
             finderURLs: outcome.failed.map { URL(fileURLWithPath: $0) }
@@ -528,27 +529,23 @@ final class AppModel {
         var title: String {
             switch self {
             case .checkingWorktrees:
-                return "Checking selected worktrees"
+                return String(localized: "Checking selected worktrees")
             case .cleaningUp(let count, _):
-                let items = count == 1 ? "item" : "items"
-                return "Removing \(count) \(items)"
+                return String(localized: "Removing \(count) items", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             case .emptyingTrash:
-                return "Emptying the Trash"
+                return String(localized: "Emptying the Trash")
             case .removingDuplicateFiles(let count, _):
-                let files = count == 1 ? "file" : "files"
-                return "Moving \(count) duplicate \(files) to the Trash"
+                return String(localized: "Moving \(count) duplicate files to the Trash", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             case .removingStorageItems(let count, _):
-                let items = count == 1 ? "item" : "items"
-                return "Moving \(count) \(items) to the Trash"
+                return String(localized: "Moving \(count) items to the Trash", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             case .reviewingStorageItems(let count):
-                let items = count == 1 ? "item" : "items"
-                return "Reviewing \(count) \(items)"
+                return String(localized: "Reviewing \(count) items", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             case .restoringTrashItem(let name):
-                return "Putting Back \(name)"
+                return String(localized: "Putting Back \(name)")
             case .uninstalling(let name, _, let waiting, _):
-                return waiting ? "Waiting for \(name) to quit" : "Uninstalling \(name)"
+                return waiting ? String(localized: "Waiting for \(name) to quit") : String(localized: "Uninstalling \(name)")
             case .waitingForApplicationsToQuit(let names):
-                return "Waiting for \(ListFormatter.localizedString(byJoining: names)) to quit"
+                return String(localized: "Waiting for these apps to quit: \(ListFormatter.localizedString(byJoining: names))")
             }
         }
 
@@ -556,35 +553,32 @@ final class AppModel {
         var detail: String {
             switch self {
             case .checkingWorktrees:
-                return "Moppo checks the selected worktrees again before removal. If a safety check fails, the worktrees stay on disk."
+                return String(localized: "Moppo checks the selected worktrees again before removal. If a safety check fails, the worktrees stay on disk.")
             case .cleaningUp(_, let bytes):
-                return "\(ByteFormatting.string(bytes)). Moppo checks the selected items before removal."
+                return String(localized: "\(ByteFormatting.localizedString(bytes)). Moppo checks the selected items before removal.")
             case .emptyingTrash(_, let bytes),
                  .removingStorageItems(_, let bytes):
-                return "\(ByteFormatting.string(bytes)). Each item is measured on disk "
-                    + "before it goes, so large folders take a moment."
+                return String(localized: "\(ByteFormatting.localizedString(bytes)). Each item is measured on disk before it goes, so large folders take a moment.")
             case .removingDuplicateFiles(_, let bytes):
                 // Not measured: re-hashed. The keeper and every chosen copy are read
                 // in full again, which is what makes a set of large videos slow.
-                return "\(ByteFormatting.string(bytes)). Each copy and its keeper are "
-                    + "verified byte for byte before it goes, so large files take a moment."
+                return String(localized: "\(ByteFormatting.localizedString(bytes)). Each copy and its keeper are verified byte for byte before it goes, so large files take a moment.")
             case .waitingForApplicationsToQuit:
-                return "Save your work if an app asks. Cancel stops the wait. Apps that already closed stay closed."
+                return String(localized: "Save your work if an app asks. Cancel stops the wait. Apps that already closed stay closed.")
             case .reviewingStorageItems:
-                return "Moppo is checking the selected items before moving them to the Trash."
+                return String(localized: "Moppo is checking the selected items before moving them to the Trash.")
             case .restoringTrashItem:
-                return "Moving the item to its original location."
+                return String(localized: "Moving the item to its original location.")
             case .uninstalling(_, let applicationOnly, let waiting, let usingHomebrew):
                 if waiting {
-                    return "The application and its helpers are asked to quit. "
-                        + "Nothing is removed until they are gone."
+                    return String(localized: "The application and its helpers are asked to quit. Nothing is removed until they are gone.")
                 }
                 if usingHomebrew {
-                    return "Homebrew removes the package. Moppo then moves its related data to the Trash."
+                    return String(localized: "Homebrew removes the package. Moppo then moves its related data to the Trash.")
                 }
                 return applicationOnly
-                    ? "Related files stay on disk."
-                    : "Moppo removes the application first. Related files stay if application removal fails."
+                    ? String(localized: "Related files stay on disk.")
+                    : String(localized: "Moppo removes the application first. Related files stay if application removal fails.")
             }
         }
     }
@@ -619,8 +613,8 @@ final class AppModel {
         switch view {
         case .scanner:
             cleanup.hasSelectedPermanentItems
-                ? "Remove (\(ByteFormatting.string(cleanup.cleanupSelectionBytes)))"
-                : "Move to Trash (\(ByteFormatting.string(cleanup.cleanupSelectionBytes)))"
+                ? String(localized: "Remove (\(ByteFormatting.localizedString(cleanup.cleanupSelectionBytes)))")
+                : String(localized: "Move to Trash (\(ByteFormatting.localizedString(cleanup.cleanupSelectionBytes)))")
         case .duplicates:
             duplicateKind == .files ? fileDuplicates.removeLabel : photoDuplicates.removeLabel
         case .uninstaller:
@@ -628,9 +622,9 @@ final class AppModel {
         case .storageExplorer:
             storageExplorer.removeLabel
         case .trash:
-            "Empty Trash"
+            String(localized: "Empty Trash")
         case .dashboard, .history:
-            "Remove"
+            String(localized: "Remove")
         }
     }
 
@@ -685,26 +679,26 @@ final class AppModel {
             return toolCommandSummary(outcome)
         }
         guard !outcome.failed.isEmpty || !outcome.skippedWorktrees.isEmpty else { return nil }
-        let removedSummary = "Moppo removed \(outcome.removedCount) other \(outcome.removedCount == 1 ? "item" : "items")."
+        let removedSummary = String(localized: "Moppo removed \(outcome.removedCount) other items.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         if !outcome.trashAccessDenied.isEmpty {
             let denied = Set(outcome.trashAccessDenied)
-            let one = denied.count == 1
             let needsDiskAccess = !hasFullDiskAccess()
-            let reason = needsDiskAccess ? "Moppo does not have Full Disk Access" : "macOS denied Trash access"
-            var message = "\(denied.count) \(one ? "item" : "items") could not be removed because \(reason). "
-                + "Remove \(one ? "it" : "them") manually or "
-                + (needsDiskAccess ? "enable Full Disk Access." : "review permissions in System Settings.")
+            var message = needsDiskAccess
+                ? String(localized: "\(denied.count) items could not be removed because Moppo does not have Full Disk Access. Remove them manually or enable Full Disk Access.", bundle: MoppoResources.bundle, locale: MoppoResources.locale,
+                    comment: "Trash access was denied and Full Disk Access is off. The files remain on disk.")
+                : String(localized: "\(denied.count) items could not be removed because macOS denied Trash access. Remove them manually or review permissions in System Settings.", bundle: MoppoResources.bundle, locale: MoppoResources.locale,
+                    comment: "Trash access was denied although Full Disk Access is on. The files remain on disk.")
             if outcome.removedCount > 0 { message += "\n" + removedSummary }
             let otherFailures = Set(outcome.failed).subtracting(denied).count
             if otherFailures > 0 {
-                message += "\n\(otherFailures) other \(otherFailures == 1 ? "item could" : "items could") not be removed."
+                message += "\n" + String(localized: "\(otherFailures) other items could not be removed.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             }
             if !outcome.skippedWorktrees.isEmpty {
                 let count = outcome.skippedWorktrees.count
-                message += "\nMoppo kept \(count) \(count == 1 ? "worktree" : "worktrees") because the safety checks changed."
+                message += "\n" + String(localized: "Moppo kept \(count) worktrees because the safety checks changed.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             }
             return Notice(
-                title: needsDiskAccess ? "Full Disk Access Needed" : "Trash Access Was Denied",
+                title: needsDiskAccess ? String(localized: "Full Disk Access Needed") : String(localized: "Trash Access Was Denied"),
                 message: message,
                 finderURLs: (outcome.failed + outcome.skippedWorktrees).map { URL(fileURLWithPath: $0) },
                 showsFullDiskAccessAction: needsDiskAccess
@@ -713,42 +707,40 @@ final class AppModel {
         var notice: Notice
         if !outcome.skippedWorktrees.isEmpty {
             let names = outcome.skippedWorktrees.map { FileEntry.abbreviate($0) }.joined(separator: "\n")
-            var message = "Moppo kept these worktrees because the final safety check did not pass:\n\(names)"
-            message += "\nThe folders remain on disk. Select All to review their current status."
+            var message = String(localized: "Moppo kept these worktrees because the final safety check did not pass:\n\(names)")
+            message += String(localized: "\nThe folders remain on disk. Select All to review their current status.")
             if outcome.removedCount > 0 {
                 message += "\n" + removedSummary
             }
             if !outcome.failed.isEmpty {
-                message += "\n\(outcome.failed.count) other \(outcome.failed.count == 1 ? "item could" : "items could") not be removed."
+                message += "\n" + String(localized: "\(outcome.failed.count) other items could not be removed.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             }
-            notice = Notice(title: "Worktrees Were Kept", message: message,
+            notice = Notice(title: String(localized: "Worktrees Were Kept"), message: message,
                 finderURLs: (outcome.skippedWorktrees + outcome.failed).map { URL(fileURLWithPath: $0) })
         } else {
             let count = outcome.failed.count
-            let one = count == 1
             let message = outcome.removedCount == 0
-                ? (one ? "The selected item could not be removed. The item remains in place."
-                    : "None of the \(count) selected items could be removed. They remain in place.")
-                : "\(count) \(one ? "item" : "items") could not be removed. " + removedSummary
+                ? String(localized: "None of the \(count) selected items could be removed. They remain in place.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+                : String(localized: "\(count) items could not be removed.", bundle: MoppoResources.bundle, locale: MoppoResources.locale) + "\n" + removedSummary
             notice = Notice(
-                title: outcome.removedCount == 0 ? "Nothing Was Removed" : "Some Items Could Not Be Removed",
+                title: outcome.removedCount == 0 ? String(localized: "Nothing Was Removed") : String(localized: "Some Items Could Not Be Removed"),
                 message: message,
                 finderURLs: outcome.failed.map { URL(fileURLWithPath: $0) }
             )
         }
         if !outcome.permissionDenied.isEmpty {
-            notice.message += "\nmacOS denied access to some items. Review them in Finder."
+            notice.message += String(localized: "\nmacOS denied access to some items. Review them in Finder.")
         }
         return notice
     }
 
     /// The complete result of a cleanup with tool commands, including successful commands.
     private func toolCommandSummary(_ outcome: CleanupOutcome) -> Notice {
-        var messages = outcome.toolCommandResults.map(\.summary)
-        var notice = cleanUpNotice(Self.fileOutcome(outcome)) ?? Notice(title: "Cleanup Results", message: "")
+        var messages = outcome.toolCommandResults.map(\.localizedSummary)
+        var notice = cleanUpNotice(Self.fileOutcome(outcome)) ?? Notice(title: String(localized: "Cleanup Results"), message: "")
         if !notice.message.isEmpty { messages.append(notice.message) }
         if outcome.trashedCount > 0 {
-            messages.append("\(outcome.trashedCount) \(outcome.trashedCount == 1 ? "item moved" : "items moved") to the Trash.")
+            messages.append(String(localized: "\(outcome.trashedCount) items moved to the Trash.", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
         }
         notice.message = messages.joined(separator: "\n\n")
         notice.finderURLs = (outcome.failed + outcome.skippedWorktrees)
@@ -853,10 +845,10 @@ final class AppModel {
             let skipped = skippedURLs.count
             removalCompletion = RemovalCompletion(
                 destination: .trash,
-                title: skipped == 0 ? "Trash emptied" : "Some items remain in Trash",
+                title: skipped == 0 ? String(localized: "Trash emptied") : String(localized: "Some items remain in Trash"),
                 detail: skipped == 0
-                    ? "\(ByteFormatting.string(freedBytes)) recovered."
-                    : "\(skipped) \(skipped == 1 ? "item could" : "items could") not be removed. Review the remaining items in Finder.",
+                    ? String(localized: "\(ByteFormatting.localizedString(freedBytes)) recovered.")
+                    : String(localized: "\(skipped) items could not be removed. Review the remaining items in Finder.", bundle: MoppoResources.bundle, locale: MoppoResources.locale),
                 isSuccess: skipped == 0,
                 finderURLs: skippedURLs
             )
@@ -915,15 +907,13 @@ final class AppModel {
                     notice?.showsAdministratorRetry = true
                     if cleanup.administratorRetryCount == Set(outcome.failed).count,
                        outcome.skippedWorktrees.isEmpty, outcome.toolCommandResults.isEmpty {
-                        notice?.title = "Administrator Approval Needed"
-                        let content = cleanup.administratorRetryCount == 1 ? "this sound library" : "these sound libraries"
-                        notice?.message = "Allow Moppo to move \(content) to Trash."
+                        notice?.title = String(localized: "Administrator Approval Needed")
+                        notice?.message = String(localized: "Allow Moppo to move \(cleanup.administratorRetryCount) sound libraries to Trash.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
                         if outcome.removedCount > 0 {
-                            let items = outcome.removedCount == 1 ? "item" : "items"
-                            notice?.message += "\nMoppo removed \(outcome.removedCount) other \(items)."
+                            notice?.message += "\n" + String(localized: "Moppo removed \(outcome.removedCount) other items.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
                         }
                     } else {
-                        notice?.message += "\nRetry with administrator approval to move eligible sound libraries to Trash."
+                        notice?.message += String(localized: "\nRetry with administrator approval to move eligible sound libraries to Trash.")
                     }
                 }
             }
@@ -1003,8 +993,8 @@ final class AppModel {
         case .deleted(let count):
             removalCompletion = RemovalCompletion(
                 destination: .duplicates,
-                title: "Moved to Recently Deleted",
-                detail: "\(count) \(count == 1 ? "photo" : "photos"). You can recover them in Photos for up to 30 days."
+                title: String(localized: "Moved to Recently Deleted"),
+                detail: String(localized: "\(count) photos. You can recover them in Photos for up to 30 days.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             )
         case .failure(let title, let message):
             report(title, message)

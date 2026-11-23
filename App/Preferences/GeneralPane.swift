@@ -2,12 +2,15 @@ import Combine
 import SwiftUI
 import MoppoCore
 
-/// Shows appearance, startup, scan, alert, and iCloud settings.
+/// Shows language, appearance, startup, scan, alert, and iCloud settings.
 struct GeneralPane: View {
 
     @Bindable var settings: SettingsStore
     var dashboard: DashboardModel?
     var access: AccessModel?
+    var languageRestartAvailability: AppDelegate.LanguageRestartAvailability = .blocked
+    var onLanguageChange: (() -> Void)?
+    var onRestartLanguage: (() -> Void)?
 
     var body: some View {
         PrefPane {
@@ -16,28 +19,57 @@ struct GeneralPane: View {
             scanning
             ICloudPreferences(settings: settings, dashboard: dashboard, access: access)
         }
-
+        .onAppear { settings.reloadAppLanguage() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            settings.reloadAppLanguage()
+        }
     }
 
     private var appearance: some View {
-        PrefSection("Appearance") {
+        PrefSection(String(localized: "Appearance")) {
             PrefPickerRow(
-                title: "Appearance",
+                title: String(localized: "Appearance"),
                 selection: $settings.appearance,
                 label: \.displayName
             )
+            PrefDivider()
+            languagePicker
+        }
+    }
+
+    private var languagePicker: some View {
+        let title = String(localized: "Language")
+        let showsRestart = onRestartLanguage != nil && settings.hasPendingAppLanguageChange
+        let description = showsRestart ? languageRestartAvailability.message : nil
+        return PrefRow(title: title, description: description) {
+            Picker(title, selection: Binding(get: { settings.appLanguage }, set: { language in
+                if settings.setAppLanguage(language) { onLanguageChange?() }
+            })) {
+                ForEach(AppLanguage.allCases) { language in
+                    Text(verbatim: language.displayName).tag(language)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .disabled(languageRestartAvailability == .waitingForCleanup)
+            if showsRestart, let onRestartLanguage {
+                Button("Restart Moppo", action: onRestartLanguage)
+                    .buttonStyle(SecondaryButtonStyle(fill: Token.Fill.buttonOnCard))
+                    .disabled(!languageRestartAvailability.canRestart)
+            }
         }
     }
 
     // MARK: - Startup
 
     private var startup: some View {
-        PrefSection("Startup") {
-            PrefToggleRow(title: "Open at login", isOn: $settings.launchAtLogin)
+        PrefSection(String(localized: "Startup")) {
+            PrefToggleRow(title: String(localized: "Open at login"), isOn: $settings.launchAtLogin)
             PrefDivider()
             PrefToggleRow(
-                title: "Show in menu bar",
-                description: "Live free-space readout and a one-click cache purge.",
+                title: String(localized: "Show in menu bar"),
+                description: String(localized: "Live free-space readout and a one-click cache purge."),
                 isOn: $settings.showInMenuBar
             )
         }
@@ -46,26 +78,26 @@ struct GeneralPane: View {
     // MARK: - Scanning
 
     private var scanning: some View {
-        PrefSection("Scanning") {
+        PrefSection(String(localized: "Scanning")) {
             PrefPickerRow(
-                title: "Scan automatically",
+                title: String(localized: "Scan automatically"),
                 selection: $settings.scanSchedule,
                 label: \.displayName
             )
             PrefDivider()
-            PrefToggleRow(title: "Only when plugged in and idle", isOn: $settings.idleOnly)
+            PrefToggleRow(title: String(localized: "Only when plugged in and idle"), isOn: $settings.idleOnly)
             PrefDivider()
             PrefToggleRow(
-                title: "Show items smaller than 1 MB",
-                description: "Cleanup shows these items after the next scan. Lists can become much longer.",
+                title: String(localized: "Show items smaller than 1 MB"),
+                description: String(localized: "Cleanup shows these items after the next scan. Lists can become much longer."),
                 isOn: $settings.showsSmallItems
             )
             PrefDivider()
-            PrefToggleRow(title: "Low-space alerts", isOn: $settings.lowSpaceAlertsEnabled)
+            PrefToggleRow(title: String(localized: "Low-space alerts"), isOn: $settings.lowSpaceAlertsEnabled)
             PrefDivider()
             PrefRow(
-                title: "Warn me below",
-                description: "Notify when free space drops under the threshold."
+                title: String(localized: "Warn me below"),
+                description: String(localized: "Notify when free space drops under the threshold.")
             ) {
                 warnBelowControl
             }
@@ -84,12 +116,11 @@ struct GeneralPane: View {
             .accessibilityLabel("Warn me below")
             .accessibilityValue("\(settings.warnBelowGB) gigabytes")
 
-            Text("\(settings.warnBelowGB) GB")
+            Text(ByteFormatting.localizedGigabytes(Double(settings.warnBelowGB)))
                 .font(.mcControlLabel.monospacedDigit())
                 .foregroundStyle(Token.Text.primary)
-                // Fixed width so the slider does not shift sideways as the readout
-                // crosses from one digit to two.
-                .frame(width: 44, alignment: .trailing)
+                // Keep the slider stable when the number of digits changes.
+                .frame(minWidth: 44, alignment: .trailing)
         }
     }
 

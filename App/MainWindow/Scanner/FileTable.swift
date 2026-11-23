@@ -53,7 +53,7 @@ struct FileTable: View {
         switch sortKey {
         case .name:
             entries.sorted {
-                let result = $0.displayName.localizedStandardCompare($1.displayName)
+                let result = $0.localizedDisplayName.localizedStandardCompare($1.localizedDisplayName)
                 return ascending ? result == .orderedAscending : result == .orderedDescending
             }
         case .lastOpened:
@@ -65,7 +65,7 @@ struct FileTable: View {
         case .size:
             entries.sorted {
                 if $0.rowDisplayBytes == $1.rowDisplayBytes {
-                    return $0.displayName.localizedStandardCompare($1.displayName)
+                    return $0.localizedDisplayName.localizedStandardCompare($1.localizedDisplayName)
                         == .orderedAscending
                 }
                 return ascending ? $0.rowDisplayBytes < $1.rowDisplayBytes
@@ -114,11 +114,10 @@ struct FileTable: View {
             if !children.isEmpty, let onUnlockChildren {
                 let sessions = children.compactMap(\.codexSession)
                 let warning = sessions.count == children.count
-                    ? CodexSessionReview.warning(for: sessions) : protectedDataWarning
+                    ? CodexSessionReview.localizedWarning(for: sessions) : protectedDataWarning
                 return Alert(
-                    title: Text("Unlock \(children.count) child \(children.count == 1 ? "item" : "items") in \(entry.displayName)?"),
-                    message: Text(warning + " Unlocking does not select or remove items."
-                        + " Active sessions and other protected files stay locked."),
+                    title: Text("Unlock \(children.count) child item in \(entry.localizedDisplayName)?"),
+                    message: Text(warning + String(localized: " Unlocking does not select or remove items. Active sessions and other protected files stay locked.")),
                     primaryButton: .default(Text("Unlock Children")) {
                         onUnlockChildren(entry)
                         expandedRows.insert(entry.id)
@@ -128,9 +127,9 @@ struct FileTable: View {
                 )
             }
             return Alert(
-                title: Text("Remove \(entry.displayName)?"),
+                title: Text("Remove \(entry.localizedDisplayName)?"),
                 message: Text(
-                    entry.codexSession?.warning ?? protectedDataWarning
+                    entry.codexSession?.localizedWarning ?? protectedDataWarning
                 ),
                 primaryButton: .destructive(Text("Unlock & Select")) {
                     unlockAndSelect(entry)
@@ -147,7 +146,7 @@ struct FileTable: View {
         HStack(spacing: Metrics.gap) {
             Color.clear.frame(width: Metrics.disclosureSlot, height: 0)
             SelectionCheckbox(
-                title: "Select all items in this table",
+                title: String(localized: "Select all items in this table"),
                 state: selectAllState,
                 isEnabled: canToggleAll,
                 showsTitle: false,
@@ -158,7 +157,7 @@ struct FileTable: View {
             Color.clear.frame(width: Metrics.icon
                 + (entries.contains { $0.aiStorageSection != nil } ? Metrics.childIndent : 0), height: 0)
             SortableColumnHeader(
-                title: "Name",
+                title: String(localized: "Name"),
                 isActive: sortKey == .name,
                 ascending: ascending,
                 verticalPadding: 8,
@@ -169,7 +168,7 @@ struct FileTable: View {
             Color.clear.frame(width: Metrics.regenerable, height: 0)
 
             SortableColumnHeader(
-                title: "Last opened",
+                title: String(localized: "Last opened"),
                 isActive: sortKey == .lastOpened,
                 ascending: ascending,
                 verticalPadding: 8,
@@ -181,12 +180,11 @@ struct FileTable: View {
             // modification date — and a folder's own date only changes when its
             // direct children do, not its contents.
             .help(entries.contains { $0.url.scheme == "docker" }
-                ? "Docker does not report when these images and volumes were last used."
-                : "Spotlight's last-opened date when it exists; otherwise the last "
-                    + "modification date. Treat it as an approximation, not a promise.")
+                ? String(localized: "Docker does not report when these images and volumes were last used.")
+                : String(localized: "Spotlight's last-opened date when it exists; otherwise the last modification date. Treat it as an approximation, not a promise."))
 
             SortableColumnHeader(
-                title: "Size",
+                title: String(localized: "Size"),
                 isActive: sortKey == .size,
                 ascending: ascending,
                 alignment: .trailing,
@@ -305,9 +303,7 @@ struct FileTable: View {
     // MARK: - Selection
 
     private var protectedDataWarning: String {
-        "These files can contain profiles, logins, history, and settings. "
-            + "Removing them can sign you out or reset the app. Quit the app before removal. "
-            + "Moppo always moves this protected data to the Trash."
+        String(localized: "These files can contain profiles, logins, history, and settings. Removing them can sign you out or reset the app. Quit the app before removal. Moppo always moves this protected data to the Trash.")
     }
 
     private func selectionState(for entry: FileEntry) -> NSControl.StateValue {
@@ -402,8 +398,8 @@ struct AIStorageGroupHeader: View {
         Button(action: onToggle) { rowContent }
             .buttonStyle(LabelOnlyButtonStyle())
             .hoverHighlight(fill: Token.Fill.cleanupRowHover)
-            .accessibilityLabel("\(owner.rawValue), storage shown, \(ByteFormatting.string(totalBytes))")
-            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+            .accessibilityLabel("\(owner.rawValue), storage shown, \(ByteFormatting.localizedString(totalBytes))")
+            .accessibilityValue(isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
             .accessibilityHint("Shows or hides storage sections. Selection stays unchanged.")
             .accessibilityAddTraits(.isHeader)
     }
@@ -436,7 +432,7 @@ struct AIStorageGroupHeader: View {
                 .font(.mcCaption)
                 .foregroundStyle(Token.Text.secondary)
                 .frame(width: Metrics.lastOpened, alignment: .leading)
-            Text(ByteFormatting.string(totalBytes))
+            Text(ByteFormatting.localizedString(totalBytes))
                 .font(.mcRowValue)
                 .foregroundStyle(Token.Text.primary)
                 .fixedSize()
@@ -476,7 +472,7 @@ private struct FileRow: View {
     @State private var project: FileEntryPresentation.Project?
 
     private var presentation: FileEntryPresentation {
-        FileEntryPresentation(entry: entry, project: project)
+        FileEntryPresentation(entry: entry, project: project, localized: true)
     }
 
     private var isProtectedParent: Bool {
@@ -497,8 +493,9 @@ private struct FileRow: View {
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(isExpanded ? "Hide" : "Show") child items in \(entry.displayName)")
-                    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                    .accessibilityLabel(isExpanded ? String(localized: "Hide child items in \(entry.localizedDisplayName)")
+                                        : String(localized: "Show child items in \(entry.localizedDisplayName)"))
+                    .accessibilityValue(isExpanded ? String(localized: "Expanded") : String(localized: "Collapsed"))
                     .help(disclosureHelp)
                 } else {
                     Color.clear
@@ -509,7 +506,7 @@ private struct FileRow: View {
             Group {
                 if entry.kind == .appBundle, let onUninstallApplication {
                     ReviewUninstallButton(
-                        name: entry.displayName,
+                        name: entry.localizedDisplayName,
                         isRowHovered: isRowHovered,
                         action: onUninstallApplication
                     )
@@ -534,7 +531,7 @@ private struct FileRow: View {
 
             nameBlock
 
-            RegenerableTag(label: entry.regenerationLabel)
+            RegenerableTag(entry: entry)
 
             Text(lastOpenedDisplay)
                 .font(.mcRowValue)
@@ -546,7 +543,7 @@ private struct FileRow: View {
             // the formatter produces, and a truncated size would be a lie rather than
             // an abbreviation.
             VStack(alignment: .trailing, spacing: 3) {
-                Text(ByteFormatting.string(entry.rowDisplayBytes))
+                Text(ByteFormatting.localizedString(entry.rowDisplayBytes))
                     .font(.mcRowValue)
                     .foregroundStyle(Token.Text.primary)
                     .lineLimit(1)
@@ -560,10 +557,10 @@ private struct FileRow: View {
             .frame(width: Metrics.size, alignment: .trailing)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(isProtectedParent
-                ? "Total storage, \(ByteFormatting.string(entry.rowDisplayBytes)). Includes child items and other protected files. This is not removable space."
+                ? String(localized: "Total storage, \(ByteFormatting.localizedString(entry.rowDisplayBytes)). Includes child items and other protected files. This is not removable space.")
                 : entry.xcodeBuildCacheReview?.isWholeFolder == true
-                    ? "Total storage, \(ByteFormatting.string(entry.rowDisplayBytes)). Includes all child items."
-                    : ByteFormatting.string(entry.rowDisplayBytes))
+                    ? String(localized: "Total storage, \(ByteFormatting.localizedString(entry.rowDisplayBytes)). Includes all child items.")
+                    : ByteFormatting.localizedString(entry.rowDisplayBytes))
 
             if entry.url.isFileURL || (entry.canExcludeFromCleanup && onNeverOfferAgain != nil) {
                 FileRowMenu(onNeverOfferAgain: onNeverOfferAgain, entry: entry, isRowHovered: isRowHovered,
@@ -627,65 +624,60 @@ private struct FileRow: View {
     private var parentHelp: String {
         if onUnlockChildren != nil {
             return hasUnlockedChildren
-                ? "Use this checkbox to select child items. The parent folder stays protected."
-                : "Use the lock to review and unlock child items. Unlocking does not select items."
+                ? String(localized: "Use this checkbox to select child items. The parent folder stays protected.")
+                : String(localized: "Use the lock to review and unlock child items. Unlocking does not select items.")
         }
         if entry.xcodeBuildCacheReview?.isWholeFolder == true {
-            return entry.protectionExplanation
-                ?? "Select the whole folder, including its caches, logs, reports, and Xcode metadata. All contents move to the Trash."
+            return entry.localizedProtectionExplanation
+                ?? String(localized: "Select the whole folder, including its caches, logs, reports, and Xcode metadata. All contents move to the Trash.")
         }
         if isProtectedParent {
-            return entry.protectionExplanation
-                ?? "Moppo cannot remove this whole folder. Review its child items separately."
+            return entry.localizedProtectionExplanation
+                ?? String(localized: "Moppo cannot remove this whole folder. Review its child items separately.")
         }
         if let item = entry.docker {
-            let object = entry.dockerVolume == nil ? "image" : "volume"
             if let count = item.containerCount, count > 0 {
-                return "\(count) \(count == 1 ? "container uses" : "containers use") this \(object). "
-                    + "Remove \(count == 1 ? "that container" : "those containers") first, including stopped containers."
+                if entry.dockerVolume == nil {
+                    return String(localized: "\(count) container uses this image. Remove all containers that use it, including stopped containers.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+                }
+                return String(localized: "\(count) container uses this volume. Remove all containers that use it, including stopped containers.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
             }
-            if item.containerCount == nil { return "Container use is unavailable. Try scanning again." }
+            if item.containerCount == nil { return String(localized: "Container use is unavailable. Try scanning again.") }
             switch item {
             case .image(let image):
-                return "Docker permanently removes this image and all its listed tags. It does not move to the Trash. "
-                    + "Image sizes include shared layers, so removal can recover less space. "
-                    + "Docker context: \(image.context). " + entry.displayName
+                return String(localized: "Docker permanently removes this image and all its listed tags. It does not move to the Trash. Image sizes include shared layers, so removal can recover less space. Docker context: \(image.context). \(entry.localizedDisplayName)")
             case .volume(let volume):
-                return "Docker permanently removes this volume and all the data in it. "
-                    + "Docker keeps no backup, so you cannot restore this data. "
-                    + "Docker context: \(volume.context). Volume: \(volume.name)"
+                return String(localized: "Docker permanently removes this volume and all the data in it. Docker keeps no backup, so you cannot restore this data. Docker context: \(volume.context). Volume: \(volume.name)")
             }
         }
         if let session = entry.codexSession {
-            return entry.protectionExplanation ?? session.warning
+            return entry.localizedProtectionExplanation ?? session.localizedWarning
         }
         if let command = entry.toolCommand {
-            return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
-                ?? "The tool removes this item permanently after confirmation. Put Back cannot restore it."
+            return entry.localizedProtectionExplanation ?? command.localizedLockReason ?? entry.localizedSafetyCaveat
+                ?? String(localized: "The tool removes this item permanently after confirmation. Put Back cannot restore it.")
         }
         if entry.removalAction != nil {
-            return "Select this application group to move all listed files to the Trash."
+            return String(localized: "Select this application group to move all listed files to the Trash.")
         }
         if entry.kind == .appBundle, onUninstallApplication != nil {
-            return "Open the complete uninstall review for this application."
+            return String(localized: "Open the complete uninstall review for this application.")
         }
         if entry.manualRemoval != nil {
-            return "This app cannot delete this item. Click the terminal badge for "
-                + "the command that does."
+            return String(localized: "This app cannot delete this item. Click the terminal badge for the command that does.")
         }
         if let guidance = presentation.runningGuidance { return guidance }
         switch entry.protectionReason {
         case .running:
-            return "This app is running. Quit it to remove it. Its support files "
-                + "below can still be removed individually."
+            return String(localized: "This app is running. Quit it to remove it. Its support files below can still be removed individually.")
         case .userData:
             return hasUserDataOverride
-                ? "Protected user data selected for removal. It will always move to the Trash."
-                : "Contains user data. Use the lock to review and select it separately."
+                ? String(localized: "Protected user data selected for removal. It will always move to the Trash.")
+                : String(localized: "Contains user data. Use the lock to review and select it separately.")
         case .inventory:
-            return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+            return entry.localizedProtectionExplanation ?? String(localized: "Use the owning tool to manage this storage.")
         case .folderRemainder:
-            return entry.protectionExplanation ?? "Select the parent folder to review removal of these files."
+            return entry.localizedProtectionExplanation ?? String(localized: "Select the parent folder to review removal of these files.")
         case nil:
             return ""
         }
@@ -693,16 +685,16 @@ private struct FileRow: View {
 
     private var disclosureHelp: String {
         entry.removalAction == nil
-            ? "\(entry.children.count) associated files"
-            : "\(entry.children.count) application leftover files"
+            ? String(localized: "\(entry.children.count) associated file", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+            : String(localized: "\(entry.children.count) application leftover file", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
     }
 
     private static func badgeText(for reason: FileEntry.ProtectionReason) -> String {
         switch reason {
-        case .running:   "running"
-        case .userData:  "user data"
-        case .inventory: "protected"
-        case .folderRemainder: "with parent"
+        case .running:   String(localized: "Running")
+        case .userData:  String(localized: "user data")
+        case .inventory: String(localized: "Protected")
+        case .folderRemainder: String(localized: "with parent")
         }
     }
 
@@ -712,7 +704,7 @@ private struct FileRow: View {
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(entry.aiStorageSection?.title ?? entry.displayName)
+                    Text(entry.aiStorageSection?.localizedTitle ?? entry.localizedDisplayName)
                         .font(.mcRowTitle)
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
@@ -722,17 +714,18 @@ private struct FileRow: View {
                     }
                     if entry.worktreeCount > 0, let onDisclose {
                         Button(action: onDisclose) {
-                            Badge(text: "\(entry.worktreeCount) \(entry.worktreeCount == 1 ? "worktree" : "worktrees")").fixedSize()
+                            Badge(text: String(localized: "\(entry.worktreeCount) worktree", bundle: MoppoResources.bundle, locale: MoppoResources.locale)).fixedSize()
                         }
                         .buttonStyle(.plain)
-                        .help("\(isExpanded ? "Hide" : "Show") Git worktrees")
-                        .accessibilityLabel("\(isExpanded ? "Hide" : "Show") Git worktrees in \(entry.displayName)")
+                        .help(isExpanded ? String(localized: "Hide Git worktrees") : String(localized: "Show Git worktrees"))
+                        .accessibilityLabel(isExpanded ? String(localized: "Hide Git worktrees in \(entry.localizedDisplayName)")
+                                                        : String(localized: "Show Git worktrees in \(entry.localizedDisplayName)"))
                     }
                     if let manual = entry.manualRemoval {
                         // A badge that answers itself: click for the explanation and the
                         // command, with the command one click from the clipboard.
                         Button { isShowingManualInfo = true } label: {
-                            Badge(text: "terminal").fixedSize()
+                            Badge(text: String(localized: "Terminal")).fixedSize()
                         }
                         .buttonStyle(.plain)
                         .popover(isPresented: $isShowingManualInfo, arrowEdge: .bottom) {
@@ -740,16 +733,18 @@ private struct FileRow: View {
                                 .presentationBackground(Token.chrome)
                         }
                     } else if let item = entry.docker {
-                        Badge(text: item.containerCount == nil ? "unavailable" : item.isRemovalLocked ? "in use" : "permanent removal").fixedSize()
+                        Badge(text: item.containerCount == nil ? String(localized: "Unavailable")
+                            : item.isRemovalLocked ? String(localized: "In use") : String(localized: "permanent removal"))
+                            .fixedSize()
                     } else if entry.aiTool == .codex && entry.codexSession == nil
                         && entry.children.contains(where: { $0.codexSession != nil }) {
-                        Badge(text: "conversation history").fixedSize()
+                        Badge(text: String(localized: "conversation history")).fixedSize()
                     } else if entry.codexSession != nil {
                         if entry.protectionReason == .inventory {
-                            Badge(text: "in use").fixedSize()
+                            Badge(text: String(localized: "In use")).fixedSize()
                         }
                     } else if entry.xcodeBuildCacheReview?.isWholeFolder == true, let owner = presentation.runningOwner {
-                        Badge(text: "\(owner.name) is open").fixedSize()
+                        Badge(text: String(localized: "\(owner.name) is open")).fixedSize()
                     } else if let reason = entry.protectionReason, !isProtectedParent {
                         // Says *why* the checkbox is locked without hovering anything,
                         // and says the true thing: "in use" on an app that was merely
@@ -758,20 +753,20 @@ private struct FileRow: View {
                     } else if let owner = presentation.runningOwner {
                         // Names the owner: "in use" alone sends the user hunting for
                         // which of their open apps is meant.
-                        Badge(text: "\(owner.name) is open").fixedSize()
+                        Badge(text: String(localized: "\(owner.name) is open")).fixedSize()
                     } else if isSafeToRemove {
                         // On the row, where the claim is made. It was one badge on the
                         // category, which could only say "everything in here" and so
                         // said nothing at all once a single row needed review.
-                        Badge(text: "safe to remove", style: .safe).fixedSize()
-                    } else if entry.isRegenerable, let caveat = entry.projectActivity?.caveat {
+                        Badge(text: String(localized: "safe to remove"), style: .safe).fixedSize()
+                    } else if entry.isRegenerable, let caveat = entry.projectActivity?.localizedCaveat {
                         // The same badge as a child row. The subtitle leaves the reason out.
                         Badge(text: caveat).fixedSize()
                     }
                 }
 
                 if entry.aiStorageSection != nil || !presentation.summary.isEmpty {
-                    Text(entry.aiStorageSection?.summary ?? presentation.summary)
+                    Text(entry.aiStorageSection?.localizedSummary ?? presentation.summary)
                         .font(.mcBody)
                         .foregroundStyle(Token.Text.secondary)
                         .lineLimit(entry.aiStorageSection == nil ? 1 : 2)
@@ -787,16 +782,16 @@ private struct FileRow: View {
     /// A missing date does not establish whether the user opened this item.
     @MainActor
     private var lastOpenedText: String {
-        guard let lastOpened = entry.lastOpened else { return "Unknown" }
+        guard let lastOpened = entry.lastOpened else { return String(localized: "Unknown") }
         // Inside a minute the formatter says "in 0 seconds", which reads as a bug.
-        guard Date.now.timeIntervalSince(lastOpened) >= 60 else { return "Just now" }
+        guard Date.now.timeIntervalSince(lastOpened) >= 60 else { return String(localized: "Just now") }
         return lastOpenedFormatter.localizedString(for: lastOpened, relativeTo: .now)
     }
 
     @MainActor
     private var lastOpenedDisplay: String {
-        if entry.url.scheme == "docker" { return "Unknown" }
-        return entry.removalAction == nil ? lastOpenedText : "App removed"
+        if entry.url.scheme == "docker" { return String(localized: "Unknown") }
+        return entry.removalAction == nil ? lastOpenedText : String(localized: "App removed")
     }
 }
 
@@ -819,7 +814,7 @@ private struct ChildRow: View {
     @State private var isRowHovered = false
 
     private var presentation: FileEntryPresentation {
-        FileEntryPresentation(entry: entry, showsSafetyCaveat: false)
+        FileEntryPresentation(entry: entry, showsSafetyCaveat: false, localized: true)
     }
 
     var body: some View {
@@ -846,7 +841,7 @@ private struct ChildRow: View {
             }
                 .frame(width: Metrics.checkbox)
 
-            FileEntryIcon(entry: entry, presentation: FileEntryPresentation(entry: entry))
+            FileEntryIcon(entry: entry, presentation: FileEntryPresentation(entry: entry, localized: true))
                 .frame(width: Metrics.icon)
 
             if let review = entry.gitWorktreeReview {
@@ -854,7 +849,7 @@ private struct ChildRow: View {
             } else {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(entry.displayName)
+                    Text(entry.localizedDisplayName)
                         .font(.mcRowTitle)
                         .foregroundStyle(Token.Text.primary)
                         .lineLimit(1)
@@ -867,33 +862,33 @@ private struct ChildRow: View {
 
                     if entry.codexSession != nil {
                         if entry.protectionReason == .inventory {
-                            Badge(text: "in use").fixedSize()
+                            Badge(text: String(localized: "In use")).fixedSize()
                         }
                     } else if entry.protectionReason == .inventory {
-                        Badge(text: "protected").fixedSize()
+                        Badge(text: String(localized: "Protected")).fixedSize()
                     } else if entry.protectionReason == .folderRemainder {
-                        Badge(text: "with parent").fixedSize()
+                        Badge(text: String(localized: "with parent")).fixedSize()
                     } else if entry.protectionReason == .userData {
-                        Badge(text: "user data").fixedSize()
+                        Badge(text: String(localized: "user data")).fixedSize()
                     } else if let owner = entry.inUseBy, entry.xcodeBuildCacheReview == nil {
-                        Badge(text: "\(owner.name) is open").fixedSize()
+                        Badge(text: String(localized: "\(owner.name) is open")).fixedSize()
                     } else if entry.protectionReason == .running {
-                        Badge(text: "in use").fixedSize()
+                        Badge(text: String(localized: "In use")).fixedSize()
                     } else if entry.requiresRemovalReview {
-                        Badge(text: "review", style: .review).fixedSize()
+                        Badge(text: String(localized: "Review"), style: .review).fixedSize()
                     } else if entry.isRegenerable {
                         // The badge follows the same safety rules as the filter.
                         if showsSafeToRemoveBadges && entry.regeneratesSafely {
-                            Badge(text: "safe to remove", style: .safe).fixedSize()
-                        } else if let caveat = entry.projectActivity?.caveat {
+                            Badge(text: String(localized: "safe to remove"), style: .safe).fixedSize()
+                        } else if let caveat = entry.projectActivity?.localizedCaveat {
                             // The folder regenerates, but its project state keeps it out of Safe to Remove.
                             Badge(text: caveat).fixedSize()
                         }
-                    } else if presentation.badge == nil, let caveat = entry.safetyCaveat {
+                    } else if presentation.badge == nil, let caveat = entry.localizedSafetyCaveat {
                         Badge(text: caveat).fixedSize()
                     }
                 }
-                let summary = entry.requiresRemovalReview ? (entry.safetyCaveat ?? presentation.summary) : presentation.summary
+                let summary = entry.requiresRemovalReview ? (entry.localizedSafetyCaveat ?? presentation.summary) : presentation.summary
                 if entry.xcodeBuildCacheReview == nil, !summary.isEmpty {
                     Text(summary)
                         .font(.mcSubtitle)
@@ -905,10 +900,10 @@ private struct ChildRow: View {
             .help("\(childHelp)\n\(entry.url.path)")
             }
 
-            RegenerableTag(label: entry.regenerationLabel)
+            RegenerableTag(entry: entry)
             Color.clear.frame(width: Metrics.lastOpened, height: 0)
 
-            Text(ByteFormatting.string(entry.allocatedBytes))
+            Text(ByteFormatting.localizedString(entry.allocatedBytes))
                 .font(.mcRowValue)
                 .foregroundStyle(Token.Text.secondary)
                 .fixedSize()
@@ -958,48 +953,46 @@ private struct ChildRow: View {
 
     private var childHelp: String {
         if let command = entry.toolCommand {
-            return entry.protectionExplanation ?? command.lockReason ?? entry.safetyCaveat
-                ?? "The tool removes this item permanently after confirmation. Put Back cannot restore it."
+            return entry.localizedProtectionExplanation ?? command.localizedLockReason ?? entry.localizedSafetyCaveat
+                ?? String(localized: "The tool removes this item permanently after confirmation. Put Back cannot restore it.")
         }
         if let session = entry.codexSession {
-            return entry.protectionExplanation ?? session.warning
+            return entry.localizedProtectionExplanation ?? session.localizedWarning
         }
         if entry.protectionReason == .inventory {
-            return entry.protectionExplanation ?? "Use the owning tool to manage this storage."
+            return entry.localizedProtectionExplanation ?? String(localized: "Use the owning tool to manage this storage.")
         }
         if entry.protectionReason == .folderRemainder {
-            return entry.protectionExplanation ?? "Select the parent folder to review removal of these files."
+            return entry.localizedProtectionExplanation ?? String(localized: "Select the parent folder to review removal of these files.")
         }
         if isReadOnly {
             // True whether or not the parent is ticked yet: a child drawn this way
             // has no checkbox of its own.
-            return "Part of the row above. It is removed with that row, never on its own."
+            return String(localized: "Part of the row above. It is removed with that row, never on its own.")
         }
         if entry.protectionReason == .userData {
             return hasUserDataOverride
-                ? "Protected user data selected for removal. It will always move to the Trash."
-                : "Protected: profiles, logins, history and settings may live here. "
-                    + "Use the lock to review and select it separately."
+                ? String(localized: "Protected user data selected for removal. It will always move to the Trash.")
+                : String(localized: "Protected: profiles, logins, history and settings may live here. Use the lock to review and select it separately.")
         }
         if let guidance = presentation.runningGuidance { return guidance }
         if entry.isRemovalLocked {
-            return "Protected while the app is running."
+            return String(localized: "Protected while the app is running.")
         }
-        if entry.isRegenerable, let explanation = entry.projectActivity?.explanation {
+        if entry.isRegenerable, let explanation = entry.projectActivity?.localizedExplanation {
             return explanation
         }
         if let vendor = entry.vendorFolder {
-            return vendor.explanation
+            return vendor.localizedExplanation
         }
         if let caveat = entry.safetyCaveat {
-            if caveat == "Git worktree" {
-                return "Review uncommitted files before removal."
+            if entry.isGitWorktree {
+                return String(localized: "Review uncommitted files before removal.")
             }
-            if caveat != "no lockfile" { return caveat }
-            return "No lockfile beside it, so reinstalling may not bring back the same "
-                + "dependencies. You can still remove it. It is not counted as safe."
+            if caveat != "no lockfile" { return entry.localizedSafetyCaveat ?? caveat }
+            return String(localized: "No lockfile beside it, so reinstalling may not bring back the same dependencies. You can still remove it. It is not counted as safe.")
         }
-        return "Remove only this item. Keep its parent."
+        return String(localized: "Remove only this item. Keep its parent.")
     }
 }
 
@@ -1030,7 +1023,7 @@ struct ProtectedSelectionControl: View {
         Group {
             if isSelectable {
                 SelectionCheckbox(
-                    title: onUnlockChildren != nil ? "Select child items in \(entry.displayName)" : entry.displayName,
+                    title: onUnlockChildren != nil ? String(localized: "Select child items in \(entry.localizedDisplayName)") : entry.localizedDisplayName,
                     state: selectionState ?? (isSelected ? .on : .off),
                     showsTitle: false,
                     onChange: onToggle
@@ -1045,12 +1038,12 @@ struct ProtectedSelectionControl: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(onUnlockChildren != nil
-                    ? "Unlock child items in \(entry.displayName)" : "Unlock \(entry.displayName) for removal")
+                    ? String(localized: "Unlock child items in \(entry.localizedDisplayName)") : String(localized: "Unlock \(entry.localizedDisplayName) for removal"))
             } else {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Token.Text.disabled)
-                    .accessibilityLabel("\(entry.displayName) is locked. \(help)")
+                    .accessibilityLabel("\(entry.localizedDisplayName) is locked. \(help)")
             }
         }
         .frame(width: 18, height: 18)
@@ -1069,44 +1062,42 @@ struct ProtectedSelectionControl: View {
     }
 
     private var tooltipTitle: String {
-        if onUnlockChildren != nil { return "Protected child items" }
+        if onUnlockChildren != nil { return String(localized: "Protected child items") }
         if let item = entry.docker {
-            if item.containerCount == nil { return "Container use unavailable" }
-            return entry.dockerVolume == nil ? "Image used by containers" : "Volume used by containers"
+            if item.containerCount == nil { return String(localized: "Container use unavailable") }
+            return entry.dockerVolume == nil ? String(localized: "Image used by containers") : String(localized: "Volume used by containers")
         }
         if entry.codexSession != nil {
-            return entry.protectionReason == .inventory ? "Session is in use" : "Conversation history"
+            return entry.protectionReason == .inventory ? String(localized: "Session is in use") : String(localized: "Conversation history")
         }
         if entry.protectionReason == .inventory {
-            return entry.children.isEmpty ? "Protected item" : "Whole folder removal blocked"
+            return entry.children.isEmpty ? String(localized: "Protected item") : String(localized: "Whole folder removal blocked")
         }
-        if entry.protectionReason == .folderRemainder { return "Remove with parent" }
-        if entry.protectionReason == .userData { return "Protected user data" }
+        if entry.protectionReason == .folderRemainder { return String(localized: "Remove with parent") }
+        if entry.protectionReason == .userData { return String(localized: "Protected user data") }
         if entry.protectionReason == .running {
-            return entry.kind == .cache ? "Cache files are in use" : "Application is running"
+            return entry.kind == .cache ? String(localized: "Cache files are in use") : String(localized: "Application is running")
         }
-        if entry.manualRemoval != nil { return "Manual removal required" }
-        if entry.toolCommand != nil { return "Removal tool required" }
-        return "Protected item"
+        if entry.manualRemoval != nil { return String(localized: "Manual removal required") }
+        if entry.toolCommand != nil { return String(localized: "Removal tool required") }
+        return String(localized: "Protected item")
     }
 
     private var tooltipMessage: String {
         if onUnlockChildren != nil { return help }
         if entry.docker != nil { return help }
         if let session = entry.codexSession {
-            return entry.protectionExplanation ?? session.warning
+            return entry.localizedProtectionExplanation ?? session.localizedWarning
         }
         if entry.protectionReason == .inventory {
             return help
         }
         if entry.protectionReason == .userData {
-            return "This item can contain profiles, logins, history, and settings. "
-                + "Click the lock to review and select it for removal."
+            return String(localized: "This item can contain profiles, logins, history, and settings. Click the lock to review and select it for removal.")
         }
         if entry.protectionReason == .running { return help }
         if entry.manualRemoval != nil {
-            return "Moppo cannot remove this item directly. "
-                + "Use the terminal badge to review the command."
+            return String(localized: "Moppo cannot remove this item directly. Use the terminal badge to review the command.")
         }
         return help
     }
@@ -1166,7 +1157,7 @@ struct ManualRemovalPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(manual.explanation)
+            Text(manual.localizedExplanation)
                 .font(.mcSubtitle)
                 .foregroundStyle(Token.Text.primary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1182,7 +1173,7 @@ struct ManualRemovalPopover: View {
 
                 Spacer(minLength: 0)
 
-                Button(didCopy ? "Copied" : "Copy") {
+                Button(didCopy ? String(localized: "Copied") : String(localized: "Copy")) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(manual.command, forType: .string)
                     didCopy = true
@@ -1349,7 +1340,7 @@ private struct FileRowMenu: View {
         .menuIndicator(.hidden)
         .onHover { isHovered = $0 }
         .help("More actions")
-        .accessibilityLabel("More actions for \(entry.displayName)")
+        .accessibilityLabel("More actions for \(entry.localizedDisplayName)")
     }
 
     /// Dim at rest — lit on every row at once, a column of these would read as data
@@ -1364,25 +1355,25 @@ private struct FileRowMenu: View {
 
 /// Shows "Regenerable" or "Not regenerable". A row that Moppo did not classify shows nothing.
 private struct RegenerableTag: View {
-    let label: FileEntry.RegenerationLabel?
+    let entry: FileEntry
 
     var body: some View {
         ZStack(alignment: .trailing) {
             Color.clear
-            if let label {
-                Badge(text: label.text)
+            if let label = entry.localizedRegenerationText {
+                Badge(text: label)
                     .fixedSize()
                     .help(reason ?? "")
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(label.accessibilityText)
+                    .accessibilityLabel(entry.localizedRegenerationAccessibilityText ?? label)
             }
         }
         .frame(width: Metrics.regenerable, height: 18)
     }
 
     private var reason: String? {
-        guard case .notRegenerable(let reason) = label else { return nil }
-        return reason
+        guard case .notRegenerable = entry.regenerationLabel else { return nil }
+        return entry.localizedRegenerationAccessibilityText
     }
 }
 
@@ -1584,24 +1575,24 @@ private struct WorktreeNameBlock: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(entry.displayName).font(.mcRowTitle)
+                    Text(entry.localizedDisplayName).font(.mcRowTitle)
                         .foregroundStyle(Token.Text.primary).lineLimit(1).truncationMode(.middle)
                     Button(action: onReview) {
-                        Badge(text: review.statusLabel, style: badgeStyle)
+                        Badge(text: review.localizedStatusLabel, style: badgeStyle)
                             .fixedSize()
                     }.buttonStyle(.plain).help("Review worktree checks")
                     if let number = review.openPullRequestNumber {
-                        Badge(text: "PR #\(number) open").fixedSize()
+                        Badge(text: String(localized: "PR #\(number) open")).fixedSize()
                             .help("GitHub has this commit in an open pull request. The merge is not complete.")
                     }
                 }
-                Label(review.branch, systemImage: "arrow.triangle.branch")
+                Label(review.localizedBranch, systemImage: "arrow.triangle.branch")
                     .font(.mcSubtitle).foregroundStyle(Token.Text.secondary).lineLimit(1).truncationMode(.middle)
             }
             Spacer(minLength: 4)
             Button(action: onReview) { Image(systemName: "info.circle").font(.mcBody) }
                 .buttonStyle(.plain).foregroundStyle(Token.Text.secondary)
-                .help("Review worktree").accessibilityLabel("Review worktree " + entry.displayName)
+                .help("Review worktree").accessibilityLabel("Review worktree \(entry.localizedDisplayName)")
         }.frame(maxWidth: .infinity, alignment: .leading).help(entry.url.path)
     }
 }

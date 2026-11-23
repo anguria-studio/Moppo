@@ -2,21 +2,35 @@ import AppKit
 
 @MainActor
 enum HomebrewPasswordPrompt {
-    static func makeAlert(package: String) -> (alert: NSAlert, password: NSSecureTextField) {
+    static func makeAlert(package: String, bundle: Bundle = .main) -> (alert: NSAlert, password: NSSecureTextField) {
         let alert = NSAlert()
-        alert.messageText = "Homebrew needs administrator access"
-        alert.informativeText = "Homebrew needs your login password to remove the “\(package)” package.\n\nAccount: \(NSUserName())\n\nMoppo sends the password to sudo and does not save it."
-        alert.addButton(withTitle: "Continue")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = String(localized: "Homebrew needs administrator access", bundle: bundle)
+        alert.informativeText = String(localized: """
+            Homebrew needs your login password to remove the “\(package)” package.
+
+            Account: \(NSUserName())
+
+            Moppo sends the password to sudo and does not save it.
+            """, bundle: bundle, comment: "Homebrew authentication alert. Preserve the package identifier, account name, and sudo command.")
+        alert.addButton(withTitle: String(localized: "Continue", bundle: bundle))
+        alert.addButton(withTitle: String(localized: "Cancel", bundle: bundle))
         alert.buttons[0].isEnabled = false
         alert.buttons[1].keyEquivalent = "\u{1b}"
 
         let password = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 26))
-        password.placeholderString = "Login password"
-        password.setAccessibilityLabel("Login password for \(NSUserName())")
+        password.placeholderString = String(localized: "Login password", bundle: bundle)
+        password.setAccessibilityLabel(String(localized: "Login password for \(NSUserName())", bundle: bundle))
         alert.accessoryView = password
         alert.window.initialFirstResponder = password
         return (alert, password)
+    }
+
+    static func localizationBundle(in appBundle: Bundle, language: String?) -> Bundle? {
+        let developmentLanguage = appBundle.developmentLocalization ?? "en"
+        let selected = language.flatMap { appBundle.localizations.contains($0) ? $0 : nil }
+        guard let url = appBundle.url(forResource: selected ?? developmentLanguage, withExtension: "lproj")
+        else { return nil }
+        return Bundle(url: url)
     }
 
     static func run(request: HomebrewAskpassRequest, applicationExecutable: String) -> Int32 {
@@ -24,12 +38,17 @@ enum HomebrewPasswordPrompt {
         application.setActivationPolicy(.accessory)
         let appURL = URL(fileURLWithPath: applicationExecutable)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let defaults = Bundle(url: appURL)?.bundleIdentifier.flatMap(UserDefaults.init(suiteName:))
+        let appBundle = Bundle(url: appURL)
+        let defaults = appBundle?.bundleIdentifier.flatMap(UserDefaults.init(suiteName:))
+        let storedLanguage = defaults?.stringArray(forKey: "AppleLanguages").flatMap { languages in
+            appBundle.flatMap { Bundle.preferredLocalizations(from: $0.localizations, forPreferences: languages).first }
+        }
+        let bundle = appBundle.flatMap { localizationBundle(in: $0, language: request.language ?? storedLanguage) } ?? .main
         let applyAppearance: @MainActor @Sendable () -> Void = {
             if let defaults { AppAppearance.saved(in: defaults).apply(to: application) }
         }
         applyAppearance()
-        let (alert, password) = makeAlert(package: request.package)
+        let (alert, password) = makeAlert(package: request.package, bundle: bundle)
         alert.icon = NSWorkspace.shared.icon(forFile: appURL.path)
         let editObserver = NotificationCenter.default.addObserver(
             forName: NSControl.textDidChangeNotification, object: password, queue: .main

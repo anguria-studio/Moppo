@@ -10,17 +10,17 @@ struct ICloudPreferences: View {
     var body: some View {
         PrefSection("iCloud") {
             PrefToggleRow(
-                title: "Show on Dashboard", description: "Display your iCloud storage in Moppo.",
+                title: String(localized: "Show on Dashboard"), description: String(localized: "Display your iCloud storage in Moppo."),
                 isOn: $settings.showICloudOnDashboard
             )
             PrefDivider()
             PrefRow(
-                title: "iCloud storage",
+                title: String(localized: "iCloud storage"),
                 description: dashboard?.iCloudStorage == nil
-                    ? "Set up access to read your storage information."
-                    : "Storage information is available."
+                    ? String(localized: "Set up access to read your storage information.")
+                    : String(localized: "Storage information is available.")
             ) {
-                Button(dashboard?.iCloudStorage == nil ? "Set Up" : "Open Settings") {
+                Button(dashboard?.iCloudStorage == nil ? String(localized: "Set Up") : String(localized: "Open Settings")) {
                     if dashboard?.iCloudStorage != nil {
                         ICloudCard.openICloudSettings()
                     } else {
@@ -33,8 +33,8 @@ struct ICloudPreferences: View {
             }
             PrefDivider()
             PrefRow(
-                title: "Storage plan",
-                description: "macOS does not report your plan size, so it is estimated."
+                title: String(localized: "Storage plan"),
+                description: String(localized: "macOS does not report your plan size, so it is estimated.")
             ) {
                 Menu {
                     Picker("Storage plan", selection: $settings.iCloudPlan) {

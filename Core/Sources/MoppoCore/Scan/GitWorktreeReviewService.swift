@@ -58,22 +58,22 @@ public struct GitWorktreeReviewService: Sendable {
             ])
         }
         guard let metadata = GitWorktreeDetector.metadata(of: directory) else {
-            review.filesIssue = "This folder is no longer a linked Git worktree."
-            review.pushIssue = review.filesIssue
+            review.filesIssueText = "This folder is no longer a linked Git worktree."
+            review.pushIssueText = review.filesIssueText
             return review
         }
         guard let git = try await gitExecutable() else {
-            review.filesIssue = "Git is not installed."
-            review.pushIssue = review.filesIssue
-            review.locks = .unknown(review.filesIssue)
+            review.filesIssueText = "Git is not installed."
+            review.pushIssueText = review.filesIssueText
+            review.locksText = .unknown(review.filesIssueText)
             return review
         }
         guard FileManager.default.fileExists(atPath: metadata.path) else {
             review.missingGitData = metadata.path
-            review.filesIssue = "The Git data for this worktree is missing."
-            review.pushIssue = review.filesIssue
-            review.mergeIssue = review.filesIssue
-            review.locks = .unknown(review.filesIssue)
+            review.filesIssueText = "The Git data for this worktree is missing."
+            review.pushIssueText = review.filesIssueText
+            review.mergeIssueText = review.filesIssueText
+            review.locksText = .unknown(review.filesIssueText)
             return review
         }
         let runner = ProcessRunner()
@@ -85,14 +85,15 @@ public struct GitWorktreeReviewService: Sendable {
         let comparison = try await GitWorktreeDetector.pushStatus(of: directory, executable: git)
         review.pushStatus = comparison.status
         review.mergedInto = comparison.mergedInto
-        review.mergeIssue = comparison.mergeIssue
+        review.mergeIssueText = comparison.mergeIssueText
         review.mergeCandidate = comparison.mergeCandidate
-        if let reason = comparison.reason { review.pushIssue = reason }
+        if let reason = comparison.reasonText { review.pushIssueText = reason }
         if let output = try? await run(["symbolic-ref", "--quiet", "--short", "HEAD"]) {
             review.branch = String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         } else if let output = try? await run(["rev-parse", "--short", "HEAD"]) {
-            review.branch = "Detached HEAD · " + String(decoding: output, as: UTF8.self)
+            let commit = String(decoding: output, as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
+            review.branchText = "Detached HEAD · \(commit)"
         }
         do {
             let output = try await run(["status", "--porcelain=v1", "-z", "--untracked-files=all",
@@ -101,14 +102,14 @@ public struct GitWorktreeReviewService: Sendable {
             review.localFiles = parsed.local
             review.ignoredFiles = parsed.ignored
             review.filesChecked = parsed.complete
-            if !parsed.complete { review.filesIssue = "Git returned an incomplete file list." }
+            if !parsed.complete { review.filesIssueText = "Git returned an incomplete file list." }
             review.status = review.localFiles.isEmpty ? .clean : .uncommittedChanges
             review.verifiedGeneratedProjects = try await GeneratedXcodeProjectVerifier().verify(
                 directory, ignoredPaths: review.ignoredFiles.map(\.path), git: git)
         } catch is CancellationError { throw CancellationError() }
         catch {
             review.status = .unavailable
-            review.filesIssue = GitWorktreeReview.failureReason(error, tool: "Git")
+            review.filesIssueText = GitWorktreeReview.failureReason(error, tool: .git)
         }
         if let output = try? await run(["worktree", "list", "--porcelain", "-z"]) {
             review.mainCheckout = Self.mainCheckout(in: output, excluding: directory)
@@ -130,12 +131,12 @@ public struct GitWorktreeReviewService: Sendable {
                     let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
                     found += names.filter { $0.hasSuffix(".lock") || $0 == "locked" }
                 }
-                review.locks = found.isEmpty ? .clear : .found(found.sorted().joined(separator: ", "))
+                review.locksText = found.isEmpty ? .clear : .found(.verbatim(found.sorted().joined(separator: ", ")))
             } else {
-                review.locks = .unknown("Git did not return its metadata paths.")
+                review.locksText = .unknown("Git did not return its metadata paths.")
             }
         } catch is CancellationError { throw CancellationError() }
-        catch { review.locks = .unknown(GitWorktreeReview.failureReason(error, tool: "Git")) }
+        catch { review.locksText = .unknown(GitWorktreeReview.failureReason(error, tool: .git)) }
         try Task.checkCancellation()
         return review
     }
@@ -151,23 +152,23 @@ public struct GitWorktreeReviewService: Sendable {
             try Task.checkCancellation()
             guard let candidate = original.mergeCandidate, let result = results[candidate.request] else { continue }
             var review = original
-            func invalidate(_ reason: String) {
-                review.mergeIssue = reason
+            func invalidate(_ reason: EngineText) {
+                review.mergeIssueText = reason
                 review.status = .unavailable
                 review.filesChecked = false
                 review.pushStatus = .unknown
-                review.filesIssue = reason
-                review.pushIssue = reason
+                review.filesIssueText = reason
+                review.pushIssueText = reason
             }
             switch result {
-            case .unavailable(let reason): review.mergeIssue = reason
+            case .unavailable(let reason): review.mergeIssueText = .rule(reason)
             case .open(let number):
                 review.openPullRequestNumber = number
-                review.mergeIssue = "Pull request #\(number) is open. GitHub has these commits, but the merge is not complete."
+                review.mergeIssueText = "Pull request #\(number) is open. GitHub has these commits, but the merge is not complete."
             case .verified(let proof):
-                review.mergeIssue = "The GitHub merge is absent from the saved default branch. Fetch remote data in your Git tool."
+                review.mergeIssueText = "The GitHub merge is absent from the saved default branch. Fetch remote data in your Git tool."
                 if proof.baseBranch != candidate.baseBranch {
-                    review.mergeIssue = "The GitHub default branch differs from the saved remote default branch."
+                    review.mergeIssueText = "The GitHub default branch differs from the saved remote default branch."
                     break
                 }
                 do {
@@ -197,10 +198,10 @@ public struct GitWorktreeReviewService: Sendable {
                     catch ProcessError.failed(_, let status, _) where status == 1 || status == 128 { break }
                     review.mergedInto = candidate.target
                     review.mergePullRequestNumber = proof.number
-                    review.mergeIssue = ""
+                    review.mergeIssueText = ""
                     review.pushStatus = .noUnpushedCommits
                 } catch is CancellationError { throw CancellationError() }
-                catch { invalidate(GitWorktreeReview.failureReason(error, tool: "Git")) }
+                catch { invalidate(GitWorktreeReview.failureReason(error, tool: .git)) }
             }
             updated[directory] = review
             ScanDiagnostics.current?.record("worktree_github_merge", details: [
@@ -243,7 +244,7 @@ public struct GitWorktreeReviewService: Sendable {
         if measured.containsProtectedPattern {
             review.ignoredFiles[index].regeneratesSafely = false
         } else if measured.unreadableCount > 0 || measured.containsCloudOnlyItem {
-            review.ignoredFilesIssue = "Some ignored files could not be read. Check folder access permissions."
+            review.ignoredFilesIssueText = "Some ignored files could not be read. Check folder access permissions."
         } else {
             review.ignoredFiles[index].regeneratesSafely = regenerates
             review.ignoredFiles[index].canRemoveWhenMerged = regenerates != nil

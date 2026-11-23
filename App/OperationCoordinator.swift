@@ -20,6 +20,16 @@ final class OperationCoordinator {
             default: false
             }
         }
+
+        enum CleanupRestartBehavior { case stop, finish }
+
+        var cleanupRestartBehavior: CleanupRestartBehavior? {
+            switch self {
+            case .cleanupScan, .cleanupPlanReview: .stop
+            case .cleanupRemoval, .cleanupQuit: .finish
+            default: nil
+            }
+        }
     }
 
     struct Operation: Equatable {
@@ -36,20 +46,20 @@ final class OperationCoordinator {
         var message: String {
             if let externalMessage { return externalMessage }
             return switch operation.kind {
-            case .cleanupPlanReview: "A saved cleanup plan is open. Finish or cancel its review."
-            case .cleanupScan: "Cleanup scan is running. Wait for it to finish, or stop the scan."
-            case .fileScan: "Duplicate file scan is running. Wait for it to finish, or stop the scan."
-            case .photoScan: "Duplicate photo scan is running. Wait for it to finish, or stop the scan."
-            case .storageMeasurement: "Storage Explorer scan is running. Wait for it to finish, or stop the scan."
-            case .appUninstallPlanning: "Moppo is checking selected apps. Wait for it to finish, or stop the check."
-            case .cleanupQuit: "Moppo is waiting for applications to quit. Wait for it to finish, or cancel the wait."
+            case .cleanupPlanReview: String(localized: "A saved cleanup plan is open. Finish or cancel its review.")
+            case .cleanupScan: String(localized: "Cleanup scan is running. Wait for it to finish, or stop the scan.")
+            case .fileScan: String(localized: "Duplicate file scan is running. Wait for it to finish, or stop the scan.")
+            case .photoScan: String(localized: "Duplicate photo scan is running. Wait for it to finish, or stop the scan.")
+            case .storageMeasurement: String(localized: "Storage Explorer scan is running. Wait for it to finish, or stop the scan.")
+            case .appUninstallPlanning: String(localized: "Moppo is checking selected apps. Wait for it to finish, or stop the check.")
+            case .cleanupQuit: String(localized: "Moppo is waiting for applications to quit. Wait for it to finish, or cancel the wait.")
             case .cleanupRemoval, .fileRemoval, .storageRemoval, .appLeftoverRemoval:
-                "Moppo is removing files. Wait for it to finish."
-            case .photoDeletion: "Moppo is removing photos. Wait for it to finish."
-            case .appUninstall: "Moppo is uninstalling applications. Wait for it to finish."
-            case .emptyTrash: "Moppo is emptying the Trash. Wait for it to finish."
-            case .trashRestoration: "Moppo is restoring items. Wait for it to finish."
-            case .updateInstallation: "Moppo is preparing an update. Wait for it to finish."
+                String(localized: "Moppo is removing files. Wait for it to finish.")
+            case .photoDeletion: String(localized: "Moppo is removing photos. Wait for it to finish.")
+            case .appUninstall: String(localized: "Moppo is uninstalling applications. Wait for it to finish.")
+            case .emptyTrash: String(localized: "Moppo is emptying the Trash. Wait for it to finish.")
+            case .trashRestoration: String(localized: "Moppo is restoring items. Wait for it to finish.")
+            case .updateInstallation: String(localized: "Moppo is preparing an update. Wait for it to finish.")
             }
         }
     }
@@ -59,6 +69,8 @@ final class OperationCoordinator {
     @ObservationIgnored private var terminationReady: (() -> Void)?
     @ObservationIgnored private let acquireRemovalLease: () throws -> PlanExecutionLease?
     @ObservationIgnored private var removalLease: PlanExecutionLease?
+    private enum Termination { case quit, restart }
+    private var termination: Termination?
 
     init(now: @escaping () -> ContinuousClock.Instant = { .now },
          acquireRemovalLease: @escaping () throws -> PlanExecutionLease? = { nil }) {
@@ -68,7 +80,8 @@ final class OperationCoordinator {
 
     private(set) var activeOperation: Operation?
     private(set) var blockedAction: BlockedAction?
-    private(set) var isTerminating = false
+    var isTerminating: Bool { termination != nil }
+    var isPreparingLanguageRestart: Bool { termination == .restart }
 
     var isBusy: Bool { activeOperation != nil || isTerminating }
     var canCancel: Bool { cancelActiveOperation != nil && !isTerminating }
@@ -87,8 +100,8 @@ final class OperationCoordinator {
             catch {
                 blockedAction = BlockedAction(operation: operation, expiresAt: now() + .seconds(8),
                     externalMessage: error as? PlanExecutionError == .busy
-                        ? "Another Moppo client is changing files. Wait for it to finish."
-                        : "Moppo could not lock cleanup operations. No files were changed.")
+                        ? String(localized: "Another Moppo client is changing files. Wait for it to finish.")
+                        : String(localized: "Moppo could not lock cleanup operations. No files were changed."))
                 return nil
             }
         }
@@ -100,12 +113,27 @@ final class OperationCoordinator {
 
     /// Stops a cancellable operation and prevents new work until the app quits.
     func cancelForTermination(whenReady: @escaping () -> Void) -> Bool {
-        guard !isTerminating else { return true }
+        guard !isTerminating else { return termination == .quit }
         guard let cancelActiveOperation else { return false }
-        isTerminating = true
+        termination = .quit
         terminationReady = whenReady
         cancelActiveOperation()
         return true
+    }
+
+    /// Stops or finishes Cleanup and prevents new work until the app restarts.
+    func prepareForLanguageRestart(whenReady: @escaping () -> Void) -> Bool {
+        guard !isTerminating, let behavior = activeOperation?.kind.cleanupRestartBehavior else { return false }
+        termination = .restart
+        terminationReady = whenReady
+        if behavior == .stop { cancelActiveOperation?() }
+        return true
+    }
+
+    func endLanguageRestart() {
+        guard isPreparingLanguageRestart else { return }
+        terminationReady = nil
+        termination = nil
     }
 
     /// Reports the active operation without changing or queuing the requested action.

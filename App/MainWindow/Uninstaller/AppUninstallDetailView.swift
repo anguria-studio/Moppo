@@ -18,7 +18,7 @@ struct AppUninstallDetailView: View {
                     url: url,
                     name: plan?.applicationName ?? url.deletingPathExtension().lastPathComponent,
                     identifier: plan?.bundleIdentifier ?? Bundle(url: url)?.bundleIdentifier
-                        ?? "Bundle identifier unavailable",
+                        ?? String(localized: "Bundle identifier unavailable"),
                     identifierIsWarning: plan?.isApplicationOnly ?? false
                 )
                 .fixedSize(horizontal: false, vertical: true)
@@ -36,9 +36,9 @@ struct AppUninstallDetailView: View {
                     resultsContent(plan)
                 } else {
                     PageState(
-                        title: model.appUninstallApplicationMissing ? "Application Not Found" : "Could Not Find Related Files",
+                        title: model.appUninstallApplicationMissing ? String(localized: "Application Not Found") : String(localized: "Could Not Find Related Files"),
                         symbol: "exclamationmark.triangle",
-                        detail: model.appUninstallError ?? "Review the application again."
+                        detail: model.appUninstallError ?? String(localized: "Review the application again.")
                     )
                 }
             }
@@ -107,15 +107,15 @@ struct AppUninstallDetailView: View {
                 if let plan {
                     let optedIn = model.optedInSharedContainers
                     let relatedCount = plan.items.count - 1 + optedIn.count
-                    Text(ByteFormatting.string(plan.totalBytes + optedIn.reduce(0) { $0 + $1.allocatedBytes }))
+                    Text(ByteFormatting.localizedString(plan.totalBytes + optedIn.reduce(0) { $0 + $1.allocatedBytes }))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                     Text(plan.isApplicationOnly
-                        ? "Application only"
-                        : "\(relatedCount) related \(relatedCount == 1 ? "item" : "items")")
+                        ? String(localized: "Application only")
+                        : String(localized: "\(relatedCount) related item", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
                 } else {
-                    Text(model.isPlanningAppUninstall ? "Finding related files…" : "Review could not finish")
+                    Text(model.isPlanningAppUninstall ? String(localized: "Finding related files…") : String(localized: "Review could not finish"))
                         .font(.mcSubtitle)
                         .foregroundStyle(Token.Text.secondary)
                 }
@@ -135,8 +135,8 @@ struct AppUninstallDetailView: View {
                         .disabled(model.isBusyWithDisk)
                 }
                 Button(
-                    plan.managedPackage != nil ? "Uninstall with Homebrew"
-                        : plan.isApplicationOnly ? "Uninstall Application" : "Uninstall",
+                    plan.managedPackage != nil ? String(localized: "Uninstall with Homebrew")
+                        : plan.isApplicationOnly ? String(localized: "Uninstall Application") : String(localized: "Uninstall"),
                     action: model.requestAppUninstall
                 )
                 .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
@@ -218,7 +218,7 @@ struct AppUninstallDetailView: View {
                 ForEach(plan.soundLibraryItems) { item in
                     HStack(spacing: 10) {
                         SelectionCheckbox(
-                            title: "Select \(item.displayName)",
+                            title: String(localized: "Select \(item.localizedDisplayName)"),
                             state: model.selectedSoundLibraryIDs.contains(item.id) ? .on : .off,
                             isEnabled: !model.isBusyWithDisk, showsTitle: false
                         ) { isOn in
@@ -226,11 +226,11 @@ struct AppUninstallDetailView: View {
                             else { model.selectedSoundLibraryIDs.remove(item.id) }
                         }
                         .fixedSize()
-                        Text(item.displayName)
+                        Text(item.localizedDisplayName)
                             .font(.mcBody)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        Text(ByteFormatting.string(item.allocatedBytes))
+                        Text(ByteFormatting.localizedString(item.allocatedBytes))
                             .font(.mcRowValue)
                             .fixedSize()
                     }
@@ -289,10 +289,10 @@ struct AppUninstallDetailView: View {
                         ? Token.textColor(.orange) : Token.color(.green))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(plan.reviewTitle)
+                    Text(plan.localizedReviewTitle)
                         .font(.mcBody.weight(.medium))
                         .foregroundStyle(Token.Text.primary)
-                    Text(plan.reviewDetail)
+                    Text(plan.localizedReviewDetail)
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -318,10 +318,10 @@ struct AppUninstallDetailView: View {
                     .foregroundStyle(Token.Text.secondary)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(package.reviewTitle)
+                    Text(package.localizedReviewTitle)
                         .font(.mcBody.weight(.medium))
                         .foregroundStyle(Token.Text.primary)
-                    Text(package.reviewDetail)
+                    Text(package.localizedReviewDetail)
                         .font(.mcCaption)
                         .foregroundStyle(Token.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -368,7 +368,7 @@ struct AppUninstallDetailView: View {
                 Text(categoryTitle(category))
                     .mcEyebrowStyle()
                 Spacer()
-                Text(ByteFormatting.string(items.reduce(0) { $0 + $1.allocatedBytes }))
+                Text(ByteFormatting.localizedString(items.reduce(0) { $0 + $1.allocatedBytes }))
                     .font(.mcMonoSmall)
                     .foregroundStyle(Token.Text.tertiary)
             }
@@ -391,7 +391,7 @@ struct AppUninstallDetailView: View {
                 Text("Stays on Disk")
                     .mcEyebrowStyle()
                 Spacer()
-                Text(ByteFormatting.string(paths.reduce(0) { $0 + ($1.allocatedBytes ?? 0) }))
+                Text(ByteFormatting.localizedString(paths.reduce(0) { $0 + ($1.allocatedBytes ?? 0) }))
                     .font(.mcMonoSmall)
                     .foregroundStyle(Token.Text.tertiary)
             }
@@ -417,14 +417,14 @@ struct AppUninstallDetailView: View {
 
     private func categoryTitle(_ category: AppUninstallPlan.Item.Category) -> String {
         switch category {
-        case .application: "Application"
-        case .support: "Application Support"
-        case .caches: "Caches"
-        case .preferences: "Preferences"
-        case .containers: "Containers & Scripts"
-        case .logs: "Logs"
-        case .state: "Saved State"
-        case .helpers: "Helpers & Launch Items"
+        case .application: String(localized: "Application")
+        case .support: String(localized: "Application Support")
+        case .caches: String(localized: "Caches")
+        case .preferences: String(localized: "Preferences")
+        case .containers: String(localized: "Containers & Scripts")
+        case .logs: String(localized: "Logs")
+        case .state: String(localized: "Saved State")
+        case .helpers: String(localized: "Helpers & Launch Items")
         }
     }
 }
@@ -441,7 +441,7 @@ private struct UninstallerPreservedRow: View {
         HStack(spacing: 10) {
             if path.optInItem != nil {
                 SelectionCheckbox(
-                    title: "Remove \(path.url.lastPathComponent)",
+                    title: String(localized: "Remove \(path.url.lastPathComponent)"),
                     state: isSelected ? .on : .off,
                     isEnabled: isEnabled, showsTitle: false
                 ) { _ in onToggle() }
@@ -463,7 +463,7 @@ private struct UninstallerPreservedRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
-                Text(path.reason.explanation)
+                Text(path.reason.localizedExplanation)
                     .font(.mcCaption)
                     .foregroundStyle(Token.Text.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -476,7 +476,7 @@ private struct UninstallerPreservedRow: View {
 
             Spacer()
 
-            Text(path.allocatedBytes.map(ByteFormatting.string) ?? "Size unknown")
+            Text(path.allocatedBytes.map { ByteFormatting.localizedString($0) } ?? String(localized: "Size unknown"))
                 .font(.mcRowValue)
                 .foregroundStyle(Token.Text.secondary)
                 .fixedSize()

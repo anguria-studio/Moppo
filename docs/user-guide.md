@@ -330,10 +330,21 @@ If its scan stops or fails, it removes nothing.
 Moppo repeats its removal safety checks before it removes items.
 The actions also work when Moppo runs in menu bar mode.
 
-## Appearance and iCloud
+## Appearance, language, and iCloud
 
 Choose **System**, **Light**, or **Dark** in **Settings > General > Appearance**.
 **System** is the default and follows macOS.
+
+Choose a language in **Settings > General > Language**.
+**System Default** uses the preferred languages in macOS.
+When you reset all settings, Moppo sets the language to **System Default**.
+Select **Restart Moppo** to apply a language change.
+Select **Later** to keep working with the current language.
+If a Cleanup scan is in progress, **Restart Moppo** stops the scan before Moppo restarts.
+If Cleanup is removing files, **Restart Moppo** waits for the removal to finish before Moppo restarts.
+If you review a saved cleanup plan, **Restart Moppo** closes the review before Moppo restarts.
+If another operation blocks the restart, wait for it to finish.
+When you are ready, select **Restart Moppo** in **Settings > General > Language**.
 
 The Dashboard shows an iCloud setup card when storage information is unavailable.
 Select **Set Up** to check access and open iCloud settings.

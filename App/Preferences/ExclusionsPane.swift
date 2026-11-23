@@ -126,7 +126,7 @@ struct ExclusionsPane: View {
             // The design also carries a "18.2 GB currently protected" figure here.
             // Nothing measures that yet, and a number invented for the line would be
             // the one thing on this pane the user could not verify.
-            Text(settings.exclusions.count == 1 ? "1 rule" : "\(settings.exclusions.count) rules")
+            Text("\(settings.exclusions.count) rules")
                 .font(.mcSubtitle.monospacedDigit())
                 .foregroundStyle(Token.Text.quaternary)
         }

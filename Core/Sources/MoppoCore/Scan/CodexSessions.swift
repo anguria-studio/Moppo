@@ -330,14 +330,14 @@ struct CodexSessions: Sendable {
             let size = try await context.measurer.measure(url)
             guard size.allocatedBytes > 0, size.unreadableCount == 0, !size.containsProtectedPattern else { continue }
             groups[name] = FileEntry(url: url,
-                displayName: name == "sessions" ? "Codex sessions" : "Codex archived sessions", kind: .folder,
+                nameText: name == "sessions" ? "Codex sessions" : "Codex archived sessions", kind: .folder,
                 allocatedBytes: size.allocatedBytes, protectionReason: .inventory,
-                protectionExplanation: snapshot == nil
+                protectionText: snapshot == nil
                     ? "Saved conversations are shown below. Moppo cannot verify safe removal with this Codex installation."
                     : "Review inactive conversations below. Active sessions and unknown files stay protected.", aiTool: .codex,
                 aiStorageSection: .init(owner: .codex,
-                    title: name == "sessions" ? "Sessions" : "Archived sessions",
-                    summary: name == "sessions" ? "Saved conversations and task history." : "Archived conversations and task history."))
+                    titleText: name == "sessions" ? "Sessions" : "Archived sessions",
+                    summaryText: name == "sessions" ? "Saved conversations and task history." : "Archived conversations and task history."))
         }
         var disclosedPaths: Set<String> = []
         let childIDs = Set(snapshot?.children.values.flatMap { $0 } ?? [])
@@ -360,10 +360,10 @@ struct CodexSessions: Sendable {
             let folder = primary.url.path.hasPrefix(home.appendingPathComponent("archived_sessions").path + "/")
                 ? "archived_sessions" : "sessions"
             let inactive = isInactive(review, openPaths: snapshot.openPaths)
-            let row = FileEntry(url: primary.url, displayName: root.name ?? id, kind: .file,
+            let row = FileEntry(url: primary.url, nameText: .verbatim(root.name ?? id), kind: .file,
                 allocatedBytes: sizes.values.reduce(0, +), lastOpened: primary.modifiedAt,
                 protectionReason: inactive ? .userData : .inventory,
-                protectionExplanation: inactive ? review.warning : "This session or a child session is in use. Close the session, then scan again.",
+                protectionText: inactive ? review.warningText() : "This session or a child session is in use. Close the session, then scan again.",
                 codexSession: review)
             for (key, bytes) in sizes { groups[key]!.allocatedBytes -= bytes }
             groups[folder]!.children.append(row)
@@ -379,10 +379,10 @@ struct CodexSessions: Sendable {
             let current = readMember(member.url)
             guard size.unreadableCount == 0, !size.containsProtectedPattern,
                   size.allocatedBytes <= groups[folder]!.allocatedBytes, current == member else { continue }
-            let row = FileEntry(url: member.url, displayName: titles[member.threadID] ?? "Codex session \(member.threadID)",
+            let row = FileEntry(url: member.url, nameText: titles[member.threadID].map(EngineText.verbatim) ?? "Codex session \(member.threadID)",
                 kind: .file, allocatedBytes: size.allocatedBytes, lastOpened: member.modifiedAt,
                 protectionReason: .inventory,
-                protectionExplanation: "Moppo cannot verify safe removal for this conversation. Use Codex to manage it.")
+                protectionText: "Moppo cannot verify safe removal for this conversation. Use Codex to manage it.")
             groups[folder]!.allocatedBytes -= size.allocatedBytes
             groups[folder]!.children.append(row)
             disclosedPaths.insert(member.url.path)

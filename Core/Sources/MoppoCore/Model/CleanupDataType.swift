@@ -6,7 +6,10 @@ public enum CleanupDataType: String, CaseIterable, Sendable, Identifiable {
 
     public var id: String { rawValue }
 
-    public var title: String {
+    public var title: String { titleText.english }
+    public var localizedTitle: String { titleText.localized }
+
+    var titleText: EngineText {
         switch self {
         case .all: "All results"
         case .worktrees: "Worktrees"
@@ -45,8 +48,8 @@ public enum CleanupDataType: String, CaseIterable, Sendable, Identifiable {
             return entry.children.filter(matches).map { child in
                 var child = child
                 if child.aiStorageSection == nil, let section = entry.aiStorageSection {
-                    child.aiStorageSection = .init(owner: section.owner, title: child.displayName,
-                        summary: FileEntryPresentation(entry: child).summary)
+                    child.aiStorageSection = .init(owner: section.owner, titleText: child.nameText,
+                        summaryText: FileEntryPresentation.summaryText(for: child))
                 }
                 return child
             }

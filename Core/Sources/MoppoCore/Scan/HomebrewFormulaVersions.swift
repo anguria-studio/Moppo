@@ -67,11 +67,11 @@ public struct HomebrewFormulaVersions: Sendable {
                     guard measured.allocatedBytes > 0, !measured.containsProtectedPattern else { continue }
                     let command = ToolCommandRemoval.homebrewVersion(version, executable: executable,
                         protectedPatterns: context.measurer.protectedPatterns)
-                    entries.append(FileEntry(url: url, displayName: "\(version.name) \(version.version)", kind: .cache,
+                    entries.append(FileEntry(url: url, nameText: .verbatim("\(version.name) \(version.version)"), kind: .cache,
                         allocatedBytes: measured.allocatedBytes, isRegenerable: false,
                         protectionReason: measured.unreadableCount > 0 || measured.containsCloudOnlyItem ? .inventory : nil,
-                        protectionExplanation: measured.unreadableCount > 0 || measured.containsCloudOnlyItem
-                            ? "Moppo could not check some formula files. Scan again before removal." : command.lockReason,
+                        protectionText: measured.unreadableCount > 0 || measured.containsCloudOnlyItem
+                            ? "Moppo could not check some formula files. Scan again before removal." : command.lockText,
                         removalMethod: .toolCommand(command)))
                 }
             } catch is CancellationError {

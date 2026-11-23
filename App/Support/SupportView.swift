@@ -37,7 +37,7 @@ struct PrivacyView: View {
     private var sections: [String] {
         guard let url = Bundle.main.url(forResource: "Privacy", withExtension: "md"),
               let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return ["Privacy information is not available in this build. Contact \(SupportReport.email) for help."]
+            return [String(localized: "Privacy information is not available in this build. Contact \(SupportReport.email) for help.")]
         }
         return text.components(separatedBy: "\n\n").filter { !$0.isEmpty }
     }

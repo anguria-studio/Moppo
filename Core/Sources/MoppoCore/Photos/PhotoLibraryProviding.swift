@@ -47,15 +47,17 @@ public enum PhotoLibraryAccess: Sendable, Equatable {
 
     /// User-facing copy naming the remedy, per the design's rule that an
     /// unavailable feature says how to fix itself.
-    public var unavailableReason: String? {
+    public var unavailableReason: String? { unavailableText?.english }
+    public var localizedUnavailableReason: String? { unavailableText?.localized }
+
+    private var unavailableText: EngineText? {
         switch self {
         case .notDetermined:
             "Allow Photos access to find duplicate and similar photos. This does not start a scan."
         case .authorized:
             nil
         case .limited:
-            "Moppo can see only some photos. Duplicate scans require full access. "
-                + "Select full access for Moppo in System Settings > Privacy & Security > Photos."
+            "Moppo can see only some photos. Duplicate scans require full access. Select full access for Moppo in System Settings > Privacy & Security > Photos."
         case .denied:
             "Photos access is off. Turn on Moppo in System Settings > Privacy & Security > Photos."
         case .restricted:

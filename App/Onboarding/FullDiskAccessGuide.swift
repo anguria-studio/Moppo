@@ -14,11 +14,11 @@ final class FullDiskAccessGuide: NSObject, NSWindowDelegate {
             return
         }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 260),
+            contentRect: NSRect(origin: .zero, size: FullDiskAccessGuideView.contentSize),
             styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
-        panel.title = "Enable Full Disk Access"
+        panel.title = String(localized: "Enable Full Disk Access")
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
@@ -53,6 +53,8 @@ final class FullDiskAccessGuide: NSObject, NSWindowDelegate {
 }
 
 struct FullDiskAccessGuideView: View {
+    static let contentSize = CGSize(width: 340, height: 300)
+
     let appURL: URL
 
     var body: some View {
@@ -68,14 +70,16 @@ struct FullDiskAccessGuideView: View {
             Text("Drag Moppo into Settings")
                 .font(.system(size: 20, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
+                .fixedSize(horizontal: false, vertical: true)
             Text("Drag this icon into the Full Disk Access list.\nThen turn on Moppo.")
                 .font(.system(size: 13))
                 .foregroundStyle(Token.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .multilineTextAlignment(.center)
         .foregroundStyle(Token.Text.primary)
         .padding(24)
-        .frame(width: 340, height: 260)
+        .frame(width: Self.contentSize.width, height: Self.contentSize.height)
         .background(Token.chrome)
     }
 

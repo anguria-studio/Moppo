@@ -39,7 +39,7 @@ final class SavedPlanModel {
     func open(_ request: PlanHandoff) {
         if isPresented {
             guard handoff != request else { return }
-            otherRequestMessage = "Another plan was requested. Finish or cancel this review, then open the other plan again."
+            otherRequestMessage = String(localized: "Another plan was requested. Finish or cancel this review, then open the other plan again.")
             _ = try? services.recordReview(request, .blocked, "review_busy")
             return
         }
@@ -141,7 +141,7 @@ final class SavedPlanModel {
             catch {
                 finishOperation()
                 phase = .failed
-                message = "Review cancelled. No removal started. Moppo could not save the cancellation record."
+                message = String(localized: "Review cancelled. No removal started. Moppo could not save the cancellation record.")
                 return
             }
         }
@@ -156,13 +156,13 @@ final class SavedPlanModel {
             ?? (error as? ScanConfiguration.ConfigurationError).map { _ in "invalid_settings" } ?? "review_failed"
         if let handoff { _ = try? services.recordReview(handoff, .failed, code) }
         if error as? PlanExecutionError == .busy {
-            message = "Another operation is active. Wait for it to finish, then open the plan again."
+            message = String(localized: "Another operation is active. Wait for it to finish, then open the plan again.")
         } else if error is ScanConfiguration.ConfigurationError {
-            message = "Scan settings are invalid. Review categories and exclusions in Settings, then request the plan again."
+            message = String(localized: "Scan settings are invalid. Review categories and exclusions in Settings, then request the plan again.")
         } else if error as? PlanValidationError == .unsupportedTarget {
-            message = "This plan needs a specialized review. Use the existing Cleanup or App Uninstaller controls for these items."
+            message = String(localized: "This plan needs a specialized review. Use the existing Cleanup or App Uninstaller controls for these items.")
         } else {
-            message = "Moppo could not complete this plan. It may be expired, changed, or unavailable. Check plan outcomes and Cleanup History."
+            message = String(localized: "Moppo could not complete this plan. It may be expired, changed, or unavailable. Check plan outcomes and Cleanup History.")
         }
     }
 

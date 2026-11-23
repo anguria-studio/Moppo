@@ -36,15 +36,13 @@ struct TrashView: View {
     }
 
     private var loadingNote: some View {
-        PageProgressView(title: "Reading the Trash")
+        PageProgressView(title: String(localized: "Reading the Trash"))
     }
 
     private var unreadableNote: some View {
         PageState(
-            title: "The Trash could not be read", symbol: "trash.slash",
-            detail: "This is the same Trash Finder shows, but macOS only lets apps with "
-                + "Full Disk Access look inside it. Grant access in System Settings "
-                + "and come back."
+            title: String(localized: "The Trash could not be read"), symbol: "trash.slash",
+            detail: String(localized: "This is the same Trash Finder shows, but macOS only lets apps with Full Disk Access look inside it. Grant access in System Settings and come back.")
         ) {
             Button("Open System Settings") {
                 FullDiskAccess.openSystemSettings()
@@ -90,8 +88,8 @@ private struct TrashContent: View {
                 emptyNote
             } else if visibleItems.isEmpty {
                 PageState(
-                    title: "No Results for “\(query)”", symbol: "magnifyingglass",
-                    detail: "No item in the Trash has that in its name."
+                    title: String(localized: "No Results for “\(query)”"), symbol: "magnifyingglass",
+                    detail: String(localized: "No item in the Trash has that in its name.")
                 )
             } else {
                 trashTable
@@ -109,36 +107,37 @@ private struct TrashContent: View {
     }
 
     private var trashTable: some View {
-        CompactTable(
+        let putBackWidth = CompactTableActionStyle.minimumColumnWidth(for: String(localized: "Put Back"))
+        return CompactTable(
             items: visibleItems,
             selection: $selectedItemIDs,
             sortOrder: $sortOrder,
             columns: [
-                CompactTableColumn("Item", width: 400, min: 200, sort: TrashItemComparator(key: .name)) { item, selected in
+                CompactTableColumn(String(localized: "Item"), width: 400, min: 200, sort: TrashItemComparator(key: .name)) { item, selected in
                     CompactTableItem(
                         name: item.name,
                         path: item.originalURL.map { FileEntry.abbreviate($0.deletingLastPathComponent().path) }
-                            ?? "Original location unknown",
+                            ?? String(localized: "Original location unknown"),
                         iconURL: item.url,
                         isSelected: selected
                     )
                 },
-                CompactTableColumn("Deleted", width: 105, min: 95, max: 145, sort: TrashItemComparator(key: .date, order: .reverse)) { item, selected in
+                CompactTableColumn(String(localized: "Deleted"), width: 105, min: 95, max: 145, sort: TrashItemComparator(key: .date, order: .reverse)) { item, selected in
                     CompactTableDate(date: item.deletedAt, isSelected: selected)
                 },
-                CompactTableColumn("Size", width: 78, min: 65, max: 100, sort: TrashItemComparator(key: .size, order: .reverse)) { item, selected in
-                    Text(ByteFormatting.string(item.bytes))
+                CompactTableColumn(String(localized: "Size"), width: 78, min: 65, max: 100, sort: TrashItemComparator(key: .size, order: .reverse)) { item, selected in
+                    Text(ByteFormatting.localizedString(item.bytes))
                         .monospacedDigit()
                         .foregroundStyle(selected ? Color.white : Token.Text.tableSize)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 },
-                CompactTableColumn("", width: 80, min: 80, max: 80) { item, selected in
+                CompactTableColumn("", width: putBackWidth, min: putBackWidth, max: putBackWidth) { item, selected in
                     if item.canPutBack {
                         Button("Put Back") { onPutBack([item]) }
                             .buttonStyle(CompactTableActionStyle(isSelected: selected))
                             .help(isBusyWithDisk
-                                  ? "Explain why Put Back must wait for the current operation."
-                                  : "Restore this item to its original folder.")
+                                  ? String(localized: "Explain why Put Back must wait for the current operation.")
+                                  : String(localized: "Restore this item to its original folder."))
                     }
                 }
             ],
@@ -148,7 +147,7 @@ private struct TrashContent: View {
                 let selected = visibleItems.filter { selectedIDs.contains($0.id) }
                 let restorable = selected.filter(\.canPutBack)
                 let title = restorable.isEmpty || restorable.count == selected.count
-                    ? "Put Back" : "Put Back \(restorable.count) \(restorable.count == 1 ? "Item" : "Items")"
+                    ? String(localized: "Put Back") : String(localized: "Put Back \(restorable.count) Item", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
                 return [CompactTableMenuAction(title: title, isEnabled: !restorable.isEmpty) {
                     onPutBack(restorable)
                 }]
@@ -172,46 +171,25 @@ private struct TrashContent: View {
     }
 
     private var summaryFigures: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(ByteFormatting.string(summary.totalBytes))
-                    .animatedTotal(summary.totalBytes)
-                    .font(.mcSecondaryHero)
-                    .mcTracked(-0.26)   // -0.01em
-                    .foregroundStyle(Token.Text.emphasis)
-                    .lineLimit(1)
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Text(ByteFormatting.localizedString(summary.totalBytes))
+                .animatedTotal(summary.totalBytes)
+                .font(.mcSecondaryHero)
+                .mcTracked(-0.26)   // -0.01em
+                .foregroundStyle(Token.Text.emphasis)
+                .lineLimit(1)
 
-                Text("· \(summary.itemCount) \(summary.itemCount == 1 ? "item" : "items")")
-                    .font(.trashItemCount)
-                    .foregroundStyle(Token.Text.quaternary)
-                    .lineLimit(1)
-            }
-
-            Label(
-                hasICloudDrive
-                    ? "Finder settings control how long items stay. iCloud Recently Deleted is not on this disk."
-                    : "Finder settings control how long items stay.",
-                systemImage: "info.circle"
-            )
-                .font(.mcControlLabel)
+            Text("· \(summary.itemCount) item")
+                .font(.trashItemCount)
                 .foregroundStyle(Token.Text.quaternary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 6)
+                .lineLimit(1)
         }
-    }
-
-    private var hasICloudDrive: Bool {
-        FileManager.default.fileExists(
-            atPath: NSHomeDirectory() + "/Library/Mobile Documents/com~apple~CloudDocs"
-        )
     }
 
     private var emptyNote: some View {
         PageState(
-            title: "The Trash is empty", symbol: "trash",
-            detail: "This is the system Trash, the same one Finder shows. Items this "
-                + "app moves here record their original location. You can put "
-                + "them back."
+            title: String(localized: "The Trash is empty"), symbol: "trash",
+            detail: String(localized: "This is the system Trash, the same one Finder shows. Items this app moves here record their original location. You can put them back.")
         )
     }
 }

@@ -82,7 +82,7 @@ struct WorktreeScan: Sendable {
         for root in roots {
             var review = reviews[root] ?? GitWorktreeReview()
             GitWorktreeReviewService.applyMeasurements(measurements, directory: root, to: &review)
-            review.activity = activity?.check(root, measurement: measurements[root])
+            review.activityText = activity?.checkText(root, measurement: measurements[root])
                 ?? .unknown("Open files and processes were not checked.")
             reviews[root] = review
             ScanDiagnostics.current?.record("worktree_scan_result", details: [
@@ -103,7 +103,7 @@ final class WorktreeActivity: @unchecked Sendable {
     private let roots: Set<URL>
     private let processes: [String: Set<String>]
     private let processesByVolume: [NSObject: [UInt64: Set<String>]]
-    private let issue: String?
+    private let issue: EngineText?
     private let lock = NSLock()
     private var matches: [URL: Set<String>] = [:]
     private var unreadable: Set<URL> = []
@@ -111,10 +111,14 @@ final class WorktreeActivity: @unchecked Sendable {
 
     var fallbackCount: Int { lock.withLock { identityFallbacks } }
 
-    init(roots: [URL], processes: [String: Set<String>], issue: String? = nil) {
+    convenience init(roots: [URL], processes: [String: Set<String>], issue: String? = nil) {
+        self.init(roots: roots, processes: processes, issueText: issue.map(EngineText.verbatim))
+    }
+
+    private init(roots: [URL], processes: [String: Set<String>], issueText: EngineText?) {
         self.roots = Set(roots.map(\.standardizedFileURL))
         self.processes = processes
-        self.issue = issue
+        self.issue = issueText
         var volumes: [NSObject: [UInt64: Set<String>]] = [:]
         for root in roots {
             guard let values = try? root.resourceValues(forKeys: [.volumeIdentifierKey]),
@@ -137,11 +141,11 @@ final class WorktreeActivity: @unchecked Sendable {
                 allowsInput: false, requiresEmptyStandardError: true)
             let parsed = parse(data, scanProcessID: ProcessInfo.processInfo.processIdentifier)
             return WorktreeActivity(roots: roots, processes: parsed.processes,
-                issue: parsed.complete ? nil : "The process check returned incomplete file information.")
+                issueText: parsed.complete ? nil : "The process check returned incomplete file information.")
         } catch is CancellationError { throw CancellationError() }
         catch {
             return WorktreeActivity(roots: roots, processes: [:],
-                issue: GitWorktreeReview.failureReason(error, tool: "The process check"))
+                issueText: GitWorktreeReview.failureReason(error, tool: .processes))
         }
     }
 
@@ -284,8 +288,12 @@ final class WorktreeActivity: @unchecked Sendable {
     }
 
     func check(_ root: URL, measurement: SizeMeasurement?) -> GitWorktreeReview.Check {
+        checkText(root, measurement: measurement).result(localized: false)
+    }
+
+    func checkText(_ root: URL, measurement: SizeMeasurement?) -> GitWorktreeReview.CheckText {
         lock.withLock {
-            if let names = matches[root], !names.isEmpty { return .found(names.sorted().joined(separator: ", ")) }
+            if let names = matches[root], !names.isEmpty { return .found(.verbatim(names.sorted().joined(separator: ", "))) }
             if let issue { return .unknown(issue) }
             guard let measurement, measurement.unreadableCount == 0, !unreadable.contains(root) else {
                 return .unknown("Some files could not be checked for open processes.")

@@ -28,6 +28,7 @@ final class DashboardModel {
     @ObservationIgnored private var storageHistory: [StorageSnapshot] = []
     @ObservationIgnored var canLoad: () -> Bool = { true }
     @ObservationIgnored var canMeasure: (Bool) -> Bool = { _ in true }
+    @ObservationIgnored var canChangeDiskFiles: () -> Bool = { true }
     @ObservationIgnored var hasICloudAccess: () -> Bool = { true }
     @ObservationIgnored var beforeMeasurement: () async -> Bool = { true }
     @ObservationIgnored var onVolumeChanged: (VolumeInfo) async -> Void = { _ in }
@@ -60,6 +61,10 @@ final class DashboardModel {
     private(set) var isLoadingBreakdown = false
     private(set) var hasCompletedInitialDashboardLoad = false
     var isDashboardLoading: Bool { !hasCompletedInitialDashboardLoad || isLoadingBreakdown }
+    private var activeDiskReads = 0
+    private var activeFileChanges = 0
+    var hasActiveFileChanges: Bool { activeFileChanges > 0 }
+    var hasActiveDiskWork: Bool { isLoadingBreakdown || activeDiskReads > 0 || hasActiveFileChanges }
     /// Space that macOS can free on its own, such as local snapshots and caches.
     private(set) var purgeableBytes: Int64?
     var snapshotsExpanded = false
@@ -407,8 +412,10 @@ final class DashboardModel {
         cloudPlanBytes = planBytes
         let previous = iCloudState == .loading ? .idle : iCloudState
         if previous == .idle || previous == .requiresAccess { iCloudState = .loading }
+        activeDiskReads += 1
         let task = Task { [self] in
             defer {
+                activeDiskReads -= 1
                 if cloudID == id {
                     if iCloudState == .loading { iCloudState = previous }
                     cloudTask = nil
@@ -458,20 +465,31 @@ final class DashboardModel {
     /// Delete the Time Machine local snapshots, then read the snapshots and free space again.
     /// A failure can come after some deletions, so the reads run in each case.
     func deleteTimeMachineSnapshots() async throws {
+        guard canChangeDiskFiles() else { return }
+        activeFileChanges += 1
         var failure: (any Error)?
         do { try await service.deleteTimeMachineSnapshots(removableSnapshots) } catch { failure = error }
+        activeFileChanges -= 1
+        activeDiskReads += 1
+        defer { activeDiskReads -= 1 }
         await refreshSnapshots()
         await refreshVolumeInfo()
         if let failure { throw failure }
     }
 
     func rebuildSizeIndex() async {
+        guard canChangeDiskFiles() else { return }
+        activeFileChanges += 1
         await persistence.clearCache()
+        activeFileChanges -= 1
+        activeDiskReads += 1
+        defer { activeDiskReads -= 1 }
         await measureStorage()
     }
 
     /// Reject earlier reads and measurements after the user clears history.
     func clearMeasurementHistory() {
+        guard canChangeDiskFiles() else { return }
         historyRevision = UUID()
         latestCleanupID = nil
         queuedCleanupID = nil
@@ -480,7 +498,11 @@ final class DashboardModel {
         storageHistory = []
         recomputeGrowth()
         let persistence = persistence
-        historyClearTask = Task { await persistence.clearHistory() }
+        activeFileChanges += 1
+        historyClearTask = Task {
+            defer { activeFileChanges -= 1 }
+            await persistence.clearHistory()
+        }
     }
 
     private func recomputeGrowth() {

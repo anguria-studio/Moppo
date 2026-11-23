@@ -34,7 +34,9 @@ public struct VendorFolder: Sendable, Equatable {
         }
 
         /// The row label, in the style of `npm dependencies`.
-        public var label: String { "\(name) dependencies" }
+        public var label: String { labelText.english }
+
+        var labelText: EngineText { "\(name) dependencies" }
 
         /// The path in `vendor` that only this tool writes.
         var evidence: String {
@@ -75,7 +77,16 @@ public struct VendorFolder: Sendable, Equatable {
     public var lockfileDescription: String { tool.lockfiles.joined(separator: " and ") }
 
     /// The short text after the row path, in the style of `no lockfile`.
-    public var caveat: String { "restore with \(tool.restoreCommand)" }
+    public var caveat: String { caveatText.english }
+
+    var caveatText: EngineText { "restore with \(tool.restoreCommand)" }
+
+    var localizedLockfileDescription: String { tool.lockfiles.formatted(.list(type: .and)) }
+
+    /// Explains how to restore a dependency store that the user removes.
+    public var localizedExplanation: String {
+        EngineText("\(tool.name) can install these dependencies again from \(localizedLockfileDescription). To restore them, run \(tool.restoreCommand) in the project folder. Moppo does not select vendor folders automatically. Review this folder before removal.").localized
+    }
 
     /// The row help text and the command line detail.
     public var explanation: String {

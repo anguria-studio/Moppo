@@ -59,9 +59,18 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     }
 
     public var url: URL
-    public var displayName: String
+    var nameText: EngineText
+    public var displayName: String {
+        get { nameText.english }
+        set { nameText = .verbatim(newValue) }
+    }
+    public var localizedDisplayName: String { nameText.localized }
     /// Tilde-abbreviated parent, e.g. `~/Downloads`.
-    public var parentDisplay: String
+    var parentText: EngineText
+    public var parentDisplay: String {
+        get { parentText.english }
+        set { parentText = .verbatim(newValue) }
+    }
     public var kind: Kind
     public var allocatedBytes: Int64
     /// A known usage date. Docker objects show "Unknown" when this value is absent.
@@ -72,14 +81,19 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     /// Moppo knows that the contents of this row do not come back after removal.
     public struct NotRegenerable: Sendable, Equatable {
         /// A short reason for the user, or `nil` when Moppo has no specific reason.
-        public let reason: String?
+        let reasonText: EngineText?
+        public var reason: String? { reasonText?.english }
 
         public init(reason: String?) {
-            self.reason = reason
+            self.init(reasonText: reason.map(EngineText.verbatim))
+        }
+
+        init(reasonText: EngineText?) {
+            self.reasonText = reasonText
         }
 
         /// Logs in `~/Library/Logs`. A tool writes new logs, but the old records are lost.
-        public static let logs = NotRegenerable(reason: "Old diagnostic records do not come back.")
+        public static let logs = NotRegenerable(reasonText: "Old diagnostic records do not come back.")
     }
 
     /// Set only for rows that Moppo classified. A `nil` value does not mean that the
@@ -105,6 +119,18 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
             case .notRegenerable(let reason): reason.map { "\(text). \($0)" } ?? text
             }
         }
+    }
+
+    public var localizedRegenerationText: String? {
+        if isRegenerable { return EngineText("Regenerable").localized }
+        guard notRegenerable != nil else { return nil }
+        return EngineText("Not regenerable").localized
+    }
+
+    public var localizedRegenerationAccessibilityText: String? {
+        guard let label = localizedRegenerationText else { return nil }
+        guard !isRegenerable, let reason = notRegenerable?.reasonText?.localized else { return label }
+        return EngineText("\(label). \(reason)").localized
     }
 
     /// `nil` when Moppo did not classify the row. Such a row shows no label.
@@ -140,11 +166,17 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
 
     /// Instructions for storage that requires removal outside Moppo.
     public struct ManualRemoval: Sendable, Equatable {
-        public let explanation: String
+        let explanationText: EngineText
+        public var explanation: String { explanationText.english }
+        public var localizedExplanation: String { explanationText.localized }
         public let command: String
 
         public init(explanation: String, command: String) {
-            self.explanation = explanation
+            self.init(explanationText: .verbatim(explanation), command: command)
+        }
+
+        init(explanationText: EngineText, command: String) {
+            self.explanationText = explanationText
             self.command = command
         }
     }
@@ -199,7 +231,16 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     public var requiresRemovalReview: Bool
 
     /// Explains a removal or recovery condition.
-    public var safetyCaveat: String?
+    var caveatText: EngineText?
+    public var safetyCaveat: String? {
+        get { caveatText?.english }
+        set { caveatText = newValue.map(EngineText.verbatim) }
+    }
+    public mutating func recordRemovalFailure(_ result: ToolCommandRemovalResult) {
+        caveatText = result.failureReason.map(EngineText.rule)
+    }
+
+    public var localizedSafetyCaveat: String? { caveatText?.localized }
 
     /// Signs of work in the project around a dependency store. Moppo does not count a
     /// store as safe when its project is active or Git does not ignore it. See
@@ -284,7 +325,12 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
     }
 
     /// Explains a permanent inventory lock in the row help and selection tooltip.
-    public var protectionExplanation: String?
+    var protectionText: EngineText?
+    public var protectionExplanation: String? {
+        get { protectionText?.english }
+        set { protectionText = newValue.map(EngineText.verbatim) }
+    }
+    public var localizedProtectionExplanation: String? { protectionText?.localized }
     public var protectionReason: ProtectionReason?
     /// Any reason at all: drives the badge, nothing else.
     public var isProtectedFromRemoval: Bool { protectionReason != nil }
@@ -331,24 +377,64 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         childCount: Int? = nil,
         children: [FileEntry] = []
     ) {
+        self.init(url: url, nameText: displayName.map(EngineText.verbatim),
+                  parentText: parentDisplay.map(EngineText.verbatim), kind: kind,
+                  allocatedBytes: allocatedBytes, lastOpened: lastOpened, isRegenerable: isRegenerable,
+                  notRegenerable: notRegenerable, protectionReason: protectionReason,
+                  protectionText: protectionExplanation.map(EngineText.verbatim), manualRemoval: manualRemoval,
+                  removalMethod: removalMethod, docker: docker, inUseBy: inUseBy,
+                  xcodeBuildCacheReview: xcodeBuildCacheReview, requiresRemovalReview: requiresRemovalReview,
+                  caveatText: safetyCaveat.map(EngineText.verbatim), gitWorktreeReview: gitWorktreeReview,
+                  removalAction: removalAction, soundLibrary: soundLibrary, aiTool: aiTool,
+                  aiStorageSection: aiStorageSection, codexSession: codexSession, simulatorDevice: simulatorDevice,
+                  childCount: childCount, children: children)
+    }
+
+    init(
+        url: URL,
+        nameText: EngineText?,
+        parentText: EngineText? = nil,
+        kind: Kind,
+        allocatedBytes: Int64,
+        lastOpened: Date? = nil,
+        isRegenerable: Bool = false,
+        notRegenerable: NotRegenerable? = nil,
+        protectionReason: ProtectionReason? = nil,
+        protectionText: EngineText? = nil,
+        manualRemoval: ManualRemoval? = nil,
+        removalMethod: RemovalMethod = .trash,
+        docker: DockerItem? = nil,
+        inUseBy: RunningOwner? = nil,
+        xcodeBuildCacheReview: XcodeBuildCache.Review? = nil,
+        requiresRemovalReview: Bool = false,
+        caveatText: EngineText? = nil,
+        gitWorktreeReview: GitWorktreeReview? = nil,
+        removalAction: RemovalAction? = nil,
+        soundLibrary: AppleSoundLibrary.Inventory? = nil,
+        aiTool: AITool? = nil,
+        aiStorageSection: AIStorageSection? = nil,
+        codexSession: CodexSessionReview? = nil,
+        simulatorDevice: SimulatorDevice? = nil,
+        childCount: Int? = nil,
+        children: [FileEntry] = []
+    ) {
         self.url = url
-        self.displayName = displayName ?? url.lastPathComponent
-        self.parentDisplay = parentDisplay
-            ?? FileEntry.abbreviate(url.deletingLastPathComponent().path)
+        self.nameText = nameText ?? .verbatim(url.lastPathComponent)
+        self.parentText = parentText ?? .verbatim(FileEntry.abbreviate(url.deletingLastPathComponent().path))
         self.kind = kind
         self.allocatedBytes = allocatedBytes
         self.lastOpened = lastOpened
         self.isRegenerable = isRegenerable
         self.notRegenerable = notRegenerable
         self.protectionReason = protectionReason
-        self.protectionExplanation = protectionExplanation
+        self.protectionText = protectionText
         self.manualRemoval = manualRemoval
         self.removalMethod = removalMethod
         self.docker = docker
         self.inUseBy = inUseBy
         self.xcodeBuildCacheReview = xcodeBuildCacheReview
         self.requiresRemovalReview = requiresRemovalReview
-        self.safetyCaveat = safetyCaveat
+        self.caveatText = caveatText
         self.gitWorktreeReview = gitWorktreeReview
         self.removalAction = removalAction
         self.soundLibrary = soundLibrary
@@ -358,6 +444,30 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
         self.simulatorDevice = simulatorDevice
         self.childCount = childCount
         self.children = children
+    }
+
+    /// Explains the classification of this item in a cleanup plan.
+    package func scanReviewReason(eligibility: String, safeToRemove: Bool, localized: Bool = false) -> String {
+        let text: EngineText
+        switch eligibility {
+        case "protected":
+            text = "Moppo protects this item from ordinary cleanup."
+        case "parent_review":
+            text = "Review this item with its parent."
+        case "app_review":
+            text = "This item requires an application removal review."
+        default:
+            if safeToRemove {
+                text = "The scan identifies this item as safe to regenerate."
+            } else if isRegenerable, let explanation = localized ? projectActivity?.localizedExplanation : projectActivity?.explanation {
+                return explanation
+            } else if let vendorFolder {
+                return localized ? vendorFolder.localizedExplanation : vendorFolder.explanation
+            } else {
+                text = "Review this item before removal. You may need its contents."
+            }
+        }
+        return text.string(localized: localized)
     }
 
     /// Bytes freed by removing this entry and everything attached to it.
@@ -439,6 +549,17 @@ public struct FileEntry: Sendable, Equatable, Identifiable {
             return "~" + path.dropFirst(home.count)
         }
         return path
+    }
+
+    public var localizedParentQualifier: String {
+        let parent = parentText.localized
+        if isRegenerable {
+            return EngineText("\(parent) · regenerable").localized
+        }
+        if let childCount, childCount > 0 {
+            return EngineText("\(parent) · \(childCount) items").localized
+        }
+        return parent
     }
 
     /// The design's trailing qualifier: `· 1,204 items` or `· regenerable`.

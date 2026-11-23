@@ -95,8 +95,8 @@ final class StorageExplorerModel {
     }
 
     var removeLabel: String {
-        guard !isMapSelectionPending, !selectedItems.isEmpty else { return "Move to Trash" }
-        return "Move to Trash (\(ByteFormatting.string(selectedBytes)))"
+        guard !isMapSelectionPending, !selectedItems.isEmpty else { return String(localized: "Move to Trash") }
+        return String(localized: "Move to Trash (\(ByteFormatting.localizedString(selectedBytes)))")
     }
 
     var canRemoveSelection: Bool {
@@ -130,9 +130,9 @@ final class StorageExplorerModel {
     func chooseFolder() {
         guard !isMeasurementBlocked else { return }
         let panel = NSOpenPanel()
-        panel.title = "Choose a Folder"
-        panel.message = "Moppo will measure the folder and its immediate contents."
-        panel.prompt = "Explore"
+        panel.title = String(localized: "Choose a Folder")
+        panel.message = String(localized: "Moppo will measure the folder and its immediate contents.")
+        panel.prompt = String(localized: "Explore")
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -257,8 +257,8 @@ final class StorageExplorerModel {
             return false
         } catch {
             onEvent(.failure(
-                title: "The Selection Could Not Be Checked",
-                message: "Moppo could not check the selected items. Nothing was removed."
+                title: String(localized: "The Selection Could Not Be Checked"),
+                message: String(localized: "Moppo could not check the selected items. Nothing was removed.")
             ))
             return false
         }
@@ -269,20 +269,18 @@ final class StorageExplorerModel {
         guard review.isReady else {
             if !review.changedPaths.isEmpty {
                 onEvent(.failure(
-                    title: "The Selection Changed",
-                    message: "Some of those items are not what they were when you picked them. "
-                        + "Review the updated list and try again."
+                    title: String(localized: "The Selection Changed"),
+                    message: String(localized: "Some of those items are not what they were when you picked them. Review the updated list and try again.")
                 ))
             } else if !review.protectedPaths.isEmpty {
                 onEvent(.failure(
-                    title: "Some Items Are Protected",
-                    message: "Moppo will not remove some of the selected items. "
-                        + "Review the list and try again."
+                    title: String(localized: "Some Items Are Protected"),
+                    message: String(localized: "Moppo will not remove some of the selected items. Review the list and try again.")
                 ))
             } else {
                 onEvent(.failure(
-                    title: "Nothing Left to Remove",
-                    message: "The selected items are no longer in this folder."
+                    title: String(localized: "Nothing Left to Remove"),
+                    message: String(localized: "The selected items are no longer in this folder.")
                 ))
             }
             return false
@@ -302,8 +300,8 @@ final class StorageExplorerModel {
             // Refresh the list because the service can stop after partial removal.
         } catch {
             onEvent(.failure(
-                title: "The Items Could Not Be Moved",
-                message: "The selected items could not move to the Trash. Nothing was removed."
+                title: String(localized: "The Items Could Not Be Moved"),
+                message: String(localized: "The selected items could not move to the Trash. Nothing was removed.")
             ))
         }
         return true

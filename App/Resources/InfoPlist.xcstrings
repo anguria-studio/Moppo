@@ -1,0 +1,96 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "NSAppBundlesUsageDescription": {
+      "comment": "macOS permission prompt for moving other application bundles to the Trash.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo needs permission to move applications that you select to the Trash."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo necesita permiso para trasladar a la Papelera las apps que selecciones."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo a besoin de votre autorisation pour placer les apps que vous sélectionnez dans la Corbeille."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo richiede l’autorizzazione per spostare nel Cestino le app che selezioni."
+          }
+        }
+      }
+    },
+    "NSAppDataUsageDescription": {
+      "comment": "macOS permission prompt for reading protected app data. Only selected files move to the Trash.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo needs access to data from removed apps so it can move files that you select to the Trash."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo necesita acceder a los datos de las apps desinstaladas para trasladar los archivos que elijas a la Papelera."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo a besoin d’accéder aux données des apps supprimées pour placer les fichiers que vous sélectionnez dans la Corbeille."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo richiede l’accesso ai dati delle app rimosse per spostare nel Cestino i file che selezioni."
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryUsageDescription": {
+      "comment": "macOS permission prompt for Photos access. Scanning never deletes photos.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo reads your photo library to find duplicates. Nothing is deleted until you confirm it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo lee tu fototeca para buscar duplicados. No se elimina ninguna foto hasta que lo confirmes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo lit votre photothèque pour trouver les doublons. Aucune photo n’est supprimée avant votre confirmation."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moppo legge la libreria foto per trovare i duplicati. Nessuna foto viene eliminata prima della tua conferma."
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

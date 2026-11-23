@@ -183,9 +183,9 @@ enum PageStateMetrics {
 
 #Preview("Permission") {
     PageState(
-        title: "Allow Photos access",
+        title: String(localized: "Allow Photos access"),
         symbol: "exclamationmark.triangle",
-        detail: "Open System Settings to allow access to Photos.",
+        detail: String(localized: "Open System Settings to allow access to Photos."),
         iconColor: Token.textColor(.orange)
     ) {
         Button("Open Settings") {}
@@ -195,8 +195,8 @@ enum PageStateMetrics {
 }
 
 #Preview("Short window") {
-    PageState(title: "The folder could not be read", symbol: "folder.badge.questionmark",
-              detail: "Connect the volume or choose another folder.") {
+    PageState(title: String(localized: "The folder could not be read"), symbol: "folder.badge.questionmark",
+              detail: String(localized: "Connect the volume or choose another folder.")) {
         PageStateActions {
             Button("Try Again") {}
                 .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))
@@ -209,8 +209,8 @@ enum PageStateMetrics {
 }
 
 #Preview("Stopped measurement") {
-    PageState(title: "Measurement stopped", symbol: "stop.circle",
-              detail: "Measure this folder again or choose another location.") {
+    PageState(title: String(localized: "Measurement stopped"), symbol: "stop.circle",
+              detail: String(localized: "Measure this folder again or choose another location.")) {
         PageStateActions {
             Button("Measure Again") {}
                 .buttonStyle(PageStateButtonStyle(tint: Token.color(.accent)))

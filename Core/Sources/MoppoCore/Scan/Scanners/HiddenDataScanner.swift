@@ -195,28 +195,19 @@ public struct HiddenDataScanner: CategoryScanner {
 
         // A locked tool folder keeps only its remainder in `allocatedBytes`. Sort by the size that the row shows.
         found.entries.sort { $0.displayBytes > $1.displayBytes }
+        if found.entries.isEmpty, found.unreadableCount > 0 {
+            return .unavailable(id, text: "Nothing here could be read. Grant Full Disk Access in System Settings → Privacy & Security so the Trash, iOS backups and Mail can be measured.",
+                                unreadableCount: found.unreadableCount)
+        }
         let total = found.entries.reduce(Int64(0)) { $0 + $1.displayBytes }
 
         return ScanCategoryResult(
             categoryID: id,
             totalBytes: total,
             entries: found.entries,
-            availability: Self.availability(for: found),
+            availability: found.entries.isEmpty ? .empty : .available,
             unreadableCount: found.unreadableCount
         )
-    }
-
-    /// Finding nothing while failing to read things is not the same as finding
-    /// nothing, and the difference is one the user can act on.
-    private static func availability(for found: Found) -> CategoryAvailability {
-        if !found.entries.isEmpty { return .available }
-        if found.unreadableCount > 0 {
-            return .unavailable(reason: """
-                Nothing here could be read. Grant Full Disk Access in System Settings \
-                → Privacy & Security so the Trash, iOS backups and Mail can be measured.
-                """)
-        }
-        return .empty
     }
 
     // MARK: - Sections
@@ -286,7 +277,7 @@ public struct HiddenDataScanner: CategoryScanner {
             claimed.append(child.path)
             guard !context.isExcluded(child) else { continue }
             if let tool = ToolHomeFolders.folder(named: name) {
-                try await appendToolFolder(child, tool, displayName: nil, context: context, to: &found)
+                try await appendToolFolder(child, tool, nameText: nil, context: context, to: &found)
                 continue
             }
             // AI Tools claims part of some folders, such as `~/.keras/models`. List the
@@ -298,7 +289,7 @@ public struct HiddenDataScanner: CategoryScanner {
                 let displayName = folders == nil ? nil : name + "/" + folder.lastPathComponent
                 if let displayName, let tool = ToolHomeFolders.folder(named: displayName) {
                     guard !context.isExcluded(folder) else { continue }
-                    try await appendToolFolder(folder, tool, displayName: displayName, context: context, to: &found)
+                    try await appendToolFolder(folder, tool, nameText: .verbatim(displayName), context: context, to: &found)
                 } else {
                     try await appendHiddenDirectory(folder, displayName: displayName, context: context, to: &found)
                 }
@@ -336,9 +327,9 @@ public struct HiddenDataScanner: CategoryScanner {
             let measurement = try await context.measurer.measure(location.url)
             found.unreadableCount += measurement.unreadableCount
             found.entries.append(FileEntry(
-                url: location.url, displayName: location.displayName, kind: .folder,
+                url: location.url, nameText: location.nameText, kind: .folder,
                 allocatedBytes: measurement.allocatedBytes, lastOpened: lastOpenedDate(for: location.url),
-                protectionReason: .inventory, protectionExplanation: location.explanation,
+                protectionReason: .inventory, protectionText: location.explanationText,
                 childCount: (try? FileManager.default.contentsOfDirectory(atPath: location.url.path))?.count
             ))
         }
@@ -354,7 +345,7 @@ public struct HiddenDataScanner: CategoryScanner {
             try Task.checkCancellation()
             claimed.append(url.path)
             guard !context.isExcluded(url) else { continue }
-            try await appendToolFolder(url, location.folder, displayName: location.name, minimumBytes: Threshold.any,
+            try await appendToolFolder(url, location.folder, nameText: .rule(location.name), minimumBytes: Threshold.any,
                                        context: context, to: &found)
         }
     }
@@ -362,7 +353,7 @@ public struct HiddenDataScanner: CategoryScanner {
     /// Shows a toolchain, virtual machine, or credential folder with its size and locks it.
     /// Verified caches in the folder are separate rows. See `ToolHomeFolders`.
     private func appendToolFolder(
-        _ url: URL, _ folder: ToolHomeFolders.Folder, displayName: String?,
+        _ url: URL, _ folder: ToolHomeFolders.Folder, nameText: EngineText?,
         minimumBytes: Int64 = Threshold.hiddenDirectory, context: ScanContext, to found: inout Found
     ) async throws {
         let caches = ToolHomeFolders.offeredCaches(of: folder, in: url)
@@ -372,8 +363,8 @@ public struct HiddenDataScanner: CategoryScanner {
         guard total.allocatedBytes >= minimumBytes else { return }
 
         var entry = FileEntry(
-            url: url, displayName: displayName, kind: .folder, allocatedBytes: total.allocatedBytes,
-            lastOpened: lastOpenedDate(for: url), protectionReason: .inventory, protectionExplanation: folder.explanation
+            url: url, nameText: nameText, kind: .folder, allocatedBytes: total.allocatedBytes,
+            lastOpened: lastOpenedDate(for: url), protectionReason: .inventory, protectionText: .rule(folder.explanation)
         )
         for (cacheURL, cache) in caches {
             guard !context.isExcluded(cacheURL), let size = measurements[cacheURL.standardizedFileURL],
@@ -383,9 +374,9 @@ public struct HiddenDataScanner: CategoryScanner {
             let isDirectory = (try? cacheURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
             entry.allocatedBytes -= size.allocatedBytes
             entry.children.append(FileEntry(
-                url: cacheURL, kind: cache.isRegenerable ? .cache : (isDirectory ? .folder : .file),
+                url: cacheURL, nameText: nil, kind: cache.isRegenerable ? .cache : (isDirectory ? .folder : .file),
                 allocatedBytes: size.allocatedBytes, lastOpened: lastOpenedDate(for: cacheURL),
-                isRegenerable: cache.isRegenerable, safetyCaveat: cache.caveat
+                isRegenerable: cache.isRegenerable, caveatText: cache.caveat.map(EngineText.rule)
             ))
         }
         found.entries.append(entry)

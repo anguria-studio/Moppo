@@ -77,10 +77,10 @@ struct MenuBarView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     if let volume = model.dashboard.volume {
-                        Text("\(ByteFormatting.string(volume.freeBytes)) free")
+                        Text("\(ByteFormatting.localizedString(volume.freeBytes)) free")
                             .fontWeight(.medium)
                             .monospacedDigit()
-                        Text("\(volume.name) · \(ByteFormatting.string(volume.capacityBytes))")
+                        Text("\(volume.name) · \(ByteFormatting.localizedString(volume.capacityBytes))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -105,7 +105,7 @@ struct MenuBarView: View {
                 ProgressView(value: Double(volume.usedBytes), total: Double(max(volume.capacityBytes, 1)))
                     .progressViewStyle(.linear)
                     .accessibilityLabel("Disk space")
-                    .accessibilityValue("\(ByteFormatting.string(volume.freeBytes)) free of \(ByteFormatting.string(volume.capacityBytes))")
+                    .accessibilityValue("\(ByteFormatting.localizedString(volume.freeBytes)) free of \(ByteFormatting.localizedString(volume.capacityBytes))")
             }
         }
     }
@@ -127,7 +127,7 @@ struct MenuBarView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                Text(model.cleanup.scanResults.map { ByteFormatting.string($0.safeToRemoveBytes) } ?? "—")
+                Text(model.cleanup.scanResults.map { ByteFormatting.localizedString($0.safeToRemoveBytes) } ?? "—")
                     .monospacedDigit()
             }
             .accessibilityElement(children: .combine)
@@ -141,7 +141,7 @@ struct MenuBarView: View {
                             .foregroundStyle(.secondary)
                     } else if let summary = model.recovery.trashSummary {
                         HStack(spacing: 3) {
-                            Text("\(summary.itemCount) \(summary.itemCount == 1 ? "item" : "items")")
+                            Text("\(summary.itemCount) items")
                             if let date = model.recovery.trashMeasuredAt {
                                 Text("· \(date, format: .relative(presentation: .named, unitsStyle: .abbreviated))")
                                     .help(date.formatted(date: .abbreviated, time: .shortened))
@@ -150,13 +150,13 @@ struct MenuBarView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     } else {
-                        Text(model.recovery.isLoadingTrash ? "Measuring…" : "Reload to measure Trash.")
+                        Text(model.recovery.isLoadingTrash ? String(localized: "Measuring…") : String(localized: "Reload to measure Trash."))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 Spacer(minLength: 8)
-                Text(model.recovery.trashSummary.map { ByteFormatting.string($0.totalBytes) } ?? "—")
+                Text(model.recovery.trashSummary.map { ByteFormatting.localizedString($0.totalBytes) } ?? "—")
                     .monospacedDigit()
             }
             .accessibilityElement(children: .combine)
@@ -193,6 +193,9 @@ struct MenuBarView: View {
                 model.menuBar.deleteSafeToRemove(in: model)
             } label: {
                 Text("Delete Safe to Remove")
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -201,13 +204,13 @@ struct MenuBarView: View {
     }
 
     private var operationTitle: String {
-        if model.cleanup.isInterruptingScan || model.cleanup.isInterruptingRemoval { return "Stopping…" }
-        if model.cleanup.isScanning { return "Scanning…" }
+        if model.cleanup.isInterruptingScan || model.cleanup.isInterruptingRemoval { return String(localized: "Stopping…") }
+        if model.cleanup.isScanning { return String(localized: "Scanning…") }
         if let activity = model.activity { return activity.title }
-        return model.menuBar.isRefreshing ? "Refreshing readings…" : "Moppo is busy."
+        return model.menuBar.isRefreshing ? String(localized: "Refreshing readings…") : String(localized: "Moppo is busy.")
     }
 
-    private func commandLabel(_ title: String, shortcut: String? = nil) -> some View {
+    private func commandLabel(_ title: LocalizedStringKey, shortcut: String? = nil) -> some View {
         HStack {
             Text(title)
             Spacer()

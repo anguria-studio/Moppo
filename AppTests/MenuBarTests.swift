@@ -93,7 +93,7 @@ struct MenuBarTests {
         await remover.finish(CleanupOutcome(removedBytes: 128_000_000, removedCount: 1, trashedCount: 1))
         try await waitUntil { !app.isBusyWithDisk }
 
-        #expect(app.menuBar.status?.message == "128.0 MB removed.")
+        #expect(app.menuBar.status?.message == "\(ByteFormatting.localizedString(128_000_000)) removed.")
         #expect(app.menuBar.status?.isFailure == false)
         #expect(app.view == .history)
     }
@@ -178,6 +178,6 @@ struct MenuBarTests {
         let app = AppModel()
         app.cleanup.onEvent(.removed(CleanupOutcome(removedBytes: 128_000_000, removedCount: 1, failed: ["/fixture/kept"])))
         #expect(app.menuBar.status?.isFailure == true)
-        #expect(app.menuBar.status?.message == "128.0 MB removed. Some items need review in Moppo.")
+        #expect(app.menuBar.status?.message == "\(ByteFormatting.localizedString(128_000_000)) removed. Some items need review in Moppo.")
     }
 }

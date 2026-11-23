@@ -35,10 +35,12 @@ public struct DockerScanner: CategoryScanner {
 
     // MARK: - User-facing copy
 
-    static let connectionReason =
+    static var connectionReason: String { connectionText.english }
+    private static let connectionText: EngineText =
         "Moppo cannot connect to the Docker engine. Before you scan again, check the engine status in Docker Desktop."
 
-    static let setupReason =
+    static var setupReason: String { setupText.english }
+    private static let setupText: EngineText =
         "Open Docker Desktop to finish setup, then scan again."
 
     /// Docker Desktop keeps its VM disk here. Only consulted to honour an exclusion
@@ -54,16 +56,16 @@ public struct DockerScanner: CategoryScanner {
         ScanDiagnostics.current?.record("docker_installation", details: [
             "application_path": desktopApplication?.path ?? "", "executable_path": executable ?? ""
         ])
-        func unavailable(_ reason: String) -> ScanCategoryResult {
+        func unavailable(_ reason: EngineText) -> ScanCategoryResult {
             desktopApplication == nil ? ScanCategoryResult(categoryID: id, availability: .notInstalled)
-                : .unavailable(id, reason: reason)
+                : .unavailable(id, text: reason)
         }
 
         // Never `docker` off `PATH`: a GUI app launched from Finder inherits none of
         // the shell's environment, so name resolution works in a dev terminal and
         // then silently reports "not installed" to every real user.
         guard executable != nil else {
-            return unavailable(Self.setupReason)
+            return unavailable(Self.setupText)
         }
 
         // Pruning frees space inside Docker's container folder, so a user who has
@@ -121,14 +123,14 @@ public struct DockerScanner: CategoryScanner {
         )
     }
 
-    static func reason(for error: ProcessError) -> String {
+    private static func reason(for error: ProcessError) -> EngineText {
         switch error {
         case .executableMissing:
-            return setupReason
+            return setupText
         case .timedOut:
             return "The Docker engine did not respond in time. Before you scan again, check the engine status in Docker Desktop."
         case .failed:
-            if DockerService.isConnectionFailure(error) { return connectionReason }
+            if DockerService.isConnectionFailure(error) { return connectionText }
             return "Docker could not read its storage information. Try scanning again."
         }
     }
@@ -142,8 +144,8 @@ public struct DockerScanner: CategoryScanner {
         let isBuildCache = row.type.range(of: "build cache", options: .caseInsensitive) != nil
         return FileEntry(
             url: url,
-            displayName: row.type,
-            parentDisplay: "Docker Desktop",
+            nameText: typeName(row.type),
+            parentText: .verbatim("Docker Desktop"),
             // Every one of these bytes is space inside Docker's VM disk image, which
             // is what the row is offering to give back.
             kind: isBuildCache ? .cache : .diskImage,
@@ -155,11 +157,20 @@ public struct DockerScanner: CategoryScanner {
             // Docker owns this storage inside its VM disk image.
             // The row shows the command for manual removal.
             manualRemoval: FileEntry.ManualRemoval(
-                explanation: "This space lives inside Docker Desktop's disk image, "
-                    + "and only Docker can release it.",
+                explanationText: "This space lives inside Docker Desktop's disk image, and only Docker can release it.",
                 command: pruneCommand(for: row.type)
             )
         )
+    }
+
+    private static func typeName(_ name: String) -> EngineText {
+        switch name {
+        case "Images": "Images"
+        case "Local Volumes": "Local Volumes"
+        case "Containers": "Containers"
+        case "Build Cache": "Build Cache"
+        default: .verbatim(name)
+        }
     }
 
     /// Identity for a ledger row.

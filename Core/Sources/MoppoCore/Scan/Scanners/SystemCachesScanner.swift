@@ -283,14 +283,8 @@ public struct SystemCachesScanner: CategoryScanner {
         // Every root refused us. Say how to fix it rather than reporting an empty
         // category, which would read as "nothing to clean".
         if reachableRoots == 0, entries.isEmpty, unreadableCount > 0 {
-            return ScanCategoryResult(
-                categoryID: id,
-                availability: .unavailable(
-                    reason: "The app cannot read ~/Library/Caches or ~/Library/Logs. "
-                        + "Grant Full Disk Access in System Settings › Privacy & Security."
-                ),
-                unreadableCount: unreadableCount
-            )
+            return .unavailable(id, text: "The app cannot read ~/Library/Caches or ~/Library/Logs. Grant Full Disk Access in System Settings › Privacy & Security.",
+                                unreadableCount: unreadableCount)
         }
 
         // Largest first, as the expanded category body lists them. It also makes the
@@ -311,7 +305,7 @@ public struct SystemCachesScanner: CategoryScanner {
     /// A cache an application keeps under `~/Library/Application Support`, where no
     /// cache sweep looks.
     struct ApplicationSupportCache: Sendable {
-        let label: String
+        let label: EngineText
         let components: [String]
         /// Any running application whose identifier begins with this holds the row.
         let ownerIdentifierPrefix: String
@@ -367,7 +361,7 @@ public struct SystemCachesScanner: CategoryScanner {
             else { continue }
             entries.append(FileEntry(
                 url: url,
-                displayName: cache.label,
+                nameText: cache.label,
                 kind: .cache,
                 allocatedBytes: measurement.allocatedBytes,
                 lastOpened: lastOpenedDate(for: url),
@@ -407,7 +401,7 @@ public struct SystemCachesScanner: CategoryScanner {
                 else { continue }
                 entries.append(FileEntry(
                     url: url,
-                    displayName: cache.name,
+                    nameText: .rule(cache.name),
                     kind: .cache,
                     allocatedBytes: measurement.allocatedBytes,
                     lastOpened: lastOpenedDate(for: url),

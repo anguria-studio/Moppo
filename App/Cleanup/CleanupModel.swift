@@ -8,7 +8,7 @@ import MoppoCore
 final class CleanupModel {
     private static let runningAppsNoticeHiddenKey = "cleanup.runningAppsNoticeHidden"
     private static let dockerReadFailure = ScanCategoryResult.unavailable(
-        .docker, reason: "Moppo could not read Docker storage. Select Check Now to try again."
+        .docker, reason: String(localized: "Moppo could not read Docker storage. Select Check Now to try again.")
     )
 
     struct Preferences: Sendable, Equatable {
@@ -124,8 +124,8 @@ final class CleanupModel {
     private(set) var scanPhase: String?
 
     var scanProgressDetail: String {
-        let phase = scanPhase ?? "Checking files"
-        return scanProgress > 0 ? "\(scanProgress)% · \(phase)" : phase
+        let phase = scanPhase ?? String(localized: "Checking files")
+        return scanProgress > 0 ? String(localized: "\((Double(scanProgress) / 100).formatted(.percent)) · \(phase)") : phase
     }
     private(set) var lastScanFinishedAt: Date?
     private(set) var hasStartedInitialScan = false
@@ -143,8 +143,8 @@ final class CleanupModel {
 
         var title: String {
             switch self {
-            case .all:          "All"
-            case .safeToRemove: "Safe to Remove"
+            case .all:          String(localized: "All")
+            case .safeToRemove: String(localized: "Safe to Remove")
             }
         }
     }
@@ -528,10 +528,10 @@ final class CleanupModel {
                     && $0.gitWorktreeReview?.isSafeToRemove != true
             }.count
             var messages: [String] = []
-            if local > 0 { messages.append("\(local) \(local == 1 ? "worktree has" : "worktrees have") uncommitted changes.") }
-            if commits > 0 { messages.append("\(commits) \(commits == 1 ? "worktree has" : "worktrees have") unpushed commits.") }
-            if other > 0 { messages.append("\(other) \(other == 1 ? "worktree needs" : "worktrees need") further review.") }
-            return messages.isEmpty ? nil : messages.joined(separator: " ") + " These worktrees will move to the Trash."
+            if local > 0 { messages.append(String(localized: "\(local) worktree has uncommitted changes.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)) }
+            if commits > 0 { messages.append(String(localized: "\(commits) worktree has unpushed commits.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)) }
+            if other > 0 { messages.append(String(localized: "\(other) worktree needs further review.", bundle: MoppoResources.bundle, locale: MoppoResources.locale)) }
+            return messages.isEmpty ? nil : messages.joined(separator: " ") + String(localized: " These worktrees will move to the Trash.")
         }
 
         var orphanedApplicationItems: [AppUninstallPlan.Item] {
@@ -726,7 +726,7 @@ final class CleanupModel {
         scanPhase = nil
         onEvent(.scanStarted(automatic: automatic, refreshOverview: refreshOverview))
         let activity = automatic && !refreshOverview ? ProcessInfo.processInfo.beginActivity(
-            options: .userInitiatedAllowingIdleSystemSleep, reason: "Background Cleanup scan"
+            options: .userInitiatedAllowingIdleSystemSleep, reason: String(localized: "Background Cleanup scan")
         ) : nil
         scanTask = Task { [self] in
             let presentation = OperationPresentationDuration()
@@ -761,7 +761,7 @@ final class CleanupModel {
                     Task { @MainActor in
                         guard let self, self.scanID == scanID, !self.isInterruptingScan else { return }
                         self.scanProgress = progress.percent
-                        self.scanPhase = progress.phase
+                        self.scanPhase = progress.localizedPhase
                     }
                 }
                 try Task.checkCancellation()
@@ -781,8 +781,8 @@ final class CleanupModel {
             } catch {
                 guard self.scanID == scanID, !Task.isCancelled else { return false }
                 onEvent(.failure(
-                    title: "The Scan Did Not Finish",
-                    message: "Moppo could not finish measuring. Nothing was removed; try scanning again."
+                    title: String(localized: "The Scan Did Not Finish"),
+                    message: String(localized: "Moppo could not finish measuring. Nothing was removed; try scanning again.")
                 ))
             }
             try? await presentation.wait()
@@ -891,7 +891,7 @@ final class CleanupModel {
         onEvent(.operationStarted)
         cancelCleanUp()
         let activity = keepProcessActive ? ProcessInfo.processInfo.beginActivity(
-            options: .userInitiatedAllowingIdleSystemSleep, reason: "Background Cleanup removal"
+            options: .userInitiatedAllowingIdleSystemSleep, reason: String(localized: "Background Cleanup removal")
         ) : nil
         let task = Task { [self] in
             defer { if let activity { ProcessInfo.processInfo.endActivity(activity) } }
@@ -967,9 +967,8 @@ final class CleanupModel {
             guard stragglers.isEmpty else {
                 let names = ListFormatter.localizedString(byJoining: stragglers.map(\.name))
                 onEvent(.failure(
-                    title: "Nothing Was Removed",
-                    message: "\(names) did not quit, so Moppo stopped before touching anything. "
-                        + "Quit it yourself and try Clean Up again."
+                    title: String(localized: "Nothing Was Removed"),
+                    message: String(localized: "\(names) did not quit, so Moppo stopped before touching anything. Quit it yourself and try Clean Up again.")
                 ))
                 return false
             }
@@ -1021,7 +1020,7 @@ final class CleanupModel {
                     guard result.status != .completed else { return original }
                     var entry = original
                     if let bytes = result.afterBytes { entry.allocatedBytes = bytes }
-                    entry.safetyCaveat = result.failureReason
+                    entry.recordRemovalFailure(result)
                     return entry
                 }
                 return copy
@@ -1128,8 +1127,8 @@ final class CleanupModel {
             if let stillOpen = await waitForApplicationsToQuit(owners), !stillOpen.isEmpty {
                 let names = ListFormatter.localizedString(byJoining: stillOpen.map(\.name))
                 onEvent(.failure(
-                    title: "Some Apps Are Still Open",
-                    message: "\(names) did not quit. Close these apps, then try Quit Apps again."
+                    title: String(localized: "Some Apps Are Still Open"),
+                    message: String(localized: "\(names) did not quit. Close these apps, then try Quit Apps again.")
                 ))
             }
             onEvent(.operationFinished)

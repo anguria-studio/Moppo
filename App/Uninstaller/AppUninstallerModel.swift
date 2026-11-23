@@ -133,11 +133,12 @@ final class AppUninstallerModel {
         switch uninstallerTab {
         case .installed:
             let count = selectedApplicationIDs.count
-            let label = preferences().confirmBeforeCleanup ? "Review Uninstall" : "Uninstall"
-            guard count > 0 else { return label }
-            return "\(label) (\(count) \(count == 1 ? "app" : "apps"))"
+            if preferences().confirmBeforeCleanup {
+                return count == 0 ? String(localized: "Review Uninstall") : String(localized: "Review Uninstall (\(count) app)", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+            }
+            return count == 0 ? String(localized: "Uninstall") : String(localized: "Uninstall (\(count) app)", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         case .leftovers:
-            return "Move Leftovers to Trash"
+            return String(localized: "Move Leftovers to Trash")
         }
     }
 
@@ -270,7 +271,7 @@ final class AppUninstallerModel {
         let items = plan.soundLibraryItems.filter { itemPaths.contains($0.id) }
         guard !items.isEmpty else { return }
         guard !applications.isRunning(plan.applicationURL) else {
-            report("Quit the Application", "Quit \(plan.applicationName) before you remove its sound library.")
+            report(String(localized: "Quit the Application"), String(localized: "Quit \(plan.applicationName) before you remove its sound library."))
             return
         }
         let settings = preferences()
@@ -492,14 +493,11 @@ final class AppUninstallerModel {
     }
 
     static func sharedContainerWarning(_ path: AppUninstallPlan.PreservedPath) -> String {
-        let risk = "If you remove it, these applications can lose their data and settings."
         guard let applications = path.claimingApplications, !applications.isEmpty else {
-            return "Moppo cannot confirm which applications use this group container. "
-                + "If you remove it, other applications can lose their data and settings."
+            return String(localized: "Moppo cannot confirm which applications use this group container. If you remove it, other applications can lose their data and settings.")
         }
-        let names = applications.map { $0.deletingPathExtension().lastPathComponent }.joined(separator: ", ")
-        return "These applications also use this group container: \(names). \(risk) "
-            + "Other applications or system services can also use it."
+        let names = ListFormatter.localizedString(byJoining: applications.map { $0.deletingPathExtension().lastPathComponent })
+        return String(localized: "These applications also use this group container: \(names). If you remove it, these applications can lose their data and settings. Other applications or system services can also use it.")
     }
 
     func requestAppUninstall() {
@@ -574,11 +572,10 @@ final class AppUninstallerModel {
         let outcome: CleanupOutcome
         switch await attemptUninstall(plan, keepReceipt: keepReceipt) {
         case .stillRunning:
-            appUninstallError = "\(plan.applicationName) is still running. "
-                + "Quit it and try again; no files were removed."
+            appUninstallError = String(localized: "\(plan.applicationName) is still running. Quit it and try again; no files were removed.")
             return false
         case .interrupted:
-            appUninstallError = "The uninstall was interrupted. Review the application and try again."
+            appUninstallError = String(localized: "The uninstall was interrupted. Review the application and try again.")
             return false
         case .finished(let finished):
             outcome = finished
@@ -621,6 +618,13 @@ final class AppUninstallerModel {
     enum UninstallerTab: String, CaseIterable {
         case installed = "Installed"
         case leftovers = "Leftovers"
+
+        var title: String {
+            switch self {
+            case .installed: String(localized: "Installed")
+            case .leftovers: String(localized: "Leftovers")
+            }
+        }
     }
     var uninstallerTab: UninstallerTab = .installed
 
@@ -674,18 +678,17 @@ final class AppUninstallerModel {
         _ outcome: CleanupOutcome, applicationURL: URL, applicationMissing: Bool
     ) -> String {
         if applicationMissing {
-            return "The application is no longer at its original location. "
-                + "Moppo could not verify a Trash move. No related files were removed."
+            return String(localized: "The application is no longer at its original location. Moppo could not verify a Trash move. No related files were removed.")
         }
         let reason: String
         if outcome.applicationRemovalCancelled {
-            reason = "Permanent removal was cancelled. The application stays in place."
+            reason = String(localized: "Permanent removal was cancelled. The application stays in place.")
         } else {
             reason = outcome.permissionDenied.contains(applicationURL.path)
-                ? "macOS denied access. Open the application in Finder to check its permissions."
-                : "The application could not be removed."
+                ? String(localized: "macOS denied access. Open the application in Finder to check its permissions.")
+                : String(localized: "The application could not be removed.")
         }
-        return reason + " No related files were removed."
+        return reason + String(localized: " No related files were removed.")
     }
 
     /// Captures checked application plans and applications that cannot be removed.
@@ -707,9 +710,9 @@ final class AppUninstallerModel {
         var title: String {
             if uninstalled.isEmpty {
                 return setAside.allSatisfy { $0.kind == .notAttempted }
-                    ? "No applications were removed" : "Removal needs attention"
+                    ? String(localized: "No applications were removed") : String(localized: "Removal needs attention")
             }
-            return "\(uninstalled.count) \(uninstalled.count == 1 ? "application" : "applications") uninstalled"
+            return String(localized: "\(uninstalled.count) application uninstalled", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
         }
 
         mutating func recordHomebrew(_ outcome: HomebrewUninstallOutcome, plan: AppUninstallPlan) {
@@ -720,16 +723,16 @@ final class AppUninstallerModel {
                 survivorCount += outcome.relatedCleanup.failed.count
                 if !outcome.relatedCleanup.failed.isEmpty {
                     setAside.append(SetAsideApplication(
-                        name: plan.applicationName, reason: "Homebrew removed the application. Moppo could not move some related data to the Trash.",
+                        name: plan.applicationName, reason: String(localized: "Homebrew removed the application. Moppo could not move some related data to the Trash."),
                         kind: .failed, details: outcome.relatedCleanup.failed.joined(separator: "\n")
                     ))
                 }
             } else {
                 setAside.append(SetAsideApplication(
-                    name: plan.applicationName, reason: outcome.message,
+                    name: plan.applicationName, reason: outcome.localizedMessage,
                     kind: outcome.status == .notStarted ? .notAttempted : .failed,
                     applicationURL: outcome.applicationRemoved ? nil : plan.applicationURL,
-                    managedPackage: plan.managedPackage, details: outcome.details
+                    managedPackage: plan.managedPackage, details: outcome.localizedDetails
                 ))
             }
         }
@@ -757,12 +760,12 @@ final class AppUninstallerModel {
         }) { [self] planningID in
             var plans: [AppUninstallPlan] = []
             var setAside: [SetAsideApplication] = []
-            appUninstallPlanningDetail = "Checking applications…"
+            appUninstallPlanningDetail = String(localized: "Checking applications…")
             do {
                 let results = try await scanner.plans(applicationURLs: selected.map(\.url), context: context) { completed in
                     await MainActor.run {
                         guard self.appUninstallPlanningID == planningID, !self.isInterruptingAppUninstall else { return }
-                        self.appUninstallPlanningDetail = "\(completed) of \(selected.count) applications reviewed"
+                        self.appUninstallPlanningDetail = String(localized: "\(completed.formatted()) of \(selected.count) application reviewed", bundle: MoppoResources.bundle, locale: MoppoResources.locale)
                     }
                 }
                 for (application, result) in zip(selected, results) {
@@ -810,12 +813,12 @@ final class AppUninstallerModel {
             switch await attemptUninstall(plan, keepReceipt: keepReceipt, runID: runID) {
             case .stillRunning:
                 result.setAside.append(SetAsideApplication(
-                    name: name, reason: "Still running. No files were removed.",
+                    name: name, reason: String(localized: "Still running. No files were removed."),
                     applicationURL: plan.applicationURL, managedPackage: plan.managedPackage
                 ))
             case .interrupted:
                 result.setAside.append(SetAsideApplication(
-                    name: name, reason: "The uninstall was interrupted.", kind: .failed,
+                    name: name, reason: String(localized: "The uninstall was interrupted."), kind: .failed,
                     applicationURL: plan.applicationURL
                 ))
             case .homebrew(let outcome):
@@ -849,7 +852,7 @@ final class AppUninstallerModel {
                 if outcome.applicationRemovalCancelled {
                     result.setAside.append(contentsOf: request.plans.dropFirst(index + 1).map {
                         SetAsideApplication(
-                            name: $0.applicationName, reason: "Not attempted after permanent removal was cancelled.",
+                            name: $0.applicationName, reason: String(localized: "Not attempted after permanent removal was cancelled."),
                             applicationURL: $0.applicationURL, managedPackage: $0.managedPackage
                         )
                     })
