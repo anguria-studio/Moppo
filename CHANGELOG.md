@@ -4,7 +4,13 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
-- Add Italian, French, and Spanish to the app. Select a language in Settings or use the macOS default.
+## [0.8.0] - 2026-11-23
+
+Build 59.
+
+- Use Moppo in Italian, French, Spanish, or English.
+- Choose a language in **Settings > General > Language**. Select **System Default** to use your macOS language preferences.
+- Select **Restart Moppo** to apply the change, or select **Later** to restart when you are ready.
 
 ## [0.7.1] - 2026-11-10
 
@@ -294,7 +300,8 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.7.1...main
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.8.0...main
+[0.8.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.8.0
 [0.7.1]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.0
 [0.6.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.6.0
