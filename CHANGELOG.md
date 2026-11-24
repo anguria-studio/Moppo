@@ -4,6 +4,18 @@ Changes that affect Moppo users appear here, with the newest release first.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-24
+
+Build 60.
+
+- Use **Worktrees** and **Node modules** in Cleanup in all supported languages.
+- Keep buttons readable in worktree reviews, Photo Preview, and App Uninstaller at narrow widths.
+- Use shorter Storage labels in the sidebar.
+- Clarify the **Restore Items** action in History and its item count in the context menu.
+- Use clearer labels for files from removed apps.
+- Clarify the Italian and Spanish low-space alert labels.
+- Correct the Italian **Empty Trash** confirmation and Storage Explorer page title.
+
 ## [0.8.0] - 2026-11-23
 
 Build 59.
@@ -300,7 +312,8 @@ See what uses your disk space and review what you remove.
 - Recognize Codex history paths under private folders.
 - Check application access and administrator approval during uninstall.
 
-[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.8.0...main
+[Unreleased]: https://github.com/anguria-studio/Moppo/compare/v0.8.1...main
+[0.8.1]: https://github.com/anguria-studio/Moppo/releases/tag/v0.8.1
 [0.8.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.8.0
 [0.7.1]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.1
 [0.7.0]: https://github.com/anguria-studio/Moppo/releases/tag/v0.7.0
