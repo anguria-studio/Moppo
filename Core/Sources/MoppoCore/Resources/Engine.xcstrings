@@ -576,7 +576,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ · arbre de travail Git"
+            "value": "%@ · worktree Git"
           }
         },
         "es": {
@@ -2332,13 +2332,13 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Residui delle app"
+            "value": "File residui delle app"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fichiers d’apps supprimées"
+            "value": "Fichiers restants d’apps supprimées"
           }
         },
         "es": {
@@ -2368,7 +2368,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les données d’apps, les projets temporaires, les outils téléchargés, les caches et les arbres de travail restent protégés."
+            "value": "Les données d’apps, les projets temporaires, les outils téléchargés, les caches et les worktrees restent protégés."
           }
         },
         "es": {
@@ -3388,7 +3388,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vérification terminée pour %1$@\nFichiers vérifiés : %2$@ · Arbres de travail vérifiés : %3$@"
+            "value": "Vérification terminée pour %1$@\nFichiers vérifiés : %2$@ · Worktrees vérifiés : %3$@"
           }
         },
         "es": {
@@ -6886,7 +6886,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Arbres de travail de Cursor"
+            "value": "Worktrees de Cursor"
           }
         },
         "es": {
@@ -9225,7 +9225,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recherche des arbres de travail dans %@"
+            "value": "Recherche des worktrees dans %@"
           }
         },
         "es": {
@@ -9855,7 +9855,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Arbre de travail Git"
+            "value": "Worktree Git"
           }
         },
         "es": {
@@ -9975,7 +9975,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub n’a pas trouvé le commit de cet arbre de travail. Il peut exister uniquement sur ce Mac."
+            "value": "GitHub n’a pas trouvé le commit de ce worktree. Il peut exister uniquement sur ce Mac."
           }
         },
         "es": {
@@ -12375,7 +12375,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mesure de %1$@\nFichiers vérifiés : %2$@ · Arbres de travail trouvés : %3$@"
+            "value": "Mesure de %1$@\nFichiers vérifiés : %2$@ · Worktrees trouvés : %3$@"
           }
         },
         "es": {
@@ -12405,7 +12405,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mesure de %1$@\nFichiers vérifiés : 0 · Arbres de travail trouvés : %2$@"
+            "value": "Mesure de %1$@\nFichiers vérifiés : 0 · Worktrees trouvés : %2$@"
           }
         },
         "es": {
@@ -13929,19 +13929,19 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moduli Node.js"
+            "value": "Node modules"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Modules Node.js"
+            "value": "Node modules"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Módulos de Node.js"
+            "value": "Node modules"
           }
         }
       }
@@ -16635,7 +16635,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vérification des arbres de travail dans %1$@\nVérifications Git terminées : %2$@ sur %3$@"
+            "value": "Vérification des worktrees dans %1$@\nVérifications Git terminées : %2$@ sur %3$@"
           }
         },
         "es": {
@@ -17505,7 +17505,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Arbres de travail Git distincts pour les tâches."
+            "value": "Copies de travail Git distinctes pour les tâches."
           }
         },
         "es": {
@@ -17685,7 +17685,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sessions, arbres de travail, environnements d’exécution téléchargés, machines virtuelles et modèles locaux"
+            "value": "Sessions, worktrees, environnements d’exécution téléchargés, machines virtuelles et modèles locaux"
           }
         },
         "es": {
@@ -17865,7 +17865,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Réglages, pièces jointes, extensions et arbres de travail."
+            "value": "Réglages, pièces jointes, extensions et worktrees."
           }
         },
         "es": {
@@ -19185,7 +19185,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "T3 Code gère ce stockage. Moppo protège tous les fichiers, y compris les fichiers inconnus et les arbres de travail."
+            "value": "T3 Code gère ce stockage. Moppo protège tous les fichiers, y compris les fichiers inconnus et les worktrees."
           }
         },
         "es": {
@@ -19245,7 +19245,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Arbres de travail de T3 Code"
+            "value": "Worktrees de T3 Code"
           }
         },
         "es": {
@@ -19515,7 +19515,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les données Git de cet arbre de travail sont manquantes."
+            "value": "Les données Git de ce worktree sont manquantes."
           }
         },
         "es": {
@@ -19929,19 +19929,19 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "L’app non si trova più nella posizione originale. Controlla Residui delle app per verificare se rimangono dati."
+            "value": "L’app non si trova più nella posizione originale. Apri «File residui» per verificare se rimangono dati."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "L’app ne se trouve plus à son emplacement d’origine. Consultez Résidus pour rechercher des données restantes."
+            "value": "L’app ne se trouve plus à son emplacement d’origine. Ouvrez « Fichiers restants » pour vérifier s’il reste des données."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La app ya no está en su ubicación original. Revisa Restos para buscar los datos que queden."
+            "value": "La app ya no está en su ubicación original. Abre «Archivos restantes» para comprobar si quedan datos."
           }
         }
       }
@@ -21735,7 +21735,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ce dossier n’est plus un arbre de travail lié à un dépôt Git."
+            "value": "Ce dossier n’est plus un worktree lié à un dépôt Git."
           }
         },
         "es": {
@@ -21825,7 +21825,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cette ligne affiche les fichiers situés hors des arbres de travail indiqués. Sélectionnez le dossier parent pour inclure ces fichiers dans la vérification avant suppression."
+            "value": "Cette ligne affiche les fichiers situés hors des worktrees indiqués. Sélectionnez le dossier parent pour inclure ces fichiers dans la vérification avant suppression."
           }
         },
         "es": {
@@ -22857,13 +22857,13 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Worktree"
+            "value": "Worktrees"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Arbres de travail"
+            "value": "Worktrees"
           }
         },
         "es": {
@@ -22893,7 +22893,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les arbres de travail peuvent contenir des fichiers de projet et des modifications locales. Moppo protège tous les arbres de travail de T3 Code."
+            "value": "Les worktrees peuvent contenir des fichiers de projet et des modifications locales. Moppo protège tous les worktrees de T3 Code."
           }
         },
         "es": {

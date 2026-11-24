@@ -261,6 +261,10 @@ final class AppModel {
             }
         }
 
+        var sidebarTitle: String {
+            self == .storageExplorer ? String(localized: "Storage", comment: "Short sidebar label for Storage Explorer.") : title
+        }
+
         /// Symbols for the sidebar views.
         var symbol: String {
             switch self {

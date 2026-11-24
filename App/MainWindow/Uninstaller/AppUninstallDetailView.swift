@@ -102,63 +102,88 @@ struct AppUninstallDetailView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                if let plan {
-                    let optedIn = model.optedInSharedContainers
-                    let relatedCount = plan.items.count - 1 + optedIn.count
-                    Text(ByteFormatting.localizedString(plan.totalBytes + optedIn.reduce(0) { $0 + $1.allocatedBytes }))
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    Text(plan.isApplicationOnly
-                        ? String(localized: "Application only")
-                        : String(localized: "\(relatedCount) related item", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
-                        .font(.mcCaption)
-                        .foregroundStyle(Token.Text.secondary)
-                } else {
-                    Text(model.isPlanningAppUninstall ? String(localized: "Finding related files…") : String(localized: "Review could not finish"))
-                        .font(.mcSubtitle)
-                        .foregroundStyle(Token.Text.secondary)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                footerSummary
+                Spacer(minLength: 8)
+                footerActionRow
             }
-            Spacer(minLength: 8)
-            if let plan {
-                if !plan.soundLibraryItems.isEmpty {
-                    Button("Move Sounds to Trash") {
-                        let paths = model.selectedSoundLibraryIDs
-                        Task { await model.requestSoundLibraryRemoval(plan, itemPaths: paths) }
-                    }
-                    .buttonStyle(PageActionButtonStyle(size: .small))
-                    .disabled(model.isBusyWithDisk || model.selectedSoundLibraryIDs.isEmpty)
+            VStack(alignment: .trailing, spacing: 12) {
+                footerSummary.frame(maxWidth: .infinity, alignment: .leading)
+                ViewThatFits(in: .horizontal) {
+                    footerActionRow
+                    VStack(alignment: .trailing, spacing: 8) { footerActions }
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                if let package = plan.managedPackage {
-                    CopyHomebrewCommandButton(package: package)
-                        .disabled(model.isBusyWithDisk)
-                }
-                Button(
-                    plan.managedPackage != nil ? String(localized: "Uninstall with Homebrew")
-                        : plan.isApplicationOnly ? String(localized: "Uninstall Application") : String(localized: "Uninstall"),
-                    action: model.requestAppUninstall
-                )
-                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
-                .disabled(model.isBusyWithDisk)
-            } else if model.isPlanningAppUninstall {
-                Button("Uninstall") {}
-                    .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
-                    .disabled(true)
-            } else if model.appUninstallApplicationMissing {
-                Button("Review Leftovers", action: model.reviewApplicationLeftovers)
-                    .buttonStyle(PageActionButtonStyle(size: .small))
-                    .disabled(model.isBusyWithDisk)
-            } else if let url = model.appUninstallReviewURL {
-                Button("Try Again") { model.planAppUninstall(url) }
-                    .buttonStyle(PageActionButtonStyle(size: .small))
-                    .disabled(model.isBusyWithDisk)
             }
         }
         .controlSize(.regular)
         .frame(minHeight: 36)
         .padding(16)
         .background(Token.pageBackground)
+    }
+
+    private var footerSummary: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let plan {
+                let optedIn = model.optedInSharedContainers
+                let relatedCount = plan.items.count - 1 + optedIn.count
+                Text(ByteFormatting.localizedString(plan.totalBytes + optedIn.reduce(0) { $0 + $1.allocatedBytes }))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                Text(plan.isApplicationOnly
+                    ? String(localized: "Application only")
+                    : String(localized: "\(relatedCount) related item", bundle: MoppoResources.bundle, locale: MoppoResources.locale))
+                    .font(.mcCaption)
+                    .foregroundStyle(Token.Text.secondary)
+            } else {
+                Text(model.isPlanningAppUninstall ? String(localized: "Finding related files…") : String(localized: "Review could not finish"))
+                    .font(.mcSubtitle)
+                    .foregroundStyle(Token.Text.secondary)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var footerActionRow: some View {
+        HStack(spacing: 12) { footerActions }
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private var footerActions: some View {
+        if let plan {
+            if !plan.soundLibraryItems.isEmpty {
+                Button("Move Sounds to Trash") {
+                    let paths = model.selectedSoundLibraryIDs
+                    Task { await model.requestSoundLibraryRemoval(plan, itemPaths: paths) }
+                }
+                .buttonStyle(PageActionButtonStyle(size: .small))
+                .disabled(model.isBusyWithDisk || model.selectedSoundLibraryIDs.isEmpty)
+            }
+            if let package = plan.managedPackage {
+                CopyHomebrewCommandButton(package: package)
+                    .disabled(model.isBusyWithDisk)
+            }
+            Button(
+                plan.managedPackage != nil ? String(localized: "Uninstall with Homebrew")
+                    : plan.isApplicationOnly ? String(localized: "Uninstall Application") : String(localized: "Uninstall"),
+                action: model.requestAppUninstall
+            )
+            .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
+            .disabled(model.isBusyWithDisk)
+        } else if model.isPlanningAppUninstall {
+            Button("Uninstall") {}
+                .buttonStyle(PageActionButtonStyle(tint: Token.color(.red), size: .small))
+                .disabled(true)
+        } else if model.appUninstallApplicationMissing {
+            Button("Review Leftovers", action: model.reviewApplicationLeftovers)
+                .buttonStyle(PageActionButtonStyle(size: .small))
+                .disabled(model.isBusyWithDisk)
+        } else if let url = model.appUninstallReviewURL {
+            Button("Try Again") { model.planAppUninstall(url) }
+                .buttonStyle(PageActionButtonStyle(size: .small))
+                .disabled(model.isBusyWithDisk)
+        }
     }
 
     private func resultsContent(_ plan: AppUninstallPlan) -> some View {

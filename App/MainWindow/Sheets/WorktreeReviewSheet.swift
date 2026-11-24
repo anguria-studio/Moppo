@@ -120,7 +120,13 @@ struct WorktreeReviewSheet: View {
             }
             Divider()
             HStack(spacing: 8) {
-                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
+                Button(String(localized: "worktree.review.showInFinder", defaultValue: "Show in Finder",
+                              bundle: MoppoResources.bundle,
+                              comment: "Short button label for showing the worktree in Finder.")) {
+                    NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+                }
+                .help("Show in Finder")
+                .accessibilityLabel("Show in Finder")
                 Button("Check Again") { isChecking = true }
                     .disabled(isChecking)
                 Spacer()

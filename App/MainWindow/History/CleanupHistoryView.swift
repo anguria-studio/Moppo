@@ -53,12 +53,12 @@ struct CleanupHistoryView: View {
                     .help(summaryText(summary))
             }
             Spacer(minLength: 0)
-            Button("Put Back Run") { model.requestPutBack(selectedRunItems) }
+            Button("Restore Items") { model.requestPutBack(selectedRunItems) }
                 .buttonStyle(PageActionButtonStyle(size: .small))
                 .disabled(selectedRunItems.isEmpty)
                 .help(model.isBusyWithDisk
                       ? String(localized: "Explain why Put Back must wait for the current operation.")
-                      : String(localized: "Restore all available items from the selected uninstall or cleanup run."))
+                      : String(localized: "Restore all available items from the selected cleanup or uninstall."))
             FindField(text: $searchText, findRequest: findRequest)
                 .frame(width: 180)
                 .disabled(items.isEmpty)
@@ -143,7 +143,9 @@ struct CleanupHistoryView: View {
                 }
                 let runItems = model.restorableItems(inRunOf: item)
                 if !runItems.isEmpty {
-                    actions.append(CompactTableMenuAction(title: String(localized: "Put Back Run (\(runItems.count) Item)", bundle: MoppoResources.bundle, locale: MoppoResources.locale)) {
+                    let title = String(localized: "Restore \(runItems.count) Item",
+                        bundle: MoppoResources.bundle, locale: MoppoResources.locale)
+                    actions.append(CompactTableMenuAction(title: title) {
                         model.requestPutBack(runItems)
                     })
                 }

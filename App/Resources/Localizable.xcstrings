@@ -626,7 +626,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": " Ces arbres de travail seront placés dans la corbeille."
+            "value": " Ces worktrees seront placés dans la corbeille."
           }
         },
         "it": {
@@ -781,13 +781,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": " · %lld arbre de travail Git"
+                  "value": " · %lld worktree Git"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": " · %lld arbres de travail Git"
+                  "value": " · %lld worktrees Git"
                 }
               }
             }
@@ -2127,13 +2127,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld fichier résiduel d’application"
+                  "value": "%lld fichier restant d’une app"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld fichiers résiduels d’application"
+                  "value": "%lld fichiers restants d’apps"
                 }
               }
             }
@@ -5358,13 +5358,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbre de travail"
+                  "value": "%lld worktree"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbres de travail"
+                  "value": "%lld worktrees"
                 }
               }
             }
@@ -5435,13 +5435,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbre de travail contient des modifications non validées."
+                  "value": "%lld worktree contient des modifications non validées."
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbres de travail contiennent des modifications non validées."
+                  "value": "%lld worktrees contiennent des modifications non validées."
                 }
               }
             }
@@ -5512,13 +5512,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbre de travail contient des commits non poussés."
+                  "value": "%lld worktree contient des commits non poussés."
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbres de travail contiennent des commits non poussés."
+                  "value": "%lld worktrees contiennent des commits non poussés."
                 }
               }
             }
@@ -5589,13 +5589,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbre de travail nécessite une vérification supplémentaire."
+                  "value": "%lld worktree nécessite une vérification supplémentaire."
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld arbres de travail nécessitent une vérification supplémentaire."
+                  "value": "%lld worktrees nécessitent une vérification supplémentaire."
                 }
               }
             }
@@ -6201,18 +6201,18 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Todas las comprobaciones han pasado con los datos remotos guardados. Las herramientas del proyecto pueden recrear los archivos ignorados, o el checkout principal tiene copias idénticas."
+            "value": "Todas las comprobaciones han pasado con los datos remotos guardados. Las herramientas del proyecto pueden recrear los archivos ignorados, o el worktree principal tiene copias idénticas."
           }
         },
         "fr": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Toutes les vérifications à partir des données distantes enregistrées ont réussi. Les outils du projet peuvent recréer les fichiers ignorés ou l’arbre de travail principal contient des copies identiques."
+            "state": "translated",
+            "value": "Toutes les vérifications à partir des données distantes enregistrées ont réussi. Les outils du projet peuvent recréer les fichiers ignorés ou le worktree principal contient des copies identiques."
           }
         },
         "it": {
           "stringUnit": {
-            "state": "needs_review",
+            "state": "translated",
             "value": "Tutte le verifiche con i dati remoti salvati sono riuscite. Gli strumenti del progetto possono ricreare i file ignorati oppure il worktree principale contiene copie identiche."
           }
         }
@@ -6457,13 +6457,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Un proceso en ejecución usa este árbol de trabajo."
+            "value": "Un proceso en ejecución usa este worktree."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Un processus en cours utilise cet arbre de travail."
+            "value": "Un processus en cours utilise ce worktree."
           }
         },
         "it": {
@@ -7327,20 +7327,20 @@
       "localizations": {
         "es": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Comprobar de nuevo"
+            "state": "translated",
+            "value": "Comprobar"
           }
         },
         "fr": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Vérifier à nouveau"
+            "state": "translated",
+            "value": "Revérifier"
           }
         },
         "it": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Verifica di nuovo"
+            "state": "translated",
+            "value": "Ricontrolla"
           }
         }
       }
@@ -7718,7 +7718,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vérification des arbres de travail sélectionnés"
+            "value": "Vérification des worktrees sélectionnés"
           }
         },
         "it": {
@@ -7757,13 +7757,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Comprobando el árbol de trabajo"
+            "value": "Comprobando el worktree"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Vérification de l’arbre de travail"
+            "value": "Vérification du worktree"
           }
         },
         "it": {
@@ -8528,13 +8528,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Cerrar la revisión del árbol de trabajo"
+            "value": "Cerrar la revisión del worktree"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Fermer la vérification de l’arbre de travail"
+            "value": "Fermer la vérification du worktree"
           }
         },
         "it": {
@@ -9397,20 +9397,20 @@
       "localizations": {
         "es": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Copias en el árbol de trabajo principal"
+            "state": "translated",
+            "value": "Copias en el worktree principal"
           }
         },
         "fr": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Copies dans l’arbre de travail principal"
+            "state": "translated",
+            "value": "Copies dans le worktree principal"
           }
         },
         "it": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Copie nell’albero di lavoro principale"
+            "state": "translated",
+            "value": "Copie nel worktree principale"
           }
         }
       }
@@ -10191,7 +10191,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Anular selección"
+            "value": "Deseleccionar"
           }
         },
         "fr": {
@@ -11286,7 +11286,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Inizializza"
+            "value": "Svuota il Cestino"
           }
         }
       }
@@ -12141,7 +12141,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Git ne peut pas lire cet arbre de travail, car ses données Git sont absentes de %@. Le dépôt principal a été supprimé ou cet arbre de travail appartient à une machine virtuelle, comme celle de Claude."
+            "value": "Git ne peut pas lire ce worktree, car ses données Git sont absentes de %@. Le dépôt principal a été supprimé ou ce worktree appartient à une machine virtuelle, comme celle de Claude."
           }
         },
         "it": {
@@ -12432,7 +12432,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Masquer les arbres de travail Git"
+            "value": "Masquer les worktrees Git"
           }
         },
         "it": {
@@ -12455,7 +12455,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Masquer les arbres de travail Git dans %@"
+            "value": "Masquer les worktrees Git dans %@"
           }
         },
         "it": {
@@ -13175,7 +13175,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Inclus avec l’arbre de travail fusionné"
+            "value": "Inclus avec le worktree fusionné"
           }
         },
         "it": {
@@ -13901,19 +13901,19 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Restos"
+            "value": "Archivos restantes"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Résidus"
+            "value": "Fichiers restants"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Residui"
+            "value": "File residui"
           }
         }
       }
@@ -14872,7 +14872,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moppo vérifie à nouveau les arbres de travail sélectionnés avant leur suppression. Si un contrôle de sécurité échoue, les arbres de travail restent sur le disque."
+            "value": "Moppo vérifie à nouveau les worktrees sélectionnés avant leur suppression. Si un contrôle de sécurité échoue, les worktrees restent sur le disque."
           }
         },
         "it": {
@@ -15730,13 +15730,13 @@
               "one": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "Moppo a conservé %lld arbre de travail car les contrôles de sécurité ont changé."
+                  "value": "Moppo a conservé %lld worktree car les contrôles de sécurité ont changé."
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "Moppo a conservé %lld arbres de travail car les contrôles de sécurité ont changé."
+                  "value": "Moppo a conservé %lld worktrees car les contrôles de sécurité ont changé."
                 }
               }
             }
@@ -15773,7 +15773,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Moppo a conservé ces arbres de travail car le dernier contrôle de sécurité a échoué :\n%@"
+            "value": "Moppo a conservé ces worktrees car le dernier contrôle de sécurité a échoué :\n%@"
           }
         },
         "it": {
@@ -16506,19 +16506,19 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Trasladar los restos a la papelera"
+            "value": "Archivos restantes a la Papelera"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Placer les résidus dans la corbeille"
+            "value": "Placer dans la corbeille"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Sposta i residui nel Cestino"
+            "value": "Sposta i file residui nel Cestino"
           }
         }
       }
@@ -16528,7 +16528,7 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Trasladar los sonidos a la papelera"
+            "value": "Sonidos a la Papelera"
           }
         },
         "fr": {
@@ -17188,19 +17188,19 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "No hay restos"
+            "value": "No hay archivos restantes"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Aucun résidu"
+            "value": "Aucun fichier restant"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Nessun residuo"
+            "value": "Nessun file residuo"
           }
         }
       }
@@ -18191,19 +18191,19 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No se han encontrado archivos de apps eliminadas."
+            "value": "No se han encontrado archivos de apps desinstaladas."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Aucun résidu d’application supprimée n’a été trouvé."
+            "value": "Aucun fichier laissé par une app désinstallée."
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Nessun residuo trovato delle applicazioni rimosse."
+            "value": "Non sono stati trovati file di app disinstallate."
           }
         }
       }
@@ -18854,7 +18854,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Apri questa cartella in Esplora spazio"
+            "value": "Apri questa cartella in Esplora spazio su disco"
           }
         }
       }
@@ -20267,7 +20267,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "La pull request nº %lld est ouverte. GitHub contient tous les commits de cet arbre de travail, mais la fusion est incomplète."
+            "value": "La pull request nº %lld est ouverte. GitHub contient tous les commits de ce worktree, mais la fusion est incomplète."
           }
         },
         "it": {
@@ -20393,106 +20393,6 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "Ripristina %lld elementi"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Put Back Run": {
-      "comment": "Use the Finder action that restores a Trash item to its original location.",
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "needs_review",
-            "value": "Sacar de la papelera los elementos de la operación"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "needs_review",
-            "value": "Remettre les éléments de l’opération"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "needs_review",
-            "value": "Ripristina gli elementi dell’operazione"
-          }
-        }
-      }
-    },
-    "Put Back Run (%lld Item)": {
-      "comment": "Use the Finder action that restores a Trash item to its original location.",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Put Back Run (%lld Item)"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Put Back Run (%lld Items)"
-                }
-              }
-            }
-          }
-        },
-        "es": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Sacar de la Papelera el elemento de la operación (%lld)"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "Sacar de la Papelera los elementos de la operación (%lld)"
-                }
-              }
-            }
-          }
-        },
-        "fr": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "needs_review",
-                  "value": "Remettre les éléments de l’opération (%lld élément)"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "needs_review",
-                  "value": "Remettre les éléments de l’opération (%lld éléments)"
-                }
-              }
-            }
-          }
-        },
-        "it": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "needs_review",
-                  "value": "Ripristina l’operazione (%lld elemento)"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "needs_review",
-                  "value": "Ripristina l’operazione (%lld elementi)"
                 }
               }
             }
@@ -21060,19 +20960,19 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Actualizar restos"
+            "value": "Actualizar archivos restantes"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Actualiser les résidus"
+            "value": "Actualiser les fichiers restants"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Aggiorna residui"
+            "value": "Aggiorna i file residui"
           }
         }
       }
@@ -22370,24 +22270,124 @@
         }
       }
     },
-    "Restore all available items from the selected uninstall or cleanup run.": {
+    "Restore %lld Item": {
+      "comment": "Restores the indicated number of items from the selected cleanup or uninstall in History.",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Restore %lld Item"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Restore %lld Items"
+                }
+              }
+            }
+          }
+        },
+        "es": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Restaurar %lld elemento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Restaurar %lld elementos"
+                }
+              }
+            }
+          }
+        },
+        "fr": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "Restaurer %lld élément"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "Restaurer %lld éléments"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "Ripristina %lld elemento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "Ripristina %lld elementi"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Restore Items": {
+      "comment": "Restores available items from the selected cleanup or uninstall in History.",
       "localizations": {
         "es": {
           "stringUnit": {
-            "state": "translated",
-            "value": "Recupera todos los elementos que siguen en la Papelera de la desinstalación o limpieza seleccionada."
+            "state": "needs_review",
+            "value": "Restaurar elementos"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Remettre tous les éléments disponibles de la désinstallation ou du nettoyage sélectionné."
+            "value": "Restaurer les éléments"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Ripristina tutti gli elementi disponibili della disinstallazione o pulizia selezionata."
+            "value": "Ripristina elementi"
+          }
+        }
+      }
+    },
+    "Restore all available items from the selected cleanup or uninstall.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurar todos los elementos disponibles de la operación seleccionada."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Restaurer tous les éléments disponibles de l’opération sélectionnée."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ripristina tutti gli elementi disponibili dell’operazione selezionata."
           }
         }
       }
@@ -22749,19 +22749,19 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Revisar restos"
+            "value": "Revisar archivos restantes"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Vérifier les résidus"
+            "value": "Vérifier les fichiers restants"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Verifica residui"
+            "value": "Verifica i file residui"
           }
         }
       }
@@ -23135,13 +23135,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Revisar árbol de trabajo"
+            "value": "Revisar worktree"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Vérifier l’arbre de travail"
+            "value": "Vérifier le worktree"
           }
         },
         "it": {
@@ -23158,13 +23158,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Revisar el árbol de trabajo %@"
+            "value": "Revisar el worktree %@"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Vérifier l’arbre de travail %@"
+            "value": "Vérifier le worktree %@"
           }
         },
         "it": {
@@ -23181,13 +23181,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Revisar las comprobaciones del árbol de trabajo"
+            "value": "Revisar las comprobaciones del worktree"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Examiner les vérifications de l’arbre de travail"
+            "value": "Examiner les vérifications du worktree"
           }
         },
         "it": {
@@ -24003,6 +24003,28 @@
         }
       }
     },
+    "Select": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seleccionar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sélectionner"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seleziona"
+          }
+        }
+      }
+    },
     "Select %@": {
       "localizations": {
         "es": {
@@ -24139,20 +24161,20 @@
       "localizations": {
         "es": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Seleccionar de todos modos"
+            "state": "translated",
+            "value": "Forzar selección"
           }
         },
         "fr": {
           "stringUnit": {
-            "state": "needs_review",
-            "value": "Sélectionner quand même"
+            "state": "translated",
+            "value": "Forcer la sélection"
           }
         },
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Seleziona comunque"
+            "value": "Forza selezione"
           }
         }
       }
@@ -24675,7 +24697,7 @@
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Afficher les arbres de travail Git"
+            "value": "Afficher les worktrees Git"
           }
         },
         "it": {
@@ -24692,13 +24714,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Mostrar los árboles de trabajo de Git en %@"
+            "value": "Mostrar los worktrees de Git en %@"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Afficher les arbres de travail Git dans %@"
+            "value": "Afficher les worktrees Git dans %@"
           }
         },
         "it": {
@@ -24880,7 +24902,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Mostra in Esplora spazio"
+            "value": "Mostra in Esplora spazio su disco"
           }
         }
       }
@@ -25988,6 +26010,29 @@
         }
       }
     },
+    "Storage": {
+      "comment": "Short sidebar label for Storage Explorer.",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Almacenamiento"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stockage"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spazio su disco"
+          }
+        }
+      }
+    },
     "Storage Explorer": {
       "comment": "Sidebar destination for measuring the size of folders.",
       "localizations": {
@@ -26006,7 +26051,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esplora spazio"
+            "value": "Esplora spazio su disco"
           }
         }
       }
@@ -26028,7 +26073,7 @@
         "it": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Scansione dello spazio di archiviazione"
+            "value": "Analisi dello spazio su disco"
           }
         }
       }
@@ -26050,7 +26095,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Esplora spazio sta eseguendo un’analisi. Attendi che termini o interrompila."
+            "value": "Esplora spazio su disco sta eseguendo un’analisi. Attendi che termini o interrompila."
           }
         }
       }
@@ -28226,13 +28271,13 @@
         "es": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Este árbol de trabajo contiene cambios sin confirmar."
+            "value": "Este worktree contiene cambios sin confirmar."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "needs_review",
-            "value": "Cet arbre de travail contient des modifications non validées."
+            "value": "Ce worktree contient des modifications non validées."
           }
         },
         "it": {
@@ -29772,7 +29817,7 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Avisar por debajo de"
+            "value": "Umbral de aviso"
           }
         },
         "fr": {
@@ -29784,7 +29829,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Avvisami sotto"
+            "value": "Soglia di avviso"
           }
         }
       }
@@ -29977,7 +30022,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Arbres de travail conservés"
+            "value": "Worktrees conservés"
           }
         },
         "it": {
@@ -30904,6 +30949,35 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "con l’elemento superiore"
+          }
+        }
+      }
+    },
+    "worktree.review.showInFinder": {
+      "comment": "Short button label for showing the worktree in Finder.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show in Finder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver en Finder"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finder"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra nel Finder"
           }
         }
       }

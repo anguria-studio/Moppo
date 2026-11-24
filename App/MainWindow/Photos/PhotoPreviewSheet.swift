@@ -180,6 +180,23 @@ struct PhotoPreviewContent: View {
     }
 
     private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                photoGroupControls
+                Spacer(minLength: 0)
+                photoActions
+            }
+            VStack(alignment: .trailing, spacing: 8) {
+                photoGroupControls.frame(maxWidth: .infinity, alignment: .leading)
+                photoActions
+            }
+        }
+        .disabled(model.isBusyWithDisk || model.isRegrouping)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    private var photoGroupControls: some View {
         HStack(spacing: 14) {
             Text("In this group")
                 .font(.mcCaption)
@@ -235,29 +252,45 @@ struct PhotoPreviewContent: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isSelected ? String(localized: "Deselect photo") : String(localized: "Select photo for deletion"))
+                .accessibilityLabel(selectionActionLabel)
                 .accessibilityValue(isSelected ? String(localized: "Selected") : String(localized: "Not selected"))
-                .help(isSelected ? String(localized: "Deselect this photo") : String(localized: "Select this photo for deletion"))
+                .help(selectionActionHelp)
             }
-            Spacer(minLength: 0)
-            if !isKeeper {
-                Button("Keep instead") {
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private var photoActions: some View {
+        if !isKeeper {
+            HStack(spacing: 14) {
+                Button("Keep") {
                     guard let group else { return }
                     model.keepInstead(groupID: group.id, assetID: shown.id)
                 }
                 .buttonStyle(PageActionButtonStyle(size: .small))
-                Button(isSelected ? String(localized: "Deselect") : String(localized: "Select for deletion")) { model.toggle(shown.id) }
+                .accessibilityLabel("Keep this photo instead")
+                .help("Keep this photo instead")
+                Button(isSelected ? String(localized: "Deselect") : String(localized: "Select")) { model.toggle(shown.id) }
                     .buttonStyle(PageActionButtonStyle(
                         tint: isSelected ? nil : Token.color(.accent),
                         size: .small,
                         fill: Token.Fill.buttonOnCard,
                         border: Token.Fill.controlBorder
                     ))
+                    .accessibilityLabel(selectionActionLabel)
+                    .help(selectionActionHelp)
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .disabled(model.isBusyWithDisk || model.isRegrouping)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+    }
+
+    private var selectionActionLabel: String {
+        isSelected ? String(localized: "Deselect photo") : String(localized: "Select photo for deletion")
+    }
+
+    private var selectionActionHelp: String {
+        isSelected ? String(localized: "Deselect this photo") : String(localized: "Select this photo for deletion")
     }
 
     private func show(_ asset: PhotoAsset) {
